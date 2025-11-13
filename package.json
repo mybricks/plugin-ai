@@ -15,10 +15,8 @@
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
-  "scripts": {
-  },
+  "scripts": {},
   "dependencies": {
-  },
-  "devDependencies": {
+    "@mybricks/rxai": "^0.0.1"
   }
 }
