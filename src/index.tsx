@@ -6,7 +6,7 @@ import pkg from '../package.json';
 console.log(`%c ${pkg.name} %c@${pkg.version}`, `color:#FFF;background:#fa6400`, ``, ``);
 
 import { Rxai, fileFormat } from "../../rxai/src";
-import { MYBRICKS_TOOLS } from '../../rxai/src/tools';
+import { MYBRICKS_TOOLS } from './tools';
 // import { requestAsStream } from '../../rxai/src/request/preset/zd'
 // import { pageScene } from "./mock";
 
