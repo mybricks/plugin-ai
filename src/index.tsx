@@ -5,7 +5,39 @@ import pkg from '../package.json';
 
 console.log(`%c ${pkg.name} %c@${pkg.version}`, `color:#FFF;background:#fa6400`, ``, ``);
 
-export default function pluginAI(): any {
+import { Rxai } from "../../rxai/src";
+import { pageScene } from "./mock";
+
+interface API {
+
+}
+
+interface RequestParams {
+  key: string;
+  message: string;
+  attachments: {
+    type: "image";
+    content: string;
+    title?: string;
+    size?: number;
+  }[]
+  emits: {
+    write: () => void;
+    complete: () => void;
+    error: () => void;
+    cancel: () => void;
+  }
+}
+
+export default function pluginAI({ requestAsStream }: any): any {
+  const rxai = new Rxai({
+    request: {
+      requestAsStream
+    }
+  })
+
+  rxai.register(pageScene);
+
   return {
     name: '@mybricks/plugins/ai',
     title: 'MyBricksAI助手',
@@ -16,23 +48,24 @@ export default function pluginAI(): any {
     data,
     contributes: {
       aiService: {
-        init(api) {
-          //debugger
-
-          ////TODO
+        init(api: API) {
+          console.log("[init - API]", api)
           return {
-            request() {//调用
-              return new Promise((resolve, reject) => {
-                const files = {}//返回的文件列表
-                resolve(files)
-              })
+            request(params: RequestParams) {
+              console.log("[request - params]", params);
+              rxai.requestAI({
+                ...params,
+                emits: params.emits || {
+                  write: () => {},
+                  complete: () => {},
+                  error: () => {},
+                  cancel: () => {},
+                }
+              });
             }
           }
         }
       },
-      // aiService(params,ref){
-      //   ref()
-      // },
       aiView: {
         render(args: any): JSX.Element {
           debugger
