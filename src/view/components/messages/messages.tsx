@@ -7,9 +7,7 @@ const Messages = () => {
   const [plans, setPlans] = useState<ReturnType<typeof context.rxai.getMessages>>([]);
 
   useLayoutEffect(() => {
-    console.log("注册")
     context.rxai.onPlanCallback((plans: any[]) => {
-      // console.log("[plans]", plans);
       setPlans([...plans])
     })
   }, [])

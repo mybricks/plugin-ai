@@ -49,6 +49,7 @@ export default function pluginAI({ requestAsStream }: any): any {
             }
           })
           console.log("[init - API]", api)
+
           return {
             request(params: RequestParams) {
               console.log("[request - params]", params);
