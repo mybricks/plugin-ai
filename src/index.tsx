@@ -7,6 +7,7 @@ console.log(`%c ${pkg.name} %c@${pkg.version}`, `color:#FFF;background:#fa6400`,
 
 import { Rxai, fileFormat } from "@mybricks/rxai";
 import { MYBRICKS_TOOLS } from "./tools"
+import { View } from "./view";
 
 interface API {
 
@@ -311,7 +312,7 @@ export default function pluginAI({ requestAsStream }: any): any {
       },
       aiView: {
         render(args: any): JSX.Element {
-          debugger
+          return <View />
         }
       }
     }

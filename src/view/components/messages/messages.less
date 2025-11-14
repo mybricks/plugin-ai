@@ -1,0 +1,25 @@
+.messages {
+  width: 100%;
+  flex: 1;
+  padding: 10px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  row-gap: 10px;
+
+  .message {
+    width: 100%;
+
+    .bubble {
+      max-width: calc(100% - 50px);
+      background-color: rgba(0, 0, 0, 0.06);
+      padding: 6px;
+      border-radius: 8px;
+    }
+  }
+
+  .messgaeEnd {
+    display: flex;
+    justify-content: flex-end;
+  }
+}
