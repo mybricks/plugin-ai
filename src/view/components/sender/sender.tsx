@@ -1,6 +1,7 @@
 import React, { useState } from "react"
 import classNames from "classnames"
 import { ArrowUpOutlined } from "@ant-design/icons"
+import { context } from "../../../context"
 import css from "./sender.less"
 
 const Sender = () => {
@@ -15,15 +16,43 @@ const Sender = () => {
           onChange={(event) => {
             setMessage(event.target.value);
           }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault()
+              if (message) {
+                context.rxai.requestAI({
+                  message,
+                  emits: {
+                    write: () => { },
+                    complete: () => { },
+                    error: () => { },
+                    cancel: () => { }
+                  },
+                  key: ""
+                })
+                setMessage("");
+              }
+            }
+          }}
         />
         <button
           className={classNames(css.button)}
           disabled={!message}
           onClick={() => {
-            console.log("按钮点击 获取message", message)
+            context.rxai.requestAI({
+              message,
+              emits: {
+                write: () => { },
+                complete: () => { },
+                error: () => { },
+                cancel: () => { }
+              },
+              key: ""
+            })
+            setMessage("");
           }}
         >
-          <ArrowUpOutlined className={classNames(css.icon)}/>
+          <ArrowUpOutlined className={classNames(css.icon)} />
         </button>
       </div>
     </div>

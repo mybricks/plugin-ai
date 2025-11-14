@@ -5,9 +5,10 @@ import pkg from '../package.json';
 
 console.log(`%c ${pkg.name} %c@${pkg.version}`, `color:#FFF;background:#fa6400`, ``, ``);
 
-import { Rxai, fileFormat } from "@mybricks/rxai";
+import { fileFormat } from "@mybricks/rxai";
 import { MYBRICKS_TOOLS } from "./tools"
 import { View } from "./view";
+import { context } from './context';
 
 interface API {
 
@@ -31,13 +32,6 @@ interface RequestParams {
 }
 
 export default function pluginAI({ requestAsStream }: any): any {
-  const rxai = new Rxai({
-    request: {
-      requestAsStream
-    }
-  })
-
-
   return {
     name: '@mybricks/plugins/ai',
     title: 'MyBricksAI助手',
@@ -49,6 +43,11 @@ export default function pluginAI({ requestAsStream }: any): any {
     contributes: {
       aiService: {
         init(api: API) {
+          context.createRxai({
+            request: {
+              requestAsStream
+            }
+          })
           console.log("[init - API]", api)
           return {
             request(params: RequestParams) {
@@ -58,7 +57,7 @@ export default function pluginAI({ requestAsStream }: any): any {
 
               const id = params.comId ?? params.pageId
 
-              rxai.register({
+              context.rxai.register({
                 name: "canvas",
                 tools: [
                   MYBRICKS_TOOLS.GetComponentsDocAndPrd({
@@ -296,7 +295,7 @@ export default function pluginAI({ requestAsStream }: any): any {
               });
        
 
-              rxai.requestAI({
+              context.rxai.requestAI({
                 ...params,
                 message: params.message + '\n' + contextDoc,
                 key: id,
@@ -312,7 +311,7 @@ export default function pluginAI({ requestAsStream }: any): any {
         }
       },
       aiView: {
-        render(args: any): JSX.Element {
+        render() {
           return <View />
         }
       }
