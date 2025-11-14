@@ -26,6 +26,7 @@ const Messages = () => {
       {plans.map((plan) => {
         return <Plan plan={plan} />
       })}
+      <div className={classNames(css.anchor)}/>
     </div>
   )
 }
