@@ -130,7 +130,7 @@ export default function pluginAI({ requestAsStream }: any): any {
                     }
                   }),
                   MYBRICKS_TOOLS.GeneratePage({
-                    getFocusRootComponentDoc: () => api?.geoView?.getPageContainerPrompts?.(id.currunt) as string,
+                    getFocusRootComponentDoc: () => api?.geoView?.getPageContainerPrompts?.(id) as string,
                     appendPrompt: `<对于当前搭建有以下特殊上下文>
   <搭建画布信息>
     当前搭建画布的宽度为375，所有元素的尺寸需要关注此信息，且尽可能自适应宽度进行布局。
@@ -242,8 +242,7 @@ export default function pluginAI({ requestAsStream }: any): any {
     5. 底部居下固定的修改个人信息的按钮；
 
     ${fileFormat({
-      content: `
-      ["_root_",":root","doConfig",{"path":"root/标题","value":"个人中心页面框架"}]
+      content: `["_root_",":root","doConfig",{"path":"root/标题","value":"个人中心页面框架"}]
       ["_root_",":root","doConfig",{"path":"root/布局","value":{"display":"flex","flexDirection":"column","alignItems":"center"}}]
       ["_root_",":root","doConfig",{"path":"root/样式","style":{"background":"#F5F5F5"}}]
       ["_root_","_rootSlot_","addChild",{"title":"顶部信息","ns":"some.banner","comId":"u_top32","layout":{"width":"100%","height":80,"marginTop":8,"marginLeft":12,"marginRight":12},"configs":[{"path":"常规/布局","value":{"display":"flex"}}]}]
@@ -267,8 +266,7 @@ export default function pluginAI({ requestAsStream }: any): any {
     所以提供一个flex容器，确定子组件的宽度，并将内容平铺上去。
     
     ${fileFormat({
-      content: `
-      ["_root_",":root","doConfig",{"path":"root/标题","value":"一行三列的导航"}]
+      content: `["_root_",":root","doConfig",{"path":"root/标题","value":"一行三列的导航"}]
       ["_root_",":root","doConfig",{"path":"root/布局","value":{"display":"flex","flexDirection":"column","alignItems":"center"}}]
       ["_root_","_rootSlot_","addChild",{"title":"Flex容器","ns":"some.container","comId":"u_iiusd7","layout":{"width":"100%","height":200,"marginLeft":8,"marginRight":8},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","justifyContent":"space-between","alignItems":"center","flexWrap":"wrap"}}]}]
       ["u_iiusd7","content","addChild",{"title":"导航1","ns":"some.icon","comId":"u_icon1","layout":{"width":120,"height":120,"marginTop":8},"configs":[{"path":"样式/文本","style":{"background":"#0000FF"}}]}]`,
@@ -281,14 +279,17 @@ export default function pluginAI({ requestAsStream }: any): any {
 </example>
               `,
                 onActions: (actions) => {
-                  api?.geoView?.updatePage?.(id.currunt, actions)
+                  api?.geoView?.updatePage?.(id, actions)
                 }
                   }),
                   MYBRICKS_TOOLS.ModifyComponent({
-                    getFocusRootComponentDoc: () => api?.geoView?.getComPrompts?.(id.currunt) as string,
+                    getFocusRootComponentDoc: () => api?.geoView?.getComPrompts?.(id) as string,
                     onActions: (actions) => {
-                      api?.geoView?.updateCom?.(id.currunt, actions)
+                      api?.geoView?.updateCom?.(id, actions)
                     }
+                  }),
+                  MYBRICKS_TOOLS.GetPageContext({
+                    getContext: (id: string) => api?.geoView?.getPageDSLPrompts?.(id) as string,
                   })
                 ],
               });

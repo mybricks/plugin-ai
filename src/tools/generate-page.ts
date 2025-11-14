@@ -16,12 +16,14 @@ const actionsParser = createActionsParser();
 export default function generatePage(config: GeneratePageToolParams): Tool {
   return {
     name: "generate-page",
-    description: `根据组件使用文档和需求，生成 MyBricks 页面。
-前置信息依赖：需求文档、组件使用文档`,
+    description: `根据组件使用文档和需求，一次性搭建并生成符合需求的 MyBricks 页面。
+前置要求：当前聚焦到一个页面上
+前置信息依赖：需求文档、组件使用文档
+适用场景：完成页面级需求，特别是聚焦到页面时`,
     getPrompts(params) {
       return `<工具总览>
   你是一个生成 MyBricks 页面的工具，你作为MyBricks的资深页面搭建助手及客服专家，经验丰富、实事求是、逻辑严谨。
-  你的任务是通过 actions 生成符合用户需求的页面。
+  你的任务是通过 actions 从0到1生成符合用户需求的页面。
 </工具总览>
 
 <特别注意>
@@ -49,8 +51,7 @@ ${config.getFocusRootComponentDoc()}
   当需要完成页面搭建或修改时，你需要按照如下格式返回actions操作步骤文件：
   
   ${fileFormat({
-    content: `
-    [comId, target, type, params]`,
+    content: `[comId, target, type, params]`,
     fileName: '操作步骤.json'
   })}
 
@@ -120,9 +121,7 @@ ${config.getFocusRootComponentDoc()}
       
       例如，当用户要求将当前组件的宽度设置为200px，可以返回以下内容：
       ${fileFormat({
-        content: `
-      ["u_ou1rs",":root","setLayout",{"width":200}]
-      `,
+        content: `["u_ou1rs",":root","setLayout",{"width":200}]`,
         fileName: '样式配置步骤.json'
       })}
       
@@ -154,17 +153,13 @@ ${config.getFocusRootComponentDoc()}
       例如：
       - 属性的配置：
       ${fileFormat({
-        content: `
-      ["u_ou1rs",":root","doConfig",{"path":"常规/标题","value":"标题内容"}]
-      `,
+        content: `["u_ou1rs",":root","doConfig",{"path":"常规/标题","value":"标题内容"}]`,
         fileName: '样式配置步骤.json'
       })}
       
       - 样式的配置：
       ${fileFormat({
-        content: `
-      ["u_ou1rs",":root","doConfig",{"path":"常规/banner样式","style":{"backgroundColor":"red"}}]
-      `,
+        content: `["u_ou1rs",":root","doConfig",{"path":"常规/banner样式","style":{"backgroundColor":"red"}}]`,
         fileName: '样式配置步骤.json'
       })}
       
@@ -195,23 +190,17 @@ ${config.getFocusRootComponentDoc()}
       
       例如：
       ${fileFormat({
-        content: `
-      ["u_ou1rs","content","addChild",{"title":"添加的文本组件","ns":"namespace占位","comId":"u_iiusd7"}]
-      `,
+        content: `["u_ou1rs","content","addChild",{"title":"添加的文本组件","ns":"namespace占位","comId":"u_iiusd7"}]`,
         fileName: '添加文本组件步骤.json'
       })}
 
       ${fileFormat({
-        content: `
-      ["u_ou1rs","content","addChild",{"title":"背景图","ns":"namespace占位","comId":"u_iiusd7","layout":{"width":"100%","height":200,"marginTop":8,"marginLeft":12,"marginRight":12},"configs":[{"path":"常规/图片地址","value":"https://ai.mybricks.world/image-search?term=风景"},{"path":"样式/图片","style":{"borderRadius":"8px"}}]}]
-      `,
+        content: `["u_ou1rs","content","addChild",{"title":"背景图","ns":"namespace占位","comId":"u_iiusd7","layout":{"width":"100%","height":200,"marginTop":8,"marginLeft":12,"marginRight":12},"configs":[{"path":"常规/图片地址","value":"https://ai.mybricks.world/image-search?term=风景"},{"path":"样式/图片","style":{"borderRadius":"8px"}}]}]`,
         fileName: '添加带配置属性的步骤.json'
       })}
   
       ${fileFormat({
-        content: `
-      ["u_ou1rs","content","addChild",{"title":"添加的布局组件","ns":"namespace占位","comId":"u_iiusd7","ignore": true}] // 配置ignore
-      `,
+        content: `["u_ou1rs","content","addChild",{"title":"添加的布局组件","ns":"namespace占位","comId":"u_iiusd7","ignore": true}]`,
         fileName: '添加带ignore标记的步骤.json'
       })}
   
@@ -260,9 +249,7 @@ ${config.getFocusRootComponentDoc()}
       
         使用fixed定位的例子:
         ${fileFormat({
-          content: `
-        ["_root_","_rootSlot_","addChild",{"title":"添加一个固定定位组件","comId":"u_fixed","ns":"组件","layout":{"position":"fixed","width":"100%","height":84,"bottom":0,"left":0},"configs":[]}]
-        `,
+          content: `["_root_","_rootSlot_","addChild",{"title":"添加一个固定定位组件","comId":"u_fixed","ns":"组件","layout":{"position":"fixed","width":"100%","height":84,"bottom":0,"left":0},"configs":[]}]`,
           fileName: '添加一个fixed定位组件.json'
         })}
 
@@ -290,8 +277,7 @@ ${config.getFocusRootComponentDoc()}
 
         例子：第一个布局组件仅承担布局功能，可以添加ignore标记；第二个布局组件承担样式功能，不能添加ignore标记。
         ${fileFormat({
-          content: `
-        ["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_layout","ignore":true,"ns":"组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
+          content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_layout","ignore":true,"ns":"组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
         ["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_layout","ns":"组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}},{"path":"样式/样式","style":{"background":"#FFFFFF"}}]}]
         `,
           fileName: '辅助标记.json'
@@ -305,8 +291,7 @@ ${config.getFocusRootComponentDoc()}
 
           下面的例子使用flex实现左侧固定宽度，右侧自适应布局:
           ${fileFormat({
-            content: `
-          ["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex1","ns":"布局组件","layout":{"width":"100%","height":60},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
+            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex1","ns":"布局组件","layout":{"width":"100%","height":60},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
           ["u_flex1","插槽id占位","addChild",{"title":"左侧固定宽度组件","comId":"u_leftFixed","ns":"组件","layout":{"width":60,"height":40,"marginRight":8},"configs":[]}]
           ["u_flex1","插槽id占位","addChild",{"title":"右侧自适应组件","comId":"u_rightFlex","ns":"组件","layout":{"width":'100%',"height":40},"configs":[]}]
           `,
@@ -320,8 +305,7 @@ ${config.getFocusRootComponentDoc()}
           
           下面的例子使用flex进行嵌套，来实现左侧图标+文本，右侧箭头的布局:
           ${fileFormat({
-            content: `
-          ["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex1","ns":"布局组件","layout":{"width":"100%","height":60},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","justifyContent":"space-between","alignItems":"center"}}]}]
+            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex1","ns":"布局组件","layout":{"width":"100%","height":60},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","justifyContent":"space-between","alignItems":"center"}}]}]
           ["u_flex1","插槽id占位","addChild",{"title":"左侧布局组件","comId":"u_leftLayout","ignore": true,"ns":"布局组件","layout":{"width":"fit-content","height":"fit-content"},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center", "justifyContent": "flex-start"}}]}]
           ["u_leftLayout","插槽id占位","addChild",{"title":"图标组件","comId":"u_icon","ns":"图标组件","layout":{"width":24,"height":24,"marginRight":8},"configs":[]}]
           ["u_leftLayout","插槽id占位","addChild",{"title":"文本组件","comId":"u_text","ns":"文本组件","layout":{"width":"fit-content","height":"fit-content"},"configs":[]}]
@@ -336,8 +320,7 @@ ${config.getFocusRootComponentDoc()}
 
           下面的例子使用flex实现垂直居中布局:
           ${fileFormat({
-            content: `
-          ["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex2","ns":"布局组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"column","alignItems":"center"}}]}]
+            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex2","ns":"布局组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"column","alignItems":"center"}}]}]
           ["u_flex2","插槽id占位","addChild",{"title":"子组件","comId":"u_child","ns":"组件","layout":{"width":80,"height":80},"configs":[]}]
           `,
             fileName: '垂直居中布局.json'
@@ -348,8 +331,7 @@ ${config.getFocusRootComponentDoc()}
 
           下面的例子使用flex进行横向均分或等分布局，实现一行N列的效果:
           ${fileFormat({
-            content: `
-          ["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex0","ignore": true,"ns":"布局组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","justifyContent":"space-between","alignItems":"center"}}]}]
+            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex0","ignore": true,"ns":"布局组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","justifyContent":"space-between","alignItems":"center"}}]}]
           ["u_flex0","插槽id占位","addChild",{"title":"A组件","comId":"u_a","ns":"组件","layout":{"width":40,"height":40},"configs":[]}]
           ["u_flex0","插槽id占位","addChild",{"title":"B组件","comId":"u_b","ns":"组件","layout":{"width":40,"height":40},"configs":[]}]
           ["u_flex0","插槽id占位","addChild",{"title":"C组件","comId":"u_c","ns":"组件","layout":{"width":40,"height":40},"configs":[]}]
@@ -364,8 +346,7 @@ ${config.getFocusRootComponentDoc()}
 
           特殊地，在flex布局中的元素还可以配置position=absolute，用于实现绝对定位效果:
           ${fileFormat({
-            content: `
-          ["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex3","ns":"布局组件","layout":{"width":"100%","height":200},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
+            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex3","ns":"布局组件","layout":{"width":"100%","height":200},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
           ["u_flex3","插槽id占位","addChild",{"title":"绝对定位组件","comId":"u_absolute","ns":"组件","layout":{"position":"absolute","width":100,"height":40,"top":20,"left":20},"configs":[]}]
           ["u_flex3","插槽id占位","addChild",{"title":"普通组件","comId":"u_normal","ns":"组件","layout":{"width":80,"height":80},"configs":[]}]
           `,
