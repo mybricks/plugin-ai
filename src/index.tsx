@@ -10,27 +10,6 @@ import { MYBRICKS_TOOLS } from "./tools"
 import { View } from "./view";
 import { context } from './context';
 
-interface API {
-
-}
-
-interface RequestParams {
-  key: string;
-  message: string;
-  attachments: {
-    type: "image";
-    content: string;
-    title?: string;
-    size?: number;
-  }[]
-  emits: {
-    write: () => void;
-    complete: () => void;
-    error: () => void;
-    cancel: () => void;
-  }
-}
-
 export default function pluginAI({ requestAsStream }: any): any {
   return {
     name: '@mybricks/plugins/ai',
@@ -42,7 +21,7 @@ export default function pluginAI({ requestAsStream }: any): any {
     data,
     contributes: {
       aiService: {
-        init(api: API) {
+        init(api: AiServiceAPI) {
           context.createRxai({
             request: {
               requestAsStream
@@ -51,18 +30,20 @@ export default function pluginAI({ requestAsStream }: any): any {
           console.log("[init - API]", api)
 
           return {
-            request(params: RequestParams) {
+            focus(params: AiServiceFocusParams) {
+              console.log("[focus - params]", params)
+              context.currentFocus = params;
+            },
+            request(params: AiServiceRequestParams) {
               console.log("[request - params]", params);
-
-              const contextDoc = `<当前聚焦情况>当前正在聚焦到${params.comId ? `组件(${params.comId})` : `页面(${params.pageId})`}中，请注意需求的范围</当前聚焦情况>`
-
-              const id = params.comId ?? params.pageId
+              const contextDoc = `<当前聚焦情况>当前正在聚焦到${params.type === "uiCom" ? `组件(${params.comId})` : `页面(${params.pageId})`}中，请注意需求的范围</当前聚焦情况>`
+              const id = params.type === "uiCom" ? params.comId : params.pageId
 
               context.rxai.register({
                 name: "canvas",
                 tools: [
                   MYBRICKS_TOOLS.GetComponentsDocAndPrd({
-                    allowComponents: api?.geoView?.getAllComDefPrompts?.(),
+                    allowComponents: api?.global?.api?.getAllComDefPrompts?.(),
                     examples: `
 <example>
   <user_query>根据图片搭建页面</user_query>
@@ -126,12 +107,12 @@ export default function pluginAI({ requestAsStream }: any): any {
                     canvasWidth: '375',
                     queryComponentsDocsByNamespaces: (namespaces) => {
                       return namespaces.reduce((acc, cur) => {
-                        return acc + '\n' + api?.geoView?.getComEditorPrompts?.(cur.namespace)
+                        return acc + '\n' + api?.uiCom?.api?.getComEditorPrompts?.(cur.namespace)
                       }, '')
                     }
                   }),
                   MYBRICKS_TOOLS.GeneratePage({
-                    getFocusRootComponentDoc: () => api?.geoView?.getPageContainerPrompts?.(id) as string,
+                    getFocusRootComponentDoc: () => api?.page?.api?.getPageContainerPrompts?.(id) as string,
                     appendPrompt: `<对于当前搭建有以下特殊上下文>
   <搭建画布信息>
     当前搭建画布的宽度为375，所有元素的尺寸需要关注此信息，且尽可能自适应宽度进行布局。
@@ -280,17 +261,17 @@ export default function pluginAI({ requestAsStream }: any): any {
 </example>
               `,
                 onActions: (actions) => {
-                  api?.geoView?.updatePage?.(id, actions)
+                  api?.page?.api?.updatePage?.(id, actions)
                 }
                   }),
                   MYBRICKS_TOOLS.ModifyComponent({
-                    getFocusRootComponentDoc: () => api?.geoView?.getComPrompts?.(id) as string,
+                    getFocusRootComponentDoc: () => api?.uiCom?.api?.getComPrompts?.(id) as string,
                     onActions: (actions) => {
-                      api?.geoView?.updateCom?.(id, actions)
+                      api?.uiCom?.api?.updateCom?.(id, actions)
                     }
                   }),
                   MYBRICKS_TOOLS.GetPageContext({
-                    getContext: (id: string) => api?.geoView?.getPageDSLPrompts?.(id) as string,
+                    getContext: (id: string) => api?.page?.api?.getPageDSLPrompts?.(id) as string,
                   })
                 ],
               });
@@ -300,7 +281,7 @@ export default function pluginAI({ requestAsStream }: any): any {
                 ...params,
                 message: params.message + '\n' + contextDoc,
                 key: id,
-                emits: params.emits || {
+                emits: {
                   write: () => {},
                   complete: () => {},
                   error: () => {},

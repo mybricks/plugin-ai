@@ -7,6 +7,21 @@ import css from "./sender.less"
 const Sender = () => {
   const [message, setMessage] = useState('');
 
+  const send = () => {
+    console.log("[send - 当前聚焦]", context.currentFocus)
+    context.rxai.requestAI({
+      message,
+      emits: {
+        write: () => { },
+        complete: () => { },
+        error: () => { },
+        cancel: () => { }
+      },
+      key: ""
+    })
+    setMessage("");
+  }
+
   return (
     <div className={classNames(css.sender)}>
       <div className={classNames(css.content)}>
@@ -20,17 +35,7 @@ const Sender = () => {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault()
               if (message) {
-                context.rxai.requestAI({
-                  message,
-                  emits: {
-                    write: () => { },
-                    complete: () => { },
-                    error: () => { },
-                    cancel: () => { }
-                  },
-                  key: ""
-                })
-                setMessage("");
+                send()
               }
             }
           }}
@@ -38,19 +43,7 @@ const Sender = () => {
         <button
           className={classNames(css.button)}
           disabled={!message}
-          onClick={() => {
-            context.rxai.requestAI({
-              message,
-              emits: {
-                write: () => { },
-                complete: () => { },
-                error: () => { },
-                cancel: () => { }
-              },
-              key: ""
-            })
-            setMessage("");
-          }}
+          onClick={send}
         >
           <ArrowUpOutlined className={classNames(css.icon)} />
         </button>
