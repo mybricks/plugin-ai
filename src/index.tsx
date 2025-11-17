@@ -22,6 +22,7 @@ export default function pluginAI({ requestAsStream }: any): any {
     contributes: {
       aiService: {
         init(api: AiServiceAPI) {
+          context.api = api;
           context.createRxai({
             request: {
               requestAsStream

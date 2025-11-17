@@ -8,7 +8,8 @@ const Sender = () => {
   const [message, setMessage] = useState('');
 
   const send = () => {
-    console.log("[send - 当前聚焦]", context.currentFocus)
+    console.log("[send - focus]", context.currentFocus)
+    console.log("[send - api]", context.api)
     context.rxai.requestAI({
       message,
       emits: {
