@@ -19,6 +19,7 @@
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
     "@mybricks/rxai": "^0.0.1",
-    "classnames": "^2.5.1"
+    "classnames": "^2.5.1",
+    "jsonrepair": "^3.13.1"
   }
 }

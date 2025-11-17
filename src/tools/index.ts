@@ -1,11 +1,13 @@
 import GeneratePage from './generate-page';
 import GetComponentsDocAndPrd from './get-components-doc-and-prd';
 import ModifyComponent from './modify-component'
-import GetPageContext from './get-page-context';
+import GetMybricksDSL from './get-mybricks-dsl';
+import FocusElement from './focus-element'
 
 export const MYBRICKS_TOOLS = {
   GeneratePage,
   GetComponentsDocAndPrd,
   ModifyComponent,
-  GetPageContext
+  GetMybricksDSL,
+  FocusElement
 }

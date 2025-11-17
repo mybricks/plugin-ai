@@ -1,4 +1,5 @@
 import { fileFormat } from '@mybricks/rxai'
+import { jsonrepair } from 'jsonrepair'
 
 interface GeneratePageToolParams {
   /** 当前根组件信息 */
@@ -511,8 +512,8 @@ const formatAction = (_action: string) => {
   } catch (error) {
     console.log("error", error, _action);
     try {
-      // const repairedAction = jsonrepair(_action)
-      // action = JSON.parse(repairedAction)
+      const repairedAction = jsonrepair(_action)
+      action = JSON.parse(repairedAction)
     } catch (error) {
       console.error("repair action error", error);
     }

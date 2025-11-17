@@ -10,6 +10,9 @@ const Sender = () => {
   const send = () => {
     console.log("[send - focus]", context.currentFocus)
     console.log("[send - api]", context.api)
+
+    context.registTools()
+
     context.rxai.requestAI({
       message,
       emits: {
@@ -18,7 +21,8 @@ const Sender = () => {
         error: () => { },
         cancel: () => { }
       },
-      key: ""
+      key: "",
+      presetMessages: context.getPresetMessages()
     })
     setMessage("");
   }

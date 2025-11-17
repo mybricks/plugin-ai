@@ -9,11 +9,16 @@ interface ModifyComponentToolParams {
 
 export default function generatePage(config: ModifyComponentToolParams): Tool {
   return {
-    name: 'modify-component',
-    description: `根据用户需求和聚焦的组件，通过配置，修改现有页面中某一个组件的搭建效果。
-前置要求：存在一个搭建好的页面，并且当前聚焦到某个组件上
-前置信息依赖：要修改的组件的ID
-适用场景：局部修改的小范围需求，特别是聚焦到某个组件时`,
+    name: 'modify-component-in-page',
+    description: `根据用户需求，对页面中的组件进行修改/删除。
+参数：要修改的组件的ID（确保之前的内容提及过，或者通过获取DSL获取）；
+作用：局部修改的小范围需求；
+前置步骤依赖：获取这个组件的上下文、聚焦到某一个页面；
+使用场景示例：
+  - 修改组件的样式/配置
+  - 删除组件
+  - 局部范围修改组件及其子组件的配置
+`,
     getPrompts(params) {
       return `<工具总览>
 你是一个修改组件搭建效果的工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深页面搭建助手，拥有专业的搭建能力。
