@@ -1,4 +1,5 @@
 import { fileFormat } from '@mybricks/rxai'
+import { getFiles } from './utils'
 
 interface GetComponentInfoParams {
   getComInfo: (id: string) => string
@@ -24,14 +25,7 @@ export default function getComponentsInfoByIds(config: GetComponentInfoParams, )
 </任务流程>`
       },
     execute({ files, content }) {
-      let idsFile: File | undefined = undefined;
-      Object.keys(files).forEach((fileKey) => {
-        const file: File = files[fileKey] as File;
-        if (file.extension === 'json') {
-          idsFile = file
-        }
-      })
-
+      const idsFile = getFiles(files, { extName: 'json' });
       let ids = [];
       try {
         ids = JSON.parse(idsFile?.content);

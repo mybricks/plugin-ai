@@ -340,7 +340,7 @@ export default function generatePage(config: ModifyComponentToolParams): Tool {
   </example>
 </examples>`
     },
-    execute({ files, content, key }) {
+    execute({ files }) {
       let actions: any = [];
 
       const actionsFile = getFiles(files, { extName: 'json' });
