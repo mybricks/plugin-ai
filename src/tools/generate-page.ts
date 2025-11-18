@@ -1,5 +1,6 @@
 import { fileFormat } from '@mybricks/rxai'
 import { jsonrepair } from 'jsonrepair'
+import { getFiles } from './utils'
 
 interface GeneratePageToolParams {
   /** 当前根组件信息 */
@@ -15,7 +16,7 @@ interface GeneratePageToolParams {
 
 const actionsParser = createActionsParser();
 
-export default function generatePage(config: GeneratePageToolParams): Tool {
+export default function generatePage(config: GeneratePageToolParams): any {
   return {
     name: "generate-page",
     description: `根据组件使用文档和需求以及附件图片，一次性搭建并生成符合需求的 MyBricks 页面。
@@ -462,15 +463,12 @@ ${config.examples}
   
 </examples>`
     },
-    execute({ files, content, key }) {
+    execute({ files }) {
       let actions: any = [];
-
-      Object.keys(files).forEach((fileName) => {
-        const file = files[fileName] as File;
-        if (file.extension === 'json') {
-          actions = actionsParser(file.content ?? "");
-        }
-      })
+      const actionsFile = getFiles(files, {extName: 'json' })
+      if (actionsFile) {
+        actions = actionsParser(actionsFile.content ?? "");
+      }
       config.onActions(actions)
       return `generate-page 调用完成，已根据需求将内容生成到页面id=${config.getTargetId()}中。`
     },

@@ -52,9 +52,7 @@ export default function getMybricksDsl(config: GetMybricksDslToolParams): Tool {
           }
         }
       })
-      console.log('[get-mybricks-dsl - selectPageFile]', selectPageFile)
       const contextDoc = config.getContext(selectPageFile?.id)?.toDSL?.();
-      console.log('[get-mybricks-dsl - contextDoc]', contextDoc)
       if (!selectPageFile?.id) {
         return '未获取到元素ID，请重新选择'
       }

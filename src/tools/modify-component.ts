@@ -1,4 +1,5 @@
 import { fileFormat } from '@mybricks/rxai'
+import { getFiles } from './utils'
 
 interface ModifyComponentToolParams {
   /** 当所有actions返回时 */
@@ -17,7 +18,7 @@ export default function generatePage(config: ModifyComponentToolParams): Tool {
   - 删除组件
   - 局部范围修改组件及其子组件的配置
 `,
-    getPrompts(params) {
+    getPrompts() {
       return `<工具总览>
 你是一个修改组件搭建效果的工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深页面搭建助手，拥有专业的搭建能力。
 你的任务是根据「当前组件上下文」和「用户需求」，生成 actions ，修改当前组件的配置和各项配置项完成用户的需求。
@@ -27,7 +28,7 @@ export default function generatePage(config: ModifyComponentToolParams): Tool {
   通过一系列的action来分步骤完成对目标组件的修改，请返回以下格式以驱动MyBricks对当前组件进行修改：
   
   ${fileFormat({
-    content: `[
+        content: `[
       {
         "comId":"目标组件的id",
         "target":"目标组件的整体或某个部分（也可以是某个插槽)，以选择器的形式表示",
@@ -35,8 +36,8 @@ export default function generatePage(config: ModifyComponentToolParams): Tool {
         "params":"不同的动作对应的参数"
       }
     ]`,
-    fileName: '操作步骤.json'
-  })}
+        fileName: '操作步骤.json'
+      })}
   
   注意：
     - 在返回多个步骤时，务必注意其逻辑顺序，例如有些action需要先完成，后续的action（可能通过ifVisible控制）才能进行；
@@ -340,20 +341,17 @@ export default function generatePage(config: ModifyComponentToolParams): Tool {
 </examples>`
     },
     execute({ files, content, key }) {
-      console.log(content, key)
       let actions: any = [];
 
-      Object.keys(files).forEach((fileName) => {
-        const file = files[fileName] as File;
-        if (file.extension === 'json') {
+      const actionsFile = getFiles(files, { extName: 'json' });
+      if (actionsFile) {
+        try {
+          actions = JSON.parse(actionsFile.content ?? "[]");
+        } catch (error) {
 
-          try {
-            actions = JSON.parse(file.content ?? "[]");
-          } catch (error) {
-            
-          }
         }
-      })
+      }
+
       config.onActions(actions)
       return 'modify-component 已完成'
     },

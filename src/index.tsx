@@ -108,16 +108,6 @@ export default function pluginAI({
                 return;
               }
               console.log("[focus - params]", params)
-              if (params.comId === 'u_PtIsS') {
-                params.type = 'page';
-                params.pageId = 'u_KTu8Y';
-                params.title = '鸿蒙页面'
-              }
-              if (params.comId === 'u_xho_h') {
-                params.type = 'page';
-                params.pageId = 'u_cLUZF';
-                params.title = '鸿蒙页面2'
-              }
               context.currentFocus = params;
             },
             request(params: AiServiceRequestParams) {
