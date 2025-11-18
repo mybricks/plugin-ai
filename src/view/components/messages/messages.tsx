@@ -67,7 +67,14 @@ const Plan = ({ plan }: { plan: ReturnType<typeof context.rxai.getMessages>[0] }
             [css.messgaeEnd]: message.role === "user",
           })}>
             <div className={classNames(css.bubble)}>
-              {message.content}
+              {/* TODO：附件展示 */}
+              {typeof message.content === "string" ? 
+                message.content : 
+                message.content.find((content: any) => {
+                  if (content.type === "text") {
+                    return content
+                  }
+                })?.text}
             </div>
           </div>
         )
