@@ -16,6 +16,7 @@ export default function getComponentsDocAndPrd(config: GetComponentsDocAndPrdToo
 前置要求：用户提出过需求
 参数：用户需求
 返回值：需求分析规格说明书（PRD）文件 + 组件使用/配置文档；`,
+    aiRole: "expert",
     getPrompts: () => {
         return `<工具总览>
 你是一个获取组件文档和用户需求的工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深页面搭建助手，拥有专业的产品经理能力。
@@ -100,10 +101,7 @@ ${config.examples}
 </examples>
 `
       },
-    // aiRole: "expert",
     execute({ files, content }) {
-      console.log(content)
-
       let prdFile: File | undefined = undefined, requireComsFile: File | undefined = undefined;
       Object.keys(files).forEach((fileKey) => {
         const file: File = files[fileKey] as File;
@@ -114,7 +112,6 @@ ${config.examples}
         if (file.extension === 'json') {
           requireComsFile = file
         }
-
       })
 
       let requireComponents = [];

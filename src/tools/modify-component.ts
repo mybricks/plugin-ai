@@ -1,19 +1,17 @@
 import { fileFormat } from '@mybricks/rxai'
 
 interface ModifyComponentToolParams {
-  /** 当前根组件信息 */
-  getFocusRootComponentDoc: () => string;
   /** 当所有actions返回时 */
   onActions: (actions: any[]) => void
 }
 
 export default function generatePage(config: ModifyComponentToolParams): Tool {
   return {
-    name: 'modify-component-in-page',
+    name: 'modify-components-in-page',
     description: `根据用户需求，对页面中的组件进行修改/删除。
 参数：要修改的组件的ID（确保之前的内容提及过，或者通过获取DSL获取）；
 作用：局部修改的小范围需求；
-前置步骤依赖：获取这个组件的上下文、聚焦到某一个页面；
+前置步骤依赖：获取组件的组件配置文档和搭建情况、聚焦到某一个页面/组件；
 使用场景示例：
   - 修改组件的样式/配置
   - 删除组件
@@ -25,10 +23,8 @@ export default function generatePage(config: ModifyComponentToolParams): Tool {
 你的任务是根据「当前组件上下文」和「用户需求」，生成 actions ，修改当前组件的配置和各项配置项完成用户的需求。
 </工具总览>
 
-${config.getFocusRootComponentDoc()}
- 
 <你需要返回的数据格式>
-  通过一系列的action来分步骤完成对当前组件的修改，请返回以下格式以驱动MyBricks对当前组件进行修改：
+  通过一系列的action来分步骤完成对目标组件的修改，请返回以下格式以驱动MyBricks对当前组件进行修改：
   
   ${fileFormat({
     content: `[

@@ -21,6 +21,7 @@ export default function generatePage(config: GeneratePageToolParams): Tool {
 前置要求：当前聚焦到一个页面上
 前置信息依赖：需求文档、组件使用文档
 适用场景：完成页面级需求，特别是聚焦到页面时`,
+    aiRole: "expert",
     getPrompts(params) {
       return `<工具总览>
   你是一个生成 MyBricks 页面的工具，你作为MyBricks的资深页面搭建助手及客服专家，经验丰富、实事求是、逻辑严谨。
@@ -461,7 +462,6 @@ ${config.examples}
 </examples>`
     },
     execute({ files, content, key }) {
-      console.log(content, key)
       let actions: any = [];
 
       Object.keys(files).forEach((fileName) => {
@@ -471,7 +471,7 @@ ${config.examples}
         }
       })
       config.onActions(actions)
-      return 'generate-page 调用完成'
+      return 'generate-page 调用完成，已根据需求生成页面。'
     },
   }
 }
