@@ -122,6 +122,10 @@ export default function pluginAI({
 
               context.registTools()
 
+              if (params.attachments?.length) {
+                params.message = "参考附件图片完成页面搭建\n" + params.message
+              }
+
               context.rxai.requestAI({
                 ...params,
                 message: params.message,
