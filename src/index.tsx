@@ -103,6 +103,10 @@ export default function pluginAI({
 
           return {
             focus(params: AiServiceFocusParams) {
+              if (!params) {
+                context.currentFocus = undefined;
+                return;
+              }
               console.log("[focus - params]", params)
               if (params.comId === 'u_PtIsS') {
                 params.type = 'page';
