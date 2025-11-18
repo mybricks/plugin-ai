@@ -10,8 +10,8 @@ const Header = () => {
         MyBricks.ai
       </span>
       <div className={classNames(css.tools)}>
-        <PlusOutlined className={classNames(css.icon)}/>
-        <CommentOutlined className={classNames(css.icon)}/>
+        {/* <PlusOutlined className={classNames(css.icon)}/>
+        <CommentOutlined className={classNames(css.icon)}/> */}
       </div>
     </div>
   )

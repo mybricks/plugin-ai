@@ -33,57 +33,54 @@ export default function pluginAI({
             }
           })
 
-          context.registTools = () => {
+          context.getTools = () => {
             const targetId = context.currentFocus?.type === 'uiCom' ? context.currentFocus?.comId : context.currentFocus?.pageId
-            context.rxai.register({
-              name: "canvas",
-              tools: [
-                MYBRICKS_TOOLS.GetComponentsDocAndPrd({
-                  allowComponents: api?.global?.api?.getAllComDefPrompts?.(),
-                  examples: prompts.prdExamplesPrompts,
-                  canvasWidth: prompts.canvasWidth,
-                  queryComponentsDocsByNamespaces: (namespaces) => {
-                    return namespaces.reduce((acc, cur) => {
-                      return acc + '\n' + api?.uiCom?.api?.getComEditorPrompts?.(cur.namespace)
-                    }, '')
-                  }
-                }),
-                MYBRICKS_TOOLS.GeneratePage({
-                  getFocusRootComponentDoc: () => api?.page?.api?.getPageContainerPrompts?.(targetId) as string,
-                  getTargetId: () => targetId as string,
-                  appendPrompt: prompts.systemAppendPrompts,
-                  examples: prompts.generatePageActionExamplesPrompts,
-                  onActions: (actions) => {
-                    api?.page?.api?.updatePage?.(targetId, actions)
-                  }
-                }),
-                MYBRICKS_TOOLS.ModifyComponent({
-                  onActions: (actions) => {
-                    const actionsGroupById = actions.reduce((acc, item) => {
-                      const id = item.comId;
-                      if (!acc[id]) {
-                        acc[id] = [];
-                      }
-                      acc[id].push(item);
-                      return acc;
-                    }, {});
+            return [
+              MYBRICKS_TOOLS.GetComponentsDocAndPrd({
+                allowComponents: api?.global?.api?.getAllComDefPrompts?.(),
+                examples: prompts.prdExamplesPrompts,
+                canvasWidth: prompts.canvasWidth,
+                queryComponentsDocsByNamespaces: (namespaces) => {
+                  return namespaces.reduce((acc, cur) => {
+                    return acc + '\n' + api?.uiCom?.api?.getComEditorPrompts?.(cur.namespace)
+                  }, '')
+                }
+              }),
+              MYBRICKS_TOOLS.GeneratePage({
+                getFocusRootComponentDoc: () => api?.page?.api?.getPageContainerPrompts?.(targetId) as string,
+                getTargetId: () => targetId as string,
+                appendPrompt: prompts.systemAppendPrompts,
+                examples: prompts.generatePageActionExamplesPrompts,
+                onActions: (actions) => {
+                  api?.page?.api?.updatePage?.(targetId, actions)
+                }
+              }),
+              MYBRICKS_TOOLS.ModifyComponent({
+                onActions: (actions) => {
+                  const actionsGroupById = actions.reduce((acc, item) => {
+                    const id = item.comId;
+                    if (!acc[id]) {
+                      acc[id] = [];
+                    }
+                    acc[id].push(item);
+                    return acc;
+                  }, {});
 
-                    Object.keys(actionsGroupById).forEach(id => {
-                      api?.uiCom?.api?.updateCom?.(id, actionsGroupById[id])
-                    })
-                  }
-                }),
-                MYBRICKS_TOOLS.GetMybricksDSL({
-                  getContext: (id: string) => api?.page?.api?.getPageDSLPrompts?.(targetId) as string,
-                }),
-                MYBRICKS_TOOLS.GetComponentInfo({
-                  getComInfo(id) {
-                    return api?.uiCom?.api?.getComPrompts?.(id)?.replace(/当前组件的情况/g, `组件${id}的信息`) as string
-                  },
-                })
-                // MYBRICKS_TOOLS.FocusElement({})
-              ],
-            });
+                  Object.keys(actionsGroupById).forEach(id => {
+                    api?.uiCom?.api?.updateCom?.(id, actionsGroupById[id])
+                  })
+                }
+              }),
+              MYBRICKS_TOOLS.GetMybricksDSL({
+                getContext: (id: string) => api?.page?.api?.getPageDSLPrompts?.(targetId) as string,
+              }),
+              MYBRICKS_TOOLS.GetComponentInfo({
+                getComInfo(id) {
+                  return api?.uiCom?.api?.getComPrompts?.(id)?.replace(/当前组件的情况/g, `组件${id}的信息`) as string
+                },
+              })
+              // MYBRICKS_TOOLS.FocusElement({})
+            ]
           }
           console.log("[init - API]", api)
 
@@ -115,11 +112,13 @@ export default function pluginAI({
 
               const id = params.comId ?? params.pageId
 
-              context.registTools()
+              // context.registTools()
 
               if (params.attachments?.length) {
                 params.message = "参考附件图片完成页面搭建\n" + params.message
               }
+
+              params.onProgress?.("ing");
 
               context.rxai.requestAI({
                 ...params,
@@ -127,10 +126,13 @@ export default function pluginAI({
                 key: id,
                 emits: {
                   write: () => {},
-                  complete: () => {},
+                  complete: () => {
+                    params.onProgress?.("complete");
+                  },
                   error: () => {},
                   cancel: () => {},
                 },
+                tools: context.getTools(),
                 presetMessages: context.getPresetMessages()
               });
             }

@@ -44,7 +44,8 @@ type AiServiceRequestParams = {
     content: string;
     title?: string;
     size?: number;
-  }[]
+  }[];
+  onProgress: (status: string) => void;
 } | {
   type: "page";
   message: string;
@@ -54,5 +55,6 @@ type AiServiceRequestParams = {
     content: string;
     title?: string;
     size?: number;
-  }[]
+  }[];
+  onProgress: (status: string) => void;
 }
