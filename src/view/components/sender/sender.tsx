@@ -11,8 +11,6 @@ const Sender = () => {
     console.log("[send - focus]", context.currentFocus)
     console.log("[send - api]", context.api)
 
-    context.registTools()
-
     context.rxai.requestAI({
       message,
       emits: {
@@ -22,6 +20,7 @@ const Sender = () => {
         cancel: () => { }
       },
       key: "",
+      tools: context.getTools(),
       presetMessages: context.getPresetMessages()
     })
     setMessage("");
