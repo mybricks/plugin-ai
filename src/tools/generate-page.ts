@@ -4,6 +4,7 @@ import { jsonrepair } from 'jsonrepair'
 interface GeneratePageToolParams {
   /** 当前根组件信息 */
   getFocusRootComponentDoc: () => string;
+  getTargetId: () => string;
   /** 应用特殊上下文信息 */
   appendPrompt: string;
   /** 返回示例 */
@@ -471,7 +472,7 @@ ${config.examples}
         }
       })
       config.onActions(actions)
-      return 'generate-page 调用完成，已根据需求生成页面。'
+      return `generate-page 调用完成，已根据需求将内容生成到页面id=${config.getTargetId()}中。`
     },
   }
 }

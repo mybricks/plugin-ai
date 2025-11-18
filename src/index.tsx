@@ -50,6 +50,7 @@ export default function pluginAI({
                 }),
                 MYBRICKS_TOOLS.GeneratePage({
                   getFocusRootComponentDoc: () => api?.page?.api?.getPageContainerPrompts?.(targetId) as string,
+                  getTargetId: () => targetId as string,
                   appendPrompt: prompts.systemAppendPrompts,
                   examples: prompts.generatePageActionExamplesPrompts,
                   onActions: (actions) => {
@@ -59,7 +60,7 @@ export default function pluginAI({
                 MYBRICKS_TOOLS.ModifyComponent({
                   onActions: (actions) => {
                     const actionsGroupById = actions.reduce((acc, item) => {
-                      const id = item.id;
+                      const id = item.comId;
                       if (!acc[id]) {
                         acc[id] = [];
                       }
@@ -77,7 +78,7 @@ export default function pluginAI({
                 }),
                 MYBRICKS_TOOLS.GetComponentInfo({
                   getComInfo(id) {
-                    return api?.uiCom?.api?.getComPrompts?.(id) as string
+                    return api?.uiCom?.api?.getComPrompts?.(id)?.replace(/当前组件的情况/g, `组件${id}的信息`) as string
                   },
                 })
                 // MYBRICKS_TOOLS.FocusElement({})
@@ -90,7 +91,7 @@ export default function pluginAI({
             return [
               {
                 role: 'user',
-                content: `当前聚焦在哪里？`
+                content: `聚焦位置发生变化，当前聚焦在哪里？`
               },
               {
                 role: 'assistant',
