@@ -9,5 +9,5 @@ export const MYBRICKS_TOOLS = {
   GetComponentsDocAndPrd,
   ModifyComponent,
   GetMybricksDSL,
-  FocusElement
+  // FocusElement
 }

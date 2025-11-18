@@ -259,15 +259,15 @@ xmark
               }
                 }),
                 MYBRICKS_TOOLS.ModifyComponent({
-                  getFocusRootComponentDoc: () => api?.uiCom?.api?.getComPrompts?.(getId()) as string,
+                  getFocusRootComponentDoc: () => api?.uiCom?.api?.getComPrompts?.('u_ZVQok') as string,
                   onActions: (actions) => {
-                    api?.uiCom?.api?.updateCom?.(getId(), actions)
+                    api?.uiCom?.api?.updateCom?.('u_ZVQok', actions)
                   }
                 }),
                 MYBRICKS_TOOLS.GetMybricksDSL({
                   getContext: (id: string) => api?.page?.api?.getPageDSLPrompts?.(getId()) as string,
                 }),
-                MYBRICKS_TOOLS.FocusElement({})
+                // MYBRICKS_TOOLS.FocusElement({})
               ],
             });
           }
@@ -277,13 +277,13 @@ xmark
             return [
               {
                 role: 'user',
-                content: `选中${context.currentFocus?.type === 'uiCom' ? '组件' : '页面'}${context.currentFocus?.comId || context.currentFocus?.pageId}`
+                content: `当前聚焦在哪里？`
               },
               {
                 role: 'assistant',
-                content: `好的，当前已聚焦到${context.currentFocus?.type === 'uiCom' ? `组件(${context.currentFocus?.comId})` : `页面(${context.currentFocus?.pageId})`}中，请注意需求的范围`
+                content: `当前已聚焦到${context.currentFocus?.type === 'uiCom' ? `组件(${context.currentFocus?.comId})` : `页面(${context.currentFocus?.pageId})`}中，请注意后续需求的范围`
               }
-        ]
+            ]
           }
 
           return {
@@ -293,6 +293,11 @@ xmark
                 params.type = 'page';
                 params.pageId = 'u_KTu8Y';
                 params.title = '鸿蒙页面'
+              }
+              if (params.comId === 'u_xho_h') {
+                params.type = 'page';
+                params.pageId = 'u_cLUZF';
+                params.title = '鸿蒙页面2'
               }
               context.currentFocus = params;
             },
