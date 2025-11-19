@@ -143,8 +143,12 @@ ${MyBricksHelper.getTreeDescriptionByJson(context.currentFocus?.type === 'uiCom'
                   complete: () => {
                     params.onProgress?.("complete");
                   },
-                  error: () => {},
-                  cancel: () => {},
+                  error: () => {
+                    params.onProgress?.("error");
+                  },
+                  cancel: () => {
+                    params.onProgress?.("complete");
+                  },
                 },
                 tools: context.getTools(),
                 presetMessages: context.getPresetMessages()
