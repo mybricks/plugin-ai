@@ -463,6 +463,15 @@ ${config.examples}
   
 </examples>`
     },
+    stream({ files }) {
+      // let actions: any = [];
+      // const actionsFile = getFiles(files, {extName: 'json' })
+      // if (actionsFile) {
+      //   actions = actionsParser(actionsFile.content ?? "");
+      // }
+      // console.log('actions', actions)
+      // config.onActions(actions)
+    },
     execute({ files }) {
       let actions: any = [];
       const actionsFile = getFiles(files, {extName: 'json' })

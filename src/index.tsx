@@ -72,7 +72,12 @@ export default function pluginAI({
                 }
               }),
               MYBRICKS_TOOLS.GetMybricksDSL({
-                getContext: (id: string) => api?.page?.api?.getPageDSLPrompts?.(targetId) as string,
+                getContext: (id, type) => {
+                  if (type === 'page') {
+                    return api?.page?.api?.getPageDSLPrompts?.(id)?.toDSL?.()?.replaceAll(`slots.${id}`, 'canvas') as string
+                  }
+                  return api?.uiCom?.api?.getComDSLPrompts?.(id) as string
+                },
               }),
               MYBRICKS_TOOLS.GetComponentInfo({
                 getComInfo(id) {
