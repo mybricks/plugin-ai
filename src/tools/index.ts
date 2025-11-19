@@ -13,3 +13,5 @@ export const MYBRICKS_TOOLS = {
   GetComponentInfo
   // FocusElement
 }
+
+export { MyBricksHelper } from './utils'

@@ -8,10 +8,12 @@ interface GetComponentInfoParams {
 export default function getComponentsInfoByIds(config: GetComponentInfoParams, ): Tool {
   return {
     name: 'get-components-info-by-ids',
-    description: `通过现有的组件ID获取搭建中的组件配置文档和当前搭建信息。
+    description: `通过现有的组件ID获取当前组件的配置文档和当前组件搭建配置。
 参数：组件ID；
 作用：获取组件的配置文档和当前搭建信息，用于后续修改组件；
-返回值：相关组件的配置文档和搭建信息；
+返回值：相关组件的配置文档和搭建配置；
+
+注意：搭建配置不包含DSL（没有子组件信息），仅包含当前组件的配置信息。
 `,
     getPrompts: () => {
         return `<工具总览>
@@ -21,7 +23,7 @@ export default function getComponentsInfoByIds(config: GetComponentInfoParams, )
 <任务流程>
   按照以下格式返回所要获取上下文的所有组件：
     ${fileFormat({ content: '[{ "id": "u_23ver" }, { "id": "u_9sdi2" }]', fileName: '需要获取上下文的组件ID列表.json' })}
-    - 注意：文件要严格按照JSON格式返回，注意不要出现语法错误；
+    - 注意：文件内容注意不要出现语法错误；
 </任务流程>`
       },
     execute({ files, content }) {

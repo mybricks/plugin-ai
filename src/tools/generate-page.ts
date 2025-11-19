@@ -11,7 +11,9 @@ interface GeneratePageToolParams {
   /** 返回示例 */
   examples: string;
   /** 当所有actions返回时 */
-  onActions: (actions: any[]) => void
+  onActions: (actions: any[], status: string) => void
+  /** 清空当前画布信息 */
+  onClearPage: () => void
 }
 
 const actionsParser = createActionsParser();
@@ -463,22 +465,29 @@ ${config.examples}
   
 </examples>`
     },
-    stream({ files }) {
+    stream({ files, status }) {
+      let actions: any = [];
+      const actionsFile = getFiles(files, {extName: 'json' })
+
+      if (actionsFile) {
+        actions = actionsParser(actionsFile.content ?? "");
+      }
+
+      if (status === 'start') {
+        config.onClearPage()
+      }
+      
+      if (actions.length > 0 || status === 'start' || status === 'complete') {
+        config.onActions(actions, status)
+      }
+    },
+    execute({ files }) {
       // let actions: any = [];
       // const actionsFile = getFiles(files, {extName: 'json' })
       // if (actionsFile) {
       //   actions = actionsParser(actionsFile.content ?? "");
       // }
-      // console.log('actions', actions)
       // config.onActions(actions)
-    },
-    execute({ files }) {
-      let actions: any = [];
-      const actionsFile = getFiles(files, {extName: 'json' })
-      if (actionsFile) {
-        actions = actionsParser(actionsFile.content ?? "");
-      }
-      config.onActions(actions)
       return `generate-page 调用完成，已根据需求将内容生成到页面id=${config.getTargetId()}中。`
     },
   }

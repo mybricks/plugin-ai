@@ -12,7 +12,7 @@ export default function generatePage(config: ModifyComponentToolParams): Tool {
     description: `根据用户需求，对页面中的组件进行修改/删除。
 参数：要修改的组件的ID（确保之前的内容提及过，或者通过获取DSL获取）；
 作用：局部修改的小范围需求；
-前置步骤依赖：获取组件的组件配置文档和搭建情况、聚焦到某一个页面/组件；
+前置步骤依赖：获取组件的DSL、获取组件的组件配置文档和搭建情况、聚焦到某一个页面/组件；
 使用场景示例：
   - 修改组件的样式/配置
   - 删除组件

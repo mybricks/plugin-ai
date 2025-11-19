@@ -5,7 +5,7 @@ import pkg from '../package.json';
 
 console.log(`%c ${pkg.name} %c@${pkg.version}`, `color:#FFF;background:#fa6400`, ``, ``);
 
-import { MYBRICKS_TOOLS } from "./tools"
+import { MYBRICKS_TOOLS, MyBricksHelper } from "./tools"
 import { View } from "./view";
 import { context } from './context';
 
@@ -51,8 +51,11 @@ export default function pluginAI({
                 getTargetId: () => targetId as string,
                 appendPrompt: prompts.systemAppendPrompts,
                 examples: prompts.generatePageActionExamplesPrompts,
-                onActions: (actions) => {
-                  api?.page?.api?.updatePage?.(targetId, actions)
+                onActions: (actions, status) => {
+                  api?.page?.api?.updatePage?.(targetId, actions, status)
+                },
+                onClearPage: () => {
+                  api?.page?.api?.clearPageContent?.(targetId)
                 }
               }),
               MYBRICKS_TOOLS.ModifyComponent({
@@ -98,6 +101,12 @@ export default function pluginAI({
               {
                 role: 'assistant',
                 content: `当前已聚焦到${context.currentFocus?.type === 'uiCom' ? `组件(id=${context.currentFocus?.comId})` : `页面(title=${context.currentFocus?.title},id=${context.currentFocus?.pageId})`}中，后续用户的提问，关于”这个“、“此”，甚至不提主语，都是指代此元素。
+<当前聚焦元素的内容简介>
+${MyBricksHelper.getTreeDescriptionByJson(context.currentFocus?.type === 'uiCom' ? api?.uiCom?.api?.getOutlineInfo(context.currentFocus?.comId): api?.page?.api?.getOutlineInfo(context.currentFocus?.pageId))}
+
+  > 如需了解更多信息（获取组件ID以及全量搭建信息），请使用获取DSL工具获取具体信息。
+  > 如果内容为空，则代表此组件没有任何子组件，无需获取DSL。
+</当前聚焦元素的内容简介>
                 `
               }
             ]

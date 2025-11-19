@@ -11,7 +11,7 @@ interface GetMybricksDslToolParams {
 export default function getMybricksDsl(config: GetMybricksDslToolParams): Tool {
   return {
     name: 'get-mybricks-dsl-by-id',
-    description: `根据ID获取（页面/组件）的完整上下文信息，包括搭建的DSL结构、组件层级、配置信息等。
+    description: `根据ID获取（页面/组件）的完整内容，包括搭建的DSL、结构、组件层级、配置信息等。
 参数：元素ID（页面ID或者组件ID）；
 返回值：页面的完整上下文信息，包括搭建的DSL结构、组件id、层级、配置信息等；
 `,
