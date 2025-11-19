@@ -1,21 +1,23 @@
-import React, { useEffect, useLayoutEffect, useState } from "react"
+import React, { useEffect, useLayoutEffect, useState, useRef } from "react"
 import classNames from "classnames"
 import { context } from "../../../context"
 import css from "./messages.less"
 
 const Messages = () => {
-  const [plans, setPlans] = useState<ReturnType<typeof context.rxai.getMessages>>([]);
+  const destroysRef = useRef<(() => void)[]>([]);
+  const [plans, setPlans] = useState<any>([]);
 
   useLayoutEffect(() => {
-    context.rxai.onPlanCallback((plans: any[]) => {
+    destroysRef.current.push(context.rxai.events.on('plan', (plans: any) => {
       setPlans([...plans])
-    })
+    }, true))
   }, [])
 
   useEffect(() => {
     return () => {
-      console.log("销毁")
-      context.rxai.offPlanCallback()
+      for (const destroy of destroysRef.current) {
+        destroy()
+      }
     }
   }, [])
 
@@ -24,38 +26,41 @@ const Messages = () => {
       {plans.map((plan) => {
         return <Plan plan={plan} />
       })}
-      <div className={classNames(css.anchor)}/>
+      <div className={classNames(css.anchor)} />
     </div>
   )
 }
 
 export { Messages }
 
-const Plan = ({ plan }: { plan: ReturnType<typeof context.rxai.getMessages>[0] }) => {
+const Plan = ({ plan }: { plan: any }) => {
   const [messages, setMessages] = useState([])
   const [message, setMessage] = useState("")
   const [loading, setLoading] = useState(true)
+  const destroysRef = useRef<any[]>([]);
 
   useLayoutEffect(() => {
-    plan.onLoadingCallback((loading: boolean) => {
-      setLoading(loading);
-    })
-    plan.onMessageStreamCallBack((message: string) => {
-      setMessage((pre) => {
-        return pre + message;
-      })
-    })
-    plan.onMessagesCallback((messages: any) => {
-      setMessages(messages)
-      setMessage("")
-    })
+    destroysRef.current.push(
+      plan.events.on('loading', (loading: boolean) => {
+        setLoading(loading);
+      }, true),
+      plan.events.on('messageStream', (messageStream: string) => {
+        setMessage((pre) => {
+          return pre + messageStream;
+        })
+      }, true),
+      plan.events.on('messages', (messages: any) => {
+        setMessages(messages)
+        setMessage("")
+      }, true),
+    )
   }, [])
 
   useEffect(() => {
     return () => {
-      plan.offLoadingCallback()
-      plan.offMessageStreamCallBack()
-      plan.offMessagesCallback()
+      for (const destroy of destroysRef.current) {
+        destroy()
+      }
     }
   }, [])
 
@@ -68,8 +73,8 @@ const Plan = ({ plan }: { plan: ReturnType<typeof context.rxai.getMessages>[0] }
           })}>
             <div className={classNames(css.bubble)}>
               {/* TODO：附件展示 */}
-              {typeof message.content === "string" ? 
-                message.content : 
+              {typeof message.content === "string" ?
+                message.content :
                 message.content.find((content: any) => {
                   if (content.type === "text") {
                     return content
