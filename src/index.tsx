@@ -70,14 +70,7 @@ export default function pluginAI({
       },
       aiStartView: {
         render() {
-          const createRxai = () => {
-            return new Rxai({
-              request: {
-                requestAsStream
-              }
-            })
-          }
-          return <StartView createRxai={createRxai}/>
+          return <StartView />
         }
       }
     }

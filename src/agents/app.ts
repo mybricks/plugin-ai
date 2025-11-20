@@ -128,6 +128,7 @@ export const requestGenerateCanvasAgent = (params: any) => {
           params?.onProgress?.("complete");
         },
       },
+      planList: ["analyze-and-expand-prd"],
       tools: [
         MYBRICKS_TOOLS.AnalyzeAndExpandPrd({
           onProjectCreate: (projectJson) => {

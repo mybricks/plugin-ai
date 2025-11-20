@@ -4,14 +4,11 @@ import { Rxai } from "@mybricks/rxai";
 import { message } from "antd";
 import { ArrowUp, Attachment, Loading, Close } from "../components/icons";
 import { Agents } from "../agents";
+import { Messages } from "../view/components/messages/messages";
 import css from "./index.less"
 
-interface StartViewParams {
-  createRxai: () => Rxai;
-}
-const StartView = (params: StartViewParams) => {
+const StartView = () => {
   const inputEditorRef = useRef<HTMLDivElement>(null);
-  const rxai = useRef<Rxai>(params.createRxai());
   const [isComposing, setIsComposing] = useState(false);
   const [inputContent, setInputContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -31,7 +28,7 @@ const StartView = (params: StartViewParams) => {
           }
         }),
       }).then(() => {
-        
+
       }).catch((e) => {
         message.error(e)
       }).finally(() => {
@@ -119,7 +116,12 @@ const StartView = (params: StartViewParams) => {
   }, [])
 
   return (
-    <div className={css.editor}>
+    <>
+    {/* TODO：临时，把Messages再封装下 */}
+    <div className={css.temp} style={{ display: loading ? "flex" : "none"}}>
+      <Messages />
+    </div>
+    <div className={css.editor} style={{ display: !loading ? "block" : "none"}}>
       {attachments.length ? <div className={css.topArea}>
         {attachments.map((attachment, index) => {
           return (
@@ -169,6 +171,7 @@ const StartView = (params: StartViewParams) => {
         </div>
       </div>
     </div>
+    </>
   )
 }
 
