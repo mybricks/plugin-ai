@@ -9,6 +9,7 @@ interface ModifyComponentToolParams {
 export default function generatePage(config: ModifyComponentToolParams): Tool {
   return {
     name: 'modify-components-in-page',
+    displayName: "修改组件",
     description: `根据用户需求，对页面中的组件进行修改/删除。
 参数：要修改的组件的ID（确保之前的内容提及过，或者通过获取DSL获取）；
 作用：局部修改的小范围需求；

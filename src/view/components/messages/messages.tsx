@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useState, useRef } from "react"
 import classNames from "classnames"
+import { Loading3QuartersOutlined, CheckCircleOutlined, CloseCircleOutlined } from "@ant-design/icons"
 import { context } from "../../../context"
 import css from "./messages.less"
 
@@ -34,7 +35,7 @@ const Messages = () => {
 export { Messages }
 
 const Plan = ({ plan }: { plan: any }) => {
-  const [messages, setMessages] = useState([])
+  const [messages, setMessages] = useState<any[]>([])
   const [message, setMessage] = useState("")
   const [loading, setLoading] = useState(true)
   const destroysRef = useRef<any[]>([]);
@@ -49,8 +50,8 @@ const Plan = ({ plan }: { plan: any }) => {
           return pre + messageStream;
         })
       }, true),
-      plan.events.on('messages', (messages: any) => {
-        setMessages(messages)
+      plan.events.on('userFriendlyMessages', (messages: any[]) => {
+        setMessages([...messages])
         setMessage("")
       }, true),
     )
@@ -71,16 +72,25 @@ const Plan = ({ plan }: { plan: any }) => {
           <div className={classNames(css.message, {
             [css.messgaeEnd]: message.role === "user",
           })}>
-            <div className={classNames(css.bubble)}>
-              {/* TODO：附件展示 */}
-              {typeof message.content === "string" ?
-                message.content :
-                message.content.find((content: any) => {
-                  if (content.type === "text") {
-                    return content
-                  }
-                })?.text}
-            </div>
+            {message.role === "tool" ? (
+              <div className={classNames(css.bubble, css.plan)}>
+                <div>{message.content.displayName}</div>
+                {message.status === "pending" && <Loading3QuartersOutlined className={css.spinIcon} />}
+                {message.status === "success" && <CheckCircleOutlined style={{ color: "green" }} />}
+                {message.status === "error" && <CloseCircleOutlined style={{ color: "red" }} />}
+              </div>
+            ) : (
+              <div className={classNames(css.bubble)}>
+                {/* TODO：附件展示 */}
+                {typeof message.content === "string" ?
+                  message.content :
+                  message.content.find((content: any) => {
+                    if (content.type === "text") {
+                      return content
+                    }
+                  })?.text}
+              </div>
+            )}
           </div>
         )
       })}
@@ -91,7 +101,10 @@ const Plan = ({ plan }: { plan: any }) => {
       </div> : null}
       {!message && loading ? <div className={classNames(css.message)}>
         <div className={classNames(css.bubble)}>
-          {loading ? "..." : ""}
+          <>
+            <span>正在思考</span>
+            <Loading3QuartersOutlined className={css.spinIcon} />
+          </>
         </div>
       </div> : null}
     </>

@@ -13,11 +13,33 @@
     width: 100%;
 
     .bubble {
-      max-width: calc(100% - 50px);
+      max-width: calc(100% - 30px);
+      width: fit-content;
       background-color: rgba(0, 0, 0, 0.06);
       padding: 6px;
       border-radius: 8px;
       word-break: break-all;
+
+      .spinIcon {
+        vertical-align: -0.5px;
+        margin-left: 3px;
+        font-size: 10px;
+        animation: spin 1.2s linear infinite;
+      }
+
+      @keyframes spin{
+        from { transform: rotate(0deg);   }
+        to   { transform: rotate(360deg); }
+      }
+    }
+
+    .plan {
+      width: 100%;
+      div {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
     }
   }
 
@@ -30,4 +52,12 @@
     height: 1px;             /* 越小越好，仅作锚点 */
     scroll-snap-align: end;  /* 关键：永远吸底 */
   }
+}
+
+.plan {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #f3f3f3;
+  border-radius: 4px;
 }

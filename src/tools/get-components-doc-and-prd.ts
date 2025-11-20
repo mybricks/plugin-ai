@@ -12,6 +12,7 @@ interface GetComponentsDocAndPrdToolParams {
 export default function getComponentsDocAndPrd(config: GetComponentsDocAndPrdToolParams, ): Tool {
   return {
     name: 'get-components-doc-and-prd',
+    displayName: "整理/扩写需求，拉取组件文档",
     description: `整理/扩写需求 或 分析图片 + 按需获取组件文档，是各类组件操作（页面搭建、页面修改）的前置操作。
 前置要求：用户提出过需求
 参数：用户需求（可能是文本，一句话、图片附近、文件附件等需求）
