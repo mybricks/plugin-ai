@@ -1,11 +1,58 @@
 import { fileFormat } from '@mybricks/rxai'
 import { getFiles } from './utils'
 
-interface AnalyzeAndExpandPRDParams {
-  onProjectCreate: (projectJson: any) => void
+interface AnalyzeAndExpandPrdParams {
+  onProjectCreate: (projectJson: any) => void,
+  demo?: any
 }
 
-export default function analyzeAndExpandPRD(config: AnalyzeAndExpandPRDParams): any {
+export default function analyzeAndExpandPrd(config: AnalyzeAndExpandPrdParams): any {
+  const {
+    demo = {
+      title: '本地生活APP',
+      pages: [
+        {
+          title: '首页',
+          prd: `目的：诱导用户进行点击，完成商品转化
+        需求：
+        从上往下依次为
+        1. 搜索模块：提供全局的商品搜索能力
+        2. 导航入口：一般使用一行N列来提供各个子界面的快捷入口
+        3. 轮播图：轮播当前热门的活动图片
+        4. 猜你喜欢：使用商品瀑布流来展示各类商品`,
+        },
+        {
+          title: '首页',
+          prd: `目的：对所有商品提供分类索引入口
+        需求：
+        从上往下依次为
+        1. 搜索模块：提供全局的商品搜索能力
+        2. 分类模块：
+          2.1 分类侧栏：用于提供商品分类的快捷入口
+          2.2 商品列表：在分类侧栏的子项里展示当前分类的商品列表`,
+        },
+        {
+          title: '我的',
+          prd: `目的：提供对个人信息的查看以及修改界面
+        需求：
+        从上往下依次为
+        1. 个人信息：通常包含头像和昵称，以及二维码信息
+        2. 订单入口：提供对订单已支付、已收获等分类的快捷入口
+        3. 会员信息：提供各类会员优惠活动入口`,
+        }
+      ],
+      style: `一个偏向活力的橙色风格是一个不错的选择
+        - 颜色
+        - 主颜色：活力橙 #FF5733
+        - 背景色：浅灰色 #F7F7F7
+        - 文本颜色：沉稳黑 #000000 可用于主要的文本
+        - 二级颜色：灰色 #A6A6A6 可用于边框或者浅色文本
+        - 样式
+        - 圆角：12px，增加柔和感
+        - 间距：16px
+        同样的，你也可以参考一些常见的APP，比如美团和饿了么的元素设计。`
+    }
+  } = config ?? {}
   return {
     name: 'analyze-and-expand-prd',
     description: `对用户提供的原始产品需求文档进行需求分析与扩写，最后拆分成不同的页面，输出结构化的结果。
@@ -94,69 +141,9 @@ export default function analyzeAndExpandPRD(config: AnalyzeAndExpandPRDParams): 
 
       最终我们应该返回这样的结构
       ${fileFormat({
-        content: JSON.stringify({
-          title: '本地生活APP',
-          pages: [
-            {
-              title: '首页',
-              prd: `目的：诱导用户进行点击，完成商品转化
-        需求：
-        从上往下依次为
-        1. 搜索模块：提供全局的商品搜索能力
-        2. 导航入口：一般使用一行N列来提供各个子界面的快捷入口
-        3. 轮播图：轮播当前热门的活动图片
-        4. 猜你喜欢：使用商品瀑布流来展示各类商品`,
-              // require: [
-              //   { namespace: 'somlib.text' },
-              //   { namespace: 'somlib.icon' },
-              //   { namespace: 'somlib.search' },
-              //   { namespace: 'somlib.waterfall' },
-              // ]
-            },
-            {
-              title: '首页',
-              prd: `目的：对所有商品提供分类索引入口
-        需求：
-        从上往下依次为
-        1. 搜索模块：提供全局的商品搜索能力
-        2. 分类模块：
-          2.1 分类侧栏：用于提供商品分类的快捷入口
-          2.2 商品列表：在分类侧栏的子项里展示当前分类的商品列表`,
-              // require: [
-              //   { namespace: 'somlib.text' },
-              //   { namespace: 'somlib.icon' },
-              //   { namespace: 'somlib.search' },
-              //   { namespace: 'somlib.sidebar' },
-              //   { namespace: 'somlib.list' },
-              // ]
-            },
-            {
-              title: '我的',
-              prd: `目的：提供对个人信息的查看以及修改界面
-        需求：
-        从上往下依次为
-        1. 个人信息：通常包含头像和昵称，以及二维码信息
-        2. 订单入口：提供对订单已支付、已收获等分类的快捷入口
-        3. 会员信息：提供各类会员优惠活动入口`,
-              // require: [
-              //   { namespace: 'somlib.text' },
-              //   { namespace: 'somlib.icon' },
-              // ]
-            }
-          ],
-          style: `一个偏向活力的橙色风格是一个不错的选择
-        - 颜色
-        - 主颜色：活力橙 #FF5733
-        - 背景色：浅灰色 #F7F7F7
-        - 文本颜色：沉稳黑 #000000 可用于主要的文本
-        - 二级颜色：灰色 #A6A6A6 可用于边框或者浅色文本
-        - 样式
-        - 圆角：12px，增加柔和感
-        - 间距：16px
-        同样的，你也可以参考一些常见的APP，比如美团和饿了么的元素设计。`
-        }, null, 2),
-      fileName: '本地生活APP项目需求文档.json'
-    })}
+        content: JSON.stringify(demo, null, 2),
+        fileName: '本地生活APP项目需求文档.json'
+      })}
     </assistant_response>
   </example>
 </examples>`;
@@ -164,17 +151,13 @@ export default function analyzeAndExpandPRD(config: AnalyzeAndExpandPRDParams): 
     aiRole: 'architect',
     execute({ files, content }) {
       const projectFile = getFiles(files, { extName: 'json' });
-
       let projectJson = {}
       try {
         projectJson = JSON.parse(projectFile?.content)
       } catch (error) {
-        
-      }
-      if (projectJson?.title) {
-        config.onProjectCreate(projectJson)
-      }
 
+      }
+      config.onProjectCreate(projectJson)
       return content;
     }
   };

@@ -12,6 +12,8 @@ interface AiServiceAPI {
       updatePage: (...params: any) => void;
       getPageDSLPrompts: (...params: any) => string;
       getPageContainerPrompts: (...params: any) => string;
+      clearPageContent: (pageId: string) => void
+      getOutlineInfo: (...params: any) => any
     }
   };
   uiCom: {
@@ -21,6 +23,7 @@ interface AiServiceAPI {
       getComPrompts: (...params: any) => string;
       getComDSLPrompts: (...params: any) => string;
       getComEditorPrompts: (...params: any) => string;
+      getOutlineInfo: (...params: any) => any
     }
   }
 }

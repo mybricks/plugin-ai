@@ -1,7 +1,9 @@
 import { context } from './../context';
 import { MYBRICKS_TOOLS } from "./../tools"
 
-export const requestGeneratePageAgent = (pageId: string, pageTitle: string, params: any, prompts: any) => {
+export const requestGeneratePageAgent = (pageId: string, pageTitle: string, params: any) => {
+
+  const prompts = context.prompts
 
   params?.onProgress?.('start')
 
@@ -62,7 +64,7 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
   });
 }
 
-async function createCanvasByAICanvas (aiCanvas: any, prompts: any) {
+async function createCanvasByAICanvas(canvasId: string, aiCanvas: any) {
   const { id, title } = context.api.page?.api?.createCanvas?.()
 
   aiCanvas.pages.forEach(async page => {
@@ -93,40 +95,51 @@ async function createCanvasByAICanvas (aiCanvas: any, prompts: any) {
       message: page.prd,
       onProgress: pageRef.onProgress,
       id: pageRef.id,
-    }, prompts)
+    })
   })
-
-
-  return {
-
-  }
 }
 
-export const createRequestGenerateCanvasAgent = (prompts: any) => (params: any) => {
-  params?.onProgress?.('start')
+export const requestGenerateCanvasAgent = (params: any) => {
+  return new Promise((resolve, reject) => {
+    params?.onProgress?.('start')
 
-  context.rxai.requestAI({
-    ...params,
-    message: params?.message,
-    key: params.id,
-    emits: {
-      write: () => { },
-      complete: () => {
-        params?.onProgress?.("complete");
+    context.rxai.requestAI({
+      ...params,
+      message: params?.message,
+      key: params.id,
+      emits: {
+        write: () => { },
+        complete: () => {
+          params?.onProgress?.("complete");
+        },
+        error: () => {
+          reject('error')
+          params?.onProgress?.("error");
+        },
+        cancel: () => {
+          params?.onProgress?.("complete");
+        },
       },
-      error: () => {
-        params?.onProgress?.("error");
-      },
-      cancel: () => {
-        params?.onProgress?.("complete");
-      },
-    },
-    tools: [
-      MYBRICKS_TOOLS.AnalyzeAndExpandPrd({
-        onProjectCreate: (projectJson) => {
-          createCanvasByAICanvas(projectJson, prompts)
-        }
-      })
-    ],
-  });
+      tools: [
+        MYBRICKS_TOOLS.AnalyzeAndExpandPrd({
+          onProjectCreate: (projectJson) => {
+            if (!projectJson || !projectJson.title) {
+              return reject('不合法的项目文件')
+            }
+            let canvasId
+            try {
+              const { id, title } = context.api.page?.api?.createCanvas?.()
+              canvasId = id
+            } catch (error) {
+              reject(error)
+            }
+            resolve('complete')
+            if (!canvasId) {
+              createCanvasByAICanvas(canvasId, projectJson)
+            }
+          }
+        })
+      ],
+    });
+  })
 }

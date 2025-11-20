@@ -2,6 +2,7 @@ import React, { useState } from "react"
 import classNames from "classnames"
 import { ArrowUpOutlined } from "@ant-design/icons"
 import { context } from "../../../context"
+import { Agents } from '../../../agents'
 import css from "./sender.less"
 
 const Sender = () => {
@@ -11,7 +12,7 @@ const Sender = () => {
     console.log("[send - focus]", context.currentFocus)
     console.log("[send - api]", context.api)
 
-    context.requestCommonAgent({
+    Agents.requestCommonAgent({
       message
     })
 

@@ -16,10 +16,7 @@ export default function pluginAI({
   prompts
 }: any): any {
 
-  const requestGenerateCanvasAgent = Agents.createRequestGenerateCanvasAgent(prompts)
-  const requestCommonAgent = Agents.createRequestCommonAgent(prompts)
-
-  context.requestCommonAgent = requestCommonAgent
+  context.prompts = prompts
 
   // window.requestGenerateCanvasAgent = requestGenerateCanvasAgent
 
@@ -59,7 +56,7 @@ export default function pluginAI({
                 params.message = "参考附件图片完成页面搭建\n" + params.message
               }
 
-              requestCommonAgent(params)
+              Agents.requestCommonAgent(params)
             }
           }
         }

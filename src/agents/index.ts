@@ -1,7 +1,7 @@
-import { createRequestGenerateCanvasAgent } from './app'
-import { createRequestCommonAgent } from './common'
+import { requestGenerateCanvasAgent } from './app'
+import { requestCommonAgent } from './common'
 
 export const Agents = {
-  createRequestGenerateCanvasAgent,
-  createRequestCommonAgent
+  requestGenerateCanvasAgent,
+  requestCommonAgent
 }
