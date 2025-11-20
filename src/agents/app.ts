@@ -92,7 +92,15 @@ async function createCanvasByAICanvas(canvasId: string, aiCanvas: any) {
     })
 
     await requestGeneratePageAgent(pageRef.id, page.title, {
-      message: page.prd,
+      message: `标题：${page.title}
+<需求>
+${page.prd}
+</需求>
+
+<样式风格>
+${page.style}
+</样式风格>
+`,
       onProgress: pageRef.onProgress,
       id: pageRef.id,
     })

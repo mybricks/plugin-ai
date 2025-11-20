@@ -77,7 +77,7 @@ export default function analyzeAndExpandPrd(config: AnalyzeAndExpandPrdParams): 
 </特别注意>
 
 <遵循原则>
-你要切换不同的角色来完成一个需求的设计和开发
+你要切换不同的角色来完成一个需求的设计和开发，同时限制生成的页面数量在3个及以内。
 </遵循原则>
 
 <处理流程>
@@ -103,7 +103,6 @@ export default function analyzeAndExpandPrd(config: AnalyzeAndExpandPrdParams): 
     注意：
     - 由于我们不能实现太复杂的需求，需要控制拓展需求的规模，拓展不要超过5个页面
     - 需求仅围绕UI的实现来拓展，不要涉及多语言、服务端、逻辑、SEO、打印、截图、动画，以及一些复杂交互的周边能力，我们仅关注UI部分
-    - 由于「顶部导航栏」和「底部导航栏」已经由系统实现，需求中不要包含「顶部导航栏」和「底部导航栏」的相关需求
   </任务一>
 
   <任务二>
