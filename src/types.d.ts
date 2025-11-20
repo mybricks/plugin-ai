@@ -14,6 +14,8 @@ interface AiServiceAPI {
       getPageContainerPrompts: (...params: any) => string;
       clearPageContent: (pageId: string) => void
       getOutlineInfo: (...params: any) => any
+      createCanvas: () => { id: string; title: string; }
+      createPage: (id: string, title: string, config?: any) => { id: string; onProgress: Function; }
     }
   };
   uiCom: {

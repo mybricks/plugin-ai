@@ -134,7 +134,7 @@ export const requestGenerateCanvasAgent = (params: any) => {
               reject(error)
             }
             resolve('complete')
-            if (!canvasId) {
+            if (canvasId) {
               createCanvasByAICanvas(canvasId, projectJson)
             }
           }
