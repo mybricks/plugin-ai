@@ -55,6 +55,7 @@ export default function analyzeAndExpandPrd(config: AnalyzeAndExpandPrdParams): 
   } = config ?? {}
   return {
     name: 'analyze-and-expand-prd',
+    displayName: "对原始产品需求文档分析并扩写",
     description: `对用户提供的原始产品需求文档进行需求分析与扩写，最后拆分成不同的页面，输出结构化的结果。
 参数：原始需求文档（可能是一句话、一个图片、甚至各种类型附件）
 作用：将模糊、简略的需求转化为清晰、分页面的详细描述，用于指导后续低代码搭建；
@@ -158,6 +159,7 @@ export default function analyzeAndExpandPrd(config: AnalyzeAndExpandPrdParams): 
       }
       config.onProjectCreate(projectJson)
       return content;
-    }
+    },
+    streamThoughts: true
   };
 }
