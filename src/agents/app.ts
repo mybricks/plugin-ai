@@ -65,11 +65,8 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
 }
 
 async function createCanvasByAICanvas(canvasId: string, aiCanvas: any) {
-  const { id, title } = context.api.page?.api?.createCanvas?.()
-
   aiCanvas.pages.forEach(async page => {
-
-    const pageRef = await context.api.page?.api?.createPage?.(id, page.title, {
+    const pageRef = await context.api.page?.api?.createPage?.(canvasId, page.title, {
       type: "normal",
       title: page.title,
       template: {
