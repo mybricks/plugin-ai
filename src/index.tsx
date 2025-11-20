@@ -58,36 +58,33 @@ export default function pluginAI({
                   api?.page?.api?.clearPageContent?.(targetId)
                 }
               }),
-              MYBRICKS_TOOLS.ModifyComponent({
-                onActions: (actions) => {
-                  const actionsGroupById = actions.reduce((acc, item) => {
-                    const id = item.comId;
-                    if (!acc[id]) {
-                      acc[id] = [];
-                    }
-                    acc[id].push(item);
-                    return acc;
-                  }, {});
-
-                  Object.keys(actionsGroupById).forEach(id => {
-                    api?.uiCom?.api?.updateCom?.(id, actionsGroupById[id])
-                  })
-                }
-              }),
-              MYBRICKS_TOOLS.GetMybricksDSL({
-                getContext: (id, type) => {
-                  if (type === 'page') {
-                    return api?.page?.api?.getPageDSLPrompts?.(id)?.toDSL?.()?.replaceAll(`slots.${id}`, 'canvas') as string
+              // MYBRICKS_TOOLS.GetMybricksDSL({
+              //   getContext: (id, type) => {
+              //     if (type === 'page') {
+              //       return api?.page?.api?.getPageDSLPrompts?.(id)?.toDSL?.()?.replaceAll(`slots.${id}`, 'canvas') as string
+              //     }
+              //     return api?.uiCom?.api?.getComDSLPrompts?.(id) as string
+              //   },
+              // }),
+              MYBRICKS_TOOLS.GetFocusMybricksDSL({
+                id: targetId as string,
+                getFocusContext() {
+                  if (context.currentFocus?.type === 'page') {
+                    return api?.page?.api?.getPageDSLPrompts?.(targetId)?.toDSL?.()?.replaceAll(`slots.${targetId}`, 'canvas') as string
                   }
-                  return api?.uiCom?.api?.getComDSLPrompts?.(id) as string
+                  return api?.uiCom?.api?.getComDSLPrompts?.(targetId) as string
                 },
               }),
               MYBRICKS_TOOLS.GetComponentInfo({
                 getComInfo(id) {
                   return api?.uiCom?.api?.getComPrompts?.(id)?.replace(/当前组件的情况/g, `组件${id}的信息`) as string
                 },
-              })
-              // MYBRICKS_TOOLS.FocusElement({})
+              }),
+               MYBRICKS_TOOLS.ModifyComponent({
+                onActions: (id, actions) => {
+                  api?.uiCom?.api?.updateCom?.(id, actions)
+                }
+              }),
             ]
           }
           console.log("[init - API]", api)
@@ -104,8 +101,8 @@ export default function pluginAI({
 <当前聚焦元素的内容简介>
 ${MyBricksHelper.getTreeDescriptionByJson(context.currentFocus?.type === 'uiCom' ? api?.uiCom?.api?.getOutlineInfo(context.currentFocus?.comId): api?.page?.api?.getOutlineInfo(context.currentFocus?.pageId))}
 
-  > 如需了解更多信息（获取组件ID以及全量搭建信息），请使用获取DSL工具获取具体信息。
-  > 如果内容为空，则代表此组件没有任何子组件，无需获取DSL。
+  > 如果内容不为空，代表组件通过插槽放置有子组件，如果需要了解子组件的搭建信息，请使用获取DSL工具获取具体信息。
+  > 如果内容为空，则代表此组件没有任何子组件，也无需获取DSL。
 </当前聚焦元素的内容简介>
                 `
               }

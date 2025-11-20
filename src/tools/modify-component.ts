@@ -3,7 +3,7 @@ import { getFiles } from './utils'
 
 interface ModifyComponentToolParams {
   /** 当所有actions返回时 */
-  onActions: (actions: any[]) => void
+  onActions: (id: string, actions: any[]) => void
 }
 
 export default function generatePage(config: ModifyComponentToolParams): Tool {
@@ -13,7 +13,7 @@ export default function generatePage(config: ModifyComponentToolParams): Tool {
     description: `根据用户需求，对页面中的组件进行修改/删除。
 参数：要修改的组件的ID（确保之前的内容提及过，或者通过获取DSL获取）；
 作用：局部修改的小范围需求；
-前置步骤依赖：获取组件的DSL、获取组件的组件配置文档和搭建情况、聚焦到某一个页面/组件；
+前置步骤依赖：聚焦组件的上下文（如果涉及组件的子组件修改）、获取组件的组件配置文档和搭建情况；
 使用场景示例：
   - 修改组件的样式/配置
   - 删除组件
@@ -353,8 +353,20 @@ export default function generatePage(config: ModifyComponentToolParams): Tool {
         }
       }
 
-      config.onActions(actions)
-      return 'modify-component 已完成'
+      const actionsGroupById = actions.reduce((acc, item) => {
+        const id = item.comId;
+        if (!acc[id]) {
+          acc[id] = [];
+        }
+        acc[id].push(item);
+        return acc;
+      }, {});
+
+      Object.keys(actionsGroupById).forEach(id => {
+        config.onActions(id, actionsGroupById[id])
+      })
+      
+      return `modify-component 已完成，已根据需求修改以下组件: ${Object.keys(actionsGroupById).join('、')}。`
     },
   }
 }

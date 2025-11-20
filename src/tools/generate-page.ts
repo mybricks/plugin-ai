@@ -22,9 +22,9 @@ export default function generatePage(config: GeneratePageToolParams): any {
   return {
     name: "generate-page",
     displayName: "生成页面",
-    description: `根据组件使用文档和需求以及附件图片，一次性搭建并生成符合需求的 MyBricks 页面。
+    description: `根据需求/附件图片，一次性搭建并生成符合需求的 MyBricks 页面。
 前置要求：当前聚焦到一个页面上
-前置信息依赖：需求文档、组件使用文档
+前置信息依赖：需求文档、组件选型
 适用场景：完成页面级需求，特别是聚焦到页面时`,
     aiRole: "expert",
     getPrompts(params) {

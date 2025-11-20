@@ -39,7 +39,7 @@ function getTreeDescriptionByJson(data: any, level = 0) {
     const namespace = data.def?.namespace ||
       data.def?.namespace ||
       'content';
-    result += `${indent}- ${data.title} (${namespace})\n`;
+    result += `${indent}- ${data.title}[id=${data.id}](${namespace})\n`;
   }
 
   // 处理slots中的组件
