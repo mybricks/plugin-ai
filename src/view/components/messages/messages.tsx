@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useState, useRef } from "react"
 import classNames from "classnames"
 import { Loading3QuartersOutlined, CheckCircleOutlined, CloseCircleOutlined } from "@ant-design/icons"
+import { marked } from "marked";
 import { context } from "../../../context"
 import css from "./messages.less"
 
@@ -24,8 +25,8 @@ const Messages = () => {
 
   return (
     <div className={classNames(css.messages)}>
-      {plans.map((plan) => {
-        return <Plan plan={plan} />
+      {plans.map((plan: any, index: number) => {
+        return <Plan key={index} plan={plan} />
       })}
       <div className={classNames(css.anchor)} />
     </div>
@@ -39,6 +40,7 @@ const Plan = ({ plan }: { plan: any }) => {
   const [message, setMessage] = useState("")
   const [loading, setLoading] = useState(true)
   const destroysRef = useRef<any[]>([]);
+  const messageRef = useRef<HTMLDivElement>(null)
 
   useLayoutEffect(() => {
     destroysRef.current.push(
@@ -65,11 +67,17 @@ const Plan = ({ plan }: { plan: any }) => {
     }
   }, [])
 
+  useEffect(() => {
+    if (message) {
+      messageRef.current!.innerHTML = marked.parse(message) as string;
+    }
+  }, [message])
+
   return (
     <>
-      {messages.map((message: any) => {
+      {messages.map((message: any, index) => {
         return (
-          <div className={classNames(css.message, {
+          <div key={index} className={classNames(css.message, {
             [css.messgaeEnd]: message.role === "user",
           })}>
             {message.role === "tool" ? (
@@ -80,23 +88,24 @@ const Plan = ({ plan }: { plan: any }) => {
                 {message.status === "error" && <CloseCircleOutlined style={{ color: "red" }} />}
               </div>
             ) : (
-              <div className={classNames(css.bubble)}>
-                {/* TODO：附件展示 */}
-                {typeof message.content === "string" ?
-                  message.content :
-                  message.content.find((content: any) => {
-                    if (content.type === "text") {
-                      return content
-                    }
-                  })?.text}
-              </div>
+              <Bubble message={message}/>
+              // <div className={classNames(css.bubble)}>
+              //   {/* TODO：附件展示 */}
+              //   {typeof message.content === "string" ?
+              //     message.content :
+              //     message.content.find((content: any) => {
+              //       if (content.type === "text") {
+              //         return content
+              //       }
+              //     })?.text}
+              // </div>
             )}
           </div>
         )
       })}
       {message ? <div className={classNames(css.message)}>
-        <div className={classNames(css.bubble)}>
-          {message}{loading ? "..." : ""}
+        <div ref={messageRef}  className={classNames(css.bubble)}>
+          {/* {message}{loading ? "..." : ""} */}
         </div>
       </div> : null}
       {!message && loading ? <div className={classNames(css.message)}>
@@ -111,3 +120,21 @@ const Plan = ({ plan }: { plan: any }) => {
   )
 }
 
+const Bubble = ({ message }: any) => {
+  const bubbleRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const content = typeof message.content === "string" ?
+      message.content :
+      message.content.find((content: any) => {
+        if (content.type === "text") {
+          return content
+        }
+      })?.text
+    bubbleRef.current!.innerHTML = marked.parse(content) as string;
+  }, [])
+
+  return (
+    <div ref={bubbleRef} className={classNames(css.bubble)}></div>
+  )
+}
