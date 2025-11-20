@@ -8,7 +8,7 @@ interface GetComponentInfoParams {
 export default function getComponentsInfoByIds(config: GetComponentInfoParams, ): Tool {
   return {
     name: 'get-components-info-by-ids',
-    displayName: "获取组件配置文档和搭建配置",
+    displayName: "获取组件配置文档",
     description: `通过现有的组件ID获取当前组件的配置文档和当前组件搭建配置。
 参数：组件ID；
 作用：获取组件的配置文档和当前搭建信息，用于后续修改组件；
