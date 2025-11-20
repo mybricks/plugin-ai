@@ -31,7 +31,7 @@ export default function getComponentsDocAndPrd(config: GetComponentsDocAndPrdToo
     ${fileFormat({ content: '(需求分析规格说明书的内容)', fileName: 'XX需求文档.md' })}
     
     ${fileFormat({ content: '(搭建所需要的组件选型)', fileName: 'XX需求组件选型.json' })}
-    - 注意：require类型文件要严格按照JSON格式返回，注意不要出现语法错误；
+    - - 注意：文件内容注意不要出现语法错误，文件声明要保持一致；
 </任务流程>
 
 

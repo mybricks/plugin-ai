@@ -24,7 +24,7 @@ export default function getComponentsInfoByIds(config: GetComponentInfoParams, )
 <任务流程>
   按照以下格式返回所要获取上下文的所有组件：
     ${fileFormat({ content: '[{ "id": "u_23ver" }, { "id": "u_9sdi2" }]', fileName: '需要获取上下文的组件ID列表.json' })}
-    - 注意：文件内容注意不要出现语法错误；
+    - 注意：文件内容注意不要出现语法错误，文件声明要保持一致；
 </任务流程>`
       },
     execute({ files, content }) {

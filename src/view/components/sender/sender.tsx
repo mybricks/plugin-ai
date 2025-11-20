@@ -11,18 +11,22 @@ const Sender = () => {
     console.log("[send - focus]", context.currentFocus)
     console.log("[send - api]", context.api)
 
-    context.rxai.requestAI({
-      message,
-      emits: {
-        write: () => { },
-        complete: () => { },
-        error: () => { },
-        cancel: () => { }
-      },
-      key: "",
-      tools: context.getTools(),
-      presetMessages: context.getPresetMessages()
+    context.requestCommonAgent({
+      message
     })
+
+    // context.rxai.requestAI({
+    //   message,
+    //   emits: {
+    //     write: () => { },
+    //     complete: () => { },
+    //     error: () => { },
+    //     cancel: () => { }
+    //   },
+    //   key: "",
+    //   tools: context.getTools(),
+    //   presetMessages: context.getPresetMessages()
+    // })
     setMessage("");
   }
 

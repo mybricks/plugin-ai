@@ -6,6 +6,7 @@ import GetFocusMybricksDSL from './get-focus-mybricks-dsl';
 import FocusElement from './focus-element'
 import GetComponentInfo from './get-component-info'
 import AnswerUser from './answer-user';
+import AnalyzeAndExpandPrd from './analyze-and-expand-prd';
 
 export const MYBRICKS_TOOLS = {
   GeneratePage,
@@ -14,6 +15,7 @@ export const MYBRICKS_TOOLS = {
   // GetMybricksDSL,
   GetFocusMybricksDSL,
   GetComponentInfo,
+  AnalyzeAndExpandPrd,
   // AnswerUser
   // FocusElement
 }
