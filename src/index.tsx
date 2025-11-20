@@ -1,4 +1,5 @@
 import React from 'react';
+import { Rxai } from "@mybricks/rxai";
 import data from './data';
 
 import pkg from '../package.json';
@@ -8,6 +9,7 @@ console.log(`%c ${pkg.name} %c@${pkg.version}`, `color:#FFF;background:#fa6400`,
 import { Agents } from './agents'
 import { View } from "./view";
 import { context } from './context';
+import { StartView } from "./startView";
 
 export { fileFormat } from '@mybricks/rxai'
 
@@ -64,6 +66,18 @@ export default function pluginAI({
       aiView: {
         render() {
           return <View />
+        }
+      },
+      aiStartView: {
+        render() {
+          const createRxai = () => {
+            return new Rxai({
+              request: {
+                requestAsStream
+              }
+            })
+          }
+          return <StartView createRxai={createRxai}/>
         }
       }
     }
