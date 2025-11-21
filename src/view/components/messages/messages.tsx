@@ -74,10 +74,6 @@ const Plan = ({ plan, user }: { plan: any, user: any }) => {
     }
   }, [message])
 
-  useEffect(() => {
-    console.log("[消息列表]", messages)
-  }, [messages])
-
   return (
     <>
       {messages[0] && (
@@ -118,30 +114,11 @@ const Plan = ({ plan, user }: { plan: any, user: any }) => {
           </div>
         </div>
       )}
-      {/* {messages.slice(1).map((message: any, index) => {
-        return (
-          <div key={index} className={classNames(css.message, {
-            [css.messgaeEnd]: message.role === "user",
-          })}>
-            {message.role === "tool" ? (
-              <div className={classNames(css.bubble, css.plan)}>
-                <div>{message.content.displayName}</div>
-                {message.status === "pending" && <Loading3QuartersOutlined className={css.spinIcon} />}
-                {message.status === "success" && <CheckCircleOutlined style={{ color: "green" }} />}
-                {message.status === "error" && <CloseCircleOutlined style={{ color: "red" }} />}
-              </div>
-            ) : (
-              <Bubble message={message} user={user} />
-            )}
-          </div>
-        )
-      })} */}
     </>
   )
 }
 
 const BubbleAITool = ({ message }: any) => {
-  console.log("[message]", message)
   return (
     <div className={css.collapsibleCodeBlock}>
       <div className={css.codeHeader}>
@@ -191,24 +168,5 @@ const BubbleUser = ({ message }: any) => {
     <div className={classNames(css.messageContainer, css.userMessage)}>
       <div ref={bubbleRef} className={css.markDown}></div>
     </div>
-  )
-}
-
-const Bubble = ({ message }: any) => {
-  const bubbleRef = useRef<HTMLDivElement>(null);
-
-  useLayoutEffect(() => {
-    const content = typeof message.content === "string" ?
-      message.content :
-      message.content.find((content: any) => {
-        if (content.type === "text") {
-          return content
-        }
-      })?.text
-    bubbleRef.current!.innerHTML = marked.parse(content) as string;
-  }, [])
-
-  return (
-    <div ref={bubbleRef} className={classNames(css.bubble)}></div>
   )
 }

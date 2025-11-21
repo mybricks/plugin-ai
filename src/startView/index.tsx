@@ -7,6 +7,24 @@ import { Agents } from "../agents";
 import { Messages } from "../view/components/messages/messages";
 import css from "./index.less"
 
+const readFileToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = function (event) {
+      if (event.target) {
+        const base64 = event.target.result as string;
+        resolve(base64);
+      } else {
+        reject(event);
+      }
+    };
+    reader.onerror = function (event) {
+      reject(event);
+    };
+    reader.readAsDataURL(file);
+  })
+}
+
 const StartView = ({ user }: any) => {
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
@@ -81,23 +99,16 @@ const StartView = ({ user }: any) => {
           return;
         }
 
-        const reader = new FileReader();
-        reader.onload = function (event) {
-          if (event.target) {
-            const base64 = event.target.result as string;
+        readFileToBase64(file)
+          .then((base64) => {
             setAttachments((attachments) => {
               return [...attachments, base64]
             })
-          } else {
+          })
+          .catch((event) => {
             console.error("[@mybricks/plugin-ai - 上传附件失败]", event);
-            message.error("[@mybricks/plugin-ai - 上传附件失败]" + event);
-          }
-        };
-        reader.onerror = function (event) {
-          console.error("[@mybricks/plugin-ai - 上传附件失败]", event);
-          message.error("[@mybricks/plugin-ai - 上传附件失败]");
-        };
-        reader.readAsDataURL(file);
+            message.error("[@mybricks/plugin-ai - 上传附件失败]");
+          })
       }
     });
 
@@ -109,6 +120,51 @@ const StartView = ({ user }: any) => {
       attachments.splice(index, 1)
       return [...attachments]
     })
+  }
+
+  const onPaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const file = event.clipboardData.files[0];
+    if (file?.type.startsWith('image/')) {
+      readFileToBase64(file)
+        .then((base64) => {
+          setAttachments((attachments) => {
+            return [...attachments, base64]
+          })
+        })
+        .catch((event) => {
+          console.error("[@mybricks/plugin-ai - 上传附件失败]", event);
+          message.error("[@mybricks/plugin-ai - 上传附件失败]");
+        })
+    } else {
+      const content = event.clipboardData.getData('text/plain');
+
+      if (!content) {
+        return;
+      }
+
+      const selection = window.getSelection();
+
+      if (!selection?.rangeCount) {
+        return;
+      }
+
+      // 当前光标
+      const range = selection.getRangeAt(0);
+      // 删掉用户可能选中的内容
+      range.deleteContents();
+
+      const textNode = document.createTextNode(content);
+      range.insertNode(textNode);
+
+      // 光标移到插入文本之后
+      range.setStartAfter(textNode);
+      range.setEndAfter(textNode);
+      selection.removeAllRanges();
+      selection.addRange(range);
+
+      setInputContent(inputEditorRef.current!.textContent)
+    }
   }
 
   useEffect(() => {
@@ -146,6 +202,7 @@ const StartView = ({ user }: any) => {
             onCompositionStart={onCompositionStart}
             onCompositionEnd={onCompositionEnd}
             onInput={onInput}
+            onPaste={onPaste}
           ></div>
           {!inputContent && <div className={css.inputPlaceholder}>
             您好，我是智能助手，请详细描述您要搭建的应用内容
