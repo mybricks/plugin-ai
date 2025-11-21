@@ -52,20 +52,20 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
         }
       }),
     ],
-    presetMessages: [
-      {
-        role: 'user',
-        content: `检测到聚焦位置发生变化`
-      },
-      {
-        role: 'assistant',
-        content: `当前已聚焦到${`页面(title=${pageTitle},id=${pageId})`}中，后续用户的提问，关于”这个“、“此”，甚至不提主语，都是指代此元素。
-    <当前聚焦元素的内容简介>
-      内容为空
-    </当前聚焦元素的内容简介>
-                    `
-      }
-    ]
+    // presetMessages: [
+    //   {
+    //     role: 'user',
+    //     content: `检测到聚焦位置发生变化`
+    //   },
+    //   {
+    //     role: 'assistant',
+    //     content: `当前已聚焦到${`页面(title=${pageTitle},id=${pageId})`}中，后续用户的提问，关于”这个“、“此”，甚至不提主语，都是指代此元素。
+    // <当前聚焦元素的内容简介>
+    //   内容为空
+    // </当前聚焦元素的内容简介>
+    //                 `
+    //   }
+    // ]
   });
 }
 

@@ -148,7 +148,8 @@ export default function analyzeAndExpandPrd(config: AnalyzeAndExpandPrdParams): 
   </example>
 </examples>`;
     },
-    aiRole: 'architect',
+    // aiRole: 'architect',
+    aiRole: "expert",
     execute({ files, content }) {
       const projectFile = getFiles(files, { extName: 'json' });
       let projectJson = {}
