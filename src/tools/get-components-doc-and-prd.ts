@@ -84,13 +84,9 @@ ${config.allowComponents}
     - 组件选型不要想当然的认为英文的namespace就是语义化的，更多关注于中文描述和「何时使用」「注意事项」来判断应该使用什么组件。
   
   接下来，根据上述分析，按照以下格式返回内容：
-  \`\`\`md type="prd" file="XX需求文档.md"
-    (需求分析规格说明书的内容)
-  \`\`\`
+  ${fileFormat({ content: '(需求分析规格说明书的内容)', fileName: 'XX需求文档.md' })}
   
-  \`\`\`json type="require" file="XX需求组件选型.json"
-    (搭建所需要的组件选型)
-  \`\`\`
+  ${fileFormat({ content: '(搭建所需要的组件选型)', fileName: 'XX需求组件选型.json' })}
   
   注意：require.json文件要严格按照JSON格式返回，注意不要出现语法错误；
   
