@@ -14,13 +14,13 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
     emits: {
       write: () => { },
       complete: () => {
-        params?.onProgress?.("complete");
+        // params?.onProgress?.("complete");
       },
       error: () => {
         params?.onProgress?.("error");
       },
       cancel: () => {
-        params?.onProgress?.("complete");
+        // params?.onProgress?.("complete");
       },
     },
     tools: [
@@ -41,6 +41,10 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
         examples: prompts.generatePageActionExamplesPrompts,
         onActions: (actions, status) => {
           context.api?.page?.api?.updatePage?.(pageId, actions, status)
+
+          if (status === 'complete') {
+            params?.onProgress?.("complete");
+          }
         },
         onClearPage: () => {
           context.api?.page?.api?.clearPageContent?.(pageId)

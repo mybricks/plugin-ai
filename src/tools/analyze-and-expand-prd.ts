@@ -78,7 +78,7 @@ export default function analyzeAndExpandPrd(config: AnalyzeAndExpandPrdParams): 
 </特别注意>
 
 <遵循原则>
-你要切换不同的角色来完成一个需求的设计和开发，同时限制生成的页面数量在3个及以内。
+你要切换不同的角色来完成一个需求的设计和开发，同时特别注意，生成的页面数量不得超过5个。
 </遵循原则>
 
 <处理流程>
