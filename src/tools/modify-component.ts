@@ -10,10 +10,10 @@ export default function generatePage(config: ModifyComponentToolParams): Tool {
   return {
     name: 'modify-components-in-page',
     displayName: "修改组件",
-    description: `根据用户需求，对页面中的组件进行修改/删除。
-参数：要修改的组件的ID（确保之前的内容提及过，或者通过获取DSL获取）；
+    description: `根据用户需求，对页面中的组件进行批量修改/删除。
+参数：要修改的组件的ID（确保之前的内容提及过，或者通过获取DSL获取），支持批量；
 作用：局部修改的小范围需求；
-前置步骤依赖：聚焦组件的上下文（如果涉及组件的子组件修改）、获取组件的组件配置文档和搭建情况；
+前置步骤依赖：组件的组件配置文档；
 使用场景示例：
   - 修改组件的样式/配置
   - 删除组件
@@ -45,9 +45,9 @@ export default function generatePage(config: ModifyComponentToolParams): Tool {
     - 有些修改需要先完成整体、再进行局部的修改；
   
   各action的类型说明如下：
-  
+
   <setLayout>
-    - 设置组件的外观，params的格式以Typescript的形式说明如下：
+    - 设置组件的布局和尺寸信息，params的格式以Typescript的形式说明如下：
       
     \`\`\`typescript
     /**
@@ -59,50 +59,77 @@ export default function generatePage(config: ModifyComponentToolParams): Tool {
      */
     type Size = number | "fit-content" | "100%"
   
-    type setLayout_params = {
+    /** flex中子组件定位，可配置如下layout */
+    type setLayout_flex_params = {
       /** 宽 */
       width: Size;
       /** 高 */
       height: Size;
       /** 上外边距 */
-      marginTop: number;
+      marginTop?: number;
       /** 右外边距 */
-      marginRight: number;
+      marginRight?: number;
       /** 下外边距 */
-      marginBottom: number;
+      marginBottom?: number;
       /** 左外边距 */
-      marginLeft: number;
+      marginLeft?: number;
     }
-    \`\`\`
+
+    注意：
+    - 1. 只有在flex布局中的组件，可以在layout中使用margin相关配置；
+
+    /** 如果组件本身是fixed类型定位，可配置如下layout */
+    type setLayout_fixed_params = {
+      position: 'fixed';
+      /** 宽 */
+      width: Size;
+      /** 高 */
+      height: Size;
+      /** 距离左侧 */
+      left?: number;
+      /** 距离右侧 */
+      right?: number;
+      /** 距离上方 */
+      top?: number;
+      /** 距离下方 */
+      bottom?: number;
+    }
     
     例如，当用户要求将当前组件的宽度设置为200px，可以返回以下内容：
-    \`\`\`json
-    {
-      "comId":"u_ou1rs",
-      "target":":root",
-      "type":"setLayout",
-      "params":{
-        "width":200
-      }
-    }
-    \`\`\`
+    ${fileFormat({
+      content: `[
+        {
+          "comId":"u_ou1rs",
+          "target":":root",
+          "type":"setLayout",
+          "params":{
+            "width":200
+          }
+        }
+      ]`,
+      fileName: '尺寸配置步骤.json'
+    })}
     
-    注意：当需要修改外观时，仅返回用户要求的内容即可，无需返回所有的外观属性。
+    注意：当需要修改布局和尺寸信息时，仅返回用户要求的内容即可，无需返回所有的布局和尺寸信息属性。
   </setLayout>
-  
+
   <doConfig>
-    - 配置组件，使用<当前组件可配置的内容/>的配置项，对当前组件的属性或样式进行配置：
+    - 配置组件，使用<组件可配置的内容/>的配置项，对组件的属性或样式进行配置；
+    - 如果配置项的type在 <常见editType的使用 /> 中有说明，务必遵守其中的说明及注意事项；
+    
     - params的格式以Typescript的形式说明如下：
     
     \`\`\`typescript
-    type configStyle_params = {//配置样式
+    //配置样式
+    type configStyle_params = {
       path:string,//在<当前组件可配置的内容/>中对应的配置项path
       style: {
-        [key: string]: propertyValue;//元素的内联样式对象
+        [key: string]: propertyValue; //元素的内联样式对象，仅能配置style编辑器description中声明的属性，不要超出范围。
       }
     }
     
-    type configProperty_params = {//配置属性
+    //配置属性
+    type configProperty_params = {
       path:string,//在<当前组件可配置的内容/>中对应的配置项path
       value: any//需要配置的value
     }
@@ -110,80 +137,64 @@ export default function generatePage(config: ModifyComponentToolParams): Tool {
     
     例如：
     - 属性的配置：
-    \`\`\`json
-    {
-      "comId":"u_abcd",
-      "target":":root",
-      "type":"doConfig",
-      "params":{
-        "path":"常规/标题",
-        "value":"标题内容"
-      }
-    }
-    \`\`\`
+    ${fileFormat({
+      content: `[
+        {
+          "comId":"u_abcd",
+          "target":":root",
+          "type":"doConfig",
+          "params":{
+            "path":"常规/标题",
+            "value":"标题内容"
+          }
+        }
+      ]`,
+      fileName: '修改标题.json'
+    })}
     
     - 样式的配置：
-    \`\`\`json
-    {
-      "comId":"u_abcd",
-      "target":":root",
-      "type":"doConfig",
-      "params":{
-        "path":"常规/banner样式",
-        "style":{
-          "backgroundColor":"red"
+    ${fileFormat({
+      content: `[
+        {
+          "comId":"u_abcd",
+          "target":":root",
+          "type":"doConfig",
+          "params":{
+            "path":"常规/banner样式",
+            "style":{
+              "background":"red"
+            }
+          }
         }
-      }
-    }
-    \`\`\`
+      ]`,
+      fileName: '样式配置步骤.json'
+    })}
     
-    注意：
+      注意：
+      - 当需要修改组件的样式时，只允许修改style编辑器description中声明的属性；
       - 当需要修改组件的样式时，背景统一使用background,而非backgroundColor等属性；
-  </doConfig>
 
-  <addChild>
-    - 在组件的插槽中添加子组件，所添加的组件只能使用<允许使用的组件及其说明/>中声明的的组件；
-
-    格式：
-    \`\`\`json
-    {
-      "comId":"u_ou1rs",
-      "target":"content",
-      "type":"addChild",
-      "params":{
-        "comId": "u_ou1rs",
-        "namespace":"mybricks.normal.text",
-        "title":"组件标题",
-        "data": {
-          "text": "子组件的文案"
-        },
-        "layout":{
-          "width": "fit-content",
-          "height": "fit-content",
-          "marginTop": 0,
-          "marginRight": 0,
-          "marginBottom": 0,
-          "marginLeft": 0
+    - 布局的配置，布局的配置必须利用layout编辑器
+    ${fileFormat({
+      content: `[
+        {
+          "comId":"u_abcd",
+          "target":":root",
+          "type":"doConfig",
+          "params":{
+            "path":"常规/布局",
+            "value":{
+              "display":"flex",
+              "flexDirection":"row",
+              "alignItems":"center"
+            }
+          }
         }
-      }
-    }
-    \`\`\`
-    
-    其中:
-      - comId: 目标组件的id；
-      - target: 插槽id，表示在该插槽中添加子组件；
-      - params
-        - comId: 添加的子组件的id；
-        - namespace: 添加的子组件的namespace;
-        - title: 添加的子组件的标题；
-        - data: 添加的子组件的数据；
-        - layout: 添加的子组件的布局信息，包含了width、height、marginTop、marginRight、marginBottom、marginLeft等属性；
-      
-    注意：
-      - 添加的子组件的namespace必须在<允许使用的组件及其说明/>中声明，否则无法添加； 
-      - params中的data、layout非必须、根据需要进行配置即可；
-        
-  </addChild>
+      ]`,
+      fileName: '布局配置步骤.json'
+    })}
+
+  </doConfig>
 
   注意：actions.json文件采用标准的 JSON 语法，禁止非法代码，禁止出现内容省略提示、单行注释、省略字符。
     - 内容必须完全符合 JSON 规范
