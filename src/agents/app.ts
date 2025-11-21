@@ -50,7 +50,7 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
     presetMessages: [
       {
         role: 'user',
-        content: `聚焦位置发生变化，当前聚焦在哪里？`
+        content: `检测到聚焦位置发生变化`
       },
       {
         role: 'assistant',

@@ -27,6 +27,7 @@ export default function getComponentsInfoByIds(config: GetComponentInfoParams, )
     - 注意：文件内容注意不要出现语法错误，文件声明要保持一致；
 </任务流程>`
       },
+    lastAppendMessage: '已提供组件文档和搭建配置，请继续。',
     execute({ files, content }) {
       const idsFile = getFiles(files, { extName: 'json' });
       let ids = [];

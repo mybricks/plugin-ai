@@ -15,6 +15,7 @@ export default function getMybricksDsl(config: GetMybricksDslToolParams): any {
 
 注意：信息不包含组件配置文档。
 `,
+    lastAppendMessage: '已提供上下文，请继续。',
     execute() {
       const contextDoc = config.getFocusContext();
       return `<元素${config.id}的上下文信息>
