@@ -40,6 +40,7 @@ const Sender = () => {
           onChange={(event) => {
             setMessage(event.target.value);
           }}
+          autoFocus
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault()
