@@ -5,12 +5,6 @@ interface GetComponentInfoParams {
   getComInfo: (id: string) => string
 }
 
-/**
- * 
- * @deprecated 信息不完整，后面估计要废弃了
- * @param config 
- * @returns 
- */
 export default function getComponentsInfoByIds(config: GetComponentInfoParams, ): any {
   return {
     name: 'get-components-info-by-ids',
@@ -19,12 +13,10 @@ export default function getComponentsInfoByIds(config: GetComponentInfoParams, )
 参数：组件ID；
 作用：获取组件的配置文档和当前搭建信息，用于后续修改组件；
 返回值：相关组件的配置文档和搭建配置；
-
-注意：搭建配置不包含DSL（没有子组件信息），仅包含当前组件的配置信息。
 `,
     getPrompts: () => {
         return `<工具总览>
-你是一个可以获取组件配置文档和搭建信息工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深页面搭建助手，可以选中要返回组件的ID返回组件的各类上下文。
+你是一个可以获取组件配置文档和搭建信息工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深页面搭建助手，可以选中组件的ID，返回组件的各类上下文。
 </工具总览>
  
 <任务流程>
