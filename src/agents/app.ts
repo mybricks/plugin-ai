@@ -99,7 +99,7 @@ ${page.prd}
 </需求>
 
 <样式风格>
-${page.style}
+${aiCanvas.style}
 </样式风格>
 `,
       onProgress: pageRef.onProgress,

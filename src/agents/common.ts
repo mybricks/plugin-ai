@@ -92,8 +92,7 @@ export const requestCommonAgent = (params: any) => {
     <当前聚焦元素的内容简介>
     ${MyBricksHelper.getTreeDescriptionByJson(context.currentFocus?.type === 'uiCom' ? context.api?.uiCom?.api?.getOutlineInfo(context.currentFocus?.comId) : context.api?.page?.api?.getOutlineInfo(context.currentFocus?.pageId))}
     
-      > 如果内容不为空，代表组件通过插槽放置有子组件，如果需要了解子组件的搭建信息，请使用获取DSL工具获取具体信息。
-      > 如果内容为空，则代表此组件没有任何子组件，也无需获取DSL。
+      > 如果内容不为空，代表组件通过插槽放置有子组件，如果内容为空，则代表此组件没有任何子组件。
     </当前聚焦元素的内容简介>
                     `
         }
