@@ -9,9 +9,6 @@ const Sender = () => {
   const [message, setMessage] = useState('');
 
   const send = () => {
-    console.log("[send - focus]", context.currentFocus)
-    console.log("[send - api]", context.api)
-
     Agents.requestCommonAgent({
       message
     })

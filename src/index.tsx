@@ -14,6 +14,10 @@ import { StartView } from "./startView";
 export { fileFormat } from '@mybricks/rxai'
 
 export default function pluginAI({
+  user = {
+    name: "user",
+    avatar: "/default_avatar.png"
+  },
   requestAsStream,
   prompts
 }: any): any {
@@ -48,12 +52,9 @@ export default function pluginAI({
                 context.currentFocus = undefined;
                 return;
               }
-              console.log("[focus - params]", params)
               context.currentFocus = params;
             },
             request(params: AiServiceRequestParams) {
-              console.log("[request - params]", params);
-
               if (params.attachments?.length) {
                 params.message = "参考附件图片完成页面搭建\n" + params.message
               }
@@ -65,12 +66,12 @@ export default function pluginAI({
       },
       aiView: {
         render() {
-          return <View />
+          return <View user={user}/>
         }
       },
       aiStartView: {
         render() {
-          return <StartView />
+          return <StartView user={user}/>
         }
       }
     }

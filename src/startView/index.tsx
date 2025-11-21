@@ -7,7 +7,7 @@ import { Agents } from "../agents";
 import { Messages } from "../view/components/messages/messages";
 import css from "./index.less"
 
-const StartView = () => {
+const StartView = ({ user }: any) => {
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [inputContent, setInputContent] = useState<string | null>(null);
@@ -119,7 +119,7 @@ const StartView = () => {
     <>
     {/* TODO：临时，把Messages再封装下 */}
     <div className={css.temp} style={{ display: loading ? "flex" : "none"}}>
-      <Messages />
+      <Messages user={user}/>
     </div>
     <div className={css.editor} style={{ display: !loading ? "block" : "none"}}>
       {attachments.length ? <div className={css.topArea}>
