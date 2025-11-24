@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from "react"
 import classNames from "classnames";
-import { Rxai } from "@mybricks/rxai";
 import { message } from "antd";
 import { ArrowUp, Attachment, Loading, Close } from "../components/icons";
 import { Agents } from "../agents";
@@ -149,19 +148,12 @@ const StartView = ({ user }: any) => {
         return;
       }
 
-      // 当前光标
       const range = selection.getRangeAt(0);
-      // 删掉用户可能选中的内容
       range.deleteContents();
-
       const textNode = document.createTextNode(content);
       range.insertNode(textNode);
-
-      // 光标移到插入文本之后
       range.setStartAfter(textNode);
       range.setEndAfter(textNode);
-      selection.removeAllRanges();
-      selection.addRange(range);
 
       setInputContent(inputEditorRef.current!.textContent)
     }
