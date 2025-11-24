@@ -25,10 +25,7 @@ export const requestCommonAgent = (params: any) => {
           reject('error')
           params?.onProgress?.("error");
         },
-        cancel: () => {
-          resolve('complete')
-          params?.onProgress?.("complete");
-        },
+        cancel: () => {},
       },
       tools: [
         MYBRICKS_TOOLS.GetComponentsDocAndPrd({

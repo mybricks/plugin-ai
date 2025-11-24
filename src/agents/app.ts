@@ -1,6 +1,8 @@
 import { context } from './../context';
 import { MYBRICKS_TOOLS } from "./../tools"
 
+window.plugin_ai_api = context.api
+
 export const requestGeneratePageAgent = (pageId: string, pageTitle: string, params: any) => {
 
   const prompts = context.prompts
@@ -70,7 +72,19 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
 }
 
 async function createCanvasByAICanvas(canvasId: string, aiCanvas: any) {
-  aiCanvas.pages.forEach(async page => {
+
+  function sleep(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // TOOD，之前不去掉设计器会有报错
+  await sleep(1000)
+
+  const pageArray = [];
+
+  for (let index = 0; index < aiCanvas.pages.length; index++) {
+    const page = aiCanvas.pages[index];
+
     const pageRef = await context.api.page?.api?.createPage?.(canvasId, page.title, {
       type: "normal",
       title: page.title,
@@ -92,7 +106,10 @@ async function createCanvasByAICanvas(canvasId: string, aiCanvas: any) {
         },
       ],
     })
+    pageArray.push({ page, pageRef })
+  }
 
+  pageArray.forEach(async ({ page, pageRef }) => {
     await requestGeneratePageAgent(pageRef.id, page.title, {
       message: `标题：${page.title}
 <需求>
@@ -146,7 +163,7 @@ export const requestGenerateCanvasAgent = (params: any) => {
             }
             resolve('complete')
             if (canvasId) {
-              createCanvasByAICanvas(canvasId, projectJson)
+              createCanvasByAICanvas(canvasId, projectJson);
             }
           }
         })
