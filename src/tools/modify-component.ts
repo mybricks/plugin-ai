@@ -6,18 +6,20 @@ interface ModifyComponentToolParams {
   onActions: (id: string, actions: any[]) => void
 }
 
-export default function generatePage(config: ModifyComponentToolParams): Tool {
+export default function modifyComponentsInPage(config: ModifyComponentToolParams): Tool {
   return {
     name: 'modify-components-in-page',
     displayName: "修改组件",
     description: `根据用户需求，对页面中的组件进行批量修改/删除。
-参数：要修改的组件的ID（确保之前的内容提及过，或者通过获取DSL获取），支持批量；
+参数：要修改的组件的ID（确保之前的内容提及过），支持批量；
 作用：局部修改的小范围需求；
-前置步骤依赖：组件的组件配置文档；
+前置依赖：组件配置文档（get-components-info-by-id）；
 使用场景示例：
   - 修改组件的样式/配置
   - 删除组件
   - 局部范围修改组件及其子组件的配置
+
+注意：没有组件配置文档无法修改组件，必须获取过要修改组件的组件配置文档。
 `,
     getPrompts() {
       return `<工具总览>

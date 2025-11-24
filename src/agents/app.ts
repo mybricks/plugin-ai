@@ -1,7 +1,7 @@
 import { context } from './../context';
 import { MYBRICKS_TOOLS } from "./../tools"
 
-window.plugin_ai_api = context.api
+window.plugin_ai_context = context
 
 export const requestGeneratePageAgent = (pageId: string, pageTitle: string, params: any) => {
 

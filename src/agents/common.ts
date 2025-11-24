@@ -67,11 +67,22 @@ export const requestCommonAgent = (params: any) => {
             return context.api?.uiCom?.api?.getComDSLPrompts?.(targetId) as string
           },
         }),
-        MYBRICKS_TOOLS.GetComponentInfo({
-          getComInfo(id) {
-            return context.api?.uiCom?.api?.getComPrompts?.(id)?.replace(/当前组件的情况/g, `组件${id}的信息`) as string
+        MYBRICKS_TOOLS.GetComponentsInfoByIds({
+          getPageJson(id) {
+            return context.api?.page?.api?.getOutlineInfo(id)
+          },
+          getComInfo(namespace) {
+            return context.api?.uiCom?.api?.getComEditorPrompts?.(namespace)
+          },
+          getComJson(id) {
+            return context.api?.uiCom?.api?.getOutlineInfo(id)
           },
         }),
+        // MYBRICKS_TOOLS.GetComponentInfo({
+        //   getComInfo(id) {
+        //     return context.api?.uiCom?.api?.getComPrompts?.(id)?.replace(/当前组件的情况/g, `组件${id}的信息`) as string
+        //   },
+        // }),
         MYBRICKS_TOOLS.ModifyComponent({
           onActions: (id, actions) => {
             context.api?.uiCom?.api?.updateCom?.(id, actions)
