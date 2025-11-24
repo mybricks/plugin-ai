@@ -3,8 +3,10 @@ import classNames from "classnames";
 import { message } from "antd";
 import { ArrowUp, Attachment, Loading, Close } from "../components/icons";
 import { Agents } from "../agents";
-import { Messages } from "../view/components/messages/messages";
+// import { Messages } from "../view/components/messages/messages";
+import { Messages } from "../components/messages";
 import css from "./index.less"
+import { context } from "../context";
 
 const readFileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -24,7 +26,7 @@ const readFileToBase64 = (file: File): Promise<string> => {
   })
 }
 
-const StartView = ({ user }: any) => {
+const StartView = ({ user, copilot }: any) => {
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [inputContent, setInputContent] = useState<string | null>(null);
@@ -32,7 +34,7 @@ const StartView = ({ user }: any) => {
   const [attachments, setAttachments] = useState<string[]>([]);
 
   const send = () => {
-    const inputContent = inputEditorRef.current!.textContent;
+    const inputContent = inputEditorRef.current!.textContent || "开发一个商城APP";
     if (inputContent && !loading) {
       setLoading(true);
 
@@ -167,7 +169,7 @@ const StartView = ({ user }: any) => {
     <>
     {/* TODO：临时，把Messages再封装下 */}
     <div className={css.temp} style={{ display: loading ? "flex" : "none"}}>
-      <Messages user={user}/>
+      <Messages user={user} rxai={context.rxai} copilot={copilot}/>
     </div>
     <div className={css.editor} style={{ display: !loading ? "block" : "none"}}>
       {attachments.length ? <div className={css.topArea}>
