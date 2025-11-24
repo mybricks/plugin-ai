@@ -22,6 +22,11 @@ export default function pluginAI({
   prompts
 }: any): any {
 
+  const copilot = {
+    name: "MyBricks.ai",
+    avatar: "https://my.mybricks.world/image/icon.png"
+  }
+
   context.prompts = prompts
 
   // window.requestGenerateCanvasAgent = requestGenerateCanvasAgent
@@ -66,12 +71,12 @@ export default function pluginAI({
       },
       aiView: {
         render() {
-          return <View user={user}/>
+          return <View user={user} copilot={copilot}/>
         }
       },
       aiStartView: {
         render() {
-          return <StartView user={user}/>
+          return <StartView user={user} copilot={copilot}/>
         }
       }
     }
