@@ -9,10 +9,6 @@ const renderer = new marked.Renderer();
 renderer.paragraph = (paragraph) => {
   return `<p>${paragraph.text}</p>`;
 };
-renderer.strong = (strong) => {
-  console.log("[strong]", strong)
-  return `<strong>${strong.text}</strong>`
-}
 marked.use({ renderer });
 
 interface User {
@@ -35,9 +31,6 @@ type Plans = Rxai['cacheMessages'];
 
 const Messages = (params: MessagesParams) => {
   const { user, rxai, copilot } = params;
-  useEffect(() => {
-    console.log("这里应该接收参数，消息列表等", params)
-  }, [])
 
   const destroysRef = useRef<(() => void)[]>([]);
   const [plans, setPlans] = useState<Plans>([]);
@@ -61,6 +54,7 @@ const Messages = (params: MessagesParams) => {
       {plans.map((plan, index) => {
         return <Bubble key={index} user={user} plan={plan} copilot={copilot} />
       })}
+      <div className={css['anchor']} />
     </main>
   )
 }
