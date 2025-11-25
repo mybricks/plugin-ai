@@ -15,9 +15,8 @@ interface GeneratePageToolParams {
   onClearPage: () => void
 }
 
-const actionsParser = createActionsParser();
-
 export default function generatePage(config: GeneratePageToolParams): any {
+  const actionsParser = createActionsParser();
   return {
     name: "generate-page",
     displayName: "生成页面",
