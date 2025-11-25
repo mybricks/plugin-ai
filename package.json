@@ -1,9 +1,10 @@
 {
   "name": "@mybricks/plugin-ai",
-  "version": "0.0.16",
-  "main": "dist/index.js",
+  "version": "0.0.1",
+  "main": "src/index.tsx",
   "files": [
-    "dist/*"
+    "src",
+    "package.json"
   ],
   "author": "MyBricks Team",
   "license": "",
@@ -18,7 +19,7 @@
   "scripts": {},
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
-    "@mybricks/rxai": "^0.0.1",
+    "@mybricks/rxai": "0.0.2",
     "classnames": "^2.5.1",
     "jsonrepair": "^3.13.1",
     "marked": "^17.0.0"
