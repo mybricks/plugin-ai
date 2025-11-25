@@ -44,7 +44,6 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
         examples: prompts.generatePageActionExamplesPrompts,
         onActions: (actions, status) => {
           context.api?.page?.api?.updatePage?.(pageId, actions, status)
-
           if (status === 'complete') {
             params?.onProgress?.("complete");
           }

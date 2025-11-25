@@ -2,14 +2,17 @@ import { fileFormat } from '@mybricks/rxai'
 import { getFiles } from './utils'
 
 interface GetComponentInfoParams {
+  id: string
   getComInfo: (namespace: string) => string
   getComJson: (id: string) => string
   getPageJson: (id: string) => string
+  getFocusElementHasChildren: () => boolean
 }
 
-export default function getComponentsInfoByIds(config: GetComponentInfoParams, ): any {
+export default function getComponentsInfoByIds(config: GetComponentInfoParams,): any {
+  const hasChildren = config.getFocusElementHasChildren() !== false
   return {
-    name: 'get-components-info-by-id',
+    name: 'get-dsl-and-component-docs-by-id',
     displayName: "获取组件配置文档",
     description: `通过现有的元素ID（组件或页面）获取「当前元素及其所有子组件」的DSL（包含父子结构信息和当前搭建信息）和涉及的组件配置文档。
 参数：元素ID；
@@ -17,28 +20,42 @@ export default function getComponentsInfoByIds(config: GetComponentInfoParams, )
 返回值：相关组件的配置文档和当前元素DSL；
 `,
     getPrompts: () => {
-        return `<工具总览>
-你是一个可以获取组件配置文档和搭建信息工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深页面搭建助手，可以选中组件的ID，返回组件的各类上下文。
+      return !hasChildren ? '' :
+        `<工具总览>
+你是一个可以获取组件配置文档和搭建信息工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深页面搭建助手，可以选中元素的ID，返回元素的各类上下文。
 </工具总览>
  
 <任务流程>
-  按照以下格式返回所要获取上下文的所有组件：
+  根据用户需求，确定要获取上下文的元素ID，对于这个ID的选择
+  - 1. 用户明确提及了需要指定的组件，则选择指定元素；
+  - 2. 用户未明确提及指定的组件，而是泛指一类组件，则选择这一类组件上层的元素，确保覆盖了这一类的所有组件；
+  - 3. 用户未明确提及指定的组件，也没泛指，则选择聚焦的元素；
+
+  按照以下格式返回所要获取上下文的元素：
     ${fileFormat({ content: '{ "id": "u_23ver", "type": "com" }', fileName: '需要获取上下文的组件ID.json' })}
     - type为 *page* 或 *com* ；
     - 注意：文件内容注意不要出现语法错误，文件声明要保持一致；
 </任务流程>`
-      },
+    },
     lastAppendMessage: '已提供组件文档和搭建配置，请继续。',
-    execute({ files, content }) {
-      const selectFile = getFiles(files, { extName: 'json' });
-      let selectId,selectType
+    execute(params: any) {
+      const { files, content } = params ?? {}
+      if (hasChildren) {
+        if (!content) {
+          throw new Error('文件格式有误，解析失败，请重试')
+        }
+      }
+
+      const selectFile = hasChildren ? getFiles(files, { extName: 'json' }) : { content: JSON.stringify({ id: config.id, type: 'com' }) };
+      let selectId, selectType
       try {
         selectId = JSON.parse(selectFile?.content)?.id;
         selectType = JSON.parse(selectFile?.content)?.type;
-      } catch (error) {}
-
+      } catch (error) {
+        throw new Error(`解析错误，请检查格式，${error?.message}`)
+      }
       if (!selectId) {
-        return '没有选择的组件ID'
+        throw new Error(`未获取到正确的元素，请检查格式`)
       }
 
       const { jsx, namespaces } = getComponentsInfoByJson(selectType === 'page' ? config.getPageJson(selectId) : config.getComJson(selectId))
@@ -58,7 +75,6 @@ ${docs}
   }
 }
 
-
 interface GetComponentsResult {
   jsx: string;
   namespaces: string[];
@@ -66,16 +82,45 @@ interface GetComponentsResult {
 
 function getComponentsInfoByJson(data: any): GetComponentsResult {
   const namespacesSet = new Set<string>(); // 使用Set去重
-  
+
+  // 提取layout信息
+  function extractLayout(style: any) {
+    if (!style) return {};
+
+    const layout: any = {};
+    if (style.width !== undefined) layout.width = style.width;
+    if (style.height !== undefined) layout.height = style.height;
+    if (style.margin !== undefined) layout.margin = style.margin;
+
+    return layout;
+  }
+
+  // 提取并格式化CSS样式
+  function extractStyleAry(style: any) {
+    if (!style || !style.css || !Array.isArray(style.css)) return [];
+
+    return style.css.map((cssItem: any) => {
+      const selector = cssItem.selector || '';
+      const cssProps = cssItem.css || {};
+
+      // 将CSS属性对象转换为字符串格式
+      const cssString = Object.entries(cssProps)
+        .map(([key, value]) => `${key}: '${value}'`)
+        .join(', ');
+
+      return `${selector} : { ${cssString} }`;
+    });
+  }
+
   // 生成插槽JSX
   function generateSlotsJSX(slots: any[], indent = '  ') {
     if (!slots || slots.length === 0) return '';
-    
+
     let slotsJSX = '';
     slots.forEach(slot => {
       if (slot.id) {
         slotsJSX += `\n${indent}<slots.${slot.id}>`;
-        
+
         // 如果插槽有组件，递归处理
         if (slot.components && Array.isArray(slot.components)) {
           slot.components.forEach(component => {
@@ -85,24 +130,37 @@ function getComponentsInfoByJson(data: any): GetComponentsResult {
             }
           });
         }
-        
+
         slotsJSX += `\n${indent}</slots.${slot.id}>`;
       }
     });
-    
+
     return slotsJSX;
   }
-  
+
   // 生成单个组件的JSX
   function generateComponentJSX(node: any, indent = '') {
     if (!node || !node.id) return '';
-    
+
     const namespace = node.def?.namespace || 'content';
     namespacesSet.add(namespace); // 添加到namespace集合
-    
+
     const dataStr = JSON.stringify(node.data || {});
+    const layout = extractLayout(node.style);
+    const styleAry = extractStyleAry(node.style);
+
     let jsx = `<${namespace} id="${node.id}" data={${dataStr}}`;
-    
+
+    // 添加layout字段
+    if (Object.keys(layout).length > 0) {
+      jsx += ` layout={${JSON.stringify(layout)}}`;
+    }
+
+    // 添加styleAry字段
+    if (styleAry.length > 0) {
+      jsx += ` styleAry={[${styleAry.map(style => `"${style}"`).join(', ')}]}`;
+    }
+
     // 处理插槽
     const slotsJSX = generateSlotsJSX(node.slots || [], indent + '  ');
     if (slotsJSX) {
@@ -111,14 +169,14 @@ function getComponentsInfoByJson(data: any): GetComponentsResult {
     } else {
       jsx += ` />`;
     }
-    
+
     return jsx;
   }
-  
+
   // 递归处理数据
   function processData(node: any) {
     if (!node) return '';
-    
+
     // 如果是数组，遍历每个元素
     if (Array.isArray(node)) {
       let result = '';
@@ -133,12 +191,12 @@ function getComponentsInfoByJson(data: any): GetComponentsResult {
       });
       return result;
     }
-    
+
     // 如果是组件节点
     if (node.id) {
       return generateComponentJSX(node);
     }
-    
+
     // 处理slots中的组件
     if (node.slots && Array.isArray(node.slots)) {
       let result = '';
@@ -152,13 +210,13 @@ function getComponentsInfoByJson(data: any): GetComponentsResult {
       });
       return result;
     }
-    
+
     return '';
   }
-  
+
   // 开始处理
   const jsx = processData(data);
-  
+
   return {
     jsx,
     namespaces: Array.from(namespacesSet) // 转换为数组并去重

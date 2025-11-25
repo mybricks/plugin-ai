@@ -15,6 +15,7 @@ export const requestCommonAgent = (params: any) => {
       ...params,
       message: params?.message,
       key: targetId,
+      // enableLog: true,
       emits: {
         write: () => { },
         complete: () => {
@@ -68,6 +69,7 @@ export const requestCommonAgent = (params: any) => {
           },
         }),
         MYBRICKS_TOOLS.GetComponentsInfoByIds({
+          id: targetId as string,
           getPageJson(id) {
             return context.api?.page?.api?.getOutlineInfo(id)
           },
@@ -77,6 +79,15 @@ export const requestCommonAgent = (params: any) => {
           getComJson(id) {
             return context.api?.uiCom?.api?.getOutlineInfo(id)
           },
+          getFocusElementHasChildren() {
+            if (context.currentFocus?.type !== 'page') {
+              const json = context.api?.uiCom?.api?.getOutlineInfo(targetId)
+              if (!json.slots || (Array.isArray(json.slots) && json.slots.length === 0)) {
+                return false
+              }
+            }
+            return true
+          }
         }),
         // MYBRICKS_TOOLS.GetComponentInfo({
         //   getComInfo(id) {
@@ -96,7 +107,7 @@ export const requestCommonAgent = (params: any) => {
         },
         {
           role: 'assistant',
-          content: `当前已聚焦到${context.currentFocus?.type === 'uiCom' ? `组件(id=${context.currentFocus?.comId})` : `页面(title=${context.currentFocus?.title},id=${context.currentFocus?.pageId})`}中，后续用户的提问，关于”这个“、“此”，甚至不提主语，都是指代此元素。
+          content: `当前已聚焦到${context.currentFocus?.type === 'uiCom' ? `组件(id=${context.currentFocus?.comId})` : `页面(title=${context.currentFocus?.title},id=${context.currentFocus?.pageId})`}中，后续用户的提问，关于”这个“、“此”、“整体”，甚至不提主语，都是指代此元素及其子组件内容。
     <当前聚焦元素的内容简介>
     ${MyBricksHelper.getTreeDescriptionByJson(context.currentFocus?.type === 'uiCom' ? context.api?.uiCom?.api?.getOutlineInfo(context.currentFocus?.comId) : context.api?.page?.api?.getOutlineInfo(context.currentFocus?.pageId))}
     

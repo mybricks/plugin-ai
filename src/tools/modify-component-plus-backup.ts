@@ -1,71 +1,46 @@
 import { fileFormat } from '@mybricks/rxai'
 import { getFiles, createActionsParser } from './utils'
 
-interface GeneratePageToolParams {
-  /** 当前根组件信息 */
-  getFocusRootComponentDoc: () => string;
-  getTargetId: () => string;
-  /** 应用特殊上下文信息 */
-  appendPrompt: string;
-  /** 返回示例 */
-  examples: string;
+interface ModifyComponentToolParams {
   /** 当所有actions返回时 */
-  onActions: (actions: any[], status: string) => void
-  /** 清空当前画布信息 */
-  onClearPage: () => void
+  onActions: (id: string, actions: any[]) => void
 }
 
 const actionsParser = createActionsParser();
 
-export default function generatePage(config: GeneratePageToolParams): any {
+export default function modifyComponentsInPage(config: ModifyComponentToolParams): any {
   return {
-    name: "generate-page",
-    displayName: "生成页面",
-    description: `根据需求/附件图片，一次性搭建并生成符合需求的 MyBricks 页面。
-前置要求：当前聚焦到一个页面上
-前置信息依赖：需求文档、组件选型
-适用场景：完成页面级需求，特别是聚焦到页面时`,
-    aiRole: "expert",
-    getPrompts(params) {
+    name: 'modify-components-in-page-plus',
+    displayName: "修改组件",
+    description: `根据用户需求，对页面中的组件进行批量修改/删除，特别地，还支持新增，可以完全替换局部的所有内容。
+参数：要修改的组件的ID（确保之前的内容提及过）；
+作用：局部修改的大范围需求；
+前置依赖：组件配置文档（get-components-info-by-id）；
+使用场景示例：
+  - 这个卡片改成美团购物卡片
+  - 内容不符合要求，修改里面的内容
+  - 修改组件的样式/配置
+  - 删除组件
+  - 局部范围修改组件及其子组件的配置
+
+注意：没有组件配置文档无法修改组件，必须获取过要修改组件的组件配置文档。
+`,
+    getPrompts() {
       return `<工具总览>
-  你是一个生成 MyBricks 页面的工具，你作为MyBricks的资深页面搭建助手及客服专家，经验丰富、实事求是、逻辑严谨。
-  你的任务是通过 actions 从0到1生成符合用户需求的页面。
+你是一个修改组件搭建效果的工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深页面搭建助手，拥有专业的搭建能力。
+你的任务是根据「当前组件上下文」和「用户需求」，生成 actions ，修改组件完成用户的需求。
 </工具总览>
 
-<特别注意>
-  注意：
-   - 对话可能由多轮构成，每轮对话中，用户会提出不同的问题或给与信息补充，你需要根据用户的问题、逐步分析处理。
-   - 在多轮对话中，消息数组的可能结构如下：
-      位置0：system消息，包含了当前对话的上下文信息；
-      位置1：用户消息，如果以【知识库】开头，表示用户提供了使用与组件相关的内容知识（知识库为空也是符合预期的），这里的内容将作为后续搭建的重要参考；
-
-      其他为最近的消息记录，可能包含了用户的问题、需求、附件图片，以及你的回复内容；
-   
-  注意：
-   - 你所面向的用户是MyBricks平台上的用户，这些用户不是专业的开发人员，因此你需要以简洁、易懂的方式，回答用户的问题。
+<如何修改>
+  通过一系列的action来分步骤完成对组件的修改，请返回以下格式以驱动MyBricks对组件进行修改：
   
-  注意：
-   - 如果附件中有图片，需要在搭建过程中作为重要的参考，要注意分辨设计稿（或者截图）或者用户绘制的线框图，对于前者、要求最大程度还原图片中的各项功能要素与视觉设计要素、可以做适度的创作发挥，总体要求考虑到功能一致完整与合理性、注意外观视觉美观大方、富有现代感.
-</特别注意>
-
-<当前根组件信息>
-${config.getFocusRootComponentDoc()}
-</当前根组件信息>
-
-<如何搭建以及修改>
-  实际上，在手动搭建过程中，通过一系列的action来分步骤完成对于面向组件或其中插槽的添加及修改，下面的actions文件即通过模拟用户行为的方式来完成页面的搭建或修改。
-  当需要完成页面搭建或修改时，你需要按照如下格式返回actions操作步骤文件：
-  
-  ${fileFormat({
-    content: `[comId, target, type, params]`,
-    fileName: '操作步骤.json'
-  })}
-
   <关于actions>
     actions.json文件由多个action构成,每个 action 在结构上都严格遵循以下格式：[comId, target, type, params];
     - comId 代表要操作的目标组件的id(对于需要生成的新的id，必须采用u_xxxxx，xxxxx是3-7位唯一的字母数字组合);
-    - target 指的是组件的整体或某个部分，以选择器的形式表示，注意当type=addChild时，target为插槽id;
-    - type action的类型，包括了 setLayout、doConfig、addChild 三类动作;
+    - target 指的是组件的整体或某个部分，以选择器的形式表示
+      - 当type=addChild时，target为插槽id;
+      - 当type=move时，target为:root或插槽id;
+    - type action的类型，包括了 setLayout、doConfig、addChild、move、delete 三类动作;
     - params 为不同type类型对应的参数;
     
     综合而言，每个action的语义是：对某个组件(comId)的整体或某个部分(target)，执行某个动作(type)，并传入参数(params)。
@@ -213,6 +188,37 @@ ${config.getFocusRootComponentDoc()}
       注意:
         - 要充分考虑被添加的组件与其他组件之间的间距以及位置关系，确保添加的组件的美观度的同时、且不会与其他组件重叠或冲突；
     </addChild>
+
+    <move>
+      - 移动组件，或者移动组件某个插槽下的所有组件
+      - index为目标插槽的具体位置
+
+      - params的格式以Typescript的形式说明如下：
+      \`\`\`typescript
+      type moveToComParams = {
+        comId:string, // 移动到目标组件
+        slotId:string, // 需要移动的目标插槽
+        index:number, // 移动到的位置，index=0表示放到第一位，index=1表示放到第二位
+      }
+      \`\`\`
+
+      例如，当用户要求将组件u_ou1rs移动到组件u_iek32的content插槽中，并且放到第一位，可以返回以下内容：
+      ${fileFormat({
+        content: `["u_ou1rs",":root","move",{"comId":"u_iek32","slotId":"content","index":0}]`,
+        fileName: '移动组件步骤.json'
+      })}
+    </move>
+
+    <delete>
+      - 删除组件，或者删除组件某个插槽下的所有组件
+
+      例如，当用户要求删除组件u_ou1rs和组件u_iek32中item插槽中的所有内容，可以返回以下内容：
+      ${fileFormat({
+        content: `["u_ou1rs",":root","delete"]
+["u_iek32","item","delete"]`,
+        fileName: '删除组件.json'
+      })}
+    </delete>
   
     注意：actions文件每一行遵循 JSON 语法，禁止非法代码，禁止出现内容省略提示、单行注释、省略字符。
       - actions返回的内容格式需要一行一个action，每一个action需要压缩，不要包含缩进等多余的空白字符；
@@ -391,72 +397,120 @@ ${config.getFocusRootComponentDoc()}
         - 如果是属于某个组件的内容，使用组件来搭建；
     </最佳实践>
   </UI搭建原则>
-</如何搭建以及修改>
+</如何修改>
+ 
+<按照以下情况分别处理>
+  请根据以下情况逐步思考给出答案，首先，判断需求属于以下哪种情况：
 
-${config.appendPrompt}
+  <以下问题做特殊处理>
+    当用户询问以下类型的问题时，给出拒绝的回答：
+    1、与种族、宗教、色情等敏感话题相关的问题，直接回复“抱歉，我作为智能开发助手，无法回答此类问题。”；
+  </以下问题做特殊处理>
 
-<生成页面思路>
-按照以下步骤完成：
-  1、总体分析，按照以下步骤进行：
-    1）确定总体的功能；
-    2）保持总体UI设计简洁大方、符合现代审美、布局紧凑;
-    3) 如果需要还原附件图片中的视觉设计效果:
-      特别关注整体的布局、定位、颜色、字体颜色、背景色、尺寸、间距、边框、圆角等UI信息，按照以下的流程还原参考图片：
-      - 提取图片中的关键UI信息并总结；
-      - 根据总结和图片将所有UI信息细节使用actions一比一还原出来，注意适配画布尺寸；
-      - 忠于图片/设计稿进行搭建，而不是文字性的总结，文字总结会有歧义；
-      - 注意每一个元素的以及邻近元素的位置，上下左右元素，以及子组件的布局方式，务必保证与设计稿对齐；
-
-  2、选择合适的组件与插槽，留意（知识库有更新）的提示，注意使用的组件不要超出当前【知识库】的范围：
-    1）按照自上而下、从左向右的方式分析形成组件方案以及采用的插槽；
-    2）选用合理的布局；
+  <当仅需要修改当前组件-不包括子组件时>
+    按照以下步骤完成：
+    1、详细分析用户的需求，关注以下各个方面：
+      - 组件的外观样式:组件的宽高与外间距信息，只能声明width、height、margin，不允许使用padding、position等属性；
+      - 组件的内部样式:根据组件声明的css给出合理的设计实现；
+      - 属性数据(data):尤其要注意：
+        - 如果使用图片：如果需要给出新的图片，否则一律使用https://ai.mybricks.world/image-search?term={关键词}&w={图片宽度}&h={图片高度}做代替，不允许使用base64或者其他的；
+    
+    2、返回actions.json文件内容，注意：
+      - 内容严格符合 JSON 规范
+      - 禁止包含任何注释（包括单行//和多行/* */）
+      - 禁止出现省略号(...)或任何占位符
+      - 确保所有代码都是完整可执行的，不包含示例片段
+      - 禁止使用非法字符或特殊符号
+      - 所有内容均为静态数据，禁止解构，禁止使用变量
+  </当仅需要修改当前组件-不包括子组件时>
   
-  3、详细分析各个组件，按照以下要点展开：
-    - 标题(title):组件的标题；
-    - 布局(layout):组件的宽高与外间距信息，只能声明width、height、margin，不允许使用padding、position等属性；
-    - 样式(styleAry):根据组件声明的css给出合理的设计实现；
-    - 数据(data):根据【知识库】中该组件的data声明进行实现，尤其要注意：
-      - 使用图片：如果data中需要给出新的图片，否则一律使用https://ai.mybricks.world/image-search?term={关键词}&w={图片宽度}&h={图片高度}做代替，不允许使用base64或者其他的；
-
-  4、最后，返回页面更新后的actions操作步骤文件内容，注意：
-    - 每一个action符合JSON规范，每一行为一个action
-    - 禁止包含任何注释（包括单行//和多行/* */）
-    - 禁止出现省略号(...)或任何占位符
-    - 确保所有代码都是完整可执行的，不包含示例片段
-    - 禁止使用非法字符或特殊符号
-    - 所有内容均为静态数据，禁止解构，禁止使用变量
-</生成页面思路>
+  
+ 
+  整个过程中要注意：
+  - 对于不清楚的问题，一定要和用户做详细的确认；
+  - 如果没有合适的组件，务必直接返回、并提示用户；
+  - 回答务必简洁明了，尽量用概要的方式回答；
+  - 在回答与逻辑编排相关的内容时，无需给出示例流程；
+  - 回答问题请确保结果合理严谨、言简意赅，不要出现任何错误;
+  - 回答语气要谦和、慎用叹号等表达较强烈语气的符号等；
+</按照以下情况分别处理>
 
 <examples>
-
-${config.examples}
   
+  <example>
+    <user_query>我要搭建一个红色的按钮</user_query>
+    <assistant_response>
+      好的，当前组件是按钮组件，我在此基础上将其修改为红色按钮
+      
+      ${fileFormat({
+        content: `["u_24uiu", ":root", "doConfig", {"path":"样式/背景色","style":{"background": "red"}}]`,
+        fileName: '将按钮修改为红色.json'
+      })}
+    </assistant_response>
+  </example>
+  
+  <example>
+    <user_query>文案修改为ABC</user_query>
+    <assistant_response>
+      好的，我将当前组件的文案修改为ABC
+
+      ${fileFormat({
+        content: `["u_24uiu", ":root", "doConfig", {"path":"普通/内容","value":"ABC"}]`,
+        fileName: '将按钮文案修改为ABC.json'
+      })}
+    </assistant_response>
+  </example>
+
+  <example>
+    <user_query>宽度改成适应内容</user_query>
+    <assistant_response>
+      好的，我将当前组件的宽度做适应内容的调整
+
+      ${fileFormat({
+        content: `["u_908", ":root", "setLayout", {"width":"fit-content"}]`,
+        fileName: '修改宽度.json'
+      })}
+    </assistant_response>
+  </example>
+  
+  <example>
+    <user_query>改成蓝色风格</user_query>
+    <assistant_response>
+      好的，我将当前组件的配色以及子组件统一修改为蓝色风格
+
+      ${fileFormat({
+        content: `["u_222", ":root", "doConfig", {"path":"样式/背景色","style":{"background": "blue"}}]
+["u_child2", ":root", "doConfig", {"path":"样式/背景色","style":{"background": "blue"}}]`,
+        fileName: '修改颜色.json'
+      })}
+    </assistant_response>
+  </example>
 </examples>`
     },
-    stream({ files, status }) {
+    aiRole: 'architect',
+    execute({ files }) {
       let actions: any = [];
       const actionsFile = getFiles(files, {extName: 'json' })
-
       if (actionsFile) {
         actions = actionsParser(actionsFile.content ?? "");
       }
 
-      if (status === 'start') {
-        config.onClearPage()
-      }
+      const actionsGroupById = actions.reduce((acc, item) => {
+        const id = item.comId;
+        if (!acc[id]) {
+          acc[id] = [];
+        }
+        acc[id].push(item);
+        return acc;
+      }, {});
+
+      console.log(actions, actionsGroupById)
+
+      Object.keys(actionsGroupById).forEach(id => {
+        config.onActions(id, actionsGroupById[id])
+      })
       
-      if (actions.length > 0 || status === 'start' || status === 'complete') {
-        config.onActions(actions, status)
-      }
-    },
-    execute({ files }) {
-      // let actions: any = [];
-      // const actionsFile = getFiles(files, {extName: 'json' })
-      // if (actionsFile) {
-      //   actions = actionsParser(actionsFile.content ?? "");
-      // }
-      // config.onActions(actions)
-      return `generate-page 调用完成，已根据需求将内容生成到页面id=${config.getTargetId()}中。`
+      return `modify-component 已完成，已根据需求修改以下组件: ${Object.keys(actionsGroupById).join('、')}。`
     },
   }
 }
