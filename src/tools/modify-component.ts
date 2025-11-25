@@ -6,9 +6,8 @@ interface ModifyComponentToolParams {
   onActions: (id: string, actions: any[]) => void
 }
 
-const actionsParser = createActionsParser();
-
 export default function modifyComponentsInPage(config: ModifyComponentToolParams): any {
+  const actionsParser = createActionsParser();
   return {
     name: 'modify-components-in-page',
     displayName: "修改组件",
