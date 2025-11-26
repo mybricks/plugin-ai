@@ -94,11 +94,16 @@ export const requestCommonAgent = (params: any) => {
         //     return context.api?.uiCom?.api?.getComPrompts?.(id)?.replace(/当前组件的情况/g, `组件${id}的信息`) as string
         //   },
         // }),
-        MYBRICKS_TOOLS.ModifyComponent({
+        // MYBRICKS_TOOLS.ModifyComponent({
+        //   onActions: (id, actions) => {
+        //     context.api?.uiCom?.api?.updateCom?.(id, actions)
+        //   }
+        // }),
+        MYBRICKS_TOOLS.RefactorComponent({
           onActions: (id, actions) => {
             context.api?.uiCom?.api?.updateCom?.(id, actions)
           }
-        }),
+        })
       ],
       presetMessages: [
         {

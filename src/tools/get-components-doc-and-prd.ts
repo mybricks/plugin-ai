@@ -11,10 +11,10 @@ interface GetComponentsDocAndPrdToolParams {
 
 export default function getComponentsDocAndPrd(config: GetComponentsDocAndPrdToolParams, ): any {
   return {
-    name: 'generate-page-prd-and-require-component',
-    displayName: "理解和整理当前页面需求",
-    description: `整理/扩写需求/分析图片 + 组件选型，是页面搭建/生成的前置操作。
-前置要求：用户提出过搭建页面需求
+    name: 'generate-prd-and-require-component',
+    displayName: "理解和整理当前需求",
+    description: `整理/扩写需求/分析图片 + 组件选型。
+前置要求：用户提出过搭建需求
 参数：用户需求（可能是文本，一句话、图片附近、文件附件等需求）
 返回值：需求分析规格说明书（PRD）文件 + 组件选型；`,
     aiRole: "expert",
