@@ -25,7 +25,7 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
         // params?.onProgress?.("complete");
       },
     },
-    planList: ["generate-page-prd-and-require-component", "generate-page"],
+    planList: ["generate-prd-and-require-component", "generate-page"],
     tools: [
       MYBRICKS_TOOLS.GetComponentsDocAndPrd({
         allowComponents: context.api?.global?.api?.getAllComDefPrompts?.(),
