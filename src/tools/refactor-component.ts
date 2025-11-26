@@ -3,7 +3,7 @@ import { getFiles, createActionsParser } from './utils'
 
 interface ModifyComponentToolParams {
   /** 当所有actions返回时 */
-  onActions: (id: string, actions: any[]) => void
+  onActions: (actions: any[], status: string) => void
 }
 
 export default function modifyComponentsInPage(config: ModifyComponentToolParams): any {
@@ -25,13 +25,15 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
 
 使用场景示例：
   - 这个卡片改成美团购物卡片
-    分析：由于卡片内容完全变化，并且需要修改卡片组件的配置，所以需要「组件选型分析」-> 「获取组件配置文档」-> 「局部重构」的规划
+    分析：由于卡片内容完全变化，并且需要修改卡片组件的配置，所以需要「组件选型分析」-> 「获取DSL和组件配置文档」-> 「局部重构」的规划
   - 内容不符合要求，修改里面的内容
     分析：由于需要修改里面的内容，所以需要「获取DSL和组件配置文档」->「组件选型分析」->「局部重构」的规划
   - 修改XX组件的样式/配置
-    分析：由于仅修改组件配置，所以需要「获取DSL和组件配置文档」->「局部重构」的规划
+    分析：由于仅修改组件配置，所以仅需要「获取DSL和组件配置文档」->「局部重构」的规划，无需「组件选型分析」
+  - 图片换个链接
+    分析：由于仅修改组件配置，所以仅需要「获取DSL和组件配置文档」->「局部重构」的规划，无需「组件选型分析」
   - 删除组件
-    分析：由于仅删除组件，所以需要「局部重构」的规划
+    分析：由于仅删除组件，所以仅需要「局部重构」的规划
 `,
     getPrompts() {
       return `<工具总览>
@@ -459,6 +461,24 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
 </examples>`
     },
     aiRole: 'expert',
+    stream({ files, status }) {
+      let actions: any = [];
+      const actionsFile = getFiles(files, {extName: 'json' })
+
+      if (actionsFile) {
+        actions = actionsParser(actionsFile.content ?? "");
+      }
+
+      // if (status === 'start') {
+      //   config.onClearPage()
+      // }
+
+      // console.log('actions', actionsFile?.content, actions)
+      
+      if (actions.length > 0 || status === 'start' || status === 'complete') {
+        config.onActions(actions, status)
+      }
+    },
     execute({ files }) {
       let actions: any = [];
       const actionsFile = getFiles(files, {extName: 'json' })
@@ -466,7 +486,7 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
         actions = actionsParser(actionsFile.content ?? "");
       }
 
-      console.log('actions', actions)
+      // console.log('actions', actions)
 
       const actionsGroupById = actions.reduce((acc, item) => {
         const id = item.comId;
@@ -477,13 +497,11 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
         return acc;
       }, {});
 
-      Object.keys(actionsGroupById).forEach(id => {
-        config.onActions(id, actionsGroupById[id])
-      })
+      // config.onActions(actions, 'start')
 
       return {
-        llmContent: `modify-component 已完成，已根据需求修改以下组件: ${Object.keys(actionsGroupById).join('、')}。`,
-        displayContent: `modify-component 已完成，已根据需求修改${Object.keys(actionsGroupById).length}组件`
+        llmContent: `refactor-components-in-page 已完成，已根据需求修改以下组件: ${Object.keys(actionsGroupById).join('、')}。`,
+        displayContent: `refactor-components-in-page 已完成，已根据需求修改${Object.keys(actionsGroupById).length}个组件`
       }
     },
   }

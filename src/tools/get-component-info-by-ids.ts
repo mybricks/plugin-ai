@@ -18,6 +18,9 @@ export default function getComponentsInfoByIds(config: GetComponentInfoParams,):
 参数：元素ID；
 作用：获取组件的配置文档和当前元素DSL（包含父子结构信息和当前搭建信息），用于后续修改组件；
 返回值：相关组件的配置文档和当前元素DSL；
+
+可缓存：如果后续修改组件需要使用配置文档，注意查看之前的消息是否有组件的配置文档。
+；
 `,
     getPrompts: () => {
       return !hasChildren ? '' :
@@ -73,13 +76,16 @@ export default function getComponentsInfoByIds(config: GetComponentInfoParams,):
         return acc + '\n' + config.getComInfo(cur)
       }, '')
 
-      return `<元素${selectId}的DSL>
+      return {
+        llmContent: `<元素${selectId}的DSL>
 ${jsx}
 </元素${selectId}的DSL>
 
 <关联的所有组件配置文档>
 ${docs}
-</关联的所有组件配置文档>`
+</关联的所有组件配置文档>`,
+        displayContent: `已获取搭建信息和关联组件文档`
+      }
     },
   }
 }

@@ -100,8 +100,8 @@ export const requestCommonAgent = (params: any) => {
         //   }
         // }),
         MYBRICKS_TOOLS.RefactorComponent({
-          onActions: (id, actions) => {
-            context.api?.uiCom?.api?.updateCom?.(id, actions)
+          onActions: (actions, status) => {
+            context.api?.uiCom?.api?.updateCom?.(targetId, actions, status)
           }
         })
       ],
