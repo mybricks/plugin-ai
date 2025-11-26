@@ -20,6 +20,7 @@
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
     "@mybricks/rxai": "0.0.2",
+    "antd": "^4.24.16",
     "classnames": "^2.5.1",
     "jsonrepair": "^3.13.1",
     "marked": "^17.0.0"

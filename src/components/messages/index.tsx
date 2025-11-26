@@ -176,6 +176,9 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
             if (message.role === "tool") {
               return <BubbleCopilotTool key={index + message.status} message={message} />
             }
+            if (message.role === "error") {
+              return <BubbleError message={message}/>
+            }
             return <BubbleMessage message={message.content} />
           })}
           {message && <BubbleMessage message={message} />}
@@ -229,6 +232,29 @@ const BubbleCopilotTool = (params: BubbleCopilotToolParams) => {
           </span>
         )}
       </span>
+    </div>
+  )
+}
+
+interface BubbleErrorParams {
+  message: {
+    role: "error",
+    content: string,
+    retry: () => void;
+  }
+}
+const BubbleError = (params: BubbleErrorParams) => {
+  const { message } = params;
+
+  return (
+    <div className={css['ai-chat-error-code-block']}>
+      <div className={css['ai-chat-error-code-block-message']}>
+        <span>{message.content}</span>
+      </div>
+      <div
+        className={css['ai-chat-error-code-block-retry']}
+        onClick={message.retry}
+      >重试</div>
     </div>
   )
 }

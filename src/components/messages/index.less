@@ -584,7 +584,9 @@
     background-color: #fff0ed;
     border-radius: 4px;
     border: 1px solid #ffd8d2;
-    padding: 8px
+    // padding: 8px;
+    padding: 4px 8px;
+    gap: 8px;
   }
 
   .ai-chat-error-code-block-retry {
@@ -592,8 +594,9 @@
     align-items: center;
     justify-content: center;
     gap: 4px;
-    width: 70px;
-    min-width: 62px;
+    // width: 70px;
+    // min-width: 62px;
+    min-width: fit-content;
     color: #d54941;
     background: #fff;
     cursor: pointer;
@@ -620,9 +623,10 @@
     overflow: hidden;
 
     span {
-      line-height: 1.25;
+      // line-height: 1.25;
       text-overflow: ellipsis;
-      overflow: hidden
+      overflow: hidden;
+      white-space: nowrap;
     }
   }
 
@@ -689,6 +693,10 @@
 
         &.error {
           color: #d54941;
+
+          svg {
+            transform: translate(-2px, 0px);
+          }
         }
 
         &.aborted {
