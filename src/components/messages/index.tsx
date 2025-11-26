@@ -1,15 +1,11 @@
 import React, { useRef, useState, useEffect, useLayoutEffect } from "react"
 import classNames from "classnames"
 import { Rxai } from "@mybricks/rxai"
-import { marked } from "marked";
+import markdownit from 'markdown-it'
 import { Loading, Success, Close } from "../icons";
 import css from "./index.less"
 
-const renderer = new marked.Renderer();
-renderer.paragraph = (paragraph) => {
-  return `<p>${paragraph.text}</p>`;
-};
-marked.use({ renderer });
+const md = markdownit()
 
 interface User {
   /** 名称 */
@@ -118,7 +114,7 @@ const BubbleMessage = (params: BubbleMessageParams) => {
   const messageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    messageRef.current!.innerHTML = marked.parse(message) as string;
+    messageRef.current!.innerHTML = md.render(message);
   }, [message])
 
   return <span ref={messageRef} />
@@ -141,12 +137,12 @@ const BubbleUser = (params: BubbleUserParams) => {
         <span className={css['chat-bubble-header-name']}>{user.name}</span>
       </header>
       <section className={classNames(css['chat-message-container'], css['user-message'])}>
-        <div className={css['ai-chat-markdown']}>
-          <span>{typeof message.content === "string" ? message.content : message.content.find((content: any) => {
+        <div className={css['markdown-body']}>
+          <BubbleMessage message={typeof message.content === "string" ? message.content : message.content.find((content: any) => {
             if (content.type === "text") {
               return content
             }
-          }).text}</span>
+          }).text}/>
         </div>
       </section>
     </article>
@@ -171,13 +167,13 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
         <span className={css['chat-bubble-header-name']}>{copilot.name}</span>
       </header>
       <section className={classNames(css['chat-message-container'], css['ai-message'])}>
-        <div className={css['ai-chat-markdown']}>
+        <div className={css['markdown-body']}>
           {messages.map((message, index) => {
             if (message.role === "tool") {
               return <BubbleCopilotTool key={index + message.status} message={message} />
             }
             if (message.role === "error") {
-              return <BubbleError message={message}/>
+              return <BubbleError message={message} />
             }
             return <BubbleMessage message={message.content} />
           })}
