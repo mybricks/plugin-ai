@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import classNames from "classnames"
 import { ArrowUpOutlined } from "@ant-design/icons"
 import { context } from "../../../context"
@@ -7,37 +7,38 @@ import css from "./sender.less"
 
 const Sender = () => {
   const [message, setMessage] = useState('');
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const send = () => {
     Agents.requestCommonAgent({
       message
     })
 
-    // context.rxai.requestAI({
-    //   message,
-    //   emits: {
-    //     write: () => { },
-    //     complete: () => { },
-    //     error: () => { },
-    //     cancel: () => { }
-    //   },
-    //   key: "",
-    //   tools: context.getTools(),
-    //   presetMessages: context.getPresetMessages()
-    // })
     setMessage("");
   }
+
+  useEffect(() => {
+    inputRef.current!.focus();
+    const destroy = context.events.on("aiViewDisplay", () => {
+      setTimeout(() => {
+        inputRef.current!.focus();
+      }, 0)
+    })
+    return () => {
+      destroy()
+    }
+  }, [])
 
   return (
     <div className={classNames(css.sender)}>
       <div className={classNames(css.content)}>
         <textarea
+          ref={inputRef}
           className={classNames(css.textarea)}
           value={message}
           onChange={(event) => {
             setMessage(event.target.value);
           }}
-          autoFocus
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault()

@@ -72,7 +72,11 @@ export default function pluginAI({
       aiView: {
         render() {
           return <View user={user} copilot={copilot}/>
-        }
+        },
+        display() {
+          context.events.emit("aiViewDisplay", true);
+        },
+        hide() {}
       },
       aiStartView: {
         render() {

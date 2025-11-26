@@ -1,4 +1,4 @@
-import { Rxai } from "@mybricks/rxai"
+import { Rxai, Events } from "@mybricks/rxai"
 
 class Context {
   rxai!: Rxai
@@ -7,6 +7,10 @@ class Context {
 
   /** 应用传入的系统提示词 */
   prompts?: any;
+
+  events = new Events<{
+    aiViewDisplay: boolean;
+  }>();
 
   createRxai(options: ConstructorParameters<typeof Rxai>[0]) {
     if (!this.rxai) {
