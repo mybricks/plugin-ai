@@ -455,7 +455,10 @@ ${config.examples}
       //   actions = actionsParser(actionsFile.content ?? "");
       // }
       // config.onActions(actions)
-      return `generate-page 调用完成，已根据需求将内容生成到页面id=${config.getTargetId()}中。`
+      return {
+        llmContent: `generate-page 调用完成，已根据需求将内容生成到页面id=${config.getTargetId()}中。`,
+        displayContent: '已根据需求生成页面'
+      }
     },
   }
 }

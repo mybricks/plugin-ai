@@ -1,4 +1,4 @@
-import { fileFormat } from '@mybricks/rxai'
+import { fileFormat, ToolError } from '@mybricks/rxai'
 import { getFiles } from './utils'
 
 interface GetComponentInfoParams {
@@ -42,7 +42,10 @@ export default function getComponentsInfoByIds(config: GetComponentInfoParams,):
       const { files, content } = params ?? {}
       if (hasChildren) {
         if (!content) {
-          throw new Error('文件格式有误，解析失败，请重试')
+          throw new ToolError({
+            llmContent: '拿不到有效的文件内容，请检查返回的文件格式',
+            displayContent: '获取组件文档失败，请重试'
+          })
         }
       }
 
@@ -52,10 +55,16 @@ export default function getComponentsInfoByIds(config: GetComponentInfoParams,):
         selectId = JSON.parse(selectFile?.content)?.id;
         selectType = JSON.parse(selectFile?.content)?.type;
       } catch (error) {
-        throw new Error(`解析错误，请检查格式，${error?.message}`)
+        throw new ToolError({
+          llmContent: `解析错误，请检查格式，${error?.message}`,
+          displayContent: '解析组件文档失败，请重试'
+        })
       }
       if (!selectId) {
-        throw new Error(`未获取到正确的元素，请检查格式`)
+        throw new ToolError({
+          llmContent: '拿不到有效的元素ID，请检查返回的文件格式',
+          displayContent: '获取组件文档失败，请重试'
+        })
       }
 
       const { jsx, namespaces } = getComponentsInfoByJson(selectType === 'page' ? config.getPageJson(selectId) : config.getComJson(selectId))

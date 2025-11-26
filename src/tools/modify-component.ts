@@ -337,9 +337,10 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
         config.onActions(id, actionsGroupById[id])
       })
 
-      return `modify-component 已完成，已根据需求修改${Object.keys(actionsGroupById).length}组件`
-      
-      return `modify-component 已完成，已根据需求修改以下组件: ${Object.keys(actionsGroupById).join('、')}。`
+      return {
+        llmContent: `modify-component 已完成，已根据需求修改以下组件: ${Object.keys(actionsGroupById).join('、')}。`,
+        displayContent: `modify-component 已完成，已根据需求修改${Object.keys(actionsGroupById).length}组件`
+      }
     },
   }
 }
