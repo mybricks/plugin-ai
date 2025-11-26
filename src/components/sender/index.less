@@ -1,0 +1,203 @@
+.container {
+  padding: 16px;
+
+  .editor {
+    z-index: 13;
+    position: relative;
+    background-color: #ffffff;
+    border: solid 1px rgba(0, 0, 0, .13);
+    width: 100%;
+    border-radius: 20px;
+    box-shadow: 0 5px 16px -4px #00000012;
+    color: rgba(0, 0, 0, .9);
+    cursor: default;
+
+    .topArea {
+      padding: 12px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      box-shadow: 0 .5px 0 0 rgba(0, 0, 0, .13);
+
+      .imageThumbnail {
+        cursor: pointer;
+        pointer-events: auto;
+        flex-shrink: 0;
+        width: 56px;
+        aspect-ratio: 1;
+        min-width: 56px;
+        border-radius: 8px;
+        border: 1px solid rgba(0, 0, 0, .13);
+        position: relative;
+
+        img {
+          width: 100%;
+          height: 100%;
+          display: inline-block;
+          background-repeat: no-repeat;
+          background-size: cover;
+          overflow: hidden;
+        }
+
+        .imageDeleteContainer {
+          cursor: pointer;
+          position: absolute;
+          top: 0;
+          right: 0;
+          padding: 4px;
+          z-index: 2;
+
+          .imageDeleteIcon {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: rgba(0, 0, 0, .4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+
+            svg {
+              width: 8px;
+              height: 8px;
+            }
+
+            &:hover {
+              opacity: 0.8;
+              background-color: var(--mybricks-color-primary);
+            }
+          }
+        }
+      }
+    }
+
+    .input {
+      padding: 12px 16px 10px;
+      line-height: 20px;
+      min-height: 60px;
+      position: relative;
+
+      .inputEditorContainer {
+        font-size: 12px;
+        max-height: 140px;
+        scrollbar-width: none;
+        position: relative;
+        min-height: inherit;
+        overflow: auto;
+
+        .inputEditor {
+          user-select: text;
+          white-space: pre-wrap;
+          word-break: break-word;
+          width: 100%;
+          max-height: fit-content;
+          min-height: inherit;
+          overflow: hidden;
+          outline: none;
+          cursor: text;
+
+          &[contentEditable="false"] {
+            cursor: default;
+          }
+        }
+
+        .inputPlaceholder {
+          position: absolute;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          top: 1px;
+          left: 1px;
+          user-select: none;
+          pointer-events: none;
+          color: rgba(0, 0, 0, .6);
+        }
+      }
+    }
+
+    .editorAction {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      padding: 0 8px;
+      margin-top: 2px;
+      margin-bottom: 8px;
+      position: relative;
+
+      .leftArea {
+        display: flex;
+        align-items: center;
+
+        .attachmentButton {
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 32px;
+          border-radius: 20px;
+          height: 32px;
+          cursor: pointer;
+
+          svg {
+            width: 20px;
+            height: 20px;
+            color: rgba(0, 0, 0, .6);
+          }
+
+          &:hover {
+            background-color: rgba(0, 0, 0, .09);
+          }
+
+          input {
+            display: none;
+          }
+        }
+      }
+
+      .rightArea {
+        display: flex;
+        align-items: center;
+
+        .sendButtonContainer {
+          cursor: pointer;
+          background-color: var(--mybricks-color-primary);
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          color: rgba(255, 255, 255, .9);
+
+          .sendButton {
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+
+            svg {
+              width: 28px;
+              height: 28px;
+            }
+          }
+
+          .loadingButton {
+            svg {
+              width: 14px;
+              height: 14px;
+            }
+          }
+        }
+
+        .disabled {
+          cursor: default;
+          opacity: 0.5;
+        }
+      }
+    }
+
+    :global {
+      * {
+        scrollbar-color: transparent transparent;
+      }
+    }
+  }
+}
