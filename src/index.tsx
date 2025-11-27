@@ -12,16 +12,24 @@ import { context } from './context';
 import { StartView } from "./startView";
 
 export { fileFormat } from '@mybricks/rxai'
+import preset from "./preset"
 
-export default function pluginAI({
-  user = {
-    name: "user",
-    avatar: "/default_avatar.png"
-  },
-  requestAsStream,
-  prompts
-}: any): any {
+const transformParams = (params?: any) => {
+  if (!params) {
+    return preset;
+  }
 
+  return {
+    user: {
+      name: "user",
+      avatar: "/default_avatar.png"
+    },
+    ...params
+  }
+}
+
+export default function pluginAI(params: any): any {
+  const { user, prompts, requestAsStream } = transformParams(params);
   const copilot = {
     name: "MyBricks.ai",
     avatar: "https://my.mybricks.world/image/icon.png"

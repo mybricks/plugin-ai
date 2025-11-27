@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useImperativeHandle, PropsWithoutRef, forwardRef } from "react"
 import classNames from "classnames";
-import { message } from "antd";
+import { message, Image } from "antd";
 import { ArrowUp, Attachment, Loading, Close } from "../icons";
 import css from "./index.less"
 
@@ -92,9 +92,17 @@ const Sender = forwardRef<{ focus: () => void }, SenderProps>((props, ref) => {
     setIsComposing(false);
   }
 
-  const uploadAttachment = () => {
+  /** 检查附件数量是否超出限制，超出返回 true */
+  const checkAttachmentsLimit = () => {
     if (attachments.length > 1) {
-      message.info("最多上传两张图片");
+      message.info("当前只能上传两张图片");
+      return true;
+    }
+    return false;
+  }
+
+  const uploadAttachment = () => {
+    if (checkAttachmentsLimit()) {
       return;
     }
     const fileInput = document.createElement('input');
@@ -129,19 +137,11 @@ const Sender = forwardRef<{ focus: () => void }, SenderProps>((props, ref) => {
     fileInput.click();
   };
 
-  const deleteAttachment = (index: number) => {
-    setAttachments((attachments) => {
-      attachments.splice(index, 1)
-      return [...attachments]
-    })
-  }
-
   const onPaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
     event.preventDefault();
     const file = event.clipboardData.files[0];
     if (file?.type.startsWith('image/')) {
-      if (attachments.length > 1) {
-        message.info("最多上传两张图片");
+      if (checkAttachmentsLimit()) {
         return;
       }
       readFileToBase64(file)
@@ -178,6 +178,13 @@ const Sender = forwardRef<{ focus: () => void }, SenderProps>((props, ref) => {
     }
   }
 
+  const onAttachmentsDelete = (index: number) => {
+    setAttachments((attachments) => {
+      attachments.splice(index, 1)
+      return [...attachments]
+    })
+  }
+
   useEffect(() => {
     inputEditorRef.current!.focus();
   }, [])
@@ -185,20 +192,9 @@ const Sender = forwardRef<{ focus: () => void }, SenderProps>((props, ref) => {
   return (
     <div className={css.container}>
       <div className={css.editor}>
-        {attachments.length ? <div className={css.topArea}>
-          {attachments.map((attachment, index) => {
-            return (
-              <div className={css.imageThumbnail}>
-                <img src={attachment} />
-                <div className={css.imageDeleteContainer} onClick={() => deleteAttachment(index)}>
-                  <div className={css.imageDeleteIcon}>
-                    <Close />
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div> : null}
+        {attachments.length ? (
+          <Attachments attachments={attachments} onDelete={onAttachmentsDelete}/>
+        ) : null}
         <div className={css.input}>
           <div className={css.inputEditorContainer}>
             <div
@@ -240,3 +236,51 @@ const Sender = forwardRef<{ focus: () => void }, SenderProps>((props, ref) => {
 })
 
 export { Sender }
+
+interface AttachmentsProps {
+  attachments: string[];
+  onDelete: (index: number) => void;
+}
+/** 附件图片 */
+const Attachments = (props: AttachmentsProps) => {
+  const { attachments, onDelete } = props;
+  const [preiviewVisible, setPreiviewVisible] = useState(false);
+  const [preiviewCurrent, setPreiviewCurrent] = useState(0);
+  return (
+    <>
+      <div className={css.topArea}>
+        {attachments.map((attachment, index) => {
+          return (
+            <div className={css.imageThumbnail}>
+              <img
+                src={attachment}
+                onClick={() => {
+                  setPreiviewCurrent(index);
+                  setPreiviewVisible(true);
+                }}
+              />
+              <div className={css.imageDeleteContainer} onClick={() => onDelete(index)}>
+                <div className={css.imageDeleteIcon}>
+                  <Close />
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <div style={{ display: 'none' }}>
+        <Image.PreviewGroup 
+          preview={{ 
+            visible: preiviewVisible,
+            onVisibleChange: setPreiviewVisible,
+            current: preiviewCurrent,
+          }}
+        >
+          {attachments.map((src, index) => (
+            <Image key={index} src={src} />
+          ))}
+        </Image.PreviewGroup>
+      </div>
+    </>
+  )
+}
