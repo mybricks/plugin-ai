@@ -7,7 +7,9 @@ export const requestCommonAgent = (params: any) => {
   return new Promise((resolve, reject) => {
     const prompts = context.prompts;
 
-    const targetId = context.currentFocus?.type === 'uiCom' ? context.currentFocus?.comId : context.currentFocus?.pageId
+    const targetType = context.currentFocus?.type
+    const targetId = targetType === 'uiCom' ? context.currentFocus?.comId : context.currentFocus?.pageId
+    
 
     params?.onProgress?.('start')
 
@@ -101,7 +103,11 @@ export const requestCommonAgent = (params: any) => {
         // }),
         MYBRICKS_TOOLS.RefactorComponent({
           onActions: (actions, status) => {
-            context.api?.uiCom?.api?.updateCom?.(targetId, actions, status)
+            if (targetType === "page") {
+              context.api?.page?.api?.updatePage?.(targetId, actions, status)
+            } else {
+              context.api?.uiCom?.api?.updateCom?.(targetId, actions, status)
+            }
           }
         })
       ],

@@ -28,7 +28,7 @@ const transformParams = (params?: any) => {
   }
 }
 
-export default function pluginAI(params: any): any {
+export default function pluginAI(params?: any): any {
   const { user, prompts, requestAsStream } = transformParams(params);
   const copilot = {
     name: "MyBricks.ai",
