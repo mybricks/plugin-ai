@@ -28,8 +28,11 @@ type Plans = Rxai['cacheMessages'];
 const Messages = (params: MessagesParams) => {
   const { user, rxai, copilot } = params;
 
+  const mainRef = useRef<HTMLElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
   const destroysRef = useRef<(() => void)[]>([]);
   const [plans, setPlans] = useState<Plans>([]);
+  const [scrollSnap, setScrollSnap] = useState(true);
 
   useLayoutEffect(() => {
     destroysRef.current.push(rxai.events.on('plan', (plans) => {
@@ -38,7 +41,22 @@ const Messages = (params: MessagesParams) => {
   }, [])
 
   useEffect(() => {
+    const mutationObserver = new MutationObserver(function () {
+      mainRef.current!.scrollTop = mainRef.current!.scrollHeight;
+    });
+    
+    mutationObserver.observe(mainRef.current!, { childList: true });
+
+    const intersectionObserver = new IntersectionObserver((entries) => {
+      setScrollSnap(entries[0].intersectionRatio > 0)
+    }, { root: mainRef.current })
+
+    intersectionObserver.observe(anchorRef.current!);
+  
     return () => {
+      mutationObserver.disconnect();
+      intersectionObserver.disconnect();
+
       for (const destroy of destroysRef.current) {
         destroy()
       }
@@ -46,11 +64,13 @@ const Messages = (params: MessagesParams) => {
   }, [])
 
   return (
-    <main className={css['ai-chat-messages']}>
+    <main ref={mainRef} className={css['ai-chat-messages']}>
       {plans.map((plan, index) => {
         return <Bubble key={index} user={user} plan={plan} copilot={copilot} />
       })}
-      <div className={css['anchor']} />
+      <div ref={anchorRef} className={classNames(css['anchor'], {
+        [css['scroll-snap']]: scrollSnap
+      })}/>
     </main>
   )
 }

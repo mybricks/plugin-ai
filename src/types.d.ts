@@ -34,10 +34,12 @@ type AiServiceFocusParams = {
   type: "uiCom";
   comId: string;
   title: string;
+  onProgress: (status: "start" | "ing" | "complete") => void;
 } | {
   type: "page";
   pageId: string;
   title: string;
+  onProgress: (status: "start" | "ing" | "complete") => void;
 }
 
 type AiServiceRequestParams = {
