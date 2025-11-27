@@ -290,7 +290,7 @@ export function createActionsParser() {
 
   return function parseActions(text: string) {
     const newActions = [];
-    const lines = text.split("\n");
+    const lines = text.split("\n").filter(line => line.trim() !== '');
 
     // 只处理除了最后一行之外的所有行（最后一行可能不完整）
     const linesToProcess = lines.slice(0, -1);
@@ -317,11 +317,12 @@ export function createActionsParser() {
       }
     }
 
-    // 检查最后一行是否完整（如果以换行符结尾，说明最后一行是空的）
-    if (lastLine && lastLine.trim() && text.endsWith("\n")) {
+    // 处理最后一行
+    if (lastLine && lastLine.trim()) {
       const trimmedLastLine = lastLine.trim();
 
-      if (!processedLines.has(trimmedLastLine)) {
+      // 如果文本以换行符结尾，说明最后一行是完整的
+      if ((text.endsWith("\n")) && !processedLines.has(trimmedLastLine)) {
         try {
           const parsedAction = formatAction(trimmedLastLine);
           if (parsedAction.comId) {
@@ -332,8 +333,6 @@ export function createActionsParser() {
           processedLines.add(trimmedLastLine);
         }
       }
-    } else if (lastLine && lastLine.trim()) {
-      // 最后一行不完整，等待更多数据
     }
 
     return newActions;

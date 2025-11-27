@@ -7,7 +7,8 @@ interface ModifyComponentToolParams {
 }
 
 export default function modifyComponentsInPage(config: ModifyComponentToolParams): any {
-  const actionsParser = createActionsParser();
+  const streamActionsParser = createActionsParser();
+  const excuteActionsParser = createActionsParser();
   return {
     name: 'refactor-components-in-page',
     displayName: "局部修改/重构",
@@ -466,14 +467,10 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
       const actionsFile = getFiles(files, {extName: 'json' })
 
       if (actionsFile) {
-        actions = actionsParser(actionsFile.content ?? "");
+        actions = streamActionsParser(actionsFile.content ?? "");
       }
 
-      // if (status === 'start') {
-      //   config.onClearPage()
-      // }
-
-      // console.log('actions', actionsFile?.content, actions)
+      console.log('actions', actions)
       
       if (actions.length > 0 || status === 'start' || status === 'complete') {
         config.onActions(actions, status)
@@ -483,7 +480,7 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
       let actions: any = [];
       const actionsFile = getFiles(files, {extName: 'json' })
       if (actionsFile) {
-        actions = actionsParser(actionsFile.content ?? "");
+        actions = excuteActionsParser(actionsFile.content ?? "");
       }
 
       // console.log('actions', actions)
