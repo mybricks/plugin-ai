@@ -496,7 +496,7 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
         actions = excuteActionsParser(actionsFile.content ?? "");
       }
 
-      console.log('actions', actions)
+      // console.log('actions', actions)
 
       const actionsGroupById = actions.reduce((acc, item) => {
         const id = item.comId;
