@@ -80,13 +80,31 @@ export default function pluginAI(params?: any): any {
                 params.message = "参考附件图片完成页面搭建\n" + params.message
               }
 
-              Agents.requestCommonAgent(params)
+              const focus = context.currentFocus;
+              const extension: any = {};
+
+              if (focus) {
+                const type = focus.type;
+                const id = type === "page" ? focus.pageId : focus.comId;
+                extension.mentions = [
+                  {
+                    id,
+                    name: focus.title,
+                    onClick() {
+                      context.aiViewAPI[type === "page" ? "focusPage" : "focusCom"](id);
+                    },
+                  }
+                ]
+              }
+
+              Agents.requestCommonAgent({...params, extension})
             }
           }
         }
       },
       aiView: {
         render(api: AiViewApi) {
+          context.aiViewAPI = api;
           return <View user={user} copilot={copilot} api={api}/>
         },
         display() {

@@ -4,6 +4,7 @@ class Context {
   rxai!: Rxai
   currentFocus?: AiServiceFocusParams;
   api!: AiServiceAPI;
+  aiViewAPI!: AiViewApi;
 
   /** 应用传入的系统提示词 */
   prompts?: any;
