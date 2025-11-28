@@ -14,22 +14,12 @@ import { StartView } from "./startView";
 export { fileFormat } from '@mybricks/rxai'
 import preset from "./preset"
 
-const transformParams = (params?: any) => {
-  if (!params) {
-    return preset;
-  }
-
-  return {
-    user: {
-      name: "user",
-      avatar: "/default_avatar.png"
-    },
-    ...params
-  }
+const transformParams = (params: any = {}) => {
+  return Object.assign({...preset}, params);
 }
 
 export default function pluginAI(params?: any): any {
-  const { user, prompts, requestAsStream } = transformParams(params);
+  const { user, prompts, requestAsStream, mock } = transformParams(params);
   const copilot = {
     name: "MyBricks.ai",
     avatar: "https://my.mybricks.world/image/icon.png"
@@ -51,9 +41,29 @@ export default function pluginAI(params?: any): any {
       aiService: {
         init(api: AiServiceAPI) {
           context.api = api;
+
+          const useMock = !!mock?.length;
+          
+          const mockRequestAsStream = () => {
+            let count = 0;
+            let length = mock.length;
+            return (params: {
+              messages: any;
+              emits: any;
+              aiRole?: any;
+            }) => {
+              params.emits.write("");
+              params.emits.write(mock[count++]);
+              params.emits.complete("");
+              if (count === length) {
+                count = 0;
+              }
+            }
+          }
+
           context.createRxai({
             request: {
-              requestAsStream
+              requestAsStream: useMock ? mockRequestAsStream() : requestAsStream
             }
           })
 
