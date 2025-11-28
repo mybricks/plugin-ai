@@ -1,6 +1,6 @@
 const user = {
   name: "user",
-  avatar: "/default_avatar.png"
+  avatar: "https://my.mybricks.world/default_avatar.png"
 }
 
 export { user }

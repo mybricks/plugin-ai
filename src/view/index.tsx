@@ -7,7 +7,12 @@ import { context } from "../context";
 import { Agents } from '../agents'
 import css from "./index.less";
 
-const View = ({ user, copilot }: any) => {
+interface ViewProps {
+  api: AiViewApi;
+  user: any;
+  copilot: any;
+}
+const View = ({ user, copilot, api }: ViewProps) => {
   const senderRef = useRef<SenderRef>(null);
 
   useEffect(() => {
@@ -20,12 +25,13 @@ const View = ({ user, copilot }: any) => {
       if (!focus) {
         senderRef.current!.setMentions([]);
       } else {
-        const id = focus.type === "page" ? focus.pageId : focus.comId;
+        const type = focus.type;
+        const id = type === "page" ? focus.pageId : focus.comId;
         senderRef.current!.setMentions([{
           id,
           name: focus.title,
           onClick() {
-            console.log("点击了mention", focus)
+            api[type === "page" ? "focusPage" : "focusCom"](id);
           },
         }]);
       }

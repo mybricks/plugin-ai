@@ -76,8 +76,8 @@ export default function pluginAI(params?: any): any {
         }
       },
       aiView: {
-        render() {
-          return <View user={user} copilot={copilot}/>
+        render(api: AiViewApi) {
+          return <View user={user} copilot={copilot} api={api}/>
         },
         display() {
           context.events.emit("aiViewDisplay", true);
