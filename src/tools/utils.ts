@@ -234,6 +234,13 @@ function transformToValidBackground(styles: any): void {
   if (imageMatch && !styles.backgroundImage) {
     styles.backgroundImage = imageMatch[0];
   }
+
+  if (background === 'transparent' || background === 'none') {
+    styles.backgroundColor = 'transparent';
+    styles.backgroundImage = 'none'
+  }
+
+  console.log('style', JSON.stringify(styles))
 }
 
 /**

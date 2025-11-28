@@ -106,6 +106,18 @@ function getComponentsInfoByJson(data: any): GetComponentsResult {
     if (style.width !== undefined) layout.width = style.width;
     if (style.height !== undefined) layout.height = style.height;
     if (style.margin !== undefined) layout.margin = style.margin;
+    if (style.layout !== undefined) {
+      if (style.layout === 'flex-column' || style.layout === 'flex') {
+        layout.display = 'flex';
+        layout.flexDirection = 'column';
+      }
+      if (style.layout === 'flex-row') {
+        layout.display = 'flex';
+        layout.flexDirection = 'row';
+      }
+      if (style.alignItems) layout.alignItems = style.alignItems;
+      if (style.justifyContent) layout.justifyContent = style.justifyContent;
+    }
 
     return layout;
   }
@@ -134,7 +146,17 @@ function getComponentsInfoByJson(data: any): GetComponentsResult {
     let slotsJSX = '';
     slots.forEach(slot => {
       if (slot.id) {
-        slotsJSX += `\n${indent}<slots.${slot.id}>`;
+        slotsJSX += `\n${indent}<slots.${slot.id}`;
+
+        if (slot.title) {
+          slotsJSX += ` title="${slot.title}"`;
+        }
+
+        if (slot.layout) {
+          slotsJSX += ` layout={${extractLayout(slot.layout)}}`;
+        }
+
+        slotsJSX += ' >'
 
         // 如果插槽有组件，递归处理
         if (slot.components && Array.isArray(slot.components)) {

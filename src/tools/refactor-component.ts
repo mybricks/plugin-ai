@@ -459,6 +459,19 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
       })}
     </assistant_response>
   </example>
+
+  <example>
+    <user_query>添加一个右侧按钮</user_query>
+    <assistant_response>
+      如何定义右侧，首先观察父组件的布局配置，为竖排布局，添加右侧需要先修改父组件布局，添加一个左侧容器，将内容挪动至左侧布局，再添加按钮才会在右侧
+
+      ${fileFormat({
+        content: `["u_222", ":root", "doConfig", {"path":"布局","value":{"display": "flex", "flexDirection":"row", "justifyContent":"space-between"}}]
+...`,
+        fileName: '添加右侧按钮.json'
+      })}
+    </assistant_response>
+  </example>
 </examples>`
     },
     aiRole: 'expert',
@@ -470,7 +483,7 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
         actions = streamActionsParser(actionsFile.content ?? "");
       }
 
-      console.log('actions', actions)
+      // console.log('actions', actions)
       
       if (actions.length > 0 || status === 'start' || status === 'complete') {
         config.onActions(actions, status)
@@ -483,7 +496,7 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
         actions = excuteActionsParser(actionsFile.content ?? "");
       }
 
-      // console.log('actions', actions)
+      console.log('actions', actions)
 
       const actionsGroupById = actions.reduce((acc, item) => {
         const id = item.comId;

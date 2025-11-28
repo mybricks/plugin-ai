@@ -445,8 +445,6 @@ ${config.examples}
       if (status === 'start') {
         config.onClearPage()
       }
-
-      console.log('actions', actions)
       
       if (actions.length > 0 || status === 'start' || status === 'complete') {
         config.onActions(actions, status)

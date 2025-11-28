@@ -120,7 +120,8 @@ export const requestCommonAgent = (params: any) => {
           role: 'assistant',
           content: `当前已聚焦到${context.currentFocus?.type === 'uiCom' ? `组件(id=${context.currentFocus?.comId})` : `页面(title=${context.currentFocus?.title},id=${context.currentFocus?.pageId})`}中，后续用户的提问，关于”这个“、“此”、“整体”，甚至不提主语，都是指代此元素及其子组件内容。
     <当前聚焦元素的内容简介>
-    ${MyBricksHelper.getTreeDescriptionByJson(context.currentFocus?.type === 'uiCom' ? context.api?.uiCom?.api?.getOutlineInfo(context.currentFocus?.comId) : context.api?.page?.api?.getOutlineInfo(context.currentFocus?.pageId))}
+    缩进代表层级关系
+${MyBricksHelper.getTreeDescriptionByJson(context.currentFocus?.type === 'uiCom' ? context.api?.uiCom?.api?.getOutlineInfo(context.currentFocus?.comId) : context.api?.page?.api?.getOutlineInfo(context.currentFocus?.pageId))}
     
       > 如果内容不为空，代表组件通过插槽放置有子组件，如果内容为空，则代表此组件没有任何子组件。
     </当前聚焦元素的内容简介>
