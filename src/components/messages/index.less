@@ -65,23 +65,23 @@
       padding: 8px 12px
     }
 
-    .user-message img {
-      display: inline-block;
-      flex-shrink: 0;
-      width: auto;
-      height: 60px;
-      margin: 0;
-      object-fit: cover;
+    // .user-message img {
+    //   display: inline-block;
+    //   flex-shrink: 0;
+    //   width: auto;
+    //   height: 60px;
+    //   margin: 0;
+    //   object-fit: cover;
 
-      +& {
-        margin-left: 8px
-      }
-    }
+    //   +& {
+    //     margin-left: 8px
+    //   }
+    // }
 
-    .user-message p:has(img) {
-      display: flex;
-      align-items: center
-    }
+    // .user-message p:has(img) {
+    //   display: flex;
+    //   align-items: center
+    // }
   }
 
   .chat-bubble-header {
@@ -99,7 +99,8 @@
       width: 20px;
       height: 20px;
       box-sizing: content-box;
-      border: 2px solid #ffffff;
+      // border: 2px solid #ffffff;
+      border: 2px solid transparent;
 
       .copilot-avatar {
         .user-avatar();
@@ -264,6 +265,27 @@
 
     .chat-bubble-option-container {
       justify-content: end
+    }
+
+    .mentions-container {
+      display: inline-flex;
+    }
+
+    span {
+      font-size: 12px;
+      line-height: 20px;
+      white-space: pre-wrap;
+    }
+
+    &:has(.mentions-container) {
+      span {
+        margin-left: 4px;
+      }
+    }
+
+    .attachments-list {
+      padding-top: 8px;
+      justify-content: flex-end;
     }
   }
 

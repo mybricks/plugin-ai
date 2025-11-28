@@ -2,35 +2,46 @@ import React, { useEffect, useRef } from "react"
 import classNames from "classnames";
 import { Header } from "./components";
 import { Messages } from "../components/messages";
-import { Sender } from "../components/sender";
+import { Sender, SenderRef, SenderProps } from "../components/sender";
 import { context } from "../context";
 import { Agents } from '../agents'
 import css from "./index.less";
 
 const View = ({ user, copilot }: any) => {
-  const senderRef = useRef<{ focus: () => void }>(null);
+  const senderRef = useRef<SenderRef>(null);
 
   useEffect(() => {
-    senderRef.current!.focus();
-    const destroy = context.events.on("aiViewDisplay", () => {
+    const disconnectAiViewDisplay = context.events.on("aiViewDisplay", () => {
       setTimeout(() => {
         senderRef.current!.focus();
       })
-    })
+    }, true)
+    const disconnectFocus = context.events.on("focus", (focus) => {
+      if (!focus) {
+        senderRef.current!.setMentions([]);
+      } else {
+        const id = focus.type === "page" ? focus.pageId : focus.comId;
+        senderRef.current!.setMentions([{
+          id,
+          name: focus.title,
+          onClick() {
+            console.log("点击了mention", focus)
+          },
+        }]);
+      }
+    }, true)
     return () => {
-      destroy()
+      disconnectAiViewDisplay()
+      disconnectFocus()
     }
   }, [])
 
-  const onSend = (sendMessage: {
-    message: string;
-    attachments: {
-      type: "image";
-      content: string;
-    }[];
-  }) => {
+  const onSend = (sendMessage: Parameters<SenderProps["onSend"]>[0]) => {
+    const { message, attachments, ...extension } = sendMessage;
     Agents.requestCommonAgent({
-      ...sendMessage,
+      message,
+      attachments,
+      extension,
       onProgress: context.currentFocus?.onProgress
     });
   }

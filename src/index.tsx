@@ -61,11 +61,9 @@ export default function pluginAI(params?: any): any {
 
           return {
             focus(params: AiServiceFocusParams) {
-              if (!params) {
-                context.currentFocus = undefined;
-                return;
-              }
-              context.currentFocus = params;
+              const currentFocus = !params ? undefined : params;
+              context.currentFocus = currentFocus;
+              context.events.emit("focus", currentFocus);
             },
             request(params: AiServiceRequestParams) {
               if (params.attachments?.length) {

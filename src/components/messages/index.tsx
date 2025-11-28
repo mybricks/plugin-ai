@@ -2,7 +2,10 @@ import React, { useRef, useState, useEffect, useLayoutEffect } from "react"
 import classNames from "classnames"
 import { Rxai } from "@mybricks/rxai"
 import markdownit from 'markdown-it'
+import { Extension } from "../types";
 import { Loading, Success, Close } from "../icons";
+import { AttachmentsList } from "../attachments";
+import { MentionTag } from "../mention";
 import css from "./index.less"
 
 const md = markdownit()
@@ -120,7 +123,7 @@ const Bubble = (params: BubbleParams) => {
 
   return (
     <>
-      {messages[0] && <BubbleUser user={user} message={messages[0]} />}
+      {messages[0] && <BubbleUser user={user} message={messages[0]} plan={plan} />}
       {messages[0] && <BubbleCopilot messages={messages.slice(1)} copilot={copilot} message={message} loading={loading} />}
     </>
   )
@@ -143,10 +146,13 @@ const BubbleMessage = (params: BubbleMessageParams) => {
 interface BubbleUserParams {
   user: User;
   message: UserFriendlyMessages[number]
+  plan: Plan;
 }
 
 const BubbleUser = (params: BubbleUserParams) => {
-  const { user, message } = params;
+  const { user, message, plan } = params;
+  const mentions = (plan.extension as Extension)?.mentions || [];
+  const attachments = plan.attachments || [];
 
   return (
     <article className={css['chat-bubble']}>
@@ -157,13 +163,23 @@ const BubbleUser = (params: BubbleUserParams) => {
         <span className={css['chat-bubble-header-name']}>{user.name}</span>
       </header>
       <section className={classNames(css['chat-message-container'], css['user-message'])}>
-        <div className={css['markdown-body']}>
-          <BubbleMessage message={typeof message.content === "string" ? message.content : message.content.find((content: any) => {
+        {mentions.length ? (
+          <div className={css['mentions-container']}>
+            {mentions.map((mention) => {
+              return <MentionTag key={mention.id} mention={mention}/>
+            })}
+          </div>
+        ) : null}
+        <span>
+          {typeof message.content === "string" ? message.content : message.content.find((content: any) => {
             if (content.type === "text") {
               return content
             }
-          }).text}/>
-        </div>
+          }).text}
+        </span>
+        {attachments.length ? (
+          <AttachmentsList className={css['attachments-list']} attachments={attachments}/>
+        ) : null}
       </section>
     </article>
   )

@@ -10,6 +10,7 @@ class Context {
 
   events = new Events<{
     aiViewDisplay: boolean;
+    focus: AiServiceFocusParams | undefined;
   }>();
 
   createRxai(options: ConstructorParameters<typeof Rxai>[0]) {

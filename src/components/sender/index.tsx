@@ -1,7 +1,10 @@
 import React, { useEffect, useRef, useState, useImperativeHandle, PropsWithoutRef, forwardRef } from "react"
 import classNames from "classnames";
-import { message, Image } from "antd";
-import { ArrowUp, Attachment, Loading, Close } from "../icons";
+import { message } from "antd";
+import { ArrowUp, Attachment, Loading } from "../icons";
+import { MentionTag } from "../mention";
+import { AttachmentsList } from "../attachments";
+import { Mention, Attachments } from "../types";
 import css from "./index.less"
 
 const readFileToBase64 = (file: File): Promise<string> => {
@@ -25,24 +28,35 @@ const readFileToBase64 = (file: File): Promise<string> => {
 interface SenderProps extends PropsWithoutRef<any> {
   onSend: (message: {
     message: string;
-    attachments: {type: "image"; content: string}[];
+    attachments: Attachments;
+    mentions: Mention[];
   }) => void;
   loading?: boolean;
   placeholder?: string;
 }
 
-const Sender = forwardRef<{ focus: () => void }, SenderProps>((props, ref) => {
+interface SenderRef {
+  focus: () => void;
+  // TODO: 目前仅展示聚焦组件且单个比较简单直接set即可，后续可通过输入框@唤起选择多个
+  setMentions: (mentions: Mention[]) => void;
+}
+
+const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const { loading, placeholder = "请输入" } = props;
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [inputContent, setInputContent] = useState<string | null>(null);
-  const [attachments, setAttachments] = useState<string[]>([]);
+  const [attachments, setAttachments] = useState<Attachments>([]);
+  const [mentions, setMentions] = useState<Mention[]>([]);
 
   useImperativeHandle(ref, () => {
     return {
       focus: () => {
         inputEditorRef.current!.focus()
-      }
+      },
+      setMentions: (mentions) => {
+        setMentions(mentions)
+      },
     };
   }, []);
 
@@ -51,12 +65,8 @@ const Sender = forwardRef<{ focus: () => void }, SenderProps>((props, ref) => {
     if (inputContent && !loading) {
       props.onSend({
         message: inputContent,
-        attachments: attachments.map((attachment) => {
-          return {
-            type: "image",
-            content: attachment
-          }
-        }),
+        attachments,
+        mentions,
       })
 
       setAttachments([]);
@@ -124,7 +134,7 @@ const Sender = forwardRef<{ focus: () => void }, SenderProps>((props, ref) => {
         readFileToBase64(file)
           .then((base64) => {
             setAttachments((attachments) => {
-              return [...attachments, base64]
+              return [...attachments, { type: "image", content: base64 }]
             })
           })
           .catch((event) => {
@@ -147,8 +157,23 @@ const Sender = forwardRef<{ focus: () => void }, SenderProps>((props, ref) => {
       readFileToBase64(file)
         .then((base64) => {
           setAttachments((attachments) => {
-            return [...attachments, base64]
+            return [...attachments, { type: "image", content: base64 }]
           })
+          if (!inputContent) {
+            const defaultContent = "根据附件图片开发，高度还原功能和视觉设计，可适度创新优化";
+            setInputContent(defaultContent);
+            const selection = window.getSelection();
+
+            if (!selection?.rangeCount) {
+              return;
+            }
+
+            const range = selection.getRangeAt(0);
+            const textNode = document.createTextNode(defaultContent);
+            range.insertNode(textNode);
+            range.setStartAfter(textNode);
+            range.setEndAfter(textNode);
+          }
         })
         .catch((event) => {
           console.error("[@mybricks/plugin-ai - 上传附件失败]", event);
@@ -193,7 +218,12 @@ const Sender = forwardRef<{ focus: () => void }, SenderProps>((props, ref) => {
     <div className={css.container}>
       <div className={css.editor}>
         {attachments.length ? (
-          <Attachments attachments={attachments} onDelete={onAttachmentsDelete}/>
+          <div className={css.topArea}>
+            <AttachmentsList attachments={attachments} onDelete={onAttachmentsDelete}/>
+          </div>
+        ) : null}
+        {mentions.length ? (
+          <Mentions mentions={mentions}/>
         ) : null}
         <div className={css.input}>
           <div className={css.inputEditorContainer}>
@@ -236,51 +266,20 @@ const Sender = forwardRef<{ focus: () => void }, SenderProps>((props, ref) => {
 })
 
 export { Sender }
+export type { SenderRef, SenderProps }
 
-interface AttachmentsProps {
-  attachments: string[];
-  onDelete: (index: number) => void;
+interface MentionsProps {
+  mentions: Mention[];
 }
-/** 附件图片 */
-const Attachments = (props: AttachmentsProps) => {
-  const { attachments, onDelete } = props;
-  const [preiviewVisible, setPreiviewVisible] = useState(false);
-  const [preiviewCurrent, setPreiviewCurrent] = useState(0);
+const Mentions = (props: MentionsProps) => {
+  const { mentions } = props;
+
   return (
-    <>
-      <div className={css.topArea}>
-        {attachments.map((attachment, index) => {
-          return (
-            <div className={css.imageThumbnail}>
-              <img
-                src={attachment}
-                onClick={() => {
-                  setPreiviewCurrent(index);
-                  setPreiviewVisible(true);
-                }}
-              />
-              <div className={css.imageDeleteContainer} onClick={() => onDelete(index)}>
-                <div className={css.imageDeleteIcon}>
-                  <Close />
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-      <div style={{ display: 'none' }}>
-        <Image.PreviewGroup 
-          preview={{ 
-            visible: preiviewVisible,
-            onVisibleChange: setPreiviewVisible,
-            current: preiviewCurrent,
-          }}
-        >
-          {attachments.map((src, index) => (
-            <Image key={index} src={src} />
-          ))}
-        </Image.PreviewGroup>
-      </div>
-    </>
+    <div className={css.topArea}>
+      {mentions.map((mention) => {
+        return <MentionTag key={mention.id} mention={mention} />
+      })}
+    </div>
   )
 }
+
