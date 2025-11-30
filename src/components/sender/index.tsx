@@ -149,7 +149,24 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
   const onPaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
     event.preventDefault();
-    const file = event.clipboardData.files[0];
+
+    const clipboardData = event.clipboardData;
+    let file: File | null = null;
+
+    if (clipboardData.items?.length > 0) {
+      for (let i = 0; i < clipboardData.items.length; i++) {
+        const item = clipboardData.items[i];
+        if (item.type.indexOf('image') !== -1) {
+          file = item.getAsFile();
+          break;
+        }
+      }
+    }
+
+    if (!file && clipboardData.files?.length > 0) {
+      file = clipboardData.files[0];
+    }
+    
     if (file?.type.startsWith('image/')) {
       if (checkAttachmentsLimit()) {
         return;
