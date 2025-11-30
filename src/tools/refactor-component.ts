@@ -489,12 +489,18 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
         config.onActions(actions, status)
       }
     },
-    execute({ files }) {
+    execute({ files, content }) {
       let actions: any = [];
       const actionsFile = getFiles(files, {extName: 'json' })
-      if (actionsFile) {
-        actions = excuteActionsParser(actionsFile.content ?? "");
+
+      if (!actionsFile) {
+        return {
+          llmContent: content,
+          displayContent: content
+        }
       }
+
+      actions = excuteActionsParser(actionsFile.content ?? "");
 
       // console.log('actions', actions)
 
