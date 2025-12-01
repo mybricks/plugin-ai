@@ -518,8 +518,8 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
       // config.onActions(actions, 'start')
 
       return {
-        llmContent: `refactor-components-in-page 已执行，已根据需求修改以下组件: ${Object.keys(actionsGroupById).join('、')}。`,
-        displayContent: `refactor-components-in-page 已执行，已根据需求修改${Object.keys(actionsGroupById).length}个组件`
+        llmContent: `已根据需求修改以下组件: ${Object.keys(actionsGroupById).join('、')}。`,
+        displayContent: `已根据需求修改${Object.keys(actionsGroupById).length}个组件`
       }
     },
   }

@@ -239,8 +239,6 @@ function transformToValidBackground(styles: any): void {
     styles.backgroundColor = 'transparent';
     styles.backgroundImage = 'none'
   }
-
-  console.log('style', JSON.stringify(styles))
 }
 
 /**

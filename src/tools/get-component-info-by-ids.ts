@@ -65,15 +65,21 @@ export default function getComponentsInfoByIds(config: GetComponentInfoParams,):
       }
       if (!selectId) {
         throw new ToolError({
-          llmContent: '拿不到有效的元素ID，请检查返回的文件格式',
-          displayContent: '获取组件文档失败，请重试'
+          llmContent: '拿不到有效的元素ID，请检查返回的文件和需求是否能获取到要操作的ID',
+          displayContent: '获取不到操作目标，请重试'
         })
       }
 
       const { jsx, namespaces } = getComponentsInfoByJson(selectType === 'page' ? config.getPageJson(selectId) : config.getComJson(selectId))
 
       const docs = namespaces.reduce((acc, cur) => {
-        return acc + '\n' + config.getComInfo(cur)
+        try {
+          const comDoc = config.getComInfo(cur)
+          return acc + '\n' + comDoc
+        } catch (error) {
+          console.warn(`获取组件${JSON.stringify(cur)}的文档失败`)
+        }
+        return acc
       }, '')
 
       return {
