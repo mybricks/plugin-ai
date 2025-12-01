@@ -111,6 +111,34 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     return false;
   }
 
+  const updateAttachmentsByFile = (file: File) => {
+    readFileToBase64(file)
+      .then((base64) => {
+        setAttachments((attachments) => {
+          return [...attachments, { type: "image", content: base64 }]
+        })
+        if (!inputContent) {
+          const defaultContent = "根据附件中的图片内容进行设计开发，要求尽可能还原其中的各类设计细节以及功能，在此基础上可做调整优化创新";
+          setInputContent(defaultContent);
+          const selection = window.getSelection();
+
+          if (!selection?.rangeCount) {
+            return;
+          }
+
+          const range = selection.getRangeAt(0);
+          const textNode = document.createTextNode(defaultContent);
+          range.insertNode(textNode);
+          range.setStartAfter(textNode);
+          range.setEndAfter(textNode);
+        }
+      })
+      .catch((event) => {
+        console.error("[@mybricks/plugin-ai - 上传附件失败]", event);
+        message.error("[@mybricks/plugin-ai - 上传附件失败]");
+      })
+  }
+
   const uploadAttachment = () => {
     if (checkAttachmentsLimit()) {
       return;
@@ -131,16 +159,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           return;
         }
 
-        readFileToBase64(file)
-          .then((base64) => {
-            setAttachments((attachments) => {
-              return [...attachments, { type: "image", content: base64 }]
-            })
-          })
-          .catch((event) => {
-            console.error("[@mybricks/plugin-ai - 上传附件失败]", event);
-            message.error("[@mybricks/plugin-ai - 上传附件失败]");
-          })
+        updateAttachmentsByFile(file);
       }
     });
 
@@ -154,31 +173,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       if (checkAttachmentsLimit()) {
         return;
       }
-      readFileToBase64(file)
-        .then((base64) => {
-          setAttachments((attachments) => {
-            return [...attachments, { type: "image", content: base64 }]
-          })
-          if (!inputContent) {
-            const defaultContent = "根据附件图片开发，高度还原功能和视觉设计，可适度创新优化";
-            setInputContent(defaultContent);
-            const selection = window.getSelection();
-
-            if (!selection?.rangeCount) {
-              return;
-            }
-
-            const range = selection.getRangeAt(0);
-            const textNode = document.createTextNode(defaultContent);
-            range.insertNode(textNode);
-            range.setStartAfter(textNode);
-            range.setEndAfter(textNode);
-          }
-        })
-        .catch((event) => {
-          console.error("[@mybricks/plugin-ai - 上传附件失败]", event);
-          message.error("[@mybricks/plugin-ai - 上传附件失败]");
-        })
+      updateAttachmentsByFile(file);
     } else {
       const content = event.clipboardData.getData('text/plain');
 
