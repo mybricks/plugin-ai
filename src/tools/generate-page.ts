@@ -450,7 +450,15 @@ ${config.examples}
         config.onActions(actions, status)
       }
     },
-    execute({ files }) {
+    execute({ files, content }) {
+      const actionsFile = getFiles(files, {extName: 'json' })
+
+      if (!actionsFile) {
+        return {
+          llmContent: content,
+          displayContent: content
+        }
+      }
       // let actions: any = [];
       // const actionsFile = getFiles(files, {extName: 'json' })
       // if (actionsFile) {
