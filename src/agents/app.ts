@@ -162,6 +162,7 @@ export const requestGenerateCanvasAgent = (params: any) => {
             }
             resolve('complete')
             if (canvasId) {
+              params?.onProgress?.('ing');
               createCanvasByAICanvas(canvasId, projectJson);
             }
           }
