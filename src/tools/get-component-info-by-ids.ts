@@ -112,6 +112,10 @@ function getComponentsInfoByJson(data: any): GetComponentsResult {
     if (style.width !== undefined) layout.width = style.width;
     if (style.height !== undefined) layout.height = style.height;
     if (style.margin !== undefined) layout.margin = style.margin;
+    if (style.marginLeft !== undefined) layout.marginLeft = style.marginLeft;
+    if (style.marginRight !== undefined) layout.marginRight = style.marginRight;
+    if (style.marginTop !== undefined) layout.marginTop = style.marginTop;
+    if (style.marginBottom !== undefined) layout.marginBottom = style.marginBottom;
     if (style.layout !== undefined) {
       if (style.layout === 'flex-column' || style.layout === 'flex') {
         layout.display = 'flex';
@@ -159,7 +163,7 @@ function getComponentsInfoByJson(data: any): GetComponentsResult {
         }
 
         if (slot.layout) {
-          slotsJSX += ` layout={${extractLayout(slot.layout)}}`;
+          slotsJSX += ` layout={${JSON.stringify(extractLayout(slot.layout))}}`;
         }
 
         slotsJSX += ' >'

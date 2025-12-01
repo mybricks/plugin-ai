@@ -38,10 +38,8 @@ function getTreeDescriptionByJson(data: any, level = 0) {
 
   // 处理当前节点
   if (data.title) {
-    const namespace = data.def?.namespace ||
-      data.def?.namespace ||
-      'UNKNOWN';
-    result += `${indent}- ${data.title}[id=${data.id}](${namespace})\n`;
+    const namespace = data.def?.namespace || data.def?.namespace;
+    result += `${indent}- ${data.title}[id=${data.id}]${namespace ? `(${namespace})` : ''}\n`;
   }
 
   // 处理slots中的组件

@@ -7,6 +7,11 @@ export const requestCommonAgent = (params: any) => {
   return new Promise((resolve, reject) => {
     const prompts = context.prompts;
 
+    if (!context.currentFocus) {
+      window?.antd?.message?.warn?.('当前暂不支持全局使用AI，请聚焦到页面或者组件上')
+      return reject('当前暂不支持全局使用AI，请聚焦到页面或者组件上')
+    }
+
     const targetType = context.currentFocus?.type
     const targetId = targetType === 'uiCom' ? context.currentFocus?.comId : context.currentFocus?.pageId
     
