@@ -113,8 +113,8 @@ export default function pluginAI(params?: any): any {
         hide() {}
       },
       aiStartView: {
-        render() {
-          return <StartView user={user} copilot={copilot}/>
+        render(api: AiStartViewApi) {
+          return <StartView user={user} copilot={copilot} api={api}/>
         }
       }
     }

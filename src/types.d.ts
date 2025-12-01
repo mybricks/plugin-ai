@@ -61,8 +61,11 @@ type AiServiceRequestParams = {
   }[];
   onProgress: (status: string) => void;
 }
-
 interface AiViewApi {
   focusPage: (pageId: string) => void;
   focusCom: (comId: string) => void;
+}
+
+interface AiStartViewApi {
+  onProgress: (state: "start" | "ing") => void;
 }

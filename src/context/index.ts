@@ -2,6 +2,7 @@ import { Rxai, Events } from "@mybricks/rxai"
 
 class Context {
   rxai!: Rxai
+  globalRxai!: Rxai
   currentFocus?: AiServiceFocusParams;
   api!: AiServiceAPI;
   aiViewAPI!: AiViewApi;
@@ -17,6 +18,7 @@ class Context {
   createRxai(options: ConstructorParameters<typeof Rxai>[0]) {
     if (!this.rxai) {
       this.rxai = new Rxai(options)
+      this.globalRxai = new Rxai(options)
     }
   }
 }

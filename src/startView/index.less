@@ -7,15 +7,28 @@
   }
 }
 
-.messages {
+.view {
   width: 80%;
   max-width: 768px;
-  background-color: #ffffff;
+  // background-color: #ffffff;
+  background-color: transparent;
   border: solid 1px rgba(0, 0, 0, .13);
   border-radius: 20px;
   box-shadow: 0 5px 16px -4px #00000012;
   color: rgba(0, 0, 0, .9);
   cursor: default;
   height: 80%;
-  padding: 10px;
+  // padding: 10px;
+
+  display: flex;
+  flex-direction: column;
+
+  &.empty {
+    display: flex;
+    flex-direction: column;
+    // background-color: transparent;
+    border: none;
+    height: fit-content;
+    box-shadow: none;
+  }
 }

@@ -127,9 +127,9 @@ ${aiCanvas.style}
 
 export const requestGenerateCanvasAgent = (params: any) => {
   return new Promise((resolve, reject) => {
-    params?.onProgress?.('start')
+    params?.onProgress?.('start');
 
-    context.rxai.requestAI({
+    (params.rxai || context.rxai).requestAI({
       ...params,
       message: params?.message,
       key: params.id,
