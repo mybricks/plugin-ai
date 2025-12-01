@@ -17,7 +17,7 @@ export default function getComponentsDocAndPrd(config: GetComponentsDocAndPrdToo
 前置要求：用户提出过搭建需求
 参数：用户需求（可能是文本，一句话、图片附近、文件附件等需求）
 返回值：需求分析规格说明书（PRD）文件 + 组件选型；`,
-    aiRole: "expert",
+    aiRole: 'architect',
     getPrompts: () => {
         return `<工具总览>
 你是一个获取组件文档和用户需求的工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深页面搭建助手，拥有专业的产品经理能力。

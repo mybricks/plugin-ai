@@ -3,12 +3,14 @@ import { getFiles, createActionsParser } from './utils'
 
 interface ModifyComponentToolParams {
   /** 当所有actions返回时 */
-  onActions: (actions: any[], status: string) => void
+  onActions: (actions: any[], status: string) => void,
+  getFocusElementHasChildren: () => boolean
 }
 
 export default function modifyComponentsInPage(config: ModifyComponentToolParams): any {
   const streamActionsParser = createActionsParser();
   const excuteActionsParser = createActionsParser();
+  const hasChildren = config.getFocusElementHasChildren() !== false
   return {
     name: 'refactor-components-in-page',
     displayName: "局部修改/重构",
@@ -474,7 +476,7 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
   </example>
 </examples>`
     },
-    aiRole: 'expert',
+    aiRole: hasChildren ? 'expert' : undefined,
     stream({ files, status }) {
       let actions: any = [];
       const actionsFile = getFiles(files, {extName: 'json' })
@@ -516,8 +518,8 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
       // config.onActions(actions, 'start')
 
       return {
-        llmContent: `refactor-components-in-page 已完成，已根据需求修改以下组件: ${Object.keys(actionsGroupById).join('、')}。`,
-        displayContent: `refactor-components-in-page 已完成，已根据需求修改${Object.keys(actionsGroupById).length}个组件`
+        llmContent: `refactor-components-in-page 已执行，已根据需求修改以下组件: ${Object.keys(actionsGroupById).join('、')}。`,
+        displayContent: `refactor-components-in-page 已执行，已根据需求修改${Object.keys(actionsGroupById).length}个组件`
       }
     },
   }

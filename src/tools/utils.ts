@@ -40,7 +40,7 @@ function getTreeDescriptionByJson(data: any, level = 0) {
   if (data.title) {
     const namespace = data.def?.namespace ||
       data.def?.namespace ||
-      'content';
+      'UNKNOWN';
     result += `${indent}- ${data.title}[id=${data.id}](${namespace})\n`;
   }
 
