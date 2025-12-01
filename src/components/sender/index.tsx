@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useImperativeHandle, PropsWithoutRef, forwardRef } from "react"
 import classNames from "classnames";
 import { message } from "antd";
-import { ArrowUp, Attachment, Loading } from "../icons";
+import { Attachment, Loading, Send } from "../icons";
 import { MentionTag } from "../mention";
 import { AttachmentsList } from "../attachments";
 import { Mention, Attachments } from "../types";
@@ -250,7 +250,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
               <div className={classNames(css.sendButton, {
                 [css.loadingButton]: loading
               })}>
-                {loading ? <Loading /> : <ArrowUp />}
+                {loading ? <Loading /> : <Send />}
               </div>
             </div>
           </div>
