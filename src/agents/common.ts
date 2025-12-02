@@ -110,7 +110,8 @@ export const requestCommonAgent = (params: any) => {
           content: `<当前聚焦元素上下文>
   ${generateFocusDescription(context.currentFocus)}
   <页面结构简述>
-  以下是当前所属的页面结构简述，如果后续需要获取更加详细的搭建信息（比如插槽、配置、样式、已折叠子组件等信息），请使用「获取组件配置」工具获取更多信息。
+  以下是当前所属的页面结构简述，包含父子关系、层级和顺序。
+  如果后续需要获取更加详细的搭建信息（比如插槽、配置、样式、已折叠子组件等信息），请使用「获取组件配置」工具获取更多信息。
 
   ${getPageHierarchy(context)}
 
