@@ -93,6 +93,7 @@ export default function pluginAI(params?: any): any {
                     name: focus.title,
                   }
                 ]
+                params.onProgress = focus.onProgress;
               }
 
               Agents.requestCommonAgent({...params, extension})
