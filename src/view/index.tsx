@@ -29,10 +29,8 @@ const View = ({ user, copilot, api }: ViewProps) => {
         const id = type === "page" ? focus.pageId : focus.comId;
         senderRef.current!.setMentions([{
           id,
+          type,
           name: focus.title,
-          onClick() {
-            api[type === "page" ? "focusPage" : "focusCom"](id);
-          },
         }]);
       }
     }, true)
@@ -52,11 +50,26 @@ const View = ({ user, copilot, api }: ViewProps) => {
     });
   }
 
+  const onMentionClick: NonNullable<SenderProps["onMentionClick"]> = (mention) => {
+    const { id, type } = mention;
+    api[type === "page" ? "focusPage" : "focusCom"](id);
+  }
+
   return (
     <div className={classNames(css.view)}>
       <Header />
-      <Messages user={user} copilot={copilot} rxai={context.rxai} />
-      <Sender ref={senderRef} onSend={onSend} placeholder="您好，我是智能助手，请详细描述您的需求" />
+      <Messages
+        user={user}
+        copilot={copilot}
+        rxai={context.rxai}
+        onMentionClick={onMentionClick}
+      />
+      <Sender
+        ref={senderRef}
+        placeholder="您好，我是智能助手，请详细描述您的需求"
+        onSend={onSend}
+        onMentionClick={onMentionClick}
+      />
     </div>
   )
 }

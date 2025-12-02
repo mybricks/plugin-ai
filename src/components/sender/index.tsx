@@ -25,12 +25,13 @@ const readFileToBase64 = (file: File): Promise<string> => {
   })
 }
 
-interface SenderProps extends PropsWithoutRef<any> {
+interface SenderProps {
   onSend: (message: {
     message: string;
     attachments: Attachments;
     mentions: Mention[];
   }) => void;
+  onMentionClick?: (mention: Mention) => void;
   loading?: boolean;
   placeholder?: string;
 }
@@ -42,7 +43,7 @@ interface SenderRef {
 }
 
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
-  const { loading, placeholder = "请输入" } = props;
+  const { loading, placeholder = "请输入", onMentionClick } = props;
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [inputContent, setInputContent] = useState<string | null>(null);
@@ -218,7 +219,11 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           </div>
         ) : null}
         {mentions.length ? (
-          <Mentions mentions={mentions}/>
+          <div className={css.topArea}>
+            {mentions.map((mention) => {
+              return <MentionTag key={mention.id} mention={mention} onClick={onMentionClick} />
+            })}
+          </div>
         ) : null}
         <div className={css.input}>
           <div className={css.inputEditorContainer}>
@@ -262,19 +267,3 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
 export { Sender }
 export type { SenderRef, SenderProps }
-
-interface MentionsProps {
-  mentions: Mention[];
-}
-const Mentions = (props: MentionsProps) => {
-  const { mentions } = props;
-
-  return (
-    <div className={css.topArea}>
-      {mentions.map((mention) => {
-        return <MentionTag key={mention.id} mention={mention} />
-      })}
-    </div>
-  )
-}
-

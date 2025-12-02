@@ -3,8 +3,8 @@ interface Mention {
   id: string;
   /** 展示用 */
   name: string;
-  /** 点击事件 */
-  onClick: () => void;
+  /** 类型，组件、页面 */
+  type: "page" | "uiCom";
 }
 
 interface Extension {
