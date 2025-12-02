@@ -15,6 +15,7 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
     name: 'refactor-components-in-page',
     displayName: "局部修改/重构",
     description: `根据用户需求/附件图片对页面中的内容进行局部修改/重构。
+工具分类：操作执行类
 参数：要修改的组件ID，确保之前的消息或内容提及过；
 作用：
   1. 局部修改组件配置；

@@ -21,6 +21,7 @@ export default function generatePage(config: GeneratePageToolParams): any {
     name: "generate-page",
     displayName: "生成页面",
     description: `根据需求/附件图片，一次性搭建并生成符合需求的 MyBricks 页面。
+工具分类：操作执行类；
 作用：生成一个完整的页面；
 要求：需要聚焦到一个页面上，聚焦到组件中不允许使用此工具；
 前置依赖：必须确保之前进行过「需求整理和组件选型」；
