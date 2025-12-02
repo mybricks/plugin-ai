@@ -50,7 +50,7 @@ export default function getComponentsInfoByIds(config: GetComponentInfoParams,):
 
   按照以下格式返回所要获取上下文的元素：
   ${fileFormat({ content: '{ "id": "u_23ver", "type": "com" }', fileName: '需要获取上下文的组件ID.json' })}
-  选择理由：u_23ver是目标元素的父组件，能过获取到更多有效信息。
+  选择理由：u_23ver是目标元素的父组件，能获取到更多有效信息。
 </任务流程>`
     },
     lastAppendMessage: '已提供组件文档和搭建配置，请继续。',
