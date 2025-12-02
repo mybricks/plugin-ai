@@ -8,7 +8,11 @@ interface MentionTagProps {
 }
 const MentionTag = (props: MentionTagProps) => {
   const { mention, onClick } = props;
-  return <div className={css.mention} onClick={() => onClick?.(mention)}>{`@${mention.name}`}</div>;
+  return (
+    <div className={css.mention} onClick={() => onClick?.(mention)}>
+      <div className={css.text}>{`@${mention.name}`}</div>
+    </div>
+  );
 };
 
 export { MentionTag }

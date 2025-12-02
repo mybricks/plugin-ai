@@ -215,10 +215,11 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           </div>
         ) : null} */}
         {mentions.length ? (
-          <div className={css.topArea}>
-            {mentions.map((mention) => {
+          <div className={css.mentions}>
+            <span>对于</span> <MentionTag mention={mentions[0]} onClick={onMentionClick} />
+            {/* {mentions.map((mention) => {
               return <MentionTag key={mention.id} mention={mention} onClick={onMentionClick} />
-            })}
+            })} */}
           </div>
         ) : null}
         <div className={css.input}>

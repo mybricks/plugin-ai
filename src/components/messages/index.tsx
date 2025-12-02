@@ -167,13 +167,16 @@ const BubbleUser = (params: BubbleUserParams) => {
         </span>
         <span className={css['chat-bubble-header-name']}>{user.name}</span>
       </header>
-      <section className={classNames(css['chat-message-container'], css['user-message'])}>
+      <section className={classNames(css['chat-message-container'], css['user-message'], {
+        [css['mention']]: mentions.length
+      })}>
         {mentions.length ? (
-          <div className={css['mentions-container']}>
-            {mentions.map((mention) => {
-              return <MentionTag key={mention.id} mention={mention} onClick={onMentionClick}/>
-            })}
-          </div>
+          <MentionTag mention={mentions[0]} onClick={onMentionClick}/>
+          // <div className={css['mentions-container']}>
+          //   {mentions.map((mention) => {
+          //     return <MentionTag key={mention.id} mention={mention} onClick={onMentionClick}/>
+          //   })}
+          // </div>
         ) : null}
         <span>
           {typeof message.content === "string" ? message.content : message.content.find((content: any) => {
