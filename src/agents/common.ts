@@ -1,5 +1,5 @@
 import { context } from './../context';
-import { MYBRICKS_TOOLS, MyBricksHelper } from "./../tools"
+import { MYBRICKS_TOOLS, getPageHierarchy } from "./../tools"
 
 
 export const requestCommonAgent = (params: any) => {
@@ -127,28 +127,46 @@ export const requestCommonAgent = (params: any) => {
       ],
       presetHistoryMessages: [
         {
-          role: 'user',
-          content: `当前已聚焦到${context.currentFocus?.type === 'uiCom' ? `组件(组件id=${context.currentFocus?.comId})` : `页面(title=${context.currentFocus?.title},页面id=${context.currentFocus?.pageId})`}中，后续用户的提问，关于”这个“、“此”、“整体”，甚至不提主语，都是指代此元素及其子组件内容。`
+          role: 'assistant',
+          content: generateFocusDescription(context.currentFocus)
         }
       ],
       presetMessages: [
         {
-          role: 'user',
-          content: `检测到聚焦位置发生变化`
-        },
-        {
           role: 'assistant',
-          content: `当前已聚焦到${context.currentFocus?.type === 'uiCom' ? `组件(组件id=${context.currentFocus?.comId})` : `页面(title=${context.currentFocus?.title},页面id=${context.currentFocus?.pageId})`}中，后续用户的提问，关于”这个“、“此”、“整体”，甚至不提主语，都是指代此元素及其子组件内容。
-    <当前聚焦元素的内容简介>
-    缩进代表层级关系
-${MyBricksHelper.getTreeDescriptionByJson(context.currentFocus?.type === 'uiCom' ? context.api?.uiCom?.api?.getOutlineInfo(context.currentFocus?.comId) : { title: context.currentFocus?.title, id: context.currentFocus?.pageId, slots: [{ components: [context.api?.page?.api?.getOutlineInfo(context.currentFocus?.pageId)] }]  as any })}
-    
-      > 如果缩进内容不为空，代表组件通过插槽放置有子组件，如果缩进内容为空，则代表此组件没有任何子组件。
-    </当前聚焦元素的内容简介>
-                    `
+          content: `<当前聚焦元素上下文>
+  ${generateFocusDescription(context.currentFocus)}
+  <页面结构简述>
+  以下是当前所属的页面结构简述，如果后续需要获取更加详细的搭建信息（比如插槽、配置、样式、已折叠子组件等信息），请使用「获取组件配置」工具获取更多信息。
+
+  ${getPageHierarchy(context)}
+
+  > 如果缩进内容不为空，代表元素通过插槽放置有子组件，如果缩进内容为空，则代表此元素没有任何子组件；
+  >【当前聚焦】标记表示用户当前选中的元素；
+  >【子组件已折叠】标记表示该组件有子组件但被折叠未显示；
+  </页面结构简述>
+</当前聚焦元素上下文>
+`
         }
       ]
     });
   })
+}
 
+function generateFocusDescription(currentFocus = {}) {
+  const { pageId, comId, title, type } = currentFocus ?? {}
+  
+  // 定义聚焦元素的描述部分
+  let focusDesc = '';
+  
+  // 判断当前聚焦元素类型
+  if (type === 'uiCom') {
+    focusDesc = `组件(title=${title},组件id=${comId})`;
+  } else if (type === 'page') {
+    focusDesc = `页面(title=${title},页面id=${pageId})`;
+  } else if (type === 'section') {
+    focusDesc = `页面(title=${title},页面id=${pageId})`;
+  }
+  
+  return `当前已聚焦到${focusDesc}中，后续用户的提问，关于"这个"、"此"、"整体"，甚至不提主语，都是指代此元素及其子组件内容。`;
 }

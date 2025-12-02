@@ -20,4 +20,4 @@ export const MYBRICKS_TOOLS = {
   // FocusElement
 }
 
-export { MyBricksHelper } from './utils'
+export * from './utils'

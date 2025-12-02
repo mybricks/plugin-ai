@@ -25,8 +25,7 @@ export default function generatePage(config: GeneratePageToolParams): any {
 作用：生成一个完整的页面；
 要求：需要聚焦到一个页面上，聚焦到组件中不允许使用此工具；
 前置依赖：必须确保之前进行过「需求整理和组件选型」；
-
-聚焦元素要求：必须聚焦到页面类型，才可以选用此工具；`,
+`,
     aiRole: "expert",
     getPrompts(params) {
       return `<工具总览>

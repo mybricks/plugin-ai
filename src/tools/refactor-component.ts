@@ -14,18 +14,16 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
   return {
     name: 'refactor-components-in-page',
     displayName: "局部修改/重构",
-    description: `根据用户需求/附件图片对页面中的内容进行局部修改/重构。
+    description: `根据用户需求/附件图片对页面中的内容进行局部修改/重构/移动/删除。
 工具分类：操作执行类
 参数：要修改的组件ID，确保之前的消息或内容提及过；
 作用：
   1. 局部修改组件配置；
   2. 通过添加/删除组件来重构整个组件插槽中的内容；
+  3. 对组件进行移动和删除；
 前置依赖：
   - 如果需要修改组件配置，确保之前有查阅过「组件配置文档」，组件的修改必须严格参考组件配置文档；
   - 如果需要添加组件，确保之前有进行过「组件选型分析」，添加组件必须通过组件选型来获取组件配置文档；
-  - 如果需要移动和删除，无需关注任何文档，仅需要知道ID即可；
-
-聚焦元素要求：必须聚焦到页面/组件类型，才可以选用此工具；
 
 使用场景示例：
   - 这个卡片改成美团购物卡片
@@ -38,12 +36,16 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
     分析：由于仅修改组件配置，所以仅需要「获取DSL和组件配置文档」->「局部重构」的规划，无需「组件选型分析」
   - 删除组件
     分析：由于仅删除组件，所以仅需要「局部重构」的规划
+  - 和某某交换位置
+    分析：由于移动组件需要指导插槽id及其子组件情况，所以仅需要「获取DSL和组件配置文档」->「局部重构」的规划
 `,
     getPrompts() {
       return `<工具总览>
 你是一个修改组件搭建效果的工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深页面搭建助手，拥有专业的搭建能力。
 你的任务是根据「当前组件上下文」和「用户需求」，生成 actions ，修改组件完成用户的需求。
 </工具总览>
+
+重要根据！：action的生成必须基于提供的组件配置文档，不允许捏造、猜测、基于客观事实进行生成。
 
 <如何修改>
   通过一系列的action来分步骤完成对组件的修改，请返回以下格式以驱动MyBricks对组件进行修改：
@@ -216,9 +218,9 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
       }
       \`\`\`
 
-      例如，当用户要求将组件u_ou1rs移动到组件u_iek32的content插槽中，并且放到第一位，可以返回以下内容：
+      例如，当用户要求将组件u_ou1rs移动到组件u_iek32的某个插槽中，并且放到第一位，可以返回以下内容：
       ${fileFormat({
-        content: `["u_ou1rs",":root","move",{"comId":"u_iek32","slotId":"content","index":0}]`,
+        content: `["u_ou1rs",":root","move",{"comId":"u_iek32","slotId":"插槽id","index":0}]`,
         fileName: '移动组件步骤.json'
       })}
     </move>
