@@ -91,11 +91,9 @@ export default function pluginAI(params?: any): any {
                   {
                     id,
                     name: focus.title,
-                    onClick() {
-                      context.aiViewAPI[type === "page" ? "focusPage" : "focusCom"](id);
-                    },
                   }
                 ]
+                params.onProgress = focus.onProgress;
               }
 
               Agents.requestCommonAgent({...params, extension})

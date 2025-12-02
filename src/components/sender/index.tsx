@@ -206,18 +206,14 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     })
   }
 
-  useEffect(() => {
-    inputEditorRef.current!.focus();
-  }, [])
-
   return (
     <div className={css.container}>
       <div className={css.editor}>
-        {attachments.length ? (
+        {/* {attachments.length ? (
           <div className={css.topArea}>
             <AttachmentsList attachments={attachments} onDelete={onAttachmentsDelete}/>
           </div>
-        ) : null}
+        ) : null} */}
         {mentions.length ? (
           <div className={css.topArea}>
             {mentions.map((mention) => {
@@ -247,6 +243,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
             <div className={css.attachmentButton} onClick={uploadAttachment}>
               <Attachment />
             </div>
+            {attachments.length ? (
+              <AttachmentsList attachments={attachments} onDelete={onAttachmentsDelete}/>
+            ) : null}
           </div>
           <div className={css.rightArea}>
             <div className={classNames(css.sendButtonContainer, {
