@@ -117,7 +117,7 @@ async function checkFetchTarget(): Promise<FetchTarget> {
 
 const transfromExtendParams = (extendParams: { aiRole?: any }) => {
   const { aiRole } = extendParams;
-  let model = "openai/gpt-5-mini";
+  let model = "google/gemini-2.5-flash";
   let role = "default";
 
   if (!aiRole) {
@@ -129,17 +129,17 @@ const transfromExtendParams = (extendParams: { aiRole?: any }) => {
 
   switch (true) {
     case ["image"].includes(aiRole): {
-      model = "anthropic/claude-sonnet-4";
+      model = "anthropic/claude-sonnet-4.5";
       role = "image";
       break;
     }
     case ["architect"].includes(aiRole): {
-      model = "google/gemini-2.5-pro-preview";
+      model = "google/gemini-3-pro-preview";
       role = "architect";
       break;
     }
     case ["expert"].includes(aiRole): {
-      model = "anthropic/claude-sonnet-4";
+      model = "anthropic/claude-sonnet-4.5";
       role = "expert";
       break;
     }
