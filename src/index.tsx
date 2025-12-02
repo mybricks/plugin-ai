@@ -90,10 +90,13 @@ export default function pluginAI(params?: any): any {
                 extension.mentions = [
                   {
                     id,
+                    type,
                     name: focus.title,
                   }
                 ]
-                params.onProgress = focus.onProgress;
+                if (focus.onProgress) {
+                  params.onProgress = focus.onProgress;
+                }
               }
 
               Agents.requestCommonAgent({...params, extension})
