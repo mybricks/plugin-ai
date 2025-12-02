@@ -1,5 +1,5 @@
 import { fileFormat } from '@mybricks/rxai'
-import { getFiles, createActionsParser } from './utils'
+import { getFiles, createActionsParser, getComponentOperationSummary } from './utils'
 
 interface GeneratePageToolParams {
   /** 当前根组件信息 */
@@ -16,7 +16,8 @@ interface GeneratePageToolParams {
 }
 
 export default function generatePage(config: GeneratePageToolParams): any {
-  const actionsParser = createActionsParser();
+  const streamActionsParser = createActionsParser();
+  const excuteActionsParser = createActionsParser();
   return {
     name: "generate-page",
     displayName: "生成页面",
@@ -439,7 +440,7 @@ ${config.examples}
       const actionsFile = getFiles(files, {extName: 'json' })
 
       if (actionsFile) {
-        actions = actionsParser(actionsFile.content ?? "");
+        actions = streamActionsParser(actionsFile.content ?? "");
       }
 
       if (status === 'start') {
@@ -451,6 +452,7 @@ ${config.examples}
       }
     },
     execute({ files, content }) {
+      let actions: any = [];
       const actionsFile = getFiles(files, {extName: 'json' })
 
       if (!actionsFile) {
@@ -459,15 +461,30 @@ ${config.examples}
           displayContent: content
         }
       }
+      actions = excuteActionsParser(actionsFile.content ?? "");
       // let actions: any = [];
       // const actionsFile = getFiles(files, {extName: 'json' })
       // if (actionsFile) {
       //   actions = actionsParser(actionsFile.content ?? "");
       // }
       // config.onActions(actions)
+
+      try {
+        const summary = getComponentOperationSummary(actions)
+
+        return {
+          llmContent: `根据需求，执行以下操作
+  ${summary}`,
+          displayContent: `根据需求，执行以下操作
+  ${summary}`
+        }
+      } catch (error) {
+        
+      }
+
       return {
-        llmContent: `已根据需求将内容生成到页面id=${config.getTargetId()}中。`,
-        displayContent: '已根据需求生成页面'
+        llmContent: '已执行所有操作',
+        displayContent: '已执行所有操作'
       }
     },
   }

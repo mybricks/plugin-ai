@@ -19,19 +19,19 @@ export function getFiles(files: RxFiles, {
 export function getPageHierarchy(context: any) {
   const currentFocus = context.currentFocus;
   const pageId = currentFocus?.pageId;
-  
+
   if (!pageId) {
     return '无法获取页面信息';
   }
 
   // 获取完整的页面结构
   const pageOutline = context.api?.page?.api?.getOutlineInfo(pageId);
-  
+
   // 检查组件树中是否包含目标组件
   function containsComponent(data: any, targetId: string): boolean {
     if (!data) return false;
     if (data.id === targetId) return true;
-    
+
     if (data.slots && Array.isArray(data.slots)) {
       return data.slots.some((slot: any) => {
         if (slot.components && Array.isArray(slot.components)) {
@@ -76,11 +76,11 @@ export function getPageHierarchy(context: any) {
     // 处理当前节点
     if (data.title) {
       const namespace = data.def?.namespace;
-      const isFocused = (currentFocus?.type === 'uiCom' && data.id === currentFocus.comId) || 
-                       (currentFocus?.type === 'page' && data.id === pageId);
+      const isFocused = (currentFocus?.type === 'uiCom' && data.id === currentFocus.comId) ||
+        (currentFocus?.type === 'page' && data.id === pageId);
       const focusMarker = isFocused ? ' 【当前聚焦】' : '';
       const collapsedMarker = data._hasCollapsedChildren ? ' 【子组件已折叠】' : '';
-      
+
       result += `${indent}- ${data.title}[id=${data.id}]${namespace ? `(${namespace})` : ''}${focusMarker}${collapsedMarker}\n`;
     }
 
@@ -100,7 +100,7 @@ export function getPageHierarchy(context: any) {
 
   // 根据聚焦类型处理数据
   let processedData;
-  
+
   if (currentFocus?.type === 'uiCom') {
     // 聚焦组件时，过滤出从页面到当前组件的路径
     function filterToFocusedComponent(data: any): any {
@@ -144,21 +144,93 @@ export function getPageHierarchy(context: any) {
     }
 
     const filteredOutline = filterToFocusedComponent(pageOutline);
-    processedData = { 
-      title: '页面', 
-      id: pageId, 
-      slots: [{ components: [filteredOutline] }] 
+    processedData = {
+      title: '页面',
+      id: pageId,
+      slots: [{ components: [filteredOutline] }]
     };
   } else {
     // 聚焦页面时，获取完整的页面层级关系
-    processedData = { 
-      title: '页面', 
-      id: pageId, 
-      slots: [{ components: [pageOutline] }] 
+    processedData = {
+      title: '页面',
+      id: pageId,
+      slots: [{ components: [pageOutline] }]
     };
   }
 
   return generateTreeDescription(processedData);
+}
+
+
+export function getComponentOperationSummary(operations = []) {
+  const componentActions: any = {};
+  const componentIdToTitle: any = {};
+  const results: any = [];
+
+  // 收集组件title信息
+  operations.forEach(operation => {
+    if (operation.type === 'addChild' && operation.params.title) {
+      componentIdToTitle[operation.params.comId] = operation.params.title;
+    }
+  });
+
+  operations.forEach(operation => {
+    const { comId, type, target, params } = operation;
+
+    switch (type) {
+      case 'doConfig':
+        const configTitle = componentIdToTitle[comId] || comId;
+        if (!componentActions[configTitle]) {
+          componentActions[configTitle] = { configs: [] };
+        }
+        const simplifiedPath = params.path.split('/').pop();
+        componentActions[configTitle].configs.push(simplifiedPath);
+        break;
+
+      case 'addChild':
+        const parentTitle = componentIdToTitle[comId] || comId;
+
+        // 1. 先记录添加组件的操作
+        results.push(`• 在【${parentTitle}】的 ${target} 插槽中新增了「${params.title}」`);
+
+        // 2. 如果新组件有配置，单独记录配置操作
+        if (params.configs && params.configs.length > 0) {
+          const childConfigs = params.configs.map(config => config.path.split('/').pop());
+          results.push(`• 配置【${params.title}】：设置了 ${childConfigs.join('、')} 等属性`);
+        }
+        break;
+
+      case 'move':
+        const moveTitle = componentIdToTitle[comId];
+        const targetTitle = componentIdToTitle[params.to?.comId];
+        const slotId = params.to?.slotId;
+
+        if (moveTitle && targetTitle) {
+          results.push(`• 将【${moveTitle}】移动至【${targetTitle}】的 ${slotId} 插槽中`);
+        }
+        break;
+
+      case 'delete':
+        const deleteTitle = componentIdToTitle[comId];
+        if (deleteTitle) {
+          results.push(`• 删除了【${deleteTitle}】组件`);
+        } else {
+          // 如果没有title，可能是删除了一个没有被记录的组件
+          results.push(`• 删除了组件 ${comId}`);
+        }
+        break;
+    }
+  });
+
+  // 处理独立的配置操作（doConfig类型）
+  Object.keys(componentActions).forEach(title => {
+    const actions = componentActions[title];
+    if (actions.configs.length > 0) {
+      results.push(`• 配置【${title}】：调整了 ${actions.configs.join('、')} 等属性`);
+    }
+  });
+
+  return results.join('\n');
 }
 
 

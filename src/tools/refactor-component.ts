@@ -1,5 +1,5 @@
 import { fileFormat } from '@mybricks/rxai'
-import { getFiles, createActionsParser } from './utils'
+import { getFiles, createActionsParser, getComponentOperationSummary } from './utils'
 
 interface ModifyComponentToolParams {
   /** 当所有actions返回时 */
@@ -509,20 +509,31 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
 
       // console.log('actions', actions)
 
-      const actionsGroupById = actions.reduce((acc, item) => {
-        const id = item.comId;
-        if (!acc[id]) {
-          acc[id] = [];
-        }
-        acc[id].push(item);
-        return acc;
-      }, {});
+      // const actionsGroupById = actions.reduce((acc, item) => {
+      //   const id = item.comId;
+      //   if (!acc[id]) {
+      //     acc[id] = [];
+      //   }
+      //   acc[id].push(item);
+      //   return acc;
+      // }, {});
 
-      // config.onActions(actions, 'start')
+      try {
+        const summary = getComponentOperationSummary(actions)
+
+        return {
+          llmContent: `根据需求，我们进行如下修改
+  ${summary}`,
+          displayContent: `根据需求，我们进行如下修改
+  ${summary}`
+        }
+      } catch (error) {
+        
+      }
 
       return {
-        llmContent: `已根据需求修改以下组件: ${Object.keys(actionsGroupById).join('、')}。`,
-        displayContent: `已根据需求修改${Object.keys(actionsGroupById).length}个组件`
+        llmContent: '已执行所有修改操作',
+        displayContent: '已执行所有修改操作'
       }
     },
   }
