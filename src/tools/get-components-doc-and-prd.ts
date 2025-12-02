@@ -1,4 +1,4 @@
-import { fileFormat } from '@mybricks/rxai'
+import { fileFormat, ToolError } from '@mybricks/rxai'
 
 interface GetComponentsDocAndPrdToolParams {
   allowComponents: string;
@@ -100,6 +100,17 @@ ${config.examples}
 `
       },
     execute({ files, content }) {
+      let errorContent;
+      try {
+        errorContent = JSON.parse(content)
+      } catch (error) {}
+      if (errorContent && errorContent?.message) {
+        throw new ToolError({
+          llmContent: `调用接口失败，${errorContent?.message}`,
+          displayContent: `调用接口失败，${errorContent?.message}`,
+        })
+      }
+
       let prdFile: File | undefined = undefined, requireComsFile: File | undefined = undefined;
       Object.keys(files).forEach((fileKey) => {
         const file: File = files[fileKey] as File;

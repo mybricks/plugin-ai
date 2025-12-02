@@ -58,23 +58,6 @@ export const requestCommonAgent = (params: any) => {
             context.api?.page?.api?.clearPageContent?.(targetId)
           }
         }),
-        // MYBRICKS_TOOLS.GetMybricksDSL({
-        //   getContext: (id, type) => {
-        //     if (type === 'page') {
-        //       return api?.page?.api?.getPageDSLPrompts?.(id)?.toDSL?.()?.replaceAll(`slots.${id}`, 'canvas') as string
-        //     }
-        //     return api?.uiCom?.api?.getComDSLPrompts?.(id) as string
-        //   },
-        // }),
-        MYBRICKS_TOOLS.GetFocusMybricksDSL({
-          id: targetId as string,
-          getFocusContext() {
-            if (context.currentFocus?.type === 'page') {
-              return context.api?.page?.api?.getPageDSLPrompts?.(targetId)?.toDSL?.()?.replaceAll(`slots.${targetId}`, 'canvas') as string
-            }
-            return context.api?.uiCom?.api?.getComDSLPrompts?.(targetId) as string
-          },
-        }),
         MYBRICKS_TOOLS.GetComponentsInfoByIds({
           id: targetId as string,
           getPageJson(id) {
@@ -96,16 +79,6 @@ export const requestCommonAgent = (params: any) => {
             return true
           }
         }),
-        // MYBRICKS_TOOLS.GetComponentInfo({
-        //   getComInfo(id) {
-        //     return context.api?.uiCom?.api?.getComPrompts?.(id)?.replace(/当前组件的情况/g, `组件${id}的信息`) as string
-        //   },
-        // }),
-        // MYBRICKS_TOOLS.ModifyComponent({
-        //   onActions: (id, actions) => {
-        //     context.api?.uiCom?.api?.updateCom?.(id, actions)
-        //   }
-        // }),
         MYBRICKS_TOOLS.RefactorComponent({
           onActions: (actions, status) => {
             if (targetType === "page") {

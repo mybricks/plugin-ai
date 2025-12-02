@@ -57,10 +57,14 @@ export default function getComponentsInfoByIds(config: GetComponentInfoParams,):
     execute(params: any) {
       const { files, content } = params ?? {}
       if (hasChildren) {
-        if (!content) {
+        let errorContent;
+        try {
+          errorContent = JSON.parse(content)
+        } catch (error) {}
+        if (errorContent && errorContent?.message) {
           throw new ToolError({
-            llmContent: '拿不到有效的文件内容，请检查返回的文件格式',
-            displayContent: '获取组件文档失败，请重试'
+            llmContent: `调用接口失败，${errorContent?.message}`,
+            displayContent: `调用接口失败，${errorContent?.message}`,
           })
         }
       }
