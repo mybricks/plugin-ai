@@ -15,4 +15,24 @@
     line-height: 18px;
     cursor: default;
   }
+
+  .actions {
+    display: flex;
+    align-items: center;
+
+    .action {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+
+      &:hover {
+        color: var(--mybricks-color-primary, #FA6400);
+      }
+
+      svg {
+        width: 12px;
+        height: 12px;
+      }
+    }
+  }
 }

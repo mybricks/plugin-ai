@@ -1,4 +1,4 @@
-import { Rxai, Events } from "@mybricks/rxai"
+import { Rxai, Events, IDB } from "@mybricks/rxai"
 
 class Context {
   rxai!: Rxai
@@ -15,9 +15,15 @@ class Context {
     focus: AiServiceFocusParams | undefined;
   }>();
 
-  createRxai(options: ConstructorParameters<typeof Rxai>[0]) {
+  createRxai(options: ConstructorParameters<typeof Rxai>[0] & { key: number }) {
     if (!this.rxai) {
-      this.rxai = new Rxai(options)
+      this.rxai = new Rxai({
+        ...options,
+        idb: options.key ? new IDB({
+          dbName: "@mybricks/plugin-ai/messages",
+          key: options.key
+        }) : undefined
+      })
       this.globalRxai = new Rxai(options)
     }
   }

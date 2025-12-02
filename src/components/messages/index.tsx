@@ -6,6 +6,7 @@ import { Extension } from "../types";
 import { Loading, Success, Close } from "../icons";
 import { AttachmentsList } from "../attachments";
 import { MentionTag } from "../mention";
+import { Mention } from "../types";
 import css from "./index.less"
 
 const md = markdownit()
@@ -24,12 +25,14 @@ interface MessagesParams {
   copilot: User;
 
   rxai: Rxai;
+
+  onMentionClick?: (mention: Mention) => void;
 }
 
 type Plans = Rxai['cacheMessages'];
 
 const Messages = (params: MessagesParams) => {
-  const { user, rxai, copilot } = params;
+  const { user, rxai, copilot, onMentionClick } = params;
 
   const mainRef = useRef<HTMLElement>(null);
   const anchorRef = useRef<HTMLDivElement>(null);
@@ -69,7 +72,7 @@ const Messages = (params: MessagesParams) => {
   return (
     <main ref={mainRef} className={css['ai-chat-messages']}>
       {plans.map((plan, index) => {
-        return <Bubble key={index} user={user} plan={plan} copilot={copilot} />
+        return <Bubble key={index} user={user} plan={plan} copilot={copilot} onMentionClick={onMentionClick}/>
       })}
       <div ref={anchorRef} className={classNames(css['anchor'], {
         [css['scroll-snap']]: scrollSnap
@@ -86,9 +89,10 @@ interface BubbleParams {
   user: User;
   copilot: User;
   plan: Plan;
+  onMentionClick?: (mention: Mention) => void;
 }
 const Bubble = (params: BubbleParams) => {
-  const { user, plan, copilot } = params;
+  const { user, plan, copilot, onMentionClick } = params;
 
   const [messages, setMessages] = useState<UserFriendlyMessages>([])
   const [message, setMessage] = useState("")
@@ -123,8 +127,8 @@ const Bubble = (params: BubbleParams) => {
 
   return (
     <>
-      {messages[0] && <BubbleUser user={user} message={messages[0]} plan={plan} />}
-      {messages[0] && <BubbleCopilot messages={messages.slice(1)} copilot={copilot} message={message} loading={loading} />}
+      {messages[0] && <BubbleUser user={user} message={messages[0]} plan={plan} onMentionClick={onMentionClick}/>}
+      {messages[0] && <BubbleCopilot messages={messages.slice(1)} copilot={copilot} message={message} loading={loading} plan={plan}/>}
     </>
   )
 }
@@ -147,10 +151,11 @@ interface BubbleUserParams {
   user: User;
   message: UserFriendlyMessages[number]
   plan: Plan;
+  onMentionClick?: (mention: Mention) => void;
 }
 
 const BubbleUser = (params: BubbleUserParams) => {
-  const { user, message, plan } = params;
+  const { user, message, plan, onMentionClick } = params;
   const mentions = (plan.extension as Extension)?.mentions || [];
   const attachments = plan.attachments || [];
 
@@ -166,7 +171,7 @@ const BubbleUser = (params: BubbleUserParams) => {
         {mentions.length ? (
           <div className={css['mentions-container']}>
             {mentions.map((mention) => {
-              return <MentionTag key={mention.id} mention={mention}/>
+              return <MentionTag key={mention.id} mention={mention} onClick={onMentionClick}/>
             })}
           </div>
         ) : null}
@@ -190,9 +195,10 @@ interface BubbleCopilotParams {
   messages: UserFriendlyMessages;
   message: string;
   loading: boolean;
+  plan: Plan;
 }
 const BubbleCopilot = (params: BubbleCopilotParams) => {
-  const { messages, copilot, message, loading } = params;
+  const { messages, copilot, message, loading, plan } = params;
 
   return (
     <article className={css['chat-bubble']}>
@@ -209,7 +215,7 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
               return <BubbleCopilotTool key={index + message.status} message={message} />
             }
             if (message.role === "error") {
-              return <BubbleError message={message} />
+              return <BubbleError message={message} plan={plan}/>
             }
             return <BubbleMessage message={message.content} />
           })}
@@ -272,11 +278,11 @@ interface BubbleErrorParams {
   message: {
     role: "error",
     content: string,
-    retry: () => void;
   }
+  plan: Plan;
 }
 const BubbleError = (params: BubbleErrorParams) => {
-  const { message } = params;
+  const { message, plan } = params;
 
   return (
     <div className={css['ai-chat-error-code-block']}>
@@ -285,7 +291,7 @@ const BubbleError = (params: BubbleErrorParams) => {
       </div>
       <div
         className={css['ai-chat-error-code-block-retry']}
-        onClick={message.retry}
+        onClick={() => plan.retry()}
       >重试</div>
     </div>
   )
