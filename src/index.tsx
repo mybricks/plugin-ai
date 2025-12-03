@@ -98,6 +98,8 @@ export default function pluginAI(params?: any): any {
                 ]
                 if (focus.onProgress) {
                   params.onProgress = focus.onProgress;
+                } else if (params.onProgress) {
+                  focus.onProgress = params.onProgress;
                 }
               }
 

@@ -216,7 +216,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         ) : null} */}
         {mentions.length ? (
           <div className={css.mentions}>
-            <span>对于</span> <MentionTag mention={mentions[0]} onClick={onMentionClick} />
+            <span>对于</span>
+            <MentionTag mention={mentions[0]} onClick={onMentionClick} />
+            <span>{mentions[0].type === "page" ? "页面" : "组件"}</span>
             {/* {mentions.map((mention) => {
               return <MentionTag key={mention.id} mention={mention} onClick={onMentionClick} />
             })} */}
