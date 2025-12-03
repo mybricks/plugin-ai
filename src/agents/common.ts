@@ -83,8 +83,10 @@ export const requestCommonAgent = (params: any) => {
           onActions: (actions, status) => {
             if (targetType === "page") {
               context.api?.page?.api?.updatePage?.(targetId, actions, status)
-            } else {
+            } else if (targetType === 'uiCom') {
               context.api?.uiCom?.api?.updateCom?.(targetId, actions, status)
+            } else {
+              console.warn('doActions，没有合适的目标')
             }
           },
           getFocusElementHasChildren() {
