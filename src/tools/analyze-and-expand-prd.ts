@@ -1,4 +1,4 @@
-import { fileFormat } from '@mybricks/rxai'
+import { fileFormat, RequestError } from '@mybricks/rxai'
 import { getFiles } from './utils'
 
 interface AnalyzeAndExpandPrdParams {
@@ -151,6 +151,14 @@ export default function analyzeAndExpandPrd(config: AnalyzeAndExpandPrdParams): 
     aiRole: 'architect',
     // aiRole: "expert",
     execute({ files, content }) {
+      let errorContent;
+      try {
+        errorContent = JSON.parse(content)
+      } catch (error) {}
+      if (errorContent && errorContent?.message) {
+        throw new RequestError(`网络错误，${errorContent?.message}`)
+      }
+      
       const projectFile = getFiles(files, { extName: 'json' });
       let projectJson = {}
       try {
