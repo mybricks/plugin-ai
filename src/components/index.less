@@ -1,0 +1,12 @@
+.scroll-bar() {
+  &::-webkit-scrollbar-thumb {
+    background-color: transparent !important;
+  }
+
+  &:hover {
+    background: transparent; //防止没有激活
+    &::-webkit-scrollbar-thumb {
+      background-color: rgba(0, 0, 0, 0.3) !important;
+    }
+  }
+}
