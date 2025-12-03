@@ -24,7 +24,11 @@ const StartView = ({ api, user, copilot }: any) => {
       setLoading(true);
       Agents.requestGenerateCanvasAgent({
         ...params,
-        onProgress: api.onProgress,
+        onProgress: (status: string) => {
+          if (status === "ing") {
+            api.onProgress?.(status);
+          }
+        },
         rxai: context.globalRxai
       }).then(() => {
 
