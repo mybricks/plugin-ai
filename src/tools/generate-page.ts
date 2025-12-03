@@ -1,10 +1,11 @@
 import { fileFormat } from '@mybricks/rxai'
-import { getFiles, createActionsParser, getComponentOperationSummary } from './utils'
+import { getFiles, createActionsParser, getComponentOperationSummary, getComponentIdToTitleMap } from './utils'
 
 interface GeneratePageToolParams {
   /** 当前根组件信息 */
   getFocusRootComponentDoc: () => string;
   getTargetId: () => string;
+  getPageJson: () => any
   /** 应用特殊上下文信息 */
   appendPrompt: string;
   /** 返回示例 */
@@ -24,7 +25,7 @@ export default function generatePage(config: GeneratePageToolParams): any {
     description: `根据需求/附件图片，一次性搭建并生成符合需求的 MyBricks 页面。
 工具分类：操作执行类；
 作用：生成一个完整的页面；
-要求：需要聚焦到一个页面上，聚焦到组件中不允许使用此工具；
+要求：需要聚焦到一个页面上，且保证页面为空内容（除了页面和页面容器之外没有内容则为空内容）；
 前置依赖：必须确保之前进行过「需求整理和组件选型」；
 `,
     aiRole: "expert",
@@ -67,7 +68,7 @@ ${config.getFocusRootComponentDoc()}
     actions.json文件由多个action构成,每个 action 在结构上都严格遵循以下格式：[comId, target, type, params];
     - comId 代表要操作的目标组件的id(对于需要生成的新的id，必须采用u_xxxxx，xxxxx是3-7位唯一的字母数字组合);
     - target 指的是组件的整体或某个部分，以选择器的形式表示，注意当type=addChild时，target为插槽id;
-    - type action的类型，包括了 setLayout、doConfig、addChild 三类动作;
+    - type action的类型，包括了 setLayout、doConfig、addChild、delete 几类动作;
     - params 为不同type类型对应的参数;
     
     综合而言，每个action的语义是：对某个组件(comId)的整体或某个部分(target)，执行某个动作(type)，并传入参数(params)。
@@ -215,6 +216,16 @@ ${config.getFocusRootComponentDoc()}
       注意:
         - 要充分考虑被添加的组件与其他组件之间的间距以及位置关系，确保添加的组件的美观度的同时、且不会与其他组件重叠或冲突；
     </addChild>
+
+    <delete>
+      - 删除组件
+
+      例如，当用户要求删除组件u_ou1rs，可以返回以下内容：
+      ${fileFormat({
+        content: `["u_ou1rs",":root","delete"]`,
+        fileName: '删除组件.json'
+      })}
+    </delete>
   
     注意：actions文件每一行遵循 JSON 语法，禁止非法代码，禁止出现内容省略提示、单行注释、省略字符。
       - actions返回的内容格式需要一行一个action，每一个action需要压缩，不要包含缩进等多余的空白字符；
@@ -444,7 +455,7 @@ ${config.examples}
       }
 
       if (status === 'start') {
-        config.onClearPage()
+        // config.onClearPage()
       }
       
       if (actions.length > 0 || status === 'start' || status === 'complete') {
@@ -470,7 +481,7 @@ ${config.examples}
       // config.onActions(actions)
 
       try {
-        const summary = getComponentOperationSummary(actions)
+        const summary = getComponentOperationSummary(actions, getComponentIdToTitleMap(config?.getPageJson()))
 
         return {
           llmContent: `根据需求，执行以下操作

@@ -1,10 +1,11 @@
-import { fileFormat, ToolError } from '@mybricks/rxai'
-import { getFiles, createActionsParser, getComponentOperationSummary } from './utils'
+import { fileFormat, ToolError, RequestError } from '@mybricks/rxai'
+import { getFiles, createActionsParser, getComponentOperationSummary, getComponentIdToTitleMap } from './utils'
 
 interface ModifyComponentToolParams {
   /** 当所有actions返回时 */
   onActions: (actions: any[], status: string) => void,
-  getFocusElementHasChildren: () => boolean
+  getFocusElementHasChildren: () => boolean,
+  getPageJson: () => any
 }
 
 export default function modifyComponentsInPage(config: ModifyComponentToolParams): any {
@@ -500,10 +501,7 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
         errorContent = JSON.parse(content)
       } catch (error) {}
       if (errorContent && errorContent?.message) {
-        throw new ToolError({
-          llmContent: `调用接口失败，${errorContent?.message}`,
-          displayContent: `调用接口失败，${errorContent?.message}`,
-        })
+        throw new RequestError(`调用接口失败，${errorContent?.message}`)
       }
 
       let actions: any = [];
@@ -530,7 +528,7 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
       // }, {});
 
       try {
-        const summary = getComponentOperationSummary(actions)
+        const summary = getComponentOperationSummary(actions, getComponentIdToTitleMap(config?.getPageJson()))
 
         return {
           llmContent: `根据需求，我们进行如下修改

@@ -1,4 +1,4 @@
-import { fileFormat, ToolError } from '@mybricks/rxai'
+import { fileFormat, ToolError, RequestError } from '@mybricks/rxai'
 
 interface GetComponentsDocAndPrdToolParams {
   allowComponents: string;
@@ -105,10 +105,7 @@ ${config.examples}
         errorContent = JSON.parse(content)
       } catch (error) {}
       if (errorContent && errorContent?.message) {
-        throw new ToolError({
-          llmContent: `调用接口失败，${errorContent?.message}`,
-          displayContent: `调用接口失败，${errorContent?.message}`,
-        })
+        throw new RequestError(`调用接口失败，${errorContent?.message}`)
       }
 
       let prdFile: File | undefined = undefined, requireComsFile: File | undefined = undefined;

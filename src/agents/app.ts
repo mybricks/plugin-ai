@@ -38,6 +38,9 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
       MYBRICKS_TOOLS.GeneratePage({
         getFocusRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(pageId) as string,
         getTargetId: () => pageId as string,
+        getPageJson() {
+          return context.api?.page?.api?.getOutlineInfo(pageId)
+        },
         appendPrompt: prompts.systemAppendPrompts,
         examples: prompts.generatePageActionExamplesPrompts,
         onActions: (actions, status) => {

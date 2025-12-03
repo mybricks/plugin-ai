@@ -16,16 +16,9 @@ export function getFiles(files: RxFiles, {
 }
 
 
-export function getPageHierarchy(context: any) {
-  const currentFocus = context.currentFocus;
-  const pageId = currentFocus?.pageId;
-
-  if (!pageId) {
-    return '无法获取页面信息';
-  }
-
+export function getPageHierarchy(outlineInfo: any, currentFocus: any) {
   // 获取完整的页面结构
-  const pageOutline = context.api?.page?.api?.getOutlineInfo(pageId);
+  const pageOutline = outlineInfo;
 
   // 检查组件树中是否包含目标组件
   function containsComponent(data: any, targetId: string): boolean {
@@ -76,8 +69,8 @@ export function getPageHierarchy(context: any) {
     // 处理当前节点
     if (data.title) {
       const namespace = data.def?.namespace;
-      const isFocused = (currentFocus?.type === 'uiCom' && data.id === currentFocus.comId) ||
-        (currentFocus?.type === 'page' && data.id === pageId);
+      const isFocused = (currentFocus?.type === 'uiCom' && data.id === currentFocus?.comId) ||
+        (currentFocus?.type === 'page' && data.id === currentFocus?.pageId);
       const focusMarker = isFocused ? ' 【当前聚焦】' : '';
       const collapsedMarker = data._hasCollapsedChildren ? ' 【子组件已折叠】' : '';
 
@@ -146,14 +139,14 @@ export function getPageHierarchy(context: any) {
     const filteredOutline = filterToFocusedComponent(pageOutline);
     processedData = {
       title: '页面',
-      id: pageId,
+      id: currentFocus?.pageId,
       slots: [{ components: [filteredOutline] }]
     };
   } else {
     // 聚焦页面时，获取完整的页面层级关系
     processedData = {
       title: '页面',
-      id: pageId,
+      id: currentFocus?.pageId,
       slots: [{ components: [pageOutline] }]
     };
   }
@@ -161,16 +154,52 @@ export function getPageHierarchy(context: any) {
   return generateTreeDescription(processedData);
 }
 
+export function getComponentIdToTitleMap(outlineInfo: any) {
+  const componentMap = new Map();
 
-export function getComponentOperationSummary(operations = []) {
+  // 递归遍历函数
+  function traverse(data: any) {
+    if (!data) return;
+
+    // 如果是数组，遍历每个元素
+    if (Array.isArray(data)) {
+      data.forEach(item => traverse(item));
+      return;
+    }
+
+    // 如果当前节点有id和title，添加到映射中
+    if (data.id && data.title) {
+      componentMap.set(data.id, data.title);
+    }
+
+    // 递归遍历slots中的组件
+    if (data.slots && Array.isArray(data.slots)) {
+      data.slots.forEach(slot => {
+        if (slot.components && Array.isArray(slot.components)) {
+          slot.components.forEach(component => {
+            traverse(component);
+          });
+        }
+      });
+    }
+  }
+
+  // 开始遍历
+  traverse(outlineInfo);
+
+
+  console.log(outlineInfo, componentMap)
+  return componentMap;
+}
+
+export function getComponentOperationSummary(operations = [], componentIdToTitleMap = new Map()) {
   const componentActions: any = {};
-  const componentIdToTitle: any = {};
   const results: any = [];
 
-  // 收集组件title信息
+  // 收集组件title信息（补充传入映射中没有的新组件）
   operations.forEach(operation => {
     if (operation.type === 'addChild' && operation.params.title) {
-      componentIdToTitle[operation.params.comId] = operation.params.title;
+      componentIdToTitleMap.set(operation.params.comId, operation.params.title)
     }
   });
 
@@ -179,7 +208,7 @@ export function getComponentOperationSummary(operations = []) {
 
     switch (type) {
       case 'doConfig':
-        const configTitle = componentIdToTitle[comId] || comId;
+        const configTitle = componentIdToTitleMap.get(comId) || comId;
         if (!componentActions[configTitle]) {
           componentActions[configTitle] = { configs: [] };
         }
@@ -188,7 +217,7 @@ export function getComponentOperationSummary(operations = []) {
         break;
 
       case 'addChild':
-        const parentTitle = componentIdToTitle[comId] || comId;
+        const parentTitle = componentIdToTitleMap.get(comId) || comId;
 
         // 1. 先记录添加组件的操作
         results.push(`• 在【${parentTitle}】的 ${target} 插槽中新增了「${params.title}」`);
@@ -201,8 +230,8 @@ export function getComponentOperationSummary(operations = []) {
         break;
 
       case 'move':
-        const moveTitle = componentIdToTitle[comId];
-        const targetTitle = componentIdToTitle[params.to?.comId];
+        const moveTitle = componentIdToTitleMap.get(comId);
+        const targetTitle = componentIdToTitleMap.get(params.to?.comId);
         const slotId = params.to?.slotId;
 
         if (moveTitle && targetTitle) {
@@ -211,7 +240,7 @@ export function getComponentOperationSummary(operations = []) {
         break;
 
       case 'delete':
-        const deleteTitle = componentIdToTitle[comId];
+        const deleteTitle = componentIdToTitleMap.get(comId);
         if (deleteTitle) {
           results.push(`• 删除了【${deleteTitle}】组件`);
         } else {
@@ -232,7 +261,6 @@ export function getComponentOperationSummary(operations = []) {
 
   return results.join('\n');
 }
-
 
 interface Config {
   path: string;

@@ -14,7 +14,14 @@ export const requestCommonAgent = (params: any) => {
 
     const targetType = context.currentFocus?.type
     const targetId = targetType === 'uiCom' ? context.currentFocus?.comId : context.currentFocus?.pageId
-    
+
+    const getOutlineInfo = () => {
+      if (targetType !== 'page') {
+        return context.api?.uiCom?.api?.getOutlineInfo(targetId)
+      } else {
+        return context.api?.page?.api?.getOutlineInfo(targetId)
+      }
+    }
 
     params?.onProgress?.('start')
 
@@ -49,6 +56,9 @@ export const requestCommonAgent = (params: any) => {
         MYBRICKS_TOOLS.GeneratePage({
           getFocusRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetId) as string,
           getTargetId: () => targetId as string,
+          getPageJson() {
+            return context.api?.page?.api?.getOutlineInfo(context.currentFocus?.pageId)
+          },
           appendPrompt: prompts.systemAppendPrompts,
           examples: prompts.generatePageActionExamplesPrompts,
           onActions: (actions, status) => {
@@ -71,7 +81,7 @@ export const requestCommonAgent = (params: any) => {
           },
           getFocusElementHasChildren() {
             if (context.currentFocus?.type !== 'page') {
-              const json = context.api?.uiCom?.api?.getOutlineInfo(targetId)
+              const json = getOutlineInfo()
               if (!json.slots || (Array.isArray(json.slots) && json.slots.length === 0)) {
                 return false
               }
@@ -89,9 +99,12 @@ export const requestCommonAgent = (params: any) => {
               console.warn('doActions，没有合适的目标')
             }
           },
+          getPageJson() {
+            return context.api?.page?.api?.getOutlineInfo(context.currentFocus?.pageId)
+          },
           getFocusElementHasChildren() {
             if (context.currentFocus?.type !== 'page') {
-              const json = context.api?.uiCom?.api?.getOutlineInfo(targetId)
+              const json = getOutlineInfo()
               if (!json.slots || (Array.isArray(json.slots) && json.slots.length === 0)) {
                 return false
               }
@@ -115,7 +128,7 @@ export const requestCommonAgent = (params: any) => {
   以下是当前所属的页面结构简述，包含父子关系、层级和顺序。
   如果后续需要获取更加详细的搭建信息（比如插槽、配置、样式、已折叠子组件等信息），请使用「获取组件配置」工具获取更多信息。
 
-  ${getPageHierarchy(context)}
+  ${getPageHierarchy(getOutlineInfo(), { type: targetType, comId: context.currentFocus?.comId, pageId: context.currentFocus?.pageId })}
 
   > 如果缩进内容不为空，代表元素通过插槽放置有子组件，如果缩进内容为空，则代表此元素没有任何子组件；
   >【当前聚焦】标记表示用户当前选中的元素；
