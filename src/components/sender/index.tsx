@@ -34,6 +34,7 @@ interface SenderProps {
   onMentionClick?: (mention: Mention) => void;
   loading?: boolean;
   placeholder?: string;
+  attachmentsPrompt?: string;
 }
 
 interface SenderRef {
@@ -43,7 +44,7 @@ interface SenderRef {
 }
 
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
-  const { loading, placeholder = "请输入", onMentionClick } = props;
+  const { loading, placeholder = "请输入", onMentionClick, attachmentsPrompt } = props;
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [inputContent, setInputContent] = useState<string | null>(null);
@@ -118,9 +119,8 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         setAttachments((attachments) => {
           return [...attachments, { type: "image", content: base64 }]
         })
-        if (!inputContent) {
-          const defaultContent = "根据附件中的图片内容进行设计开发，要求尽可能还原其中的各类设计细节以及功能，在此基础上可做调整优化创新";
-          setInputContent(defaultContent);
+        if (!inputContent && attachmentsPrompt) {
+          setInputContent(attachmentsPrompt);
           const selection = window.getSelection();
 
           if (!selection?.rangeCount) {
@@ -128,7 +128,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           }
 
           const range = selection.getRangeAt(0);
-          const textNode = document.createTextNode(defaultContent);
+          const textNode = document.createTextNode(attachmentsPrompt);
           range.insertNode(textNode);
           range.setStartAfter(textNode);
           range.setEndAfter(textNode);
