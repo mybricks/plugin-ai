@@ -66,7 +66,7 @@ export default function pluginAI(params?: any): any {
           context.createRxai({
             system,
             request: {
-              maxRetries: 2,
+              maxRetries: 1,
               requestAsStream: useMock ? mockRequestAsStream() : requestAsStream
             },
             key

@@ -69,10 +69,8 @@ export const requestCommonAgent = (params: any) => {
           allowComponents: context.api?.global?.api?.getAllComDefPrompts?.(),
           examples: prompts.prdExamplesPrompts,
           canvasWidth: prompts.canvasWidth,
-          queryComponentsDocsByNamespaces: (namespaces) => {
-            return namespaces.reduce((acc, cur) => {
-              return acc + '\n' + context.api?.uiCom?.api?.getComEditorPrompts?.(cur.namespace)
-            }, '')
+          onComponentDocOpen: (namespace) => {
+            workspace.openComponentDoc(namespace)
           }
         }),
         MYBRICKS_TOOLS.GeneratePage({

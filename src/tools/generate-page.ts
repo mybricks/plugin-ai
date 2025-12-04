@@ -20,7 +20,7 @@ export default function generatePage(config: GeneratePageToolParams): any {
   const streamActionsParser = createActionsParser();
   const excuteActionsParser = createActionsParser();
   return {
-    name: "generate-page",
+    name: "clear-and-generate-page",
     displayName: "生成页面",
     description: `根据需求/附件图片，一次性搭建并生成符合需求的 MyBricks 页面。
 工具分类：操作执行类；

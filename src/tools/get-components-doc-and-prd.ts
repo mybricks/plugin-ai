@@ -4,23 +4,20 @@ interface GetComponentsDocAndPrdToolParams {
   allowComponents: string;
   examples: string;
   canvasWidth: string;
-  queryComponentsDocsByNamespaces: (
-    namespaces: [{ namespace: string }],
-  ) => string;
+  onComponentDocOpen: (ns: string) => void;
 }
 
-export default function getComponentsDocAndPrd(config: GetComponentsDocAndPrdToolParams, ): any {
+export default function getComponentsDocAndPrd(config: GetComponentsDocAndPrdToolParams,): any {
   return {
     name: 'generate-prd-and-require-component',
     displayName: "理解和整理当前需求",
-    description: `整理/扩写需求/分析图片 + 组件选型。
+    description: `整理/扩写需求/分析图片 + 组件选型，组件选型会补充缺失的组件文档。
 工具分类：信息获取类
-前置要求：用户提出过搭建需求
-参数：用户需求（可能是文本，一句话、图片附近、文件附件等需求）
+前置要求：用户提出过搭建需求（可能是文本，一句话、图片附近、文件附件等需求）
 返回值：需求分析规格说明书（PRD）文件 + 组件选型；`,
     aiRole: 'architect',
     getPrompts: () => {
-        return `<工具总览>
+      return `<工具总览>
 你是一个获取组件文档和用户需求的工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深页面搭建助手，拥有专业的产品经理能力。
 你的任务是根据「允许使用的组件及其说明」，整理或扩写用户的需求（如果有图片附件、需要参考图片中的内容，对图片详细理解），并将需求中可能用到的组件列出来整理成「需求文档」和「组件使用文档」。
 
@@ -98,12 +95,12 @@ ${config.allowComponents}
 ${config.examples}
 </examples>
 `
-      },
+    },
     execute({ files, content }) {
       let errorContent;
       try {
         errorContent = JSON.parse(content)
-      } catch (error) {}
+      } catch (error) { }
       if (errorContent && errorContent?.message) {
         throw new RequestError(`网络错误，${errorContent?.message}`)
       }
@@ -123,24 +120,20 @@ ${config.examples}
       let requireComponents = [];
       try {
         requireComponents = JSON.parse(requireComsFile?.content);
-      } catch (error) {}
-      const requireComponentsDocs = config.queryComponentsDocsByNamespaces(requireComponents);
-        return `<需求文档>
----
-${prdFile?.name}    
----
+      } catch (error) { }
 
+      if (Array.isArray(requireComponents)) {
+        requireComponents.forEach(item => {
+          config.onComponentDocOpen(item.namespace)
+        })
+      }
+      
+      return `<需求文档>
+---
+${prdFile?.name}
+---
 ${prdFile?.content}
-</需求文档>
-
-<允许使用的组件知识库文档>
----
-${requireComsFile?.name}    
----
-
-${requireComponentsDocs}
-
-</允许使用的组件知识库文档>`
+</需求文档>`
     },
   }
 }
