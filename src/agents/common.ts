@@ -60,7 +60,11 @@ export const requestCommonAgent = (params: any) => {
         cancel: () => {},
       },
       tools: [
-        MYBRICKS_TOOLS.OpenDsl({}),
+        MYBRICKS_TOOLS.OpenDsl({
+          onOpen(id) {
+            workspace.openDocument(id)
+          },
+        }),
         // MYBRICKS_TOOLS.GetComponentsDocAndPrd({
         //   allowComponents: context.api?.global?.api?.getAllComDefPrompts?.(),
         //   examples: prompts.prdExamplesPrompts,
