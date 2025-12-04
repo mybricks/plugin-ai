@@ -45,6 +45,7 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
       return `<工具总览>
 你是一个修改组件搭建效果的工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深页面搭建助手，拥有专业的搭建能力。
 你的任务是根据「当前组件上下文」和「用户需求」，生成 actions ，修改组件完成用户的需求。
+注意：所有的action包含在唯一一份actions文件下。
 </工具总览>
 
 重要根据！：action的生成必须基于提供的组件配置文档，不允许捏造、猜测、基于客观事实进行生成。
@@ -188,16 +189,19 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
       \`\`\`
       
       例如：
+      - 添加文本组件：
       ${fileFormat({
         content: `["u_ou1rs","content","addChild",{"title":"添加的文本组件","ns":"namespace占位","comId":"u_iiusd7"}]`,
         fileName: '添加文本组件步骤.json'
       })}
 
+      - 添加组件带有配置属性：
       ${fileFormat({
         content: `["u_ou1rs","content","addChild",{"title":"背景图","ns":"namespace占位","comId":"u_iiusd7","layout":{"width":"100%","height":200,"marginTop":8,"marginLeft":12,"marginRight":12},"configs":[{"path":"常规/图片地址","value":"https://ai.mybricks.world/image-search?term=风景"},{"path":"样式/图片","style":{"borderRadius":"8px"}}]}]`,
         fileName: '添加带配置属性的步骤.json'
       })}
   
+      - 添加组件带ignore标记：
       ${fileFormat({
         content: `["u_ou1rs","content","addChild",{"title":"添加的布局组件","ns":"namespace占位","comId":"u_iiusd7","ignore": true}]`,
         fileName: '添加带ignore标记的步骤.json'
