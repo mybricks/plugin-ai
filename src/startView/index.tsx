@@ -52,6 +52,7 @@ const StartView = ({ api, user, copilot }: any) => {
         loading={loading}
         onSend={onSend}
         placeholder={"您好，我是智能助手，请详细描述您要搭建的应用内容"}
+        attachmentsPrompt={"根据附件中的图片内容进行设计开发，要求尽可能还原其中的各类设计细节以及功能，在此基础上可做调整优化创新"}
       />
     </div>
   )

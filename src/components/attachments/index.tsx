@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Close } from "../icons";
 import css from "./index.less";
@@ -21,7 +21,7 @@ const AttachmentsList = (props: AttachmentsProps) => {
   return (
     <div className={classNames(css.attachments, className)}>
       {attachments.map((attachment, index) => {
-        return <Attachment key={index} attachment={attachment} onDelete={() => onDelete?.(index)} />
+        return <Attachment key={index} attachment={attachment} onDelete={onDelete ? () => onDelete(index) : undefined} />
       })}
     </div>
   )
@@ -29,19 +29,31 @@ const AttachmentsList = (props: AttachmentsProps) => {
 
 export { AttachmentsList };
 
-const Attachment = (props: { attachment: Attachment, onDelete: () => void; }) => {
+const Attachment = (props: { attachment: Attachment, onDelete?: () => void; }) => {
   const imgRef = useRef<HTMLImageElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const { attachment, onDelete } = props;
   const [previewBCR, setPreviewBCR] = useState<DOMRect | null>(null);
   const [visible, setVisible] = useState(false);
 
+  const delayedTask = useMemo(() => {
+    return new DelayedTask<[boolean]>((visible) => {
+      setVisible(visible);
+    }, 50)
+  }, [])
+
   useEffect(() => {
     if (visible) {
       if (previewBCR) {
         const imgBcr = imgRef.current!.getBoundingClientRect();
 
-        previewRef.current!.style.top = `${imgBcr.top - previewBCR.height - 4}px`
+        const topSpace = imgBcr.top - 4 - previewBCR.height;
+
+        if (topSpace > 0) {
+          previewRef.current!.style.top = `${topSpace}px`;
+        } else {
+          previewRef.current!.style.top = `${imgBcr.top + imgBcr.height}px`;
+        }
         
         if (imgBcr.left + previewBCR.width > document.body.offsetWidth) {
           previewRef.current!.style.left = `${imgBcr.left + imgBcr.width - previewBCR.width}px`
@@ -61,10 +73,10 @@ const Attachment = (props: { attachment: Attachment, onDelete: () => void; }) =>
       <div
         className={css.imageThumbnail}
         onMouseEnter={() => {
-          setVisible(true);
+          delayedTask.startNow(true);
         }}
         onMouseLeave={() => {
-          setVisible(false);
+          delayedTask.start(false);
         }}
       >
         <img ref={imgRef} src={attachment.content} />
@@ -75,7 +87,16 @@ const Attachment = (props: { attachment: Attachment, onDelete: () => void; }) =>
         </div>}
       </div>
       {createPortal((
-        <div ref={previewRef} className={css.preview}>
+        <div
+          ref={previewRef}
+          className={css.preview}
+          onMouseEnter={() => {
+            delayedTask.startNow(true);
+          }}
+          onMouseLeave={() => {
+            delayedTask.start(false);
+          }}
+        >
           <img src={attachment.content} onLoad={(event) => {
             setPreviewBCR((event.target as HTMLImageElement).parentElement!.getBoundingClientRect())
           }} />
@@ -83,4 +104,33 @@ const Attachment = (props: { attachment: Attachment, onDelete: () => void; }) =>
       ), document.body)}
     </>
   )
+}
+
+class DelayedTask<T extends unknown[]> {
+  private timerId: number | null = null;
+  constructor(private callback: (...args: T) => void, private delay: number) {}
+
+  start(...args: T) {
+    this.cancel();
+    this.timerId = setTimeout(() => {
+      this.callback(...args);
+      this.timerId = null;
+    }, this.delay) as unknown as number;
+
+    return this;
+  }
+
+  cancel() {
+    if (this.timerId) {
+      clearTimeout(this.timerId);
+      this.timerId = null;
+    }
+    return this;
+  }
+
+  startNow(...args: T) {
+    this.cancel();
+    this.callback(...args);
+    return this;
+  }
 }
