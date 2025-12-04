@@ -21,7 +21,7 @@ const transformParams = (params: any = {}) => {
 }
 
 export default function pluginAI(params?: any): any {
-  const { user, prompts, requestAsStream, mock, key } = transformParams(params);
+  const { user, prompts, requestAsStream, mock, key, system } = transformParams(params);
   const copilot = {
     name: "MyBricks.ai",
     avatar: "https://my.mybricks.world/image/icon.png"
@@ -64,6 +64,7 @@ export default function pluginAI(params?: any): any {
           }
 
           context.createRxai({
+            system,
             request: {
               maxRetries: 2,
               requestAsStream: useMock ? mockRequestAsStream() : requestAsStream
