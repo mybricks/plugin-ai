@@ -1,4 +1,4 @@
-import { fileFormat, ToolError, RequestError } from '@mybricks/rxai'
+import { fileFormat, RequestError } from '@mybricks/rxai'
 
 interface GetComponentsDocAndPrdToolParams {
   allowComponents: string;

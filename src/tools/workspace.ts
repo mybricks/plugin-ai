@@ -70,7 +70,7 @@ class WorkSpace {
 
   constructor(config: WorkSpaceConfig, api: WorkSpaceAPI) {
     this.api = api;
-    this.currentFocus = config.currentFocus;
+    this.currentFocus = config.currentFocus ?? {};
   }
 
   /**
@@ -433,6 +433,10 @@ class PageHierarchyGenerator {
 class FocusDescriptionGenerator {
   static generate(currentFocus: FocusInfo): string {
     const { pageId, comId, title, type } = currentFocus;
+
+    if (!currentFocus || (!currentFocus.pageId && !currentFocus.comId)) {
+      return '当前没有聚焦到任何页面或组件。';
+    }
 
     let focusDesc = '';
 

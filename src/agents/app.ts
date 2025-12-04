@@ -1,9 +1,23 @@
 import { context } from './../context';
 import { MYBRICKS_TOOLS } from "./../tools"
 
+import { WorkSpace } from './../tools/workspace'
+
 export const requestGeneratePageAgent = (pageId: string, pageTitle: string, params: any) => {
 
   const prompts = context.prompts
+
+  const workspace = new WorkSpace({ currentFocus: context.currentFocus } as any, {
+    getAllPageInfo() {
+      return []
+    },
+    getOutlineInfo(id, type) {
+      return []
+    },
+    getComponentDoc(namespace: string) {
+      return context.api?.uiCom?.api?.getComEditorPrompts?.(namespace)
+    }
+  } as any)
 
   params?.onProgress?.('start')
 
@@ -23,16 +37,14 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
         // params?.onProgress?.("complete");
       },
     },
-    planList: ["generate-prd-and-require-component", "generate-page"],
+    planList: ["generate-prd-and-require-component", "clear-and-generate-page"],
     tools: [
       MYBRICKS_TOOLS.GetComponentsDocAndPrd({
         allowComponents: context.api?.global?.api?.getAllComDefPrompts?.(),
         examples: prompts.prdExamplesPrompts,
         canvasWidth: prompts.canvasWidth,
-        queryComponentsDocsByNamespaces: (namespaces) => {
-          return namespaces.reduce((acc, cur) => {
-            return acc + '\n' + context.api?.uiCom?.api?.getComEditorPrompts?.(cur.namespace)
-          }, '')
+        onComponentDocOpen: (namespace) => {
+          workspace.openComponentDoc(namespace)
         }
       }),
       MYBRICKS_TOOLS.GeneratePage({
@@ -53,6 +65,12 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
           context.api?.page?.api?.clearPageContent?.(pageId)
         }
       }),
+    ],
+    presetMessages: () => [
+      {
+        role: 'user',
+        content: workspace.getComponentsDocs()
+      }
     ],
     // presetMessages: [
     //   {
