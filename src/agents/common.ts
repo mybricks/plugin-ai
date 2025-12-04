@@ -38,9 +38,10 @@ export const requestCommonAgent = (params: any) => {
       }
     } as any)
 
-    console.log(workspace.projectStruct)
-
     params?.onProgress?.('start')
+
+    const projectStruct = workspace.getProjectStruct();
+    const componentsDocs = workspace.getComponentsDocs()
 
     context.rxai.requestAI({
       ...params,
@@ -65,16 +66,16 @@ export const requestCommonAgent = (params: any) => {
             workspace.openDocument(id)
           },
         }),
-        // MYBRICKS_TOOLS.GetComponentsDocAndPrd({
-        //   allowComponents: context.api?.global?.api?.getAllComDefPrompts?.(),
-        //   examples: prompts.prdExamplesPrompts,
-        //   canvasWidth: prompts.canvasWidth,
-        //   queryComponentsDocsByNamespaces: (namespaces) => {
-        //     return namespaces.reduce((acc, cur) => {
-        //       return acc + '\n' + context.api?.uiCom?.api?.getComEditorPrompts?.(cur.namespace)
-        //     }, '')
-        //   }
-        // }),
+        MYBRICKS_TOOLS.GetComponentsDocAndPrd({
+          allowComponents: context.api?.global?.api?.getAllComDefPrompts?.(),
+          examples: prompts.prdExamplesPrompts,
+          canvasWidth: prompts.canvasWidth,
+          queryComponentsDocsByNamespaces: (namespaces) => {
+            return namespaces.reduce((acc, cur) => {
+              return acc + '\n' + context.api?.uiCom?.api?.getComEditorPrompts?.(cur.namespace)
+            }, '')
+          }
+        }),
         MYBRICKS_TOOLS.GeneratePage({
           getFocusRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetId) as string,
           getTargetId: () => targetId as string,
@@ -144,11 +145,11 @@ export const requestCommonAgent = (params: any) => {
       presetMessages: [
         {
           role: 'user',
-          content: workspace.projectStruct
+          content: projectStruct
         },
         {
           role: 'user',
-          content: workspace.componentsDocs
+          content: componentsDocs
         },
         {
           role: 'user',

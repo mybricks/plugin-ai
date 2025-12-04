@@ -188,7 +188,6 @@ export function getComponentIdToTitleMap(outlineInfo: any) {
   traverse(outlineInfo);
 
 
-  console.log(outlineInfo, componentMap)
   return componentMap;
 }
 

@@ -16,8 +16,14 @@ DSL文档的选取策略：
     - 比如需求是参考A组件修改B，则获取组件A和B的上层DSL；
   2. 保证不重复，组件是在页面中的，如果我们已经获取了页面DSL，里面的组件不需要获取；
 `,
-    execute({}) {
-      
+    execute({ params }) {
+      const ids = params.ids
+      if (ids && ids.split(',')) {
+        ids.split(',').forEach(id => {
+          config.onOpen?.(id)
+        })
+      }
+      return '调用完成'
     },
   }
 }

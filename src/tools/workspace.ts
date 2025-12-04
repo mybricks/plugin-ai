@@ -142,6 +142,8 @@ class WorkSpace {
     const outlineInfo = this.getOutlineInfo(id, type);
     const componentsInfo = ComponentsInfoGenerator.generate(outlineInfo);
 
+    console.log('openDocument', componentsInfo.namespaces)
+
     // 将已经打开文档的组件配置文档拿出来
     componentsInfo.namespaces.forEach(ns => this.openComponentDoc(ns));
 
@@ -164,7 +166,7 @@ class WorkSpace {
   /**
    * 获取项目结构描述
    */
-  get projectStruct(): string {
+  getProjectStruct(): string {
     const pageTree = PageTreeGenerator.generate(this.getAllPageInfo(), {
       pageId: this.currentFocus.pageId
     });
@@ -210,7 +212,7 @@ ${openedDocumentsList}
   /**
    * 获取组件文档
    */
-  get componentsDocs(): string {
+  getComponentsDocs(): string {
     console.log('this.openedComponentDocs', this.openedComponentDocs)
     return `# 组件使用文档
 ${this.openedComponentDocs.map(namespace => {
