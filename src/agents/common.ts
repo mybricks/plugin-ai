@@ -40,8 +40,7 @@ export const requestCommonAgent = (params: any) => {
 
     params?.onProgress?.('start')
 
-    const projectStruct = workspace.getProjectStruct();
-    const componentsDocs = workspace.getComponentsDocs()
+    const focusDesc = generateFocusDescription(context.currentFocus);
 
     context.rxai.requestAI({
       ...params,
@@ -139,23 +138,27 @@ export const requestCommonAgent = (params: any) => {
       presetHistoryMessages: [
         {
           role: 'assistant',
-          content: generateFocusDescription(context.currentFocus)
+          content: focusDesc
         }
       ],
-      presetMessages: [
-        {
-          role: 'user',
-          content: projectStruct
-        },
-        {
-          role: 'user',
-          content: componentsDocs
-        },
-        {
-          role: 'user',
-          content: generateFocusDescription(context.currentFocus)
-        }
-      ]
+      presetMessages: () => {
+        const projectStruct = workspace.getProjectStruct();
+        const componentsDocs = workspace.getComponentsDocs();
+        return [
+          {
+            role: 'user',
+            content: projectStruct
+          },
+          {
+            role: 'user',
+            content: componentsDocs
+          },
+          {
+            role: 'user',
+            content: focusDesc
+          }
+        ]
+      }
     });
   })
 }

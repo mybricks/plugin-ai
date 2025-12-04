@@ -17,7 +17,6 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
     displayName: "局部修改/重构",
     description: `根据用户需求/附件图片对页面中的内容进行局部修改/重构/移动/删除。
 工具分类：操作执行类
-参数：要修改的组件ID，确保之前的消息或内容提及过；
 作用：
   1. 局部修改组件配置；
   2. 通过添加/删除组件来重构整个组件插槽中的内容；
