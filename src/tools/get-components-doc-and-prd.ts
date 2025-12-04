@@ -12,6 +12,7 @@ export default function getComponentsDocAndPrd(config: GetComponentsDocAndPrdToo
     name: 'generate-prd-and-require-component',
     displayName: "理解和整理当前需求",
     description: `整理/扩写需求/分析图片 + 组件选型，组件选型会补充缺失的组件文档。
+参数：无
 工具分类：信息获取类
 前置要求：用户提出过搭建需求（可能是文本，一句话、图片附近、文件附件等需求）
 返回值：需求分析规格说明书（PRD）文件 + 组件选型；`,

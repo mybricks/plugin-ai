@@ -23,6 +23,7 @@ export default function generatePage(config: GeneratePageToolParams): any {
     name: "clear-and-generate-page",
     displayName: "生成页面",
     description: `根据需求/附件图片，一次性搭建并生成符合需求的 MyBricks 页面。
+参数：无
 工具分类：操作执行类；
 作用：生成一个完整的页面；
 要求：需要聚焦到一个页面上，且保证页面为空内容（除了页面和页面容器之外没有内容则为空内容）；

@@ -20,8 +20,6 @@ export const requestCommonAgent = (params: any) => {
       }
     }
 
-    console.log('context.currentFocus', context.currentFocus)
-
     const workspace = new WorkSpace({ currentFocus: context.currentFocus } as any, {
       getAllPageInfo() {
         return context.api.global.api.getAllPageInfo()
@@ -41,6 +39,8 @@ export const requestCommonAgent = (params: any) => {
     params?.onProgress?.('start')
 
     const focusDesc = generateFocusDescription(context.currentFocus);
+
+    const hasAttachment = typeof params?.message !== 'string';
 
     context.rxai.requestAI({
       ...params,

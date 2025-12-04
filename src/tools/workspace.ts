@@ -142,8 +142,6 @@ class WorkSpace {
     const outlineInfo = this.getOutlineInfo(id, type);
     const componentsInfo = ComponentsInfoGenerator.generate(outlineInfo);
 
-    console.log('openDocument', componentsInfo.namespaces)
-
     // 将已经打开文档的组件配置文档拿出来
     componentsInfo.namespaces.forEach(ns => this.openComponentDoc(ns));
 
@@ -213,7 +211,6 @@ ${openedDocumentsList}
    * 获取组件文档
    */
   getComponentsDocs(): string {
-    console.log('this.openedComponentDocs', this.openedComponentDocs)
     return `# 组件使用文档
 ${this.openedComponentDocs.map(namespace => {
   return this.api.getComponentDoc(namespace).replace('<component>', `<${namespace}文档>`).replace('</component>', `</${namespace}文档>`)
