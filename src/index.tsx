@@ -2,7 +2,7 @@ import React from 'react';
 import { Rxai } from "@mybricks/rxai";
 import data from './data';
 
-// import './../test'
+import './../test'
 
 import pkg from '../package.json';
 

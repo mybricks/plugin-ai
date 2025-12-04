@@ -1,16 +1,13 @@
 import { context } from './../context';
 import { MYBRICKS_TOOLS, getPageHierarchy } from "./../tools"
 
+import { WorkSpace } from './../tools/workspace'
+
 
 export const requestCommonAgent = (params: any) => {
 
   return new Promise((resolve, reject) => {
     const prompts = context.prompts;
-
-    if (!context.currentFocus) {
-      window?.antd?.message?.warn?.('当前暂不支持全局使用AI，请聚焦到页面或者组件上')
-      return reject('当前暂不支持全局使用AI，请聚焦到页面或者组件上')
-    }
 
     const targetType = context.currentFocus?.type
     const targetId = targetType === 'uiCom' ? context.currentFocus?.comId : context.currentFocus?.pageId
@@ -22,6 +19,26 @@ export const requestCommonAgent = (params: any) => {
         return context.api?.page?.api?.getOutlineInfo(targetId)
       }
     }
+
+    console.log('context.currentFocus', context.currentFocus)
+
+    const workspace = new WorkSpace({ currentFocus: context.currentFocus } as any, {
+      getAllPageInfo() {
+        return context.api.global.api.getAllPageInfo()
+      },
+      getOutlineInfo(id, type) {
+        if (type !== 'page') {
+          return context.api?.uiCom?.api?.getOutlineInfo(id)
+        } else {
+          return context.api?.page?.api?.getOutlineInfo(id)
+        }
+      },
+      getComponentDoc(namespace: string) {
+        return context.api?.uiCom?.api?.getComEditorPrompts?.(namespace)
+      }
+    } as any)
+
+    console.log(workspace.projectStruct)
 
     params?.onProgress?.('start')
 
@@ -43,16 +60,17 @@ export const requestCommonAgent = (params: any) => {
         cancel: () => {},
       },
       tools: [
-        MYBRICKS_TOOLS.GetComponentsDocAndPrd({
-          allowComponents: context.api?.global?.api?.getAllComDefPrompts?.(),
-          examples: prompts.prdExamplesPrompts,
-          canvasWidth: prompts.canvasWidth,
-          queryComponentsDocsByNamespaces: (namespaces) => {
-            return namespaces.reduce((acc, cur) => {
-              return acc + '\n' + context.api?.uiCom?.api?.getComEditorPrompts?.(cur.namespace)
-            }, '')
-          }
-        }),
+        MYBRICKS_TOOLS.OpenDsl({}),
+        // MYBRICKS_TOOLS.GetComponentsDocAndPrd({
+        //   allowComponents: context.api?.global?.api?.getAllComDefPrompts?.(),
+        //   examples: prompts.prdExamplesPrompts,
+        //   canvasWidth: prompts.canvasWidth,
+        //   queryComponentsDocsByNamespaces: (namespaces) => {
+        //     return namespaces.reduce((acc, cur) => {
+        //       return acc + '\n' + context.api?.uiCom?.api?.getComEditorPrompts?.(cur.namespace)
+        //     }, '')
+        //   }
+        // }),
         MYBRICKS_TOOLS.GeneratePage({
           getFocusRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetId) as string,
           getTargetId: () => targetId as string,
@@ -68,27 +86,27 @@ export const requestCommonAgent = (params: any) => {
             context.api?.page?.api?.clearPageContent?.(targetId)
           }
         }),
-        MYBRICKS_TOOLS.GetComponentsInfoByIds({
-          id: targetId as string,
-          getPageJson(id) {
-            return context.api?.page?.api?.getOutlineInfo(id)
-          },
-          getComInfo(namespace) {
-            return context.api?.uiCom?.api?.getComEditorPrompts?.(namespace)
-          },
-          getComJson(id) {
-            return context.api?.uiCom?.api?.getOutlineInfo(id)
-          },
-          getFocusElementHasChildren() {
-            if (context.currentFocus?.type !== 'page') {
-              const json = getOutlineInfo()
-              if (!json.slots || (Array.isArray(json.slots) && json.slots.length === 0)) {
-                return false
-              }
-            }
-            return true
-          }
-        }),
+        // MYBRICKS_TOOLS.GetComponentsInfoByIds({
+        //   id: targetId as string,
+        //   getPageJson(id) {
+        //     return context.api?.page?.api?.getOutlineInfo(id)
+        //   },
+        //   getComInfo(namespace) {
+        //     return context.api?.uiCom?.api?.getComEditorPrompts?.(namespace)
+        //   },
+        //   getComJson(id) {
+        //     return context.api?.uiCom?.api?.getOutlineInfo(id)
+        //   },
+        //   getFocusElementHasChildren() {
+        //     if (context.currentFocus?.type !== 'page') {
+        //       const json = getOutlineInfo()
+        //       if (!json.slots || (Array.isArray(json.slots) && json.slots.length === 0)) {
+        //         return false
+        //       }
+        //     }
+        //     return true
+        //   }
+        // }),
         MYBRICKS_TOOLS.RefactorComponent({
           onActions: (actions, status) => {
             if (targetType === "page") {
@@ -121,21 +139,16 @@ export const requestCommonAgent = (params: any) => {
       ],
       presetMessages: [
         {
-          role: 'assistant',
-          content: `<当前聚焦元素上下文>
-  ${generateFocusDescription(context.currentFocus)}
-  <页面结构简述>
-  以下是当前所属的页面结构简述，包含父子关系、层级和顺序。
-  如果后续需要获取更加详细的搭建信息（比如插槽、配置、样式、已折叠子组件等信息），请使用「获取组件配置」工具获取更多信息。
-
-  ${getPageHierarchy(getOutlineInfo(), { type: targetType, comId: context.currentFocus?.comId, pageId: context.currentFocus?.pageId })}
-
-  > 如果缩进内容不为空，代表元素通过插槽放置有子组件，如果缩进内容为空，则代表此元素没有任何子组件；
-  >【当前聚焦】标记表示用户当前选中的元素；
-  >【子组件已折叠】标记表示该组件有子组件但被折叠未显示；
-  </页面结构简述>
-</当前聚焦元素上下文>
-`
+          role: 'user',
+          content: workspace.projectStruct
+        },
+        {
+          role: 'user',
+          content: workspace.componentsDocs
+        },
+        {
+          role: 'user',
+          content: generateFocusDescription(context.currentFocus)
         }
       ]
     });
