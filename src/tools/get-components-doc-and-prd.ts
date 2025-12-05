@@ -5,6 +5,7 @@ interface GetComponentsDocAndPrdToolParams {
   examples: string;
   canvasWidth: string;
   onComponentDocOpen: (ns: string) => void;
+  shouldUseExpert?: boolean
 }
 
 export default function getComponentsDocAndPrd(config: GetComponentsDocAndPrdToolParams,): any {
@@ -16,7 +17,7 @@ export default function getComponentsDocAndPrd(config: GetComponentsDocAndPrdToo
 工具分类：信息获取类
 前置要求：用户提出过搭建需求（可能是文本，一句话、图片附近、文件附件等需求）
 返回值：需求分析规格说明书（PRD）文件 + 组件选型；`,
-    aiRole: 'architect',
+    aiRole: config?.shouldUseExpert ? 'expert' : 'architect',
     getPrompts: () => {
       return `<工具总览>
 你是一个获取组件文档和用户需求的工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深页面搭建助手，拥有专业的产品经理能力。

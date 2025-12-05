@@ -406,6 +406,12 @@ function transformToValidBackground(styles: any): void {
     delete styles.backgroundColor;
   }
 
+  // 兼容，配置backgroundColor的话记得去除渐变色
+  if (styles.backgroundColor && !styles.backgroundImage) {
+    styles.backgroundColor = styles.backgroundColor
+    styles.backgroundImage = 'none'
+  }
+
   // 如果没有background属性,直接返回
   if (!styles.background) {
     return;
@@ -431,10 +437,12 @@ function transformToValidBackground(styles: any): void {
   // 如果找到颜色值,设置backgroundColor
   if (colorMatch && !styles.backgroundColor) {
     styles.backgroundColor = colorMatch[0];
+    styles.backgroundImage = 'none'
   }
 
   // 如果找到图片或渐变,设置backgroundImage
   if (imageMatch && !styles.backgroundImage) {
+    styles.backgroundColor = 'transparent';
     styles.backgroundImage = imageMatch[0];
   }
 

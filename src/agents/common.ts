@@ -74,18 +74,18 @@ export const requestCommonAgent = (params: any) => {
           }
         }),
         MYBRICKS_TOOLS.GeneratePage({
-          getFocusRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetId) as string,
-          getTargetId: () => targetId as string,
+          getFocusRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(context.currentFocus?.pageId) as string,
+          getTargetId: () => context.currentFocus?.pageId as string,
           getPageJson() {
             return context.api?.page?.api?.getOutlineInfo(context.currentFocus?.pageId)
           },
           appendPrompt: prompts.systemAppendPrompts,
           examples: prompts.generatePageActionExamplesPrompts,
           onActions: (actions, status) => {
-            context.api?.page?.api?.updatePage?.(targetId, actions, status)
+            context.api?.page?.api?.updatePage?.(context.currentFocus?.pageId, actions, status)
           },
           onClearPage: () => {
-            context.api?.page?.api?.clearPageContent?.(targetId)
+            context.api?.page?.api?.clearPageContent?.(context.currentFocus?.pageId)
           }
         }),
         // MYBRICKS_TOOLS.GetComponentsInfoByIds({

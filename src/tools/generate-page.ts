@@ -456,7 +456,7 @@ ${config.examples}
       }
 
       if (status === 'start') {
-        // config.onClearPage()
+        config.onClearPage()
       }
       
       if (actions.length > 0 || status === 'start' || status === 'complete') {

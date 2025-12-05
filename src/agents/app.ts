@@ -45,7 +45,8 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
         canvasWidth: prompts.canvasWidth,
         onComponentDocOpen: (namespace) => {
           workspace.openComponentDoc(namespace)
-        }
+        },
+        shouldUseExpert: true
       }),
       MYBRICKS_TOOLS.GeneratePage({
         getFocusRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(pageId) as string,
