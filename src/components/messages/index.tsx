@@ -292,10 +292,12 @@ const BubbleError = (params: BubbleErrorParams) => {
       <div className={css['ai-chat-error-code-block-message']}>
         <span>{message.content}</span>
       </div>
-      <div
-        className={css['ai-chat-error-code-block-retry']}
-        onClick={() => plan.retry()}
-      >重试</div>
+      {plan.fromIDB ? null : (
+        <div
+          className={css['ai-chat-error-code-block-retry']}
+          onClick={() => plan.retry()}
+        >重试</div>
+      )}
     </div>
   )
 }
