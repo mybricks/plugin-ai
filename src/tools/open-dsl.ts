@@ -1,4 +1,4 @@
-import { fileFormat, ToolError } from '@mybricks/rxai'
+import { fileFormat, RetryError } from '@mybricks/rxai'
 
 interface ToolParams {
   onOpen?: (id: string) => void
@@ -48,10 +48,7 @@ export default function openDsl(config: ToolParams, ): any {
         const idsAry = ids.split(',')
 
         if (idsAry.length === 0) {
-          throw new ToolError({
-            llmContent: `必须要获取至少一篇文档`,
-            displayContent: '必须要获取至少一篇文档，请重试下'
-          })
+          throw new RetryError('未获取到有效信息')
         }
 
         idsAry.forEach(id => {
@@ -59,17 +56,11 @@ export default function openDsl(config: ToolParams, ): any {
             config.onOpen?.(id)
           } catch (error) {
             console.warn(error)
-            throw new ToolError({
-              llmContent: `获取${id}的dsl文档失败，${error?.message}`,
-              displayContent: `获取${id}的信息失败，${error?.message}`
-            })
+            throw new RetryError(`获取${id}的信息失败，${error?.message}`)
           }
         })
       } else {
-        throw new ToolError({
-          llmContent: `没有获取到合法的参数`,
-          displayContent: '获取信息失败，请重试下'
-        })
+        throw new RetryError('获取信息失败')
       }
       return '已打开'
     },
