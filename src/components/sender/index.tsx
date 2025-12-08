@@ -114,6 +114,10 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   }
 
   const updateAttachmentsByFile = (file: File) => {
+    if (file.size > 500 * 1024) {
+      message.info(`当前文件大小 ${(file.size / 1024).toFixed(2)}K，超过了500K，建议您截取页面中的某个区域作为附件`)
+      return;
+    }
     readFileToBase64(file)
       .then((base64) => {
         setAttachments((attachments) => {
