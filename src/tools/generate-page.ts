@@ -19,6 +19,12 @@ interface GeneratePageToolParams {
 export default function generatePage(config: GeneratePageToolParams): any {
   const streamActionsParser = createActionsParser();
   const excuteActionsParser = createActionsParser();
+
+  const pageJson = config?.getPageJson();
+  const hasRootCom = pageJson?.asRoot;
+  const rootId = hasRootCom ? pageJson.id : undefined;
+
+
   return {
     name: "clear-and-generate-page",
     displayName: "生成页面",
@@ -461,6 +467,8 @@ ${config.examples}
         actions = streamActionsParser(actionsFile.content ?? "");
       }
 
+      actions = fixActions(actions, rootId)
+
       if (status === 'start') {
         config.onClearPage()
       }
@@ -486,6 +494,8 @@ ${config.examples}
       //   actions = actionsParser(actionsFile.content ?? "");
       // }
       // config.onActions(actions)
+
+      actions = fixActions(actions, rootId)
 
       try {
         const llmContent = stripFileBlocks(content);
@@ -514,4 +524,14 @@ ${config.examples}
       }
     },
   }
+}
+
+function fixActions(actions: any[], rootId?: string) {
+  if (!rootId) return actions;
+  return (actions ?? []).map(action => {
+    if (action.comId === rootId && action.type === 'addChild' && action.target === '_rootSlot_') {
+      action.comId = '_root_'
+    }
+    return action;
+  })
 }
