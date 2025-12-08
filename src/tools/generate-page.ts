@@ -54,6 +54,8 @@ export default function generatePage(config: GeneratePageToolParams): any {
 
 <当前根组件信息>
 ${config.getFocusRootComponentDoc()}
+
+IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
 </当前根组件信息>
 
 <如何搭建以及修改>
@@ -440,6 +442,10 @@ ${config.appendPrompt}
     - 禁止使用非法字符或特殊符号
     - 所有内容均为静态数据，禁止解构，禁止使用变量
 </生成页面思路>
+
+<生成页面限制>
+生成页面必须从根组件_root_开始配置，以及从插槽_rootSlot_开始添加组件。
+</生成页面限制>
 
 <examples>
 
