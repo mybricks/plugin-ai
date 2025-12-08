@@ -82,7 +82,12 @@ export default function pluginAI(params?: any): any {
             },
             request(params: AiServiceRequestParams) {
               if (params.attachments?.length) {
-                params.message = "参考附件图片完成页面搭建\n" + params.message
+                // TODO: attachments是Proxy代理，引擎不应该抛出此类代理
+                params.attachments = params.attachments.map((attachment) => {
+                  return {
+                    ...attachment
+                  }
+                })
               }
 
               const focus = context.currentFocus;
