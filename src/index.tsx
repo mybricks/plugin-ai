@@ -88,6 +88,8 @@ export default function pluginAI(params?: any): any {
                     ...attachment
                   }
                 })
+              } else {
+                params.attachments = [];
               }
 
               const focus = context.currentFocus;

@@ -40,10 +40,29 @@ const Messages = (params: MessagesParams) => {
   const [plans, setPlans] = useState<Plans>([]);
   const [scrollSnap, setScrollSnap] = useState(true);
 
+  const [styleTag] = useState(() => {
+    const styleTag = document.createElement('style')
+    styleTag.id = "Leon";
+    document.head.appendChild(styleTag)
+    const prefix = `.${css['ai-chat-messages']} .${css['chat-bubble-container']}:nth-last-child(2)`;
+    return {
+      setStyle: (height: number) => {
+        styleTag.innerHTML = `${prefix} {
+          min-height: ${height}px;
+        }`
+      },
+      remove: () => {
+        document.head.removeChild(styleTag);
+      }
+    };
+  })
+
   useLayoutEffect(() => {
     destroysRef.current.push(rxai.events.on('plan', (plans) => {
       setPlans([...plans])
     }, true))
+
+    styleTag.setStyle(mainRef.current!.clientHeight);
   }, [])
 
   useEffect(() => {
@@ -58,10 +77,19 @@ const Messages = (params: MessagesParams) => {
     }, { root: mainRef.current })
 
     intersectionObserver.observe(anchorRef.current!);
+
+    const mainResizeObserver = new ResizeObserver(() => {
+      const height = mainRef.current!.clientHeight;
+      if (height > 0) {
+        styleTag.setStyle(height)
+      }
+    });
+    mainResizeObserver.observe(mainRef.current!);
   
     return () => {
       mutationObserver.disconnect();
       intersectionObserver.disconnect();
+      mainResizeObserver.disconnect();
 
       for (const destroy of destroysRef.current) {
         destroy()
@@ -111,10 +139,10 @@ const Bubble = (params: BubbleParams) => {
   }, [])
 
   return userMessage && (
-    <>
+    <div className={css['chat-bubble-container']}>
       <BubbleUser user={user} message={userMessage} plan={plan} onMentionClick={onMentionClick}/>
       <BubbleCopilot copilot={copilot} plan={plan}/>
-    </>
+    </div>
   )
 }
 
