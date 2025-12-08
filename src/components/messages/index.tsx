@@ -3,7 +3,7 @@ import classNames from "classnames"
 import { Rxai } from "@mybricks/rxai"
 import markdownit from 'markdown-it'
 import { Extension } from "../types";
-import { Loading, Success, Close } from "../icons";
+import { Loading, Success } from "../icons";
 import { AttachmentsList } from "../attachments";
 import { MentionTag } from "../mention";
 import { Mention } from "../types";
@@ -83,8 +83,6 @@ const Messages = (params: MessagesParams) => {
 
 type Plan = Rxai['cacheMessages'][number];
 
-type UserFriendlyMessages = Plan['userFriendlyMessages'];
-
 interface BubbleParams {
   user: User;
   copilot: User;
@@ -93,27 +91,14 @@ interface BubbleParams {
 }
 const Bubble = (params: BubbleParams) => {
   const { user, plan, copilot, onMentionClick } = params;
-
-  const [messages, setMessages] = useState<UserFriendlyMessages>([])
-  const [message, setMessage] = useState("")
-  const [loading, setLoading] = useState(true)
-
+  const [userMessage, setUserMessage] = useState<ReturnType<Plan['getUserMessage']>>();
   const destroysRef = useRef<(() => void)[]>([]);
 
   useLayoutEffect(() => {
     destroysRef.current.push(
-      plan.events.on('loading', (loading: boolean) => {
-        setLoading(loading);
-      }, true),
-      plan.events.on('messageStream', (messageStream: string) => {
-        setMessage((pre) => {
-          return pre + messageStream;
-        })
-      }, true),
-      plan.events.on('userFriendlyMessages', (messages: UserFriendlyMessages) => {
-        setMessages([...messages])
-        setMessage("")
-      }, true),
+      plan.events.on('userMessage', (userMessage) => {
+        setUserMessage(userMessage);
+      }),
     )
   }, [])
 
@@ -125,10 +110,10 @@ const Bubble = (params: BubbleParams) => {
     }
   }, [])
 
-  return (
+  return userMessage && (
     <>
-      {messages[0] && <BubbleUser user={user} message={messages[0]} plan={plan} onMentionClick={onMentionClick}/>}
-      {messages[0] && <BubbleCopilot messages={messages.slice(1)} copilot={copilot} message={message} loading={loading} plan={plan}/>}
+      <BubbleUser user={user} message={userMessage} plan={plan} onMentionClick={onMentionClick}/>
+      <BubbleCopilot copilot={copilot} plan={plan}/>
     </>
   )
 }
@@ -149,7 +134,7 @@ const BubbleMessage = (params: BubbleMessageParams) => {
 
 interface BubbleUserParams {
   user: User;
-  message: UserFriendlyMessages[number]
+  message: ReturnType<Plan['getUserMessage']>
   plan: Plan;
   onMentionClick?: (mention: Mention) => void;
 }
@@ -157,7 +142,23 @@ interface BubbleUserParams {
 const BubbleUser = (params: BubbleUserParams) => {
   const { user, message, plan, onMentionClick } = params;
   const mentions = (plan.extension as Extension)?.mentions || [];
-  const attachments = plan.attachments || [];
+  let content = "";
+  let attachments: Plan["options"]["attachments"] = [];
+
+  if (typeof message.content === "string") {
+    content = message.content
+  } else {
+    message.content.forEach((item: any) => {
+      if (item.type === "text") {
+        content = item.text
+      } else if (item.type === "image_url") {
+        attachments.push({
+          type: "image",
+          content: item.image_url.url
+        });
+      }
+    })
+  }
 
   return (
     <article className={css['chat-bubble']}>
@@ -172,18 +173,9 @@ const BubbleUser = (params: BubbleUserParams) => {
       })}>
         {mentions.length ? (
           <MentionTag mention={mentions[0]} onClick={onMentionClick}/>
-          // <div className={css['mentions-container']}>
-          //   {mentions.map((mention) => {
-          //     return <MentionTag key={mention.id} mention={mention} onClick={onMentionClick}/>
-          //   })}
-          // </div>
         ) : null}
         <span>
-          {typeof message.content === "string" ? message.content : message.content.find((content: any) => {
-            if (content.type === "text") {
-              return content
-            }
-          }).text}
+          {content}
         </span>
         {attachments.length ? (
           <AttachmentsList className={css['attachments-list']} attachments={attachments}/>
@@ -195,13 +187,47 @@ const BubbleUser = (params: BubbleUserParams) => {
 
 interface BubbleCopilotParams {
   copilot: User;
-  messages: UserFriendlyMessages;
-  message: string;
-  loading: boolean;
   plan: Plan;
 }
 const BubbleCopilot = (params: BubbleCopilotParams) => {
-  const { messages, copilot, message, loading, plan } = params;
+  const { copilot, plan } = params;
+  const destroysRef = useRef<(() => void)[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [streamMessage, setStreamMessage] = useState("");
+  const [summary, setSummary] = useState("");
+  const [commands, setCommands] = useState<Plan['commands']>([]);
+  const [error, setError] = useState("");
+
+  useLayoutEffect(() => {
+    destroysRef.current.push(
+      plan.events.on('loading', (loading) => {
+        setLoading(loading);
+      }),
+      plan.events.on('streamMessage', (chunk) => {
+        setStreamMessage((streamMessage) => {
+          return streamMessage + chunk
+        });
+      }),
+      plan.events.on('summary', (summary) => {
+        setSummary(summary);
+      }),
+      plan.events.on('commands', (commands) => {
+        setCommands([...commands]);
+        setStreamMessage("");
+      }),
+      plan.events.on('error', (error) => {
+        setError(error);
+      }),
+    )
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      for (const destroy of destroysRef.current) {
+        destroy()
+      }
+    }
+  }, [])
 
   return (
     <article className={css['chat-bubble']}>
@@ -213,17 +239,16 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
       </header>
       <section className={classNames(css['chat-message-container'], css['ai-message'])}>
         <div className={css['markdown-body']}>
-          {messages.map((message, index) => {
-            if (message.role === "tool") {
-              return <BubbleCopilotTool key={index + message.status} message={message} />
+          {commands.map((command, index) => {
+            if (!command.status || command.status === "error") {
+              return null;
             }
-            if (message.role === "error") {
-              return <BubbleError message={message} plan={plan}/>
-            }
-            return <BubbleMessage message={message.content} />
+            return <BubbleCopilotTool key={index + command.status} command={command} />
           })}
-          {message && <BubbleMessage message={message} />}
-          {!message && loading && (
+          {error && <BubbleError message={error} plan={plan}/>}
+          {summary && <BubbleMessage message={summary} />}
+          {streamMessage && <BubbleMessage message={streamMessage} />}
+          {!streamMessage && loading && (
             <div className={css['think']}>
               <span>正在思考</span>
               <Loading />
@@ -236,40 +261,23 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
 }
 
 interface BubbleCopilotToolParams {
-  message: {
-    type: "tool";
-    status: "pending" | "success" | "error" | "aborted";
-    content: {
-      name: string;
-      displayName: string;
-    }
-  }
+  command: Plan['commands'][number];
 }
 const BubbleCopilotTool = (params: BubbleCopilotToolParams) => {
-  const { message } = params;
+  const { command } = params;
 
   return (
     <div className={classNames(css['ai-chat-collapsible-code-block'], css['collapsed'])}>
       <span className={classNames(css['code-header'], css['collapsed'])}>
-        <span className={classNames(css['code-title'], css['collapsed'])}>{message.content.displayName || message.content.name}</span>
-        {message.status === "pending" && (
+        <span className={classNames(css['code-title'], css['collapsed'])}>{command.tool.displayName || command.tool.name}</span>
+        {command.status === "pending" && (
           <span className={classNames(css['code-title-status'], css['collapsed'], css['pending'])}>
             <Loading />
           </span>
         )}
-        {message.status === "success" && (
+         {command.status === "success" && (
           <span className={classNames(css['code-title-status'], css['collapsed'], css['success'])}>
             <Success />
-          </span>
-        )}
-        {message.status === "error" && (
-          <span className={classNames(css['code-title-status'], css['collapsed'], css['error'])}>
-            <Close />
-          </span>
-        )}
-        {message.status === "aborted" && (
-          <span className={classNames(css['code-title-status'], css['collapsed'], css['aborted'])}>
-            取消
           </span>
         )}
       </span>
@@ -278,10 +286,7 @@ const BubbleCopilotTool = (params: BubbleCopilotToolParams) => {
 }
 
 interface BubbleErrorParams {
-  message: {
-    role: "error",
-    content: string,
-  }
+  message: string;
   plan: Plan;
 }
 const BubbleError = (params: BubbleErrorParams) => {
@@ -290,9 +295,9 @@ const BubbleError = (params: BubbleErrorParams) => {
   return (
     <div className={css['ai-chat-error-code-block']}>
       <div className={css['ai-chat-error-code-block-message']}>
-        <span>{message.content}</span>
+        <span>{message}</span>
       </div>
-      {plan.fromIDB ? null : (
+      {!plan.enableRetry ? null : (
         <div
           className={css['ai-chat-error-code-block-retry']}
           onClick={() => plan.retry()}

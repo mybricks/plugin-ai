@@ -47,6 +47,12 @@ const View = ({ user, copilot, api }: ViewProps) => {
       attachments,
       extension,
       onProgress: context.currentFocus?.onProgress
+    }).then(() => {
+
+    }).catch(() => {
+
+    }).finally(() => {
+      
     });
   }
 
