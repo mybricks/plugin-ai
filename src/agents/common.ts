@@ -11,6 +11,7 @@ export const requestCommonAgent = (params: any) => {
 
     const targetType = context.currentFocus?.type
     const targetId = targetType === 'uiCom' ? context.currentFocus?.comId : context.currentFocus?.pageId
+    const targetPageId = context.currentFocus?.pageId
 
     const getOutlineInfo = () => {
       if (targetType !== 'page') {
@@ -39,6 +40,7 @@ export const requestCommonAgent = (params: any) => {
     params?.onProgress?.('start')
 
     const focusDesc = generateFocusDescription(context.currentFocus);
+    const historyFocusDesc = generateHistoryFocusDescription(context.currentFocus)
 
     const hasAttachment = typeof params?.message !== 'string';
 
@@ -74,18 +76,18 @@ export const requestCommonAgent = (params: any) => {
           }
         }),
         MYBRICKS_TOOLS.GeneratePage({
-          getFocusRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(context.currentFocus?.pageId) as string,
-          getTargetId: () => context.currentFocus?.pageId as string,
+          getFocusRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,
+          getTargetId: () => targetPageId as string,
           getPageJson() {
-            return context.api?.page?.api?.getOutlineInfo(context.currentFocus?.pageId)
+            return context.api?.page?.api?.getOutlineInfo(targetPageId)
           },
           appendPrompt: prompts.systemAppendPrompts,
           examples: prompts.generatePageActionExamplesPrompts,
           onActions: (actions, status) => {
-            context.api?.page?.api?.updatePage?.(context.currentFocus?.pageId, actions, status)
+            context.api?.page?.api?.updatePage?.(targetPageId, actions, status)
           },
           onClearPage: () => {
-            context.api?.page?.api?.clearPageContent?.(context.currentFocus?.pageId)
+            context.api?.page?.api?.clearPageContent?.(targetPageId)
           }
         }),
         // MYBRICKS_TOOLS.GetComponentsInfoByIds({
@@ -120,7 +122,7 @@ export const requestCommonAgent = (params: any) => {
             }
           },
           getPageJson() {
-            return context.api?.page?.api?.getOutlineInfo(context.currentFocus?.pageId)
+            return context.api?.page?.api?.getOutlineInfo(targetPageId)
           },
           getFocusElementHasChildren() {
             if (context.currentFocus?.type !== 'page') {
@@ -136,7 +138,7 @@ export const requestCommonAgent = (params: any) => {
       presetHistoryMessages: [
         {
           role: 'assistant',
-          content: focusDesc
+          content: historyFocusDesc
         }
       ],
       presetMessages: () => {
@@ -177,4 +179,22 @@ function generateFocusDescription(currentFocus = {}) {
   }
   
   return `当前已聚焦到${focusDesc}中，后续用户的提问，关于"这个"、"此"、"整体"，甚至不提主语，都是指代此元素及其子组件内容。`;
+}
+
+function generateHistoryFocusDescription(currentFocus = {}) {
+  const { pageId, comId, title, type } = currentFocus ?? {}
+  
+  // 定义聚焦元素的描述部分
+  let focusDesc = '';
+  
+  // 判断当前聚焦元素类型
+  if (type === 'uiCom') {
+    focusDesc = `组件(title=${title},组件id=${comId})`;
+  } else if (type === 'page') {
+    focusDesc = `页面(title=${title},页面id=${pageId})`;
+  } else if (type === 'section') {
+    focusDesc = `页面(title=${title},页面id=${pageId})`;
+  }
+  
+  return `当前聚焦到${focusDesc}`;
 }
