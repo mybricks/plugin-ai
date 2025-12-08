@@ -15,7 +15,7 @@ const Header = () => {
       console.log("[@mybricks/plugin-ai - exportRxai]", content);
       downloadToFile({
         content: context.rxai.export(),
-        name: "rxai.json"
+        name: `rxai-${new Date().getTime()}.json`
       })
     } catch (e) {
 
