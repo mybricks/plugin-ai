@@ -147,15 +147,15 @@ export const requestCommonAgent = (params: any) => {
             role: 'user',
             content: projectStruct
           },
-          {
+          workspace.hasComponentsDocs() ? {
             role: 'user',
             content: componentsDocs
-          },
+          } : null,
           {
             role: 'user',
             content: focusDesc
           }
-        ]
+        ].filter(Boolean)
       }
     });
   })

@@ -207,6 +207,10 @@ ${openedDocumentsList}
     this.openedComponentDocs = this.openedComponentDocs.filter(ns => ns !== namespace)
   }
 
+  hasComponentsDocs(): boolean {
+    return this.openedComponentDocs.length > 0
+  }
+
   /**
    * 获取组件文档
    */
