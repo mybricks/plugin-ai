@@ -1,5 +1,5 @@
 import { fileFormat } from '@mybricks/rxai'
-import { getFiles, createActionsParser, getComponentOperationSummary, getComponentIdToTitleMap } from './utils'
+import { getFiles, createActionsParser, getComponentOperationSummary, getComponentIdToTitleMap, stripFileBlocks } from './utils'
 
 interface GeneratePageToolParams {
   /** 当前根组件信息 */
@@ -482,14 +482,22 @@ ${config.examples}
       // config.onActions(actions)
 
       try {
-        const summary = getComponentOperationSummary(actions, getComponentIdToTitleMap(config?.getPageJson()))
+        const llmContent = stripFileBlocks(content);
+        const actionsContent = actions?.length ? getComponentOperationSummary(actions, getComponentIdToTitleMap(config?.getPageJson())) : ""
+        const summary = (llmContent ? `${llmContent}\n\n` : "") + (actionsContent ? `修改内容如下\n${actionsContent}` : "当前没有内容修改");
 
         return {
-          llmContent: `根据需求，执行以下操作
-  ${summary}`,
-          displayContent: `根据需求，执行以下操作
-  ${summary}`
+          llmContent: summary,
+          displayContent: summary
         }
+  //       const summary = getComponentOperationSummary(actions, getComponentIdToTitleMap(config?.getPageJson()))
+
+  //       return {
+  //         llmContent: `根据需求，执行以下操作
+  // ${summary}`,
+  //         displayContent: `根据需求，执行以下操作
+  // ${summary}`
+  //       }
       } catch (error) {
         
       }

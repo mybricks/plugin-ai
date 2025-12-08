@@ -558,3 +558,18 @@ export function createActionsParser() {
     return newActions;
   };
 }
+
+export function stripFileBlocks(raw: string) {
+  if (typeof raw !== "string") {
+    return ""
+  }
+  const fileBlockRegex = /```[^\n]*title\s*=\s*"[^"\n]*"?[\s\S]*?```/g;
+  let cleaned = raw.replace(fileBlockRegex, '');
+
+  // 去掉多余空行：连续空白行压缩为单个换行，再首尾 trim
+  cleaned = cleaned
+    .replace(/\n{2,}/g, '\n') // 多个换行压缩为一个
+    .trim();
+
+  return cleaned;
+}
