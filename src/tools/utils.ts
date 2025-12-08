@@ -419,36 +419,40 @@ function transformToValidBackground(styles: any): void {
 
   const background = styles.background.toString();
 
+  // 删除原有的background属性
+  delete styles.background;
+
+  // 处理特殊值
+  if (background === 'transparent' || background === 'none') {
+    styles.backgroundColor = 'transparent';
+    styles.backgroundImage = 'none';
+    return;
+  }
+
+  // 提取图片url或渐变
+  // 匹配url()或各种渐变函数，优先检查是否为图片url或渐变（避免被颜色正则误匹配）
+  const imageRegex =
+    /(url\([^)]+\)|linear-gradient\([^)]+\)|radial-gradient\([^)]+\)|conic-gradient\([^)]+\))/;
+  const imageMatch = background.match(imageRegex);
+
+  // 如果找到图片或渐变,设置backgroundImage
+  if (imageMatch && !styles.backgroundImage) {
+    styles.backgroundColor = 'transparent';
+    styles.backgroundImage = imageMatch[0];
+    return;
+  }
+
   // 提取颜色值
   // 匹配颜色格式: #XXX, #XXXXXX, rgb(), rgba(), hsl(), hsla(), 颜色关键字
   const colorRegex =
     /(#[0-9A-Fa-f]{3,6}|rgb\([^)]+\)|rgba\([^)]+\)|hsl\([^)]+\)|hsla\([^)]+\)|[a-zA-Z]+)/;
   const colorMatch = background.match(colorRegex);
 
-  // 提取图片url或渐变
-  // 匹配url()或各种渐变函数
-  const imageRegex =
-    /(url\([^)]+\)|linear-gradient\([^)]+\)|radial-gradient\([^)]+\)|conic-gradient\([^)]+\))/;
-  const imageMatch = background.match(imageRegex);
-
-  // 删除原有的background属性
-  delete styles.background;
-
   // 如果找到颜色值,设置backgroundColor
   if (colorMatch && !styles.backgroundColor) {
     styles.backgroundColor = colorMatch[0];
     styles.backgroundImage = 'none'
-  }
-
-  // 如果找到图片或渐变,设置backgroundImage
-  if (imageMatch && !styles.backgroundImage) {
-    styles.backgroundColor = 'transparent';
-    styles.backgroundImage = imageMatch[0];
-  }
-
-  if (background === 'transparent' || background === 'none') {
-    styles.backgroundColor = 'transparent';
-    styles.backgroundImage = 'none'
+    return;
   }
 }
 
