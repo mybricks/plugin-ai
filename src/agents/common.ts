@@ -196,5 +196,5 @@ function generateHistoryFocusDescription(currentFocus = {}) {
     focusDesc = `页面(title=${title},页面id=${pageId})`;
   }
   
-  return `当前聚焦到${focusDesc}`;
+  return `对于${focusDesc}`;
 }
