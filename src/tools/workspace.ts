@@ -46,6 +46,7 @@ interface SlotInfo {
 }
 
 interface ComponentsResult {
+  id: string
   jsx: string;
   namespaces: string[];
 }
@@ -130,6 +131,7 @@ class WorkSpace {
    * 打开文档
    */
   openDocument(id: string): void {
+    
     // 检查是否已经打开
     if (this.openedDocuments.some(doc => doc.id === id)) {
       return;
@@ -139,19 +141,61 @@ class WorkSpace {
     const type = isPage ? 'page' : 'uiCom';
     const typeDesc = isPage ? '页面' : '组件'
 
-    const outlineInfo = this.getOutlineInfo(id, type);
-    const componentsInfo = ComponentsInfoGenerator.generate(outlineInfo);
+    let outlineInfo: OutlineNode;
+    let targetComponentIds: string[] = [];
+
+    if (isPage) {
+      // 如果是页面，直接获取页面信息
+      outlineInfo = this.getOutlineInfo(id, 'page');
+      targetComponentIds = [];
+    } else {
+      // 如果是组件，需要获取包含该组件的页面信息
+      const pageId = this.currentFocus.pageId;
+      outlineInfo = this.getOutlineInfo(pageId, 'page');
+      
+      // 获取所有已打开的组件ID（排除页面ID）
+      const openedComponentIds = this.openedDocuments
+        .filter(doc => doc.type === '组件')
+        .map(doc => doc.id);
+      
+      // 添加当前要打开的组件ID
+      targetComponentIds = [...openedComponentIds, id];
+    }
+
+    const componentsInfo = ComponentsInfoGenerator.generate(outlineInfo, targetComponentIds);
 
     // 将已经打开文档的组件配置文档拿出来
     componentsInfo.namespaces.forEach(ns => this.openComponentDoc(ns));
 
-    this.openedDocuments.push({
-      id,
-      type: typeDesc,
-      title: '',
-      desc: '',
-      content: componentsInfo.jsx
-    });
+    if (isPage) {
+      // 页面类型：直接添加新文档
+      this.openedDocuments.push({
+        id,
+        type: typeDesc,
+        title: '',
+        desc: '',
+        content: componentsInfo.jsx
+      });
+    } else {
+      // 组件类型：检查是否需要更新现有文档或创建新文档
+      const existingComponentDocs = this.openedDocuments.filter(doc => doc.type === '组件');
+      
+      if (existingComponentDocs.length > 0) {
+        // 如果已经有组件文档，更新第一个组件文档的内容
+        existingComponentDocs[0].content = componentsInfo.jsx;
+        // 可以选择更新ID为组合ID，比如：
+        // existingComponentDocs[0].id = targetComponentIds.join(',');
+      } else {
+        // 如果没有组件文档，创建新的
+        this.openedDocuments.push({
+          id: componentsInfo.id,
+          type: typeDesc,
+          title: '',
+          desc: '',
+          content: componentsInfo.jsx
+        });
+      }
+    }
   }
 
   /**
@@ -179,12 +223,14 @@ class WorkSpace {
     const openedDocumentsList = this.generateOpenedDocumentsList();
 
     return `# 工作空间(Workspace)
-工作空间包含整个项目的「页面索引」「聚焦的页面和组件」「已打开」，提供的永远都是最新的项目信息。
+工作空间包含整个项目的「页面索引」「聚焦的页面和组件」「已打开的文档」，提供的始终都是最新的项目信息。
+
+WARNING: 如果「对话日志」的信息和工作空间冲突，始终以工作空间的信息为准，因为「对话日志」的操作很有可能没保存，且不是最新的。
 
 ## 页面索引
 ${pageTree}
 
-## 聚焦的页面及其最终聚焦组件
+## 聚焦的页面和组件
 ${contentHierarchy}
 
 ${focusDescription}
@@ -465,16 +511,293 @@ class FocusDescriptionGenerator {
  */
 class ComponentsInfoGenerator {
   private static namespacesSet = new Set<string>();
+  private static targetComponentIds: string[] = [];
 
-  static generate(outlineInfo: OutlineNode): ComponentsResult {
+  static generate(outlineInfo: OutlineNode, targetComponentIds: string[] = []): ComponentsResult {
     this.namespacesSet.clear();
-    const jsx = this.processData(outlineInfo);
+    this.targetComponentIds = targetComponentIds;
+    
+    // 如果没有目标组件ID，按原逻辑处理
+    if (targetComponentIds.length === 0) {
+      const jsx = this.processData(outlineInfo);
+      return {
+        id: outlineInfo.id,
+        jsx,
+        namespaces: Array.from(this.namespacesSet)
+      };
+    }
+
+    
+
+    // 找到所有目标组件的最小公共祖先
+    const ancestorNodes = this.findMinimalCommonAncestors(outlineInfo, targetComponentIds);
+
+    let jsx = '';
+    if (ancestorNodes.length === 1) {
+      // 如果只有一个祖先，展开这个祖先
+      jsx = this.processDataWithTargets(ancestorNodes[0]);
+    } else {
+      // 如果有多个祖先，分别处理
+      jsx = ancestorNodes.map(node => this.processDataWithTargets(node)).join('\n');
+    }
 
     return {
+      id: ancestorNodes[0]?.id,
       jsx,
       namespaces: Array.from(this.namespacesSet)
     };
   }
+
+  /**
+   * 找到包含所有目标组件的最小公共祖先
+   */
+  private static findMinimalCommonAncestors(root: OutlineNode, targetIds: string[]): OutlineNode[] {
+    if (targetIds.length === 0) return [root];
+    if (targetIds.length === 1) {
+      const targetNode = this.findNodeById(root, targetIds[0]);
+      return targetNode ? [targetNode] : [];
+    }
+
+    // 为每个目标ID找到从根到该节点的路径
+    const paths: OutlineNode[][] = [];
+    for (const targetId of targetIds) {
+      const path = this.findPathToNode(root, targetId);
+      if (path) {
+        paths.push(path);
+      }
+    }
+
+    if (paths.length === 0) {
+      return [];
+    }
+    if (paths.length === 1) {
+      return [paths[0][paths[0].length - 1]];
+    }
+    
+    // 简化逻辑：找到最深的公共节点
+    let commonAncestor: OutlineNode | null = null;
+    const minLength = Math.min(...paths.map(path => path.length));
+    
+    for (let i = 0; i < minLength; i++) {
+      const currentNodes = paths.map(path => path[i]);
+      const firstNode = currentNodes[0];
+      
+      // 检查当前层级的所有节点是否相同
+      if (currentNodes.every(node => node.id === firstNode.id)) {
+        commonAncestor = firstNode;
+      } else {
+        break;
+      }
+    }
+
+    if (commonAncestor) {
+      return [commonAncestor];
+    }
+
+    return [root];
+  }
+
+  /**
+   * 找到从根节点到目标节点的路径
+   */
+  private static findPathToNode(root: OutlineNode, targetId: string): OutlineNode[] | null {
+    if (root.id === targetId) {
+      return [root];
+    }
+
+    if (root.slots && Array.isArray(root.slots)) {
+      for (const slot of root.slots) {
+        if (slot.components && Array.isArray(slot.components)) {
+          for (const component of slot.components) {
+            const path = this.findPathToNode(component, targetId);
+            if (path) {
+              return [root, ...path];
+            }
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * 根据ID查找节点
+   */
+  private static findNodeById(root: OutlineNode, targetId: string): OutlineNode | null {
+    if (root.id === targetId) {
+      return root;
+    }
+
+    if (root.slots && Array.isArray(root.slots)) {
+      for (const slot of root.slots) {
+        if (slot.components && Array.isArray(slot.components)) {
+          for (const component of slot.components) {
+            const found = this.findNodeById(component, targetId);
+            if (found) return found;
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * 检查节点是否包含目标节点
+   */
+  private static containsNode(root: OutlineNode, targetId: string): boolean {
+    if (root.id === targetId) {
+      return true;
+    }
+
+    if (root.slots && Array.isArray(root.slots)) {
+      for (const slot of root.slots) {
+        if (slot.components && Array.isArray(slot.components)) {
+          for (const component of slot.components) {
+            if (this.containsNode(component, targetId)) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * 处理数据，只展开包含目标组件的部分
+   */
+  private static processDataWithTargets(node: OutlineNode | OutlineNode[]): string {
+    if (!node) return '';
+
+    if (Array.isArray(node)) {
+      return node.map(item => this.processDataWithTargets(item)).filter(Boolean).join('\n');
+    }
+
+    if (node.id) {
+      return this.generateComponentJSXWithTargets(node);
+    }
+
+    if (node.slots && Array.isArray(node.slots)) {
+      return node.slots.map(slot => {
+        if (slot.components && Array.isArray(slot.components)) {
+          return this.processDataWithTargets(slot.components);
+        }
+        return '';
+      }).filter(Boolean).join('');
+    }
+
+    return '';
+  }
+
+  /**
+   * 生成组件JSX，只展开包含目标组件的部分
+   */
+  private static generateComponentJSXWithTargets(node: OutlineNode, indent = ''): string {
+    if (!node?.id) return '';
+
+    const namespace = node.def?.namespace || 'content';
+    this.namespacesSet.add(namespace);
+
+    const dataStr = JSON.stringify(node.data || {});
+    const layout = this.extractLayout(node.style);
+    const styleArray = this.extractStyleArray(node.style);
+
+    let jsx = `<${namespace} id="${node.id}" data={${dataStr}}`;
+
+    if (Object.keys(layout).length > 0) {
+      jsx += ` layout={${JSON.stringify(layout)}}`;
+    }
+
+    if (styleArray.length > 0) {
+      jsx += ` styleAry={[${styleArray.map(style => `"${style}"`).join(', ')}]}`;
+    }
+
+    // 检查是否需要展开子组件
+    const shouldExpandChildren = this.shouldExpandChildren(node);
+    
+    if (shouldExpandChildren) {
+      const slotsJSX = this.generateSlotsJSXWithTargets(node.slots || [], indent + '  ');
+      if (slotsJSX) {
+        jsx += slotsJSX;
+        jsx += `\n${indent}</${namespace}>`;
+      } else {
+        jsx += ' />';
+      }
+    } else {
+      jsx += ' />'; // 不展开子组件
+    }
+
+    return jsx;
+  }
+
+  /**
+   * 判断是否应该展开子组件
+   */
+  private static shouldExpandChildren(node: OutlineNode): boolean {
+    // 如果当前节点就是目标组件之一，总是展开它
+    if (this.targetComponentIds.includes(node.id)) {
+      return true;
+    }
+
+    // 如果当前节点包含任何目标组件，展开它
+    return this.targetComponentIds.some(targetId => this.containsNode(node, targetId));
+}
+
+  /**
+   * 生成slots JSX，只展开包含目标组件的部分
+   */
+  private static generateSlotsJSXWithTargets(slots: SlotInfo[], indent = '  '): string {
+    if (!slots || slots.length === 0) return '';
+
+    let slotsJSX = '';
+    slots.forEach(slot => {
+      if (slot.id) {
+        // 检查这个slot是否包含目标组件，或者父节点就是目标组件
+        const parentIsTarget = this.targetComponentIds.length > 0; // 简化判断
+        const hasTargetComponents = slot.components && Array.isArray(slot.components) &&
+          (parentIsTarget || slot.components.some(component => 
+            this.targetComponentIds.some(targetId => this.containsNode(component, targetId))
+          ));
+
+        if (hasTargetComponents) {
+          slotsJSX += `\n${indent}<slots.${slot.id}`;
+
+          if (slot.title) {
+            slotsJSX += ` title="${slot.title}"`;
+          }
+
+          if (slot.layout) {
+            slotsJSX += ` layout={${JSON.stringify(this.extractLayout(slot.layout))}}`;
+          }
+
+          slotsJSX += '>';
+
+          if (slot.components && Array.isArray(slot.components)) {
+            slot.components.forEach(component => {
+              // 如果父节点是目标组件，展开所有子组件
+              // 否则只展开包含目标组件的子组件
+              const shouldProcessChild = parentIsTarget || 
+                this.targetComponentIds.some(targetId => this.containsNode(component, targetId));
+                
+              if (shouldProcessChild) {
+                const childJSX = this.generateComponentJSXWithTargets(component, indent + '    ');
+                if (childJSX) {
+                  slotsJSX += `\n${indent}  ${childJSX}`;
+                }
+              }
+            });
+          }
+
+          slotsJSX += `\n${indent}</slots.${slot.id}>`;
+        }
+      }
+    });
+
+    return slotsJSX;
+}
 
   private static extractLayout(style: any): Record<string, any> {
     if (!style) return {};
@@ -521,38 +844,28 @@ class ComponentsInfoGenerator {
     });
   }
 
-  private static generateSlotsJSX(slots: SlotInfo[], indent = '  '): string {
-    if (!slots || slots.length === 0) return '';
 
-    let slotsJSX = '';
-    slots.forEach(slot => {
-      if (slot.id) {
-        slotsJSX += `\n${indent}<slots.${slot.id}`;
+  private static processData(node: OutlineNode | OutlineNode[]): string {
+    if (!node) return '';
 
-        if (slot.title) {
-          slotsJSX += ` title="${slot.title}"`;
-        }
+    if (Array.isArray(node)) {
+      return node.map(item => this.processData(item)).filter(Boolean).join('\n');
+    }
 
-        if (slot.layout) {
-          slotsJSX += ` layout={${JSON.stringify(this.extractLayout(slot.layout))}}`;
-        }
+    if (node.id) {
+      return this.generateComponentJSX(node);
+    }
 
-        slotsJSX += '>';
-
+    if (node.slots && Array.isArray(node.slots)) {
+      return node.slots.map(slot => {
         if (slot.components && Array.isArray(slot.components)) {
-          slot.components.forEach(component => {
-            const childJSX = this.generateComponentJSX(component, indent + '    ');
-            if (childJSX) {
-              slotsJSX += `\n${indent}  ${childJSX}`;
-            }
-          });
+          return this.processData(slot.components);
         }
+        return '';
+      }).filter(Boolean).join('');
+    }
 
-        slotsJSX += `\n${indent}</slots.${slot.id}>`;
-      }
-    });
-
-    return slotsJSX;
+    return '';
   }
 
   private static generateComponentJSX(node: OutlineNode, indent = ''): string {
@@ -586,27 +899,38 @@ class ComponentsInfoGenerator {
     return jsx;
   }
 
-  private static processData(node: OutlineNode | OutlineNode[]): string {
-    if (!node) return '';
+  private static generateSlotsJSX(slots: SlotInfo[], indent = '  '): string {
+    if (!slots || slots.length === 0) return '';
 
-    if (Array.isArray(node)) {
-      return node.map(item => this.processData(item)).filter(Boolean).join('\n');
-    }
+    let slotsJSX = '';
+    slots.forEach(slot => {
+      if (slot.id) {
+        slotsJSX += `\n${indent}<slots.${slot.id}`;
 
-    if (node.id) {
-      return this.generateComponentJSX(node);
-    }
-
-    if (node.slots && Array.isArray(node.slots)) {
-      return node.slots.map(slot => {
-        if (slot.components && Array.isArray(slot.components)) {
-          return this.processData(slot.components);
+        if (slot.title) {
+          slotsJSX += ` title="${slot.title}"`;
         }
-        return '';
-      }).filter(Boolean).join('');
-    }
 
-    return '';
+        if (slot.layout) {
+          slotsJSX += ` layout={${JSON.stringify(this.extractLayout(slot.layout))}}`;
+        }
+
+        slotsJSX += '>';
+
+        if (slot.components && Array.isArray(slot.components)) {
+          slot.components.forEach(component => {
+            const childJSX = this.generateComponentJSX(component, indent + '    ');
+            if (childJSX) {
+              slotsJSX += `\n${indent}  ${childJSX}`;
+            }
+          });
+        }
+
+        slotsJSX += `\n${indent}</slots.${slot.id}>`;
+      }
+    });
+
+    return slotsJSX;
   }
 }
 

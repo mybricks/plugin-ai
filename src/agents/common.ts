@@ -40,15 +40,23 @@ export const requestCommonAgent = (params: any) => {
     params?.onProgress?.('start')
 
     const focusDesc = generateFocusDescription(context.currentFocus);
-    const historyFocusDesc = generateHistoryFocusDescription(context.currentFocus)
+    const historyFocusDesc = generateHistoryFocusDescription(context.currentFocus);
+    const focusEleDesc = generateFocusTargetDescription(context.currentFocus);
 
     const hasAttachment = typeof params?.message !== 'string';
+
 
     context.rxai.requestAI({
       ...params,
       message: params?.message,
       key: targetId,
       // enableLog: true,
+      formatUserMessage: (text: string) => {
+        return `对于聚焦元素${focusEleDesc}，用户提出的消息为：
+<用户消息>
+${text}
+</用户消息>`
+      },
       emits: {
         write: () => { },
         complete: () => {
@@ -133,7 +141,8 @@ export const requestCommonAgent = (params: any) => {
             }
             return true
           }
-        })
+        }),
+        MYBRICKS_TOOLS.Answer({}),
       ],
       presetHistoryMessages: [
         {
@@ -149,14 +158,24 @@ export const requestCommonAgent = (params: any) => {
             role: 'user',
             content: projectStruct
           },
-          workspace.hasComponentsDocs() ? {
-            role: 'user',
-            content: componentsDocs
-          } : null,
           {
-            role: 'user',
-            content: focusDesc
-          }
+            role: 'assistant',
+            content: '收到，谢谢你提供的项目信息～'
+          },
+          ...(workspace.hasComponentsDocs() ? [
+            {
+              role: 'user',
+              content: componentsDocs
+            },
+            {
+              role: 'assistant',
+              content: '收到，我会根据组件配置完成任务～'
+            },
+        ] : [null]),
+          // {
+          //   role: 'user',
+          //   content: focusDesc
+          // }
         ].filter(Boolean)
       }
     });
@@ -197,4 +216,22 @@ function generateHistoryFocusDescription(currentFocus = {}) {
   }
   
   return `对于${focusDesc}`;
+}
+
+function generateFocusTargetDescription(currentFocus = {}) {
+  const { pageId, comId, title, type } = currentFocus ?? {}
+  
+  // 定义聚焦元素的描述部分
+  let focusDesc = '';
+  
+  // 判断当前聚焦元素类型
+  if (type === 'uiCom') {
+    focusDesc = `组件(title=${title},组件id=${comId})`;
+  } else if (type === 'page') {
+    focusDesc = `页面(title=${title},页面id=${pageId})`;
+  } else if (type === 'section') {
+    focusDesc = `页面(title=${title},页面id=${pageId})`;
+  }
+  
+  return focusDesc;
 }

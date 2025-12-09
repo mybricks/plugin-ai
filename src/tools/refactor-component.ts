@@ -495,11 +495,11 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
       if (actionsFile) {
         actions = streamActionsParser(actionsFile.content ?? "");
       }
-
-      // console.log('actions', actions)
       
       if (actions.length > 0 || status === 'start' || status === 'complete') {
-        config.onActions(actions, status)
+        try {
+          config.onActions(actions, status)
+        } catch (error) {}
       }
     },
     execute({ files, content }) {

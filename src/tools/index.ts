@@ -6,7 +6,8 @@ import GetFocusMybricksDSL from './get-focus-mybricks-dsl';
 import FocusElement from './focus-element'
 import GetComponentsInfoByIds from './get-component-info-by-ids';
 import AnalyzeAndExpandPrd from './analyze-and-expand-prd';
-import OpenDsl from './open-dsl'
+import OpenDsl from './open-dsl';
+import Answer from './answer';
 
 export const MYBRICKS_TOOLS = {
   GeneratePage,
@@ -18,6 +19,7 @@ export const MYBRICKS_TOOLS = {
   GetComponentsInfoByIds,
   AnalyzeAndExpandPrd,
   OpenDsl,
+  Answer,
   // FocusElement
 }
 
