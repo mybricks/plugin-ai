@@ -48,7 +48,7 @@ const Messages = (params: MessagesParams) => {
     return {
       setStyle: (height: number) => {
         styleTag.innerHTML = `${prefix} {
-          min-height: ${height}px;
+          min-height: ${height - 1}px;
         }`
       },
       remove: () => {
