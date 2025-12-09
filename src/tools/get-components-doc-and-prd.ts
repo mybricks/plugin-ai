@@ -1,4 +1,5 @@
-import { fileFormat, RequestError } from '@mybricks/rxai'
+import { fileFormat, RequestError, ToolError } from '@mybricks/rxai'
+import { getFiles, stripFileBlocks } from './utils'
 
 interface GetComponentsDocAndPrdToolParams {
   allowComponents: string;
@@ -111,22 +112,26 @@ ${config.examples}
         throw new RequestError(`网络错误，${errorContent?.message}`)
       }
 
-      let prdFile: File | undefined = undefined, requireComsFile: File | undefined = undefined;
-      Object.keys(files).forEach((fileKey) => {
-        const file: File = files[fileKey] as File;
-        if (file.extension === 'md') {
-          prdFile = file
-        }
+      const prdFile = getFiles(files, { extName: 'md' });
 
-        if (file.extension === 'json') {
-          requireComsFile = file
-        }
-      })
+      if (!prdFile?.content || prdFile?.content?.trim?.()?.length === 0) {
+        throw new ToolError({
+          llmContent: `未生成或者生成了错误的需求文档，请重试`,
+          displayContent: '生成需求文档失败，请重试'
+        })
+      }
+
+      const requireComsFile = getFiles(files, { extName: 'json' });
 
       let requireComponents = [];
       try {
         requireComponents = JSON.parse(requireComsFile?.content);
-      } catch (error) { }
+      } catch (error) {
+        throw new ToolError({
+          llmContent: `解析组件选型错误，请检查格式，${error?.message}`,
+          displayContent: '生成组件需求失败，请重试'
+        })
+      }
 
       if (Array.isArray(requireComponents)) {
         requireComponents.forEach(item => {
