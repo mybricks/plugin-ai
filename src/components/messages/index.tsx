@@ -35,16 +35,13 @@ const Messages = (params: MessagesParams) => {
   const { user, rxai, copilot, onMentionClick } = params;
 
   const mainRef = useRef<HTMLElement>(null);
-  const anchorRef = useRef<HTMLDivElement>(null);
   const destroysRef = useRef<(() => void)[]>([]);
   const [plans, setPlans] = useState<Plans>([]);
-  const [scrollSnap, setScrollSnap] = useState(true);
 
   const [styleTag] = useState(() => {
     const styleTag = document.createElement('style')
-    styleTag.id = "Leon";
     document.head.appendChild(styleTag)
-    const prefix = `.${css['ai-chat-messages']} .${css['chat-bubble-container']}:nth-last-child(2)`;
+    const prefix = `.${css['ai-chat-messages']} .${css['chat-bubble-container']}:nth-last-child(1)`;
     return {
       setStyle: (height: number) => {
         styleTag.innerHTML = `${prefix} {
@@ -66,30 +63,24 @@ const Messages = (params: MessagesParams) => {
   }, [])
 
   useEffect(() => {
-    const mutationObserver = new MutationObserver(function () {
-      mainRef.current!.scrollTop = mainRef.current!.scrollHeight;
-    });
-    
-    mutationObserver.observe(mainRef.current!, { childList: true });
+    const autoScroller = new AutoScroller(mainRef.current!, {
+      resizeObserverCallback: () => {
+        const height = mainRef.current!.clientHeight;
+        if (height > 0) {
+          styleTag.setStyle(height)
+        }
+      },
+      mutationCallback: (mutations) => {
+        const mutationRecord = mutations[0];
 
-    const intersectionObserver = new IntersectionObserver((entries) => {
-      setScrollSnap(entries[0].intersectionRatio > 0)
-    }, { root: mainRef.current })
-
-    intersectionObserver.observe(anchorRef.current!);
-
-    const mainResizeObserver = new ResizeObserver(() => {
-      const height = mainRef.current!.clientHeight;
-      if (height > 0) {
-        styleTag.setStyle(height)
+        if (mutationRecord.target === mainRef.current && mutationRecord.addedNodes.length) {
+          mainRef.current!.scrollTop = mainRef.current!.scrollHeight;
+        }
       }
     });
-    mainResizeObserver.observe(mainRef.current!);
   
     return () => {
-      mutationObserver.disconnect();
-      intersectionObserver.disconnect();
-      mainResizeObserver.disconnect();
+      autoScroller.destroy();
 
       for (const destroy of destroysRef.current) {
         destroy()
@@ -99,12 +90,9 @@ const Messages = (params: MessagesParams) => {
 
   return (
     <main ref={mainRef} className={css['ai-chat-messages']}>
-      {plans.map((plan, index) => {
-        return <Bubble key={index} user={user} plan={plan} copilot={copilot} onMentionClick={onMentionClick}/>
+      {plans.map((plan) => {
+        return <Bubble key={plan.id} user={user} plan={plan} copilot={copilot} onMentionClick={onMentionClick}/>
       })}
-      <div ref={anchorRef} className={classNames(css['anchor'], {
-        [css['scroll-snap']]: scrollSnap
-      })}/>
     </main>
   )
 }
@@ -336,3 +324,65 @@ const BubbleError = (params: BubbleErrorParams) => {
 }
 
 export { Messages }
+
+class AutoScroller {
+  private isLockedToBottom: boolean = true;
+  private resizeObserver: ResizeObserver | null = null;
+  private mutationObserver: MutationObserver | null = null;
+  constructor(private container: HTMLElement, private options: { resizeObserverCallback: ResizeObserverCallback, mutationCallback: MutationCallback }) {
+    this.isLockedToBottom = true;
+    
+    this.init();
+  }
+  
+  init() {
+    // 监听滚动事件
+    this.container.addEventListener('scroll', this.handleScroll.bind(this));
+    
+    // 使用ResizeObserver监听内容大小变化
+    this.resizeObserver = new ResizeObserver((entries, observer) => {
+      if (this.isLockedToBottom) {
+        this.scrollToBottom();
+      }
+      this.options.resizeObserverCallback(entries, observer);
+    });
+    
+    // 监听容器内部元素大小变化
+    this.resizeObserver.observe(this.container);
+    
+    // 同时监听DOM变化
+    this.mutationObserver = new MutationObserver((mutations, observer) => {
+      if (this.isLockedToBottom) {
+        Promise.resolve().then(() => {
+          this.scrollToBottom();
+        });
+      }
+      this.options.mutationCallback(mutations, observer);
+    });
+    
+    this.mutationObserver.observe(this.container, {
+      childList: true,
+      subtree: true,
+    });
+  }
+  
+  handleScroll() {
+    const isAtBottom = this.isAtBottom();
+    this.isLockedToBottom = isAtBottom;
+  }
+  
+  isAtBottom(threshold = 5) {
+    const { scrollTop, scrollHeight, clientHeight } = this.container;
+    return Math.abs(scrollHeight - scrollTop - clientHeight) <= threshold;
+  }
+  
+  scrollToBottom() {
+    this.container.scrollTop = this.container.scrollHeight;
+  }
+  
+  destroy() {
+    if (this.mutationObserver) this.mutationObserver.disconnect();
+    if (this.resizeObserver) this.resizeObserver.disconnect();
+    this.container.removeEventListener('scroll', this.handleScroll);
+  }
+}

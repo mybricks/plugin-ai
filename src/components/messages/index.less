@@ -6,7 +6,6 @@
   flex-grow: 1;
   display: flex;
   flex-direction: column;
-  scroll-snap-type: y proximity;
 
   > .chat-bubble-container:nth-last-child(2) {
     display: table;
@@ -851,16 +850,6 @@
     margin-left: 4px;
   }
 }
-
-.anchor {
-  height: 1px;
-  flex: none;
-
-  &.scroll-snap {
-    scroll-snap-align: end;
-  }
-}
-
 
 .markdown-body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
