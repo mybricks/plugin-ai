@@ -139,7 +139,7 @@ export const requestCommonAgent = (params: any) => {
         MYBRICKS_TOOLS.Answer({}),
       ],
       planningCheck: (tools: any[]) => {
-        const toolNames = tools.map(tool => tool.toolName);
+        const toolNames = tools.map(tool => tool[1]);
         const resultTools = [...tools];
         
         // 规则1: 如果 信息获取类 在最后一个，则添加一个 answer
