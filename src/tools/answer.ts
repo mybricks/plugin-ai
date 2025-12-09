@@ -7,14 +7,15 @@ import { fileFormat } from '@mybricks/rxai'
 interface AnswerUserQuestionToolParams {
   
 }
-
+const NAME = 'answer'
+answerUserQuestion.toolName = NAME
 /**
  * 回答用户问题的工具函数
  * 用于接收用户问题并返回对应的回答结果
  */
 export default function answerUserQuestion(config: AnswerUserQuestionToolParams): any {
   return {
-    name: 'answer',
+    name: NAME,
     displayName: "思考和回答",
     description: `通过自然语言回答用户的问题和提供建议。
 参数：无；
@@ -53,3 +54,4 @@ export default function answerUserQuestion(config: AnswerUserQuestionToolParams)
     },
   };
 }
+

@@ -16,6 +16,9 @@ interface GeneratePageToolParams {
   onClearPage: () => void
 }
 
+const NAME = 'clear-and-generate-page'
+generatePage.toolName = NAME
+
 export default function generatePage(config: GeneratePageToolParams): any {
   const streamActionsParser = createActionsParser();
   const excuteActionsParser = createActionsParser();
@@ -26,7 +29,7 @@ export default function generatePage(config: GeneratePageToolParams): any {
 
 
   return {
-    name: "clear-and-generate-page",
+    name: NAME,
     displayName: "生成页面",
     description: `根据需求/附件图片，一次性搭建并生成符合需求的 MyBricks 页面。
 参数：无

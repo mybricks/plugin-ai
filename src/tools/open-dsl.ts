@@ -4,9 +4,12 @@ interface ToolParams {
   onOpen?: (id: string) => void
 }
 
+const NAME = 'open-dsl-document'
+openDsl.toolName = NAME
+
 export default function openDsl(config: ToolParams, ): any {
   return {
-    name: 'open-dsl-document',
+    name: NAME,
     displayName: "读取上下文",
     description: `打开并获取工作空间中需求所关联的DSL文档（包含当前页面/组件DSL及其所有子组件DSL），用于后续完成需求使用。
 参数(ids)：页面ID/组件ID列表，支持批量，批量ID用英文逗号分隔；
@@ -29,7 +32,6 @@ export default function openDsl(config: ToolParams, ): any {
 
 > ⚠️ 注意：在调用任何工具前，必须先执行本指令以确保获取正确的上下文 DSL。
 `,
-    lastAppendMessage: '打开的文档有更新，请继续完成用户需求。',
     execute({ params }) {
       let ids = params.ids
 

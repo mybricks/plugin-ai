@@ -37,7 +37,7 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
         // params?.onProgress?.("complete");
       },
     },
-    planList: ["generate-prd-and-require-component", "clear-and-generate-page"],
+    planList: [MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName, MYBRICKS_TOOLS.GeneratePage.toolName],
     tools: [
       MYBRICKS_TOOLS.GetComponentsDocAndPrd({
         allowComponents: context.api?.global?.api?.getAllComDefPrompts?.(),
@@ -166,7 +166,7 @@ export const requestGenerateCanvasAgent = (params: any) => {
           params?.onProgress?.("complete");
         },
       },
-      planList: ["analyze-and-expand-prd"],
+      planList: [MYBRICKS_TOOLS.AnalyzeAndExpandPrd.toolName],
       tools: [
         MYBRICKS_TOOLS.AnalyzeAndExpandPrd({
           onProjectCreate: (projectJson) => {

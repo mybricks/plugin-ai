@@ -4,9 +4,12 @@ interface ToolParams {
   onOpen?: (id: string) => void
 }
 
+const NAME = 'open-comp-document'
+openComponentDoc.toolName = NAME
+
 export default function openComponentDoc(config: ToolParams,): any {
   return {
-    name: 'open-comp-document',
+    name: NAME,
     description: `选择并打开组件使用文档，用于后续完成需求使用。
 「获取DSL」会将DSL涉及的组件文档添加进来；
 「需求分析」会将可能涉及的组件文档添加进来；
@@ -38,7 +41,7 @@ export default function openComponentDoc(config: ToolParams,): any {
   选择理由：u_23ver是目标元素的父组件，能获取到更多有效信息。
 </任务流程>`
     },
-    lastAppendMessage: '打开的文档有更新，请继续完成用户需求。',
+    // lastAppendMessage: '打开的文档有更新，请继续完成用户需求。',
     execute({ params }) {
       const ids = params.ids
       if (ids && ids.split(',')) {

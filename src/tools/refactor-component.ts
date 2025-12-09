@@ -8,12 +8,15 @@ interface ModifyComponentToolParams {
   getPageJson: () => any
 }
 
+const NAME = 'refactor-components-in-page'
+modifyComponentsInPage.toolName = NAME
+
 export default function modifyComponentsInPage(config: ModifyComponentToolParams): any {
   const streamActionsParser = createActionsParser();
   const excuteActionsParser = createActionsParser();
   const hasChildren = config.getFocusElementHasChildren() !== false
   return {
-    name: 'refactor-components-in-page',
+    name: NAME,
     displayName: "局部修改/重构",
     description: `根据用户需求/附件图片对页面中的内容进行局部修改/重构/移动/删除。
 参数：无

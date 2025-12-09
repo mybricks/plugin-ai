@@ -51,12 +51,6 @@ export const requestCommonAgent = (params: any) => {
       message: params?.message,
       key: targetId,
       // enableLog: true,
-      formatUserMessage: (text: string) => {
-        return `对于聚焦元素${focusEleDesc}，用户提出的消息为：
-<用户消息>
-${text}
-</用户消息>`
-      },
       emits: {
         write: () => { },
         complete: () => {
@@ -144,6 +138,48 @@ ${text}
         }),
         MYBRICKS_TOOLS.Answer({}),
       ],
+      planningCheck: (tools: any[]) => {
+        const toolNames = tools.map(tool => tool.toolName);
+        const resultTools = [...tools];
+        
+        // 规则1: 如果 信息获取类 在最后一个，则添加一个 answer
+        const infoToolNames = [MYBRICKS_TOOLS.OpenDsl.toolName, MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName];
+        if (toolNames.length > 0 && infoToolNames.includes(toolNames[toolNames.length - 1])) {
+          resultTools.push(['node', MYBRICKS_TOOLS.Answer.toolName]);
+          return resultTools
+        }
+        
+        // 规则2: 如果 生成页面 前面没有获取需求，则添加一个 open-dsl-document
+        const generatePageIndex = toolNames.indexOf(MYBRICKS_TOOLS.GeneratePage.toolName);
+        if (generatePageIndex > -1) {
+          const requirementTools = [MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName, MYBRICKS_TOOLS.OpenDsl.toolName];
+          const hasRequirement = toolNames.slice(0, generatePageIndex).some(name => requirementTools.includes(name));
+          
+          if (!hasRequirement) {
+            resultTools.splice(generatePageIndex, 0, ['node', MYBRICKS_TOOLS.OpenDsl.toolName, { ids: targetPageId }]);
+            return resultTools
+          }
+        }
+        
+        // 规则3: 如果 修改 前面没有 open-dsl-document，则添加一个
+        const refactorIndex = toolNames.indexOf(MYBRICKS_TOOLS.RefactorComponent.toolName);
+        if (refactorIndex > -1) {
+          const hasOpenDsl = toolNames.slice(0, refactorIndex).includes(MYBRICKS_TOOLS.OpenDsl.toolName);
+          
+          if (!hasOpenDsl) {
+            resultTools.splice(refactorIndex, 0, ['node', MYBRICKS_TOOLS.OpenDsl.toolName, { ids: targetPageId }]);
+            return resultTools
+          }
+        }
+        
+        return resultTools
+      },
+      formatUserMessage: (text: string) => {
+        return `对于聚焦元素${focusEleDesc}，用户提出的消息为：
+<用户消息>
+${text}
+</用户消息>`
+      },
       presetHistoryMessages: [
         {
           role: 'assistant',

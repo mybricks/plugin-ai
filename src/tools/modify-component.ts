@@ -6,10 +6,13 @@ interface ModifyComponentToolParams {
   onActions: (id: string, actions: any[]) => void
 }
 
+const NAME = 'modify-components-in-page'
+modifyComponentsInPage.toolName = NAME
+
 export default function modifyComponentsInPage(config: ModifyComponentToolParams): any {
   const actionsParser = createActionsParser();
   return {
-    name: 'modify-components-in-page',
+    name: NAME,
     displayName: "修改组件",
     description: `根据用户需求，对页面中的组件进行批量修改/删除/移动。
 参数：要修改的组件的ID（确保之前的内容提及过）；

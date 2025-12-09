@@ -8,9 +8,12 @@ interface GetComponentsDocAndPrdToolParams {
   shouldUseExpert?: boolean
 }
 
+const NAME = 'generate-prd-and-require-component'
+getComponentsDocAndPrd.toolName = NAME
+
 export default function getComponentsDocAndPrd(config: GetComponentsDocAndPrdToolParams,): any {
   return {
-    name: 'generate-prd-and-require-component',
+    name: NAME,
     displayName: "理解和整理当前需求",
     description: `整理/扩写需求 + 组件选型，针对用户的搭建需求（可能是文本，一句话、图片附件、文件附件等需求）生成需求文档，并且分析可能使用到的组件。
 参数：无
@@ -18,7 +21,7 @@ export default function getComponentsDocAndPrd(config: GetComponentsDocAndPrdToo
 前置要求：用户提出过搭建需求（可能是文本，一句话、图片附件、文件附件等需求）
 返回值：需求分析规格说明书（PRD）文件 + 组件选型；`,
     aiRole: config?.shouldUseExpert ? 'expert' : 'architect',
-    lastAppendMessage: '需求已分析完成，请继续完成用户需求。',
+    // lastAppendMessage: '需求已分析完成，请继续完成用户需求。',
     getPrompts: () => {
       return `<工具总览>
 你是一个获取组件文档和用户需求的工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深页面搭建助手，拥有专业的产品经理能力。

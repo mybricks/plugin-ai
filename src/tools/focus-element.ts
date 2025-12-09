@@ -4,9 +4,12 @@ interface FocusElementToolParams {
  
 }
 
+const NAME = 'focus-element'
+focusElement.toolName = NAME
+
 export default function focusElement(config: FocusElementToolParams, ): any {
   return {
-    name: 'focus-element',
+    name: NAME,
     description: `通过id聚焦到任何可聚焦的页面 / 组件。
 参数：页面ID或者组件ID；
 作用：聚焦到某个可搭建的元素上，获取元素元信息，用于后续搭建；

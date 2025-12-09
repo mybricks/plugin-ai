@@ -9,10 +9,13 @@ interface GetComponentInfoParams {
   getFocusElementHasChildren: () => boolean
 }
 
+const NAME = 'get-dsl-and-component-docs-by-id'
+getComponentsInfoByIds.toolName = NAME
+
 export default function getComponentsInfoByIds(config: GetComponentInfoParams,): any {
   const hasChildren = config.getFocusElementHasChildren() !== false
   return {
-    name: 'get-dsl-and-component-docs-by-id',
+    name: NAME,
     displayName: "获取组件配置文档",
     description: `通过现有的元素ID（组件或页面）获取「目标元素及其所有子组件」的DSL（包含父子结构信息和搭建信息）和涉及的组件配置文档。
 工具分类：信息获取类
@@ -53,7 +56,7 @@ export default function getComponentsInfoByIds(config: GetComponentInfoParams,):
   选择理由：u_23ver是目标元素的父组件，能获取到更多有效信息。
 </任务流程>`
     },
-    lastAppendMessage: '已提供组件文档和搭建配置，请继续。',
+    // lastAppendMessage: '已提供组件文档和搭建配置，请继续。',
     execute(params: any) {
       const { files, content } = params ?? {}
       if (hasChildren) {
