@@ -183,6 +183,7 @@ class WorkSpace {
       if (existingComponentDocs.length > 0) {
         // 如果已经有组件文档，更新第一个组件文档的内容
         existingComponentDocs[0].content = componentsInfo.jsx;
+        existingComponentDocs[0].id = componentsInfo.id;
         // 可以选择更新ID为组合ID，比如：
         // existingComponentDocs[0].id = targetComponentIds.join(',');
       } else {
