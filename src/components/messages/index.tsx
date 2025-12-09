@@ -65,8 +65,8 @@ const Messages = (params: MessagesParams) => {
   useEffect(() => {
     const autoScroller = new AutoScroller(mainRef.current!, {
       resizeObserverCallback: () => {
-        const height = mainRef.current!.clientHeight;
-        if (height > 0) {
+        const height = mainRef.current?.clientHeight;
+        if (height && height > 0) {
           styleTag.setStyle(height)
         }
       },
