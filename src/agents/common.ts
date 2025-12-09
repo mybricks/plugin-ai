@@ -149,14 +149,14 @@ export const requestCommonAgent = (params: any) => {
           return resultTools
         }
         
-        // 规则2: 如果 生成页面 前面没有获取需求，则添加一个 open-dsl-document
+        // 规则2: 如果 生成页面 前面没有获取需求，则添加一个需求分析
         const generatePageIndex = toolNames.indexOf(MYBRICKS_TOOLS.GeneratePage.toolName);
         if (generatePageIndex > -1) {
           const requirementTools = [MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName, MYBRICKS_TOOLS.OpenDsl.toolName];
           const hasRequirement = toolNames.slice(0, generatePageIndex).some(name => requirementTools.includes(name));
           
           if (!hasRequirement) {
-            resultTools.splice(generatePageIndex, 0, ['node', MYBRICKS_TOOLS.OpenDsl.toolName, { ids: targetPageId }]);
+            resultTools.splice(generatePageIndex, 0, ['node', MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName]);
             return resultTools
           }
         }
