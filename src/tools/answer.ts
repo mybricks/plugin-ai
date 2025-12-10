@@ -7,7 +7,7 @@ import { fileFormat } from '@mybricks/rxai'
 interface AnswerUserQuestionToolParams {
   
 }
-const NAME = 'answer'
+const NAME = 'analyse-and-answer'
 answerUserQuestion.toolName = NAME
 /**
  * 回答用户问题的工具函数
@@ -16,24 +16,25 @@ answerUserQuestion.toolName = NAME
 export default function answerUserQuestion(config: AnswerUserQuestionToolParams): any {
   return {
     name: NAME,
-    displayName: "思考和回答",
-    description: `通过自然语言回答用户的问题和提供建议。
+    displayName: "分析当前信息",
+    description: `分析所有「信息获取类」工具的信息和「项目上下文」，回答用户问题。
 参数：无；
-作用：针对用户的问题，基于最新的上下文，解答用户的问题，用于MyBricks平台的智能交互；
-返回值：自然语言，解答用户的疑惑；
+作用：针对用户的问题，基于前序信息获取类工具的消息，解答用户的问题，以自然语言形式呈现给用户；
+返回值：自然语言；
+使用规则：
+1. **仅在信息获取类结束时使用**。前序工具为信息获取类，无法回答问题时，才使用这个工具，若前序工具为操作类，则无需使用。
+2. **严禁单独使用**。它的核心价值在于“分析”，因此前序工具必须为信息获取类，为它提供可供分析的信息。若无信息可分析，则应直接进入「对话模式」。
 
-常见问题：
-1. 总结下XX；
-2. 这是什么主题风格；
-3. 总结成PRD文档；
-4. 我可以配置XX吗；
-5. 怎么使用XX组件；
-
-注意：仅在用户的问题是提问咨询时使用，常用于获取各类信息后回答问题，必须放在最后一个。
+常见场景：
+1. 总结下页面：在获取DSL后，使用此工具用自然语言输出；
+2. 这是什么主题风格：在获取DSL后，使用此工具用自然语言输出；
+3. 总结成PRD文档：在获取DSL后，使用此工具用自然语言整理成PRD；
+4. 我可以配置XX吗：在获取组件配置文档后，使用此工具用自然语言整理成输出；
+5. 怎么使用XX组件：在获取组件配置文档后，使用此工具用自然语言整理成教程文档；
 `,
     getPrompts: () => {
       return `<工具总览>
-你是一个智能问答工具，作为MyBricks低代码平台的智能交互助手，可以根据用户提出的问题给出准确、专业的回答。
+你是一个智能分析和回答共工具，作为MyBricks低代码平台的智能交互助手，可以基于前序工具的输出和最新的上下文，为用户提出的问题给出准确、专业的回答。
 </工具总览>
 
 <语气和风格>

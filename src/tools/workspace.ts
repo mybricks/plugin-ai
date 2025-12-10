@@ -224,14 +224,17 @@ class WorkSpace {
     const openedDocumentsList = this.generateOpenedDocumentsList();
 
     return `# 工作空间(Workspace)
-工作空间包含整个项目的「页面索引」「聚焦的页面和组件」「已打开的文档」，提供的始终都是最新的项目信息。
+工作空间包含整个项目的「页面索引」「聚焦信息」「已打开的文档」，提供的始终都是最新的项目信息。
 
 WARNING: 如果「对话日志」的信息和工作空间冲突，始终以工作空间的信息为准，因为「对话日志」的操作很有可能没保存，且不是最新的。
 
 ## 页面索引
 ${pageTree}
 
-## 聚焦的页面和组件
+## 聚焦信息
+以下是当前聚焦组件的简略树结构，展示了聚焦元素的父级、兄弟、子级元素的关系。
+注意：此树结构并不完整，折叠了无关元素信息，如需详细信息请打开DSL文档获取。
+
 ${contentHierarchy}
 
 ${focusDescription}
