@@ -10,6 +10,11 @@ class Context {
   /** 应用传入的系统提示词 */
   prompts?: any;
 
+  /** 应用传入的创建页面模板 */
+  createTemplates?: {
+    page: any
+  }
+
   events = new Events<{
     aiViewDisplay: boolean;
     focus: AiServiceFocusParams | undefined;

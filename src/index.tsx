@@ -21,13 +21,14 @@ const transformParams = (params: any = {}) => {
 }
 
 export default function pluginAI(params?: any): any {
-  const { user, prompts, requestAsStream, mock, key, system } = transformParams(params);
+  const { user, prompts, requestAsStream, mock, key, system, createTemplates } = transformParams(params);
   const copilot = {
     name: "MyBricks.ai",
     avatar: "https://my.mybricks.world/image/icon.png"
   }
 
   context.prompts = prompts
+  context.createTemplates = createTemplates ?? {}
 
   // window.requestGenerateCanvasAgent = requestGenerateCanvasAgent
 

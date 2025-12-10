@@ -699,7 +699,9 @@ class ComponentsInfoGenerator {
   private static generateComponentJSXWithTargets(node: OutlineNode, indent = ''): string {
     if (!node?.id) return '';
 
-    const namespace = node.def?.namespace || 'content';
+    if (!node.def?.namespace) return ''
+
+    const namespace = node.def?.namespace;
     this.namespacesSet.add(namespace);
 
     const dataStr = JSON.stringify(node.data || {});
@@ -872,7 +874,9 @@ class ComponentsInfoGenerator {
   private static generateComponentJSX(node: OutlineNode, indent = ''): string {
     if (!node?.id) return '';
 
-    const namespace = node.def?.namespace || 'content';
+    if (!node.def?.namespace) return ''
+
+    const namespace = node.def?.namespace;
     this.namespacesSet.add(namespace);
 
     const dataStr = JSON.stringify(node.data || {});

@@ -104,27 +104,7 @@ async function createCanvasByAICanvas(canvasId: string, aiCanvas: any) {
   for (let index = 0; index < aiCanvas.pages.length; index++) {
     const page = aiCanvas.pages[index];
 
-    const pageRef = await context.api.page?.api?.createPage?.(canvasId, page.title, {
-      type: "normal",
-      title: page.title,
-      template: {
-        namespace: 'mybricks.harmony.systemPage',
-        deletable: false,
-        asRoot: true,
-        data: {
-          useTabBar: false,
-        },
-      },
-      inputs: [
-        {
-          id: "open",
-          title: "打开",
-          schema: {
-            type: "object",
-          },
-        },
-      ],
-    })
+    const pageRef = await context.api.page?.api?.createPage?.(canvasId, page.title, context.createTemplates?.page?.({ title: page.title }))
     pageArray.push({ page, pageRef })
   }
 
