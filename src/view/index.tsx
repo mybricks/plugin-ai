@@ -81,12 +81,6 @@ const View = ({ user, copilot, api }: ViewProps) => {
     }
   }, [])
 
-  useEffect(() => {
-    if (!senderStateProps.disabled) {
-      senderRef.current!.focus()
-    }
-  }, [senderStateProps])
-
   const onSend = (sendMessage: Parameters<SenderProps["onSend"]>[0]) => {
     const { message, attachments, ...extension } = sendMessage;
 
