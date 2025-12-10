@@ -115,8 +115,8 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   }
 
   const updateAttachmentsByFile = (file: File) => {
-    if (file.size > 500 * 1024) {
-      message.info(`当前文件大小 ${(file.size / 1024).toFixed(2)}K，超过了500K，建议您截取页面中的某个区域作为附件`)
+    if (file.size > 1000 * 1024) {
+      message.info(`当前文件大小 ${(file.size / 1024).toFixed(2)}K，超过了1000K，建议您截取页面中的某个区域作为附件`)
       return;
     }
     readFileToBase64(file)
@@ -214,11 +214,11 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   return (
     <div className={css.container}>
       <div className={css.editor}>
-        {/* {attachments.length ? (
+        {attachments.length ? (
           <div className={css.topArea}>
             <AttachmentsList attachments={attachments} onDelete={onAttachmentsDelete}/>
           </div>
-        ) : null} */}
+        ) : null}
         {mentions.length ? (
           <div className={css.mentions}>
             <span>对于</span>
@@ -251,9 +251,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
             <div className={css.attachmentButton} onClick={uploadAttachment}>
               <Attachment />
             </div>
-            {attachments.length ? (
+            {/* {attachments.length ? (
               <AttachmentsList attachments={attachments} onDelete={onAttachmentsDelete}/>
-            ) : null}
+            ) : null} */}
           </div>
           <div className={css.rightArea}>
             <div className={classNames(css.sendButtonContainer, {
