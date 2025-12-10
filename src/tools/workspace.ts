@@ -520,34 +520,37 @@ class ComponentsInfoGenerator {
     
     // 如果没有目标组件ID，按原逻辑处理
     if (targetComponentIds.length === 0) {
-      const jsx = this.processData(outlineInfo);
-      return {
-        id: outlineInfo.id,
-        jsx,
-        namespaces: Array.from(this.namespacesSet)
-      };
+        const jsx = this.processData(outlineInfo);
+        return {
+            id: outlineInfo.id,
+            jsx,
+            namespaces: Array.from(this.namespacesSet)
+        };
     }
 
-    
+    // 如果只有一个目标组件，直接找到它并完全展开
+    if (targetComponentIds.length === 1) {
+        const targetNode = this.findNodeById(outlineInfo, targetComponentIds[0]);
+        if (targetNode) {
+            const jsx = this.processData(targetNode);
+            return {
+                id: targetNode.id,
+                jsx,
+                namespaces: Array.from(this.namespacesSet)
+            };
+        }
+    }
 
-    // 找到所有目标组件的最小公共祖先
+    // 多个目标组件的情况，找共同祖先然后完全展开
     const ancestorNodes = this.findMinimalCommonAncestors(outlineInfo, targetComponentIds);
-
-    let jsx = '';
-    if (ancestorNodes.length === 1) {
-      // 如果只有一个祖先，展开这个祖先
-      jsx = this.processDataWithTargets(ancestorNodes[0]);
-    } else {
-      // 如果有多个祖先，分别处理
-      jsx = ancestorNodes.map(node => this.processDataWithTargets(node)).join('\n');
-    }
+    const jsx = ancestorNodes.map(node => this.processData(node)).join('\n');
 
     return {
-      id: ancestorNodes[0]?.id,
-      jsx,
-      namespaces: Array.from(this.namespacesSet)
+        id: ancestorNodes[0]?.id,
+        jsx,
+        namespaces: Array.from(this.namespacesSet)
     };
-  }
+}
 
   /**
    * 找到包含所有目标组件的最小公共祖先
@@ -666,141 +669,6 @@ class ComponentsInfoGenerator {
 
     return false;
   }
-
-  /**
-   * 处理数据，只展开包含目标组件的部分
-   */
-  private static processDataWithTargets(node: OutlineNode | OutlineNode[]): string {
-    if (!node) return '';
-
-    if (Array.isArray(node)) {
-      return node.map(item => this.processDataWithTargets(item)).filter(Boolean).join('\n');
-    }
-
-    if (node.id) {
-      return this.generateComponentJSXWithTargets(node);
-    }
-
-    if (node.slots && Array.isArray(node.slots)) {
-      return node.slots.map(slot => {
-        if (slot.components && Array.isArray(slot.components)) {
-          return this.processDataWithTargets(slot.components);
-        }
-        return '';
-      }).filter(Boolean).join('');
-    }
-
-    return '';
-  }
-
-  /**
-   * 生成组件JSX，只展开包含目标组件的部分
-   */
-  private static generateComponentJSXWithTargets(node: OutlineNode, indent = ''): string {
-    if (!node?.id) return '';
-
-    if (!node.def?.namespace) return ''
-
-    const namespace = node.def?.namespace;
-    this.namespacesSet.add(namespace);
-
-    const dataStr = JSON.stringify(node.data || {});
-    const layout = this.extractLayout(node.style);
-    const styleArray = this.extractStyleArray(node.style);
-
-    let jsx = `<${namespace} id="${node.id}" data={${dataStr}}`;
-
-    if (Object.keys(layout).length > 0) {
-      jsx += ` layout={${JSON.stringify(layout)}}`;
-    }
-
-    if (styleArray.length > 0) {
-      jsx += ` styleAry={[${styleArray.map(style => `"${style}"`).join(', ')}]}`;
-    }
-
-    // 检查是否需要展开子组件
-    const shouldExpandChildren = this.shouldExpandChildren(node);
-    
-    if (shouldExpandChildren) {
-      const slotsJSX = this.generateSlotsJSXWithTargets(node.slots || [], indent + '  ');
-      if (slotsJSX) {
-        jsx += slotsJSX;
-        jsx += `\n${indent}</${namespace}>`;
-      } else {
-        jsx += ' />';
-      }
-    } else {
-      jsx += ' />'; // 不展开子组件
-    }
-
-    return jsx;
-  }
-
-  /**
-   * 判断是否应该展开子组件
-   */
-  private static shouldExpandChildren(node: OutlineNode): boolean {
-    // 如果当前节点就是目标组件之一，总是展开它
-    if (this.targetComponentIds.includes(node.id)) {
-      return true;
-    }
-
-    // 如果当前节点包含任何目标组件，展开它
-    return this.targetComponentIds.some(targetId => this.containsNode(node, targetId));
-}
-
-  /**
-   * 生成slots JSX，只展开包含目标组件的部分
-   */
-  private static generateSlotsJSXWithTargets(slots: SlotInfo[], indent = '  '): string {
-    if (!slots || slots.length === 0) return '';
-
-    let slotsJSX = '';
-    slots.forEach(slot => {
-      if (slot.id) {
-        // 检查这个slot是否包含目标组件，或者父节点就是目标组件
-        const parentIsTarget = this.targetComponentIds.length > 0; // 简化判断
-        const hasTargetComponents = slot.components && Array.isArray(slot.components) &&
-          (parentIsTarget || slot.components.some(component => 
-            this.targetComponentIds.some(targetId => this.containsNode(component, targetId))
-          ));
-
-        if (hasTargetComponents) {
-          slotsJSX += `\n${indent}<slots.${slot.id}`;
-
-          if (slot.title) {
-            slotsJSX += ` title="${slot.title}"`;
-          }
-
-          if (slot.layout) {
-            slotsJSX += ` layout={${JSON.stringify(this.extractLayout(slot.layout))}}`;
-          }
-
-          slotsJSX += '>';
-
-          if (slot.components && Array.isArray(slot.components)) {
-            slot.components.forEach(component => {
-              // 如果父节点是目标组件，展开所有子组件
-              // 否则只展开包含目标组件的子组件
-              const shouldProcessChild = parentIsTarget || 
-                this.targetComponentIds.some(targetId => this.containsNode(component, targetId));
-                
-              if (shouldProcessChild) {
-                const childJSX = this.generateComponentJSXWithTargets(component, indent + '    ');
-                if (childJSX) {
-                  slotsJSX += `\n${indent}  ${childJSX}`;
-                }
-              }
-            });
-          }
-
-          slotsJSX += `\n${indent}</slots.${slot.id}>`;
-        }
-      }
-    });
-
-    return slotsJSX;
-}
 
   private static extractLayout(style: any): Record<string, any> {
     if (!style) return {};

@@ -45,6 +45,27 @@ export const requestCommonAgent = (params: any) => {
 
     const hasAttachment = typeof params?.message !== 'string';
 
+    // workspace.openDocument('u_YZ0su')
+
+    // workspace.openDocument('u_ADKKC')
+
+    // workspace.openDocument('u_ZJ_bn')
+
+    // workspace.openDocument('u_ADKKC')
+    // workspace.openDocument('u_XZL9q')
+
+    // workspace.openDocument('u_k_1dW')
+    // workspace.openDocument('u_ADKKC')
+
+    // // 页面
+    // workspace.openDocument('u_yjFHf') 
+
+    // // 页面 + 组件
+    // workspace.openDocument('u_yjFHf')
+    // workspace.openDocument('u_ADKKC')
+
+    // return console.log(workspace.getProjectStruct())
+
 
     context.rxai.requestAI({
       ...params,
