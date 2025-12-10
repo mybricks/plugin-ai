@@ -106,6 +106,7 @@ export default function pluginAI(params?: any): any {
                     name: focus.title,
                   }
                 ]
+                // TODO: 兼容引擎的onProgress问题
                 if (focus.onProgress) {
                   params.onProgress = focus.onProgress;
                 } else if (params.onProgress) {
@@ -113,7 +114,7 @@ export default function pluginAI(params?: any): any {
                 }
               }
 
-              Agents.requestCommonAgent({...params, extension})
+              context.requestStatusTracker.track(focus ? focus.type === "page" ? focus.pageId : focus.comId : "", Agents.requestCommonAgent({...params, extension}))
             }
           }
         }
