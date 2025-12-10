@@ -35,6 +35,7 @@ interface SenderProps {
   loading?: boolean;
   placeholder?: string;
   attachmentsPrompt?: string;
+  disabled?: boolean;
 }
 
 interface SenderRef {
@@ -44,7 +45,7 @@ interface SenderRef {
 }
 
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
-  const { loading, placeholder = "请输入", onMentionClick, attachmentsPrompt } = props;
+  const { loading, placeholder = "请输入", disabled, onMentionClick, attachmentsPrompt } = props;
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [inputContent, setInputContent] = useState<string | null>(null);
@@ -64,7 +65,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
   const send = () => {
     const inputContent = inputEditorRef.current!.textContent;
-    if (inputContent && !loading) {
+    if (inputContent && !loading && !disabled) {
       props.onSend({
         message: inputContent,
         attachments,
@@ -233,7 +234,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
             <div
               ref={inputEditorRef}
               className={css.inputEditor}
-              contentEditable={true}
+              contentEditable={disabled ? false : true}
               onKeyDown={onKeyDown}
               onCompositionStart={onCompositionStart}
               onCompositionEnd={onCompositionEnd}
@@ -256,7 +257,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           </div>
           <div className={css.rightArea}>
             <div className={classNames(css.sendButtonContainer, {
-              [css.disabled]: !inputContent || loading
+              [css.disabled]: !inputContent || loading || disabled
             })} onClick={send}>
               <div className={classNames(css.sendButton, {
                 [css.loadingButton]: loading

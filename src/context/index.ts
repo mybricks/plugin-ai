@@ -1,4 +1,5 @@
 import { Rxai, Events, IDB } from "@mybricks/rxai"
+import { RequestStatusTracker } from "./RequestStatusTracker";
 
 class Context {
   rxai!: Rxai
@@ -32,9 +33,10 @@ class Context {
       this.globalRxai = new Rxai(options)
     }
   }
+
+  requestStatusTracker = new RequestStatusTracker();
 }
 
 const context = new Context();
 
 export { context };
-
