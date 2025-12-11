@@ -22,8 +22,8 @@ interface PagesData {
 interface FocusInfo {
   pageId: string;
   comId?: string;
-  title: string;
-  type: 'page' | 'uiCom' | 'section';
+  title?: string;
+  type?: 'page' | 'uiCom' | 'section';
 }
 
 interface OutlineNode {
@@ -58,33 +58,38 @@ interface WorkSpaceConfig {
 interface WorkSpaceAPI {
   getOutlineInfo(id: string, type: string): OutlineNode;
   getAllPageInfo(): PagesData | PagesData[];
-  getComponentDoc(ns: string): string 
+  getComponentDoc(ns: string): string
 }
 
 class WorkSpace {
   private openedDocuments: DocumentInfo[] = [];
- 
+
   private api: WorkSpaceAPI;
-  private currentFocus: FocusInfo;
+  private focusInfo: FocusInfo;
 
   private openedComponentDocs: string[] = []
 
+  /** 当前聚焦页面的大纲 */
+  private focusPageOutlineInfo: OutlineNode
+
   constructor(config: WorkSpaceConfig, api: WorkSpaceAPI) {
     this.api = api;
-    this.currentFocus = config.currentFocus ?? {};
+    this.focusInfo = { ...(config.currentFocus ?? {}) };
+
+    this.focusPageOutlineInfo = this.getOutlineInfo(config.currentFocus.pageId, 'page');
   }
 
   /**
    * 获取页面大纲信息
    */
-  getOutlineInfo(id: string, type: string): OutlineNode {
-    return this.api.getOutlineInfo(id, type);
+  private getOutlineInfo(id: string, type: string): OutlineNode {
+    return fixPageOutlineInfo(this.api.getOutlineInfo(id, type), id);
   }
 
   /**
    * 获取所有页面信息
    */
-  getAllPageInfo(): PagesData | PagesData[] {
+  private getAllPageInfo(): PagesData | PagesData[] {
     return this.api.getAllPageInfo();
   }
 
@@ -99,8 +104,10 @@ class WorkSpace {
     if (Array.isArray(allPageInfo)) {
       // 如果是 PagesData[] 类型
       allPageInfo.forEach(pagesData => {
-        if (pagesData.pageAry && Array.isArray(pagesData.pageAry)) {
+        if (pagesData.pageAry && Array.isArray(pagesData.pageAry)) { // 多画布
           pages.push(...pagesData.pageAry);
+        } else {
+          pages.push({ ...pagesData } as any as PageInfo) // 单画布
         }
       });
     } else {
@@ -131,14 +138,13 @@ class WorkSpace {
    * 打开文档
    */
   openDocument(id: string): void {
-    
+
     // 检查是否已经打开
     if (this.openedDocuments.some(doc => doc.id === id)) {
       return;
     }
 
-    const isPage = !!this.findPageById(id);
-    const type = isPage ? 'page' : 'uiCom';
+    const isPage = this.focusInfo.pageId === id || !!this.findPageById(id);
     const typeDesc = isPage ? '页面' : '组件'
 
     let outlineInfo: OutlineNode;
@@ -150,14 +156,13 @@ class WorkSpace {
       targetComponentIds = [];
     } else {
       // 如果是组件，需要获取包含该组件的页面信息
-      const pageId = this.currentFocus.pageId;
-      outlineInfo = this.getOutlineInfo(pageId, 'page');
-      
+      outlineInfo = this.focusPageOutlineInfo;
+
       // 获取所有已打开的组件ID（排除页面ID）
       const openedComponentIds = this.openedDocuments
         .filter(doc => doc.type === '组件')
         .map(doc => doc.id);
-      
+
       // 添加当前要打开的组件ID
       targetComponentIds = [...openedComponentIds, id];
     }
@@ -179,7 +184,7 @@ class WorkSpace {
     } else {
       // 组件类型：检查是否需要更新现有文档或创建新文档
       const existingComponentDocs = this.openedDocuments.filter(doc => doc.type === '组件');
-      
+
       if (existingComponentDocs.length > 0) {
         // 如果已经有组件文档，更新第一个组件文档的内容
         existingComponentDocs[0].content = componentsInfo.jsx;
@@ -211,14 +216,14 @@ class WorkSpace {
    */
   getProjectStruct(): string {
     const pageTree = PageTreeGenerator.generate(this.getAllPageInfo(), {
-      pageId: this.currentFocus.pageId
+      pageId: this.focusInfo.pageId
     });
 
-    const focusDescription = FocusDescriptionGenerator.generate(this.currentFocus);
+    const focusDescription = FocusDescriptionGenerator.generate(this.focusInfo);
 
     const contentHierarchy = PageHierarchyGenerator.generate(
-      this.getOutlineInfo(this.currentFocus.pageId, 'page'),
-      this.currentFocus
+      this.focusPageOutlineInfo,
+      this.focusInfo
     );
 
     const openedDocumentsList = this.generateOpenedDocumentsList();
@@ -226,7 +231,7 @@ class WorkSpace {
     return `# 工作空间(Workspace)
 工作空间包含整个项目的「页面索引」「聚焦信息」「已打开的文档」，提供的始终都是最新的项目信息。
 
-WARNING: 如果「对话日志」的信息和工作空间冲突，始终以工作空间的信息为准，因为「对话日志」的操作很有可能没保存，且不是最新的。
+WARNING: 如果「历史记录」的信息和工作空间冲突，始终以工作空间的信息为准，因为「历史记录」的操作很有可能没保存，且不是最新的。
 
 ## 页面索引
 ${pageTree}
@@ -244,7 +249,7 @@ ${openedDocumentsList}
 `;
   }
 
-  openComponentDoc(namespace:string){
+  openComponentDoc(namespace: string) {
     // 检查是否已经打开
     if (this.openedComponentDocs.some(ns => ns === namespace)) {
       return;
@@ -253,7 +258,7 @@ ${openedDocumentsList}
     this.openedComponentDocs.push(namespace)
   }
 
-  closeComponentDoc(namespace:string){
+  closeComponentDoc(namespace: string) {
     this.openedComponentDocs = this.openedComponentDocs.filter(ns => ns !== namespace)
   }
 
@@ -267,8 +272,8 @@ ${openedDocumentsList}
   getComponentsDocs(): string {
     return `# 组件使用文档
 ${this.openedComponentDocs.map(namespace => {
-  return this.api.getComponentDoc(namespace).replace('<component>', `<${namespace}文档>`).replace('</component>', `</${namespace}文档>`)
-}).join('')}
+      return this.api.getComponentDoc(namespace).replace('<component>', `<${namespace}文档>`).replace('</component>', `</${namespace}文档>`)
+    }).join('')}
 `
   }
 
@@ -302,7 +307,7 @@ class PageTreeGenerator {
     if (Array.isArray(rawData)) {
       const allPages: PageInfo[] = [];
       rawData.forEach(canvas => {
-        if (canvas.pageAry && Array.isArray(canvas.pageAry)) {
+        if (canvas.pageAry && Array.isArray(canvas.pageAry)) { // 多画布
           allPages.push(...canvas.pageAry.map(page => ({
             id: page.id,
             title: page.title,
@@ -310,6 +315,8 @@ class PageTreeGenerator {
             componentType: page.componentType || undefined,
             children: page.children || []
           })));
+        } else if (canvas.id) {
+          allPages.push({ ...canvas })
         }
       });
       return allPages;
@@ -362,22 +369,17 @@ class PageHierarchyGenerator {
   static generate(outlineInfo: OutlineNode, currentFocus: FocusInfo): string {
     let processedData: OutlineNode;
 
+    const focusPageId = currentFocus.pageId;
+    const focusComID = currentFocus.comId;
+
     if (currentFocus.type === 'uiCom') {
-      const filteredOutline = this.filterToFocusedComponent(outlineInfo, currentFocus.comId!);
-      processedData = {
-        id: currentFocus.pageId,
-        title: '页面',
-        slots: [{ id: 'root', components: [filteredOutline] }]
-      };
+      const filteredOutline = this.filterToFocusedComponent(outlineInfo, focusComID!);
+      processedData = filteredOutline as OutlineNode
     } else {
-      processedData = {
-        id: currentFocus.pageId,
-        title: '页面',
-        slots: [{ id: 'root', components: [outlineInfo] }]
-      };
+      processedData = outlineInfo
     }
 
-    return this.generateTreeDescription(processedData, currentFocus);
+    return this.generateTreeDescription(processedData, { pageId: focusPageId, comId: focusComID });
   }
 
   private static containsComponent(data: OutlineNode, targetId: string): boolean {
@@ -439,7 +441,7 @@ class PageHierarchyGenerator {
     return null;
   }
 
-  private static generateTreeDescription(data: OutlineNode | OutlineNode[], currentFocus: FocusInfo, level = 0): string {
+  private static generateTreeDescription(data: OutlineNode | OutlineNode[], focusInfo: FocusInfo, level = 0): string {
     const indent = '  '.repeat(level);
     let result = '';
 
@@ -452,15 +454,15 @@ class PageHierarchyGenerator {
         return '无内容，代表内容为空';
       }
       data.forEach(item => {
-        result += this.generateTreeDescription(item, currentFocus, level);
+        result += this.generateTreeDescription(item, focusInfo, level);
       });
       return result;
     }
 
     if (data.title) {
       const namespace = data.def?.namespace;
-      const isFocused = (currentFocus.type === 'uiCom' && data.id === currentFocus.comId) ||
-        (currentFocus.type === 'page' && data.id === currentFocus.pageId);
+      const isFocused = data.id === focusInfo.comId ||
+        data.id === focusInfo.pageId;
       const focusMarker = isFocused ? ' 【当前聚焦】' : '';
       const collapsedMarker = data._hasCollapsedChildren ? ' 【子组件已折叠】' : '';
 
@@ -471,7 +473,7 @@ class PageHierarchyGenerator {
       data.slots.forEach(slot => {
         if (slot.components && Array.isArray(slot.components)) {
           slot.components.forEach(component => {
-            result += this.generateTreeDescription(component, currentFocus, level + 1);
+            result += this.generateTreeDescription(component, focusInfo, level + 1);
           });
         }
       });
@@ -515,33 +517,31 @@ class FocusDescriptionGenerator {
  */
 class ComponentsInfoGenerator {
   private static namespacesSet = new Set<string>();
-  private static targetComponentIds: string[] = [];
 
   static generate(outlineInfo: OutlineNode, targetComponentIds: string[] = []): ComponentsResult {
     this.namespacesSet.clear();
-    this.targetComponentIds = targetComponentIds;
-    
+
     // 如果没有目标组件ID，按原逻辑处理
     if (targetComponentIds.length === 0) {
-        const jsx = this.processData(outlineInfo);
-        return {
-            id: outlineInfo.id,
-            jsx,
-            namespaces: Array.from(this.namespacesSet)
-        };
+      const jsx = this.processData(outlineInfo);
+      return {
+        id: outlineInfo.id,
+        jsx,
+        namespaces: Array.from(this.namespacesSet)
+      };
     }
 
     // 如果只有一个目标组件，直接找到它并完全展开
     if (targetComponentIds.length === 1) {
-        const targetNode = this.findNodeById(outlineInfo, targetComponentIds[0]);
-        if (targetNode) {
-            const jsx = this.processData(targetNode);
-            return {
-                id: targetNode.id,
-                jsx,
-                namespaces: Array.from(this.namespacesSet)
-            };
-        }
+      const targetNode = this.findNodeById(outlineInfo, targetComponentIds[0]);
+      if (targetNode) {
+        const jsx = this.processData(targetNode);
+        return {
+          id: targetNode.id,
+          jsx,
+          namespaces: Array.from(this.namespacesSet)
+        };
+      }
     }
 
     // 多个目标组件的情况，找共同祖先然后完全展开
@@ -549,11 +549,11 @@ class ComponentsInfoGenerator {
     const jsx = ancestorNodes.map(node => this.processData(node)).join('\n');
 
     return {
-        id: ancestorNodes[0]?.id,
-        jsx,
-        namespaces: Array.from(this.namespacesSet)
+      id: ancestorNodes[0]?.id,
+      jsx,
+      namespaces: Array.from(this.namespacesSet)
     };
-}
+  }
 
   /**
    * 找到包含所有目标组件的最小公共祖先
@@ -580,15 +580,15 @@ class ComponentsInfoGenerator {
     if (paths.length === 1) {
       return [paths[0][paths[0].length - 1]];
     }
-    
+
     // 简化逻辑：找到最深的公共节点
     let commonAncestor: OutlineNode | null = null;
     const minLength = Math.min(...paths.map(path => path.length));
-    
+
     for (let i = 0; i < minLength; i++) {
       const currentNodes = paths.map(path => path[i]);
       const firstNode = currentNodes[0];
-      
+
       // 检查当前层级的所有节点是否相同
       if (currentNodes.every(node => node.id === firstNode.id)) {
         commonAncestor = firstNode;
@@ -650,29 +650,6 @@ class ComponentsInfoGenerator {
     return null;
   }
 
-  /**
-   * 检查节点是否包含目标节点
-   */
-  private static containsNode(root: OutlineNode, targetId: string): boolean {
-    if (root.id === targetId) {
-      return true;
-    }
-
-    if (root.slots && Array.isArray(root.slots)) {
-      for (const slot of root.slots) {
-        if (slot.components && Array.isArray(slot.components)) {
-          for (const component of slot.components) {
-            if (this.containsNode(component, targetId)) {
-              return true;
-            }
-          }
-        }
-      }
-    }
-
-    return false;
-  }
-
   private static extractLayout(style: any): Record<string, any> {
     if (!style) return {};
 
@@ -726,7 +703,7 @@ class ComponentsInfoGenerator {
       return node.map(item => this.processData(item)).filter(Boolean).join('\n');
     }
 
-    if (node.id) {
+    if (node.id && node.def?.namespace) {
       return this.generateComponentJSX(node);
     }
 
@@ -745,8 +722,6 @@ class ComponentsInfoGenerator {
   private static generateComponentJSX(node: OutlineNode, indent = ''): string {
     if (!node?.id) return '';
 
-    if (!node.def?.namespace) return ''
-
     const namespace = node.def?.namespace;
     this.namespacesSet.add(namespace);
 
@@ -763,6 +738,8 @@ class ComponentsInfoGenerator {
     if (styleArray.length > 0) {
       jsx += ` styleAry={[${styleArray.map(style => `"${style}"`).join(', ')}]}`;
     }
+
+    jsx += ` >`
 
     const slotsJSX = this.generateSlotsJSX(node.slots || [], indent + '  ');
     if (slotsJSX) {
@@ -807,6 +784,30 @@ class ComponentsInfoGenerator {
     });
 
     return slotsJSX;
+  }
+}
+
+
+// TODO，设计器多画布和单画布维度不一样
+function fixPageOutlineInfo(outline: OutlineNode, pageId: string) {
+  if (outline?.id === pageId) {
+    // 兼容，页面维度没有slots
+    outline.slots = [{
+      id: 'root',
+      components: outline.components
+    }]
+    // 兼容，页面维度为了在jsx中把页面放出来，需要添加namespace
+    // outline.def = {
+    //   namespace: 'root'
+    // }
+    return outline
+  } else {
+    // 兼容，多加一层页面维度，之前多画布少了这一层，只到asRoot
+    return {
+      id: pageId,
+      title: '页面',
+      slots: [{ id: 'root', components: [outline] }]
+    }
   }
 }
 

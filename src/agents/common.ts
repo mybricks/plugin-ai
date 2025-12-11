@@ -58,7 +58,7 @@ export const requestCommonAgent = (params: any) => {
     // workspace.openDocument('u_ADKKC')
 
     // // 页面
-    // workspace.openDocument('u_yjFHf') 
+    // workspace.openDocument('u_yjFHf')
 
     // // 页面 + 组件
     // workspace.openDocument('u_yjFHf')
@@ -66,6 +66,14 @@ export const requestCommonAgent = (params: any) => {
 
     // return console.log(workspace.getProjectStruct())
 
+    // try {
+    //   workspace.openDocument(targetPageId)
+    //   return console.log(workspace.getProjectStruct())
+    // } catch (error) {
+    //   console.error(error)
+    // }
+    // return
+    
 
     context.rxai.requestAI({
       ...params,
@@ -147,6 +155,7 @@ export const requestCommonAgent = (params: any) => {
           getPageJson() {
             return context.api?.page?.api?.getOutlineInfo(targetPageId)
           },
+          getTargetId: () => targetPageId as string,
           getFocusElementHasChildren() {
             if (context.currentFocus?.type !== 'page') {
               const json = getOutlineInfo()

@@ -573,3 +573,19 @@ export function stripFileBlocks(raw: string) {
 
   return cleaned;
 }
+
+export function jsonSafeParse(input: string): any {
+  let finalError
+  try {
+    return JSON.parse(input);
+  } catch (error) {
+    finalError = error
+    try {
+      const repairedJson = jsonrepair(input);
+      return JSON.parse(repairedJson);
+    } catch (repairError) {
+      // 修复也失败了，抛出错误
+      throw finalError
+    }
+  }
+}

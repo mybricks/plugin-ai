@@ -1,5 +1,5 @@
 import { fileFormat, RequestError, ToolError } from '@mybricks/rxai'
-import { getFiles, stripFileBlocks } from './utils'
+import { getFiles, stripFileBlocks, jsonSafeParse } from './utils'
 
 interface GetComponentsDocAndPrdToolParams {
   allowComponents: string;
@@ -125,7 +125,7 @@ ${config.examples}
 
       let requireComponents = [];
       try {
-        requireComponents = JSON.parse(requireComsFile?.content);
+        requireComponents = jsonSafeParse(requireComsFile?.content);
       } catch (error) {
         throw new ToolError({
           llmContent: `解析组件选型错误，请检查格式，${error?.message}`,

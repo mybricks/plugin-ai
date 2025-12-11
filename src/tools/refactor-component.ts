@@ -6,6 +6,7 @@ interface ModifyComponentToolParams {
   onActions: (actions: any[], status: string) => void,
   getFocusElementHasChildren: () => boolean,
   getPageJson: () => any
+  getTargetId: () => string;
 }
 
 const NAME = 'refactor-components-in-page'
@@ -16,10 +17,12 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
   const excuteActionsParser = createActionsParser();
   const hasChildren = config.getFocusElementHasChildren() !== false
 
- 
+
   let componentIdToTitleMap: Map<string, string> | null = null;
   let fileNameToContent: Record<string, string> = {};
   let displayContent = "";
+
+  const pageId = config?.getTargetId();
 
   return {
     name: NAME,
@@ -293,9 +296,9 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
       
         使用fixed定位的例子:
         ${fileFormat({
-          content: `["_root_","_rootSlot_","addChild",{"title":"添加一个固定定位组件","comId":"u_fixed","ns":"组件","layout":{"position":"fixed","width":"100%","height":84,"bottom":0,"left":0},"configs":[]}]`,
-          fileName: '添加一个fixed定位组件.json'
-        })}
+        content: `["_root_","_rootSlot_","addChild",{"title":"添加一个固定定位组件","comId":"u_fixed","ns":"组件","layout":{"position":"fixed","width":"100%","height":84,"bottom":0,"left":0},"configs":[]}]`,
+        fileName: '添加一个fixed定位组件.json'
+      })}
 
       在插槽的不同布局下，组件的定位由所在插槽的布局方式决定：
         - 在当前组件的插槽中，可以添加fixed定位的组件，禁止在其他插槽中添加fixed定位的组件；
@@ -321,11 +324,11 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
 
         例子：第一个布局组件仅承担布局功能，可以添加ignore标记；第二个布局组件承担样式功能，不能添加ignore标记。
         ${fileFormat({
-          content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_layout","ignore":true,"ns":"组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
+        content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_layout","ignore":true,"ns":"组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
         ["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_layout","ns":"组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}},{"path":"样式/样式","style":{"background":"#FFFFFF"}}]}]
         `,
-          fileName: '辅助标记.json'
-        })}
+        fileName: '辅助标记.json'
+      })}
  
       </辅助标记使用>
   
@@ -335,12 +338,12 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
 
           下面的例子使用flex实现左侧固定宽度，右侧自适应布局:
           ${fileFormat({
-            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex1","ns":"布局组件","layout":{"width":"100%","height":60},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
+        content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex1","ns":"布局组件","layout":{"width":"100%","height":60},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
           ["u_flex1","插槽id占位","addChild",{"title":"左侧固定宽度组件","comId":"u_leftFixed","ns":"组件","layout":{"width":60,"height":40,"marginRight":8},"configs":[]}]
           ["u_flex1","插槽id占位","addChild",{"title":"右侧自适应组件","comId":"u_rightFlex","ns":"组件","layout":{"width":'100%',"height":40},"configs":[]}]
           `,
-            fileName: '左侧固定右侧自适应.json'
-          })}
+        fileName: '左侧固定右侧自适应.json'
+      })}
           在上例中:
             - 声明布局编辑器的值，注意布局编辑器必须声明，其中flexDirection也必须声明，关注justifyContent效果，默认为flex-start；
             - 左侧组件使用固定宽度，右侧组件使用width=100%(效果等同于flex=1)实现自适应宽度；
@@ -349,14 +352,14 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
           
           下面的例子使用flex进行嵌套，来实现左侧图标+文本，右侧箭头的布局:
           ${fileFormat({
-            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex1","ns":"布局组件","layout":{"width":"100%","height":60},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","justifyContent":"space-between","alignItems":"center"}}]}]
+        content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex1","ns":"布局组件","layout":{"width":"100%","height":60},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","justifyContent":"space-between","alignItems":"center"}}]}]
           ["u_flex1","插槽id占位","addChild",{"title":"左侧布局组件","comId":"u_leftLayout","ignore": true,"ns":"布局组件","layout":{"width":"fit-content","height":"fit-content"},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center", "justifyContent": "flex-start"}}]}]
           ["u_leftLayout","插槽id占位","addChild",{"title":"图标组件","comId":"u_icon","ns":"图标组件","layout":{"width":24,"height":24,"marginRight":8},"configs":[]}]
           ["u_leftLayout","插槽id占位","addChild",{"title":"文本组件","comId":"u_text","ns":"文本组件","layout":{"width":"fit-content","height":"fit-content"},"configs":[]}]
           ["u_flex1","插槽id占位","addChild",{"title":"箭头图标组件","comId":"u_arrowIcon","ns":"图标组件","layout":{"width":24,"height":24},"configs":[]}]
           `,
-            fileName: 'flex嵌套实现左右布局.json'
-          })}
+        fileName: 'flex嵌套实现左右布局.json'
+      })}
           在上例中:
             - 声明布局编辑器的值，注意布局编辑器必须声明，其中flexDirection也必须声明；
             - 使用嵌套布局来完成左侧多元素 + 右侧单元素的布局，默认justifyContent=flex-start，所以左侧布局无需设置；
@@ -364,24 +367,24 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
 
           下面的例子使用flex实现垂直居中布局:
           ${fileFormat({
-            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex2","ns":"布局组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"column","alignItems":"center"}}]}]
+        content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex2","ns":"布局组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"column","alignItems":"center"}}]}]
           ["u_flex2","插槽id占位","addChild",{"title":"子组件","comId":"u_child","ns":"组件","layout":{"width":80,"height":80},"configs":[]}]
           `,
-            fileName: '垂直居中布局.json'
-          })}
+        fileName: '垂直居中布局.json'
+      })}
           在上例中:
             - 声明布局编辑器的值，注意布局编辑器必须声明，其中flexDirection声明成column；
             - 通过alignItems来实现子组件的垂直居中； 
 
           下面的例子使用flex进行横向均分或等分布局，实现一行N列的效果:
           ${fileFormat({
-            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex0","ignore": true,"ns":"布局组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","justifyContent":"space-between","alignItems":"center"}}]}]
+        content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex0","ignore": true,"ns":"布局组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","justifyContent":"space-between","alignItems":"center"}}]}]
           ["u_flex0","插槽id占位","addChild",{"title":"A组件","comId":"u_a","ns":"组件","layout":{"width":40,"height":40},"configs":[]}]
           ["u_flex0","插槽id占位","addChild",{"title":"B组件","comId":"u_b","ns":"组件","layout":{"width":40,"height":40},"configs":[]}]
           ["u_flex0","插槽id占位","addChild",{"title":"C组件","comId":"u_c","ns":"组件","layout":{"width":40,"height":40},"configs":[]}]
           `,
-            fileName: '一行N列布局.json'
-          })}
+        fileName: '一行N列布局.json'
+      })}
           在上例中:
             - 声明布局编辑器的值，注意布局编辑器必须声明，其中flexDirection也必须声明；
             - 针对内容元素的尺寸，配置合理的高度，防止内容溢出；
@@ -390,12 +393,12 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
 
           特殊地，在flex布局中的元素还可以配置position=absolute，用于实现绝对定位效果:
           ${fileFormat({
-            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex3","ns":"布局组件","layout":{"width":"100%","height":200},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
+        content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex3","ns":"布局组件","layout":{"width":"100%","height":200},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
           ["u_flex3","插槽id占位","addChild",{"title":"绝对定位组件","comId":"u_absolute","ns":"组件","layout":{"position":"absolute","width":100,"height":40,"top":20,"left":20},"configs":[]}]
           ["u_flex3","插槽id占位","addChild",{"title":"普通组件","comId":"u_normal","ns":"组件","layout":{"width":80,"height":80},"configs":[]}]
           `,
-            fileName: '绝对定位效果.json'
-          })}
+        fileName: '绝对定位效果.json'
+      })}
           在上例中:
             - 声明布局编辑器的值，注意布局编辑器必须声明，其中flexDirection也必须声明；
             - 通过layout中的属性，设置成绝对定位效果，在一些特殊的角标等场景下很有效果；
@@ -499,15 +502,18 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
     aiRole: hasChildren ? 'expert' : 'architect',
     stream({ files, status, replaceContent }) {
       let actions: any = [];
-      const actionsFile = getFiles(files, {extName: 'json' })
+      const actionsFile = getFiles(files, { extName: 'json' })
 
       if (actionsFile) {
         actions = streamActionsParser(actionsFile.content ?? "");
+        actions = fixActions(actions, {
+          pageId
+        })
         if (!fileNameToContent[actionsFile!.fileName]) {
           fileNameToContent[actionsFile!.fileName] = "";
         }
       }
-      
+
       if (actions.length > 0 || status === 'start' || status === 'complete') {
         try {
           if (!componentIdToTitleMap) {
@@ -523,7 +529,7 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
               fileNameToContent[actionsFile!.fileName] += `\n${actionsContent.trim()}`;
             }
           }
-        } catch (error) {}
+        } catch (error) { }
       }
 
       return displayContent = Object.entries(fileNameToContent).reduce((pre, [fileName, content]) => {
@@ -534,13 +540,13 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
       let errorContent;
       try {
         errorContent = JSON.parse(content)
-      } catch (error) {}
+      } catch (error) { }
       if (errorContent && errorContent?.message) {
         throw new RequestError(`网络错误，${errorContent?.message}`)
       }
 
       let actions: any = [];
-      const actionsFile = getFiles(files, {extName: 'json' })
+      const actionsFile = getFiles(files, { extName: 'json' })
 
       if (!actionsFile) {
         return {
@@ -577,16 +583,16 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
           displayContent: summary
         }
 
-  //       const summary = getComponentOperationSummary(actions, getComponentIdToTitleMap(config?.getPageJson()))
+        //       const summary = getComponentOperationSummary(actions, getComponentIdToTitleMap(config?.getPageJson()))
 
-  //       return {
-  //         llmContent: `根据需求，我们进行如下修改
-  // ${summary}`,
-  //         displayContent: `根据需求，我们进行如下修改
-  // ${summary}`
-  //       }
+        //       return {
+        //         llmContent: `根据需求，我们进行如下修改
+        // ${summary}`,
+        //         displayContent: `根据需求，我们进行如下修改
+        // ${summary}`
+        //       }
       } catch (error) {
-        
+
       }
 
       return {
@@ -595,4 +601,17 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
       }
     },
   }
+}
+
+function fixActions(actions: any[], {
+  pageId
+}: {
+  pageId?: string
+}) {
+  return (actions ?? []).map(action => {
+    if (action.comId === pageId) {
+      action.comId = '_root_'
+    }
+    return action;
+  })
 }
