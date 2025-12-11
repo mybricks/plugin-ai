@@ -15,6 +15,12 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
   const streamActionsParser = createActionsParser();
   const excuteActionsParser = createActionsParser();
   const hasChildren = config.getFocusElementHasChildren() !== false
+
+ 
+  let componentIdToTitleMap: Map<string, string> | null = null;
+  let fileNameToContent: Record<string, string> = {};
+  let displayContent = "";
+
   return {
     name: NAME,
     displayName: "局部修改/重构",
@@ -491,19 +497,36 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
 </examples>`
     },
     aiRole: hasChildren ? 'expert' : 'architect',
-    stream({ files, status }) {
+    stream({ files, status, replaceContent }) {
       let actions: any = [];
       const actionsFile = getFiles(files, {extName: 'json' })
 
       if (actionsFile) {
         actions = streamActionsParser(actionsFile.content ?? "");
+        if (!fileNameToContent[actionsFile!.fileName]) {
+          fileNameToContent[actionsFile!.fileName] = "";
+        }
       }
       
       if (actions.length > 0 || status === 'start' || status === 'complete') {
         try {
+          if (!componentIdToTitleMap) {
+            componentIdToTitleMap = getComponentIdToTitleMap(config?.getPageJson());
+          }
           config.onActions(actions, status)
+          const actionsContent = getComponentOperationSummary(actions, componentIdToTitleMap)
+
+          if (!fileNameToContent[actionsFile!.fileName]) {
+            fileNameToContent[actionsFile!.fileName] = actionsContent.trim();
+          } else {
+            fileNameToContent[actionsFile!.fileName] += `\n${actionsContent.trim()}`;
+          }
         } catch (error) {}
       }
+
+      return displayContent = Object.entries(fileNameToContent).reduce((pre, [fileName, content]) => {
+        return pre.replace(fileName, content);
+      }, replaceContent)
     },
     execute({ files, content }) {
       let errorContent;
@@ -522,6 +545,11 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
           llmContent: content,
           displayContent: content
         }
+      }
+
+      return {
+        llmContent: displayContent,
+        displayContent: displayContent
       }
 
       actions = excuteActionsParser(actionsFile.content ?? "");

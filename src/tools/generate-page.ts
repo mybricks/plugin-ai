@@ -28,6 +28,10 @@ export default function generatePage(config: GeneratePageToolParams): any {
   const rootId = hasRootCom ? pageJson.id : undefined;
   const pageId = config?.getTargetId();
 
+  let componentIdToTitleMap: Map<string, string> | null = null;
+  let fileNameToContent: Record<string, string> = {};
+  let displayContent = "";
+
   return {
     name: NAME,
     displayName: "生成页面",
@@ -462,12 +466,15 @@ ${config.examples}
   
 </examples>`
     },
-    stream({ files, status }) {
+    stream({ files, status, replaceContent }) {
       let actions: any = [];
       const actionsFile = getFiles(files, {extName: 'json' })
 
       if (actionsFile) {
         actions = streamActionsParser(actionsFile.content ?? "");
+        if (!fileNameToContent[actionsFile!.fileName]) {
+          fileNameToContent[actionsFile!.fileName] = "";
+        }
       }
 
       actions = fixActions(actions, {
@@ -480,8 +487,22 @@ ${config.examples}
       }
       
       if (actions.length > 0 || status === 'start' || status === 'complete') {
+        if (!componentIdToTitleMap) {
+          componentIdToTitleMap = getComponentIdToTitleMap(config?.getPageJson());
+        }
         config.onActions(actions, status)
+        const actionsContent = getComponentOperationSummary(actions, componentIdToTitleMap)
+
+        if (!fileNameToContent[actionsFile!.fileName]) {
+          fileNameToContent[actionsFile!.fileName] = actionsContent.trim();
+        } else {
+          fileNameToContent[actionsFile!.fileName] += `\n${actionsContent.trim()}`;
+        }
       }
+
+      return displayContent = Object.entries(fileNameToContent).reduce((pre, [fileName, content]) => {
+        return pre.replace(fileName, content);
+      }, replaceContent)
     },
     execute({ files, content }) {
       let actions: any = [];
