@@ -49,6 +49,7 @@ export default function answerUserQuestion(config: AnswerUserQuestionToolParams)
 自然语言直接返回。
 </输出格式>`
     },
+    streamThoughts: true,
     // 执行工具逻辑，处理输入并返回结果
     execute({ files, content }) {
       return content

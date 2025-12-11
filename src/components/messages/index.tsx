@@ -224,6 +224,9 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
           return streamMessage + chunk
         });
       }),
+      plan.events.on('streamMessage2', (streamMessage) => {
+        setStreamMessage(streamMessage);
+      }),
       plan.events.on('summary', (summary) => {
         setSummary(summary);
       }),
