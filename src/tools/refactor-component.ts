@@ -516,10 +516,12 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
           config.onActions(actions, status)
           const actionsContent = getComponentOperationSummary(actions, componentIdToTitleMap)
 
-          if (!fileNameToContent[actionsFile!.fileName]) {
-            fileNameToContent[actionsFile!.fileName] = actionsContent.trim();
-          } else {
-            fileNameToContent[actionsFile!.fileName] += `\n${actionsContent.trim()}`;
+          if (actionsFile) {
+            if (!fileNameToContent[actionsFile!.fileName]) {
+              fileNameToContent[actionsFile!.fileName] = actionsContent.trim();
+            } else {
+              fileNameToContent[actionsFile!.fileName] += `\n${actionsContent.trim()}`;
+            }
           }
         } catch (error) {}
       }
