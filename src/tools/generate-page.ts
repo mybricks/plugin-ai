@@ -1,11 +1,12 @@
 import { fileFormat } from '@mybricks/rxai'
-import { getFiles, createActionsParser, getComponentOperationSummary, getComponentIdToTitleMap, stripFileBlocks } from './utils'
+import { getFiles, createActionsParser, getComponentOperationSummary, stripFileBlocks } from './utils'
 
 interface GeneratePageToolParams {
   /** 当前根组件信息 */
   getRootComponentDoc: () => string;
   getTargetId: () => string;
   getPageJson: () => any
+  componentIdToTitleMap: Map<string, string>;
   /** 应用特殊上下文信息 */
   appendPrompt: string;
   /** 返回示例 */
@@ -28,7 +29,6 @@ export default function generatePage(config: GeneratePageToolParams): any {
   const rootId = hasRootCom ? pageJson.id : undefined;
   const pageId = config?.getTargetId();
 
-  let componentIdToTitleMap: Map<string, string> | null = null;
   let fileNameToContent: Record<string, string> = {};
   let displayContent = "";
 
@@ -487,11 +487,8 @@ ${config.examples}
       }
       
       if (actions.length > 0 || status === 'start' || status === 'complete') {
-        if (!componentIdToTitleMap) {
-          componentIdToTitleMap = getComponentIdToTitleMap(config?.getPageJson(), pageId);
-        }
         config.onActions(actions, status)
-        const actionsContent = getComponentOperationSummary(actions, componentIdToTitleMap)
+        const actionsContent = getComponentOperationSummary(actions, config.componentIdToTitleMap)
 
         if (actionsFile) {
           if (!fileNameToContent[actionsFile!.fileName]) {
@@ -531,14 +528,14 @@ ${config.examples}
 
       try {
         const llmContent = stripFileBlocks(content);
-        const actionsContent = actions?.length ? getComponentOperationSummary(actions, getComponentIdToTitleMap(config?.getPageJson(), pageId)) : ""
+        const actionsContent = actions?.length ? getComponentOperationSummary(actions, config.componentIdToTitleMap) : ""
         const summary = (llmContent ? `${llmContent}\n\n` : "") + (actionsContent ? `修改内容如下\n${actionsContent}` : "当前没有内容修改");
 
         return {
           llmContent: summary,
           displayContent: summary
         }
-  //       const summary = getComponentOperationSummary(actions, getComponentIdToTitleMap(config?.getPageJson(), pageId))
+  //       const summary = getComponentOperationSummary(actions, config.componentIdToTitleMap)
 
   //       return {
   //         llmContent: `根据需求，执行以下操作

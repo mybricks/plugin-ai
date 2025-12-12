@@ -1,11 +1,11 @@
 import { fileFormat, RequestError } from '@mybricks/rxai'
-import { getFiles, createActionsParser, getComponentOperationSummary, getComponentIdToTitleMap, stripFileBlocks } from './utils'
+import { getFiles, createActionsParser, getComponentOperationSummary, stripFileBlocks } from './utils'
 
 interface ModifyComponentToolParams {
   /** 当前根组件信息 */
   getRootComponentDoc: () => string;
   getTargetId: () => string;
-  getPageJson: () => any
+  componentIdToTitleMap: Map<string, string>;
   getFocusElementHasChildren: () => boolean
   /** 当所有actions返回时 */
   onActions: (actions: any[], status: string, type: string) => void
@@ -19,7 +19,6 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
   const excuteActionsParser = createActionsParser();
   const hasChildren = config.getFocusElementHasChildren() !== false
 
-  let componentIdToTitleMap: Map<string, string> | null = null;
   let fileNameToContent: Record<string, string> = {};
   let displayContent = "";
 
@@ -539,12 +538,8 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
 
       if (actions.length > 0 || status === 'complete') {
         try {
-          if (!componentIdToTitleMap) {
-            componentIdToTitleMap = getComponentIdToTitleMap(config?.getPageJson(), pageId);
-            console.log(componentIdToTitleMap)
-          }
           config.onActions(actions, status, actionType)
-          const actionsContent = getComponentOperationSummary(actions, componentIdToTitleMap)
+          const actionsContent = getComponentOperationSummary(actions, config.componentIdToTitleMap)
 
           if (actionsFile) {
             if (!fileNameToContent[actionsFile!.fileName]) {
@@ -599,7 +594,7 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
 
       try {
         const llmContent = stripFileBlocks(content);
-        const actionsContent = actions?.length ? getComponentOperationSummary(actions, getComponentIdToTitleMap(config?.getPageJson(), pageId)) : ""
+        const actionsContent = actions?.length ? getComponentOperationSummary(actions, OutlineInfo.getComponentIdToTitleMap(config?.getPageJson(), pageId)) : ""
         const summary = (llmContent ? `${llmContent}\n\n` : "") + (actionsContent ? `修改内容如下\n${actionsContent}` : "当前没有内容修改");
 
         return {
@@ -607,7 +602,7 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
           displayContent: summary
         }
 
-        //       const summary = getComponentOperationSummary(actions, getComponentIdToTitleMap(config?.getPageJson(), pageId))
+        //       const summary = getComponentOperationSummary(actions, OutlineInfo.getComponentIdToTitleMap(config?.getPageJson(), pageId))
 
         //       return {
         //         llmContent: `根据需求，我们进行如下修改

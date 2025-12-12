@@ -2,7 +2,7 @@ import { context } from './../context';
 import { MYBRICKS_TOOLS } from "./../tools"
 
 import { WorkSpace } from './../tools/workspace'
-
+import { OutlineInfoManager } from './../tools/outline-info'
 
 export const requestCommonAgent = (params: any) => {
 
@@ -13,33 +13,21 @@ export const requestCommonAgent = (params: any) => {
     const targetId = targetType === 'uiCom' ? context.currentFocus?.comId : context.currentFocus?.pageId
     const targetPageId = context.currentFocus?.pageId
 
-    const getOutlineInfo = () => {
-      if (targetType !== 'page') {
-        return context.api?.uiCom?.api?.getOutlineInfo(targetId)
-      } else {
-        return context.api?.page?.api?.getOutlineInfo(targetId)
-      }
-    }
+    const outlineInfoManager = new OutlineInfoManager({ api: context.api })
+
+    const componentIdToTitleMap = outlineInfoManager.getComponentIdToTitleMap(targetPageId);
 
     const workspace = new WorkSpace({ currentFocus: context.currentFocus } as any, {
       getAllPageInfo() {
         return context.api.global.api.getAllPageInfo()
       },
-      getOutlineInfo(id, type) {
-        if (type !== 'page') {
-          return context.api?.uiCom?.api?.getOutlineInfo(id)
-        } else {
-          return context.api?.page?.api?.getOutlineInfo(id)
-        }
-      },
       getComponentDoc(namespace: string) {
         return context.api?.uiCom?.api?.getComEditorPrompts?.(namespace)
       }
-    } as any)
+    } as any, outlineInfoManager)
 
     params?.onProgress?.('start')
 
-    const focusDesc = generateFocusDescription(context.currentFocus);
     const historyFocusDesc = generateHistoryFocusDescription(context.currentFocus);
     const focusEleDesc = generateFocusTargetDescription(context.currentFocus);
 
@@ -112,6 +100,7 @@ export const requestCommonAgent = (params: any) => {
           getPageJson() {
             return context.api?.page?.api?.getOutlineInfo(targetPageId)
           },
+          componentIdToTitleMap,
           appendPrompt: prompts.systemAppendPrompts,
           examples: prompts.generatePageActionExamplesPrompts,
           onActions: (actions, status) => {
@@ -153,14 +142,12 @@ export const requestCommonAgent = (params: any) => {
               context.api?.uiCom?.api?.updateCom?.(targetId, actions, status)
             }
           },
-          getPageJson() {
-            return context.api?.page?.api?.getOutlineInfo(targetPageId)
-          },
+          componentIdToTitleMap,
           getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,
           getTargetId: () => targetPageId as string,
           getFocusElementHasChildren() {
             if (context.currentFocus?.type !== 'page') {
-              const json = getOutlineInfo()
+              const json = outlineInfoManager.getUiComOutline(targetId)
               if (!json.slots || (Array.isArray(json.slots) && json.slots.length === 0)) {
                 return false
               }
@@ -250,23 +237,6 @@ ${text}
   })
 }
 
-function generateFocusDescription(currentFocus = {}) {
-  const { pageId, comId, title, type } = currentFocus ?? {}
-  
-  // 定义聚焦元素的描述部分
-  let focusDesc = '';
-  
-  // 判断当前聚焦元素类型
-  if (type === 'uiCom') {
-    focusDesc = `组件(title=${title},组件id=${comId})`;
-  } else if (type === 'page') {
-    focusDesc = `页面(title=${title},页面id=${pageId})`;
-  } else if (type === 'section') {
-    focusDesc = `页面(title=${title},页面id=${pageId})`;
-  }
-  
-  return `当前已聚焦到${focusDesc}中，后续用户的提问，关于"这个"、"此"、"整体"，甚至不提主语，都是指代此元素及其子组件内容。`;
-}
 
 function generateHistoryFocusDescription(currentFocus = {}) {
   const { pageId, comId, title, type } = currentFocus ?? {}
