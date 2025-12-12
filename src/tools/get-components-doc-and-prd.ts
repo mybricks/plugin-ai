@@ -13,6 +13,7 @@ const NAME = 'generate-prd-and-require-component'
 getComponentsDocAndPrd.toolName = NAME
 
 export default function getComponentsDocAndPrd(config: GetComponentsDocAndPrdToolParams,): any {
+  let displayContent = "";
   return {
     name: NAME,
     displayName: "理解和整理当前需求",
@@ -103,6 +104,11 @@ ${config.examples}
 </examples>
 `
     },
+    stream({ files, status, replaceContent }) {
+      return displayContent = files.reduce((replaceContent, file) => {
+        return replaceContent.replace(file.fileName, file.extension === "md" ? file.content : "");
+      }, replaceContent)
+    },
     execute({ files, content }) {
       let errorContent;
       try {
@@ -139,12 +145,15 @@ ${config.examples}
         })
       }
       
-      return `<需求文档>
+      return {
+        llmContent: `<需求文档>
 ---
 ${prdFile?.name}
 ---
 ${prdFile?.content}
-</需求文档>`
+</需求文档>`,
+displayContent
+      }
     },
   }
 }

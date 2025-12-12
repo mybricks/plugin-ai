@@ -10,3 +10,25 @@
     }
   }
 }
+
+.loading-shimmer {
+  -webkit-text-fill-color: transparent;
+  animation-duration: 3s;
+  animation-iteration-count: infinite;
+  animation-name: loading-shimmer;
+  background: #adadad linear-gradient(to right, #adadad 0, #1a1a1abf 40%, #1a1a1abf 60%, #adadad 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  background-repeat: no-repeat;
+  background-size: 50% 200%;
+  display: inline-block;
+}
+
+@keyframes loading-shimmer {
+  0% {
+    background-position: -100% 0;
+  }
+  100% {
+    background-position: 250% 0;
+  }
+}

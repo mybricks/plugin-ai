@@ -262,11 +262,11 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
             if (!command.status || command.status === "error") {
               return null;
             }
-            return <BubbleCopilotTool key={index + command.status} command={command} />
+            return <BubbleCopilotTool key={index + command.status} command={command} last={index === commands.length - 1}/>
           })}
           {error && <BubbleError message={error} plan={plan}/>}
           {summary && <BubbleMessage message={summary} />}
-          {streamMessage && <BubbleMessage message={streamMessage} />}
+          {/* {streamMessage && <BubbleMessage message={streamMessage} />} */}
           {!streamMessage && loading && (
             <div className={css['think']}>
               <span>正在思考</span>
@@ -281,26 +281,62 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
 
 interface BubbleCopilotToolParams {
   command: Plan['commands'][number];
+  last: boolean;
 }
 const BubbleCopilotTool = (params: BubbleCopilotToolParams) => {
-  const { command } = params;
+  const { command, last } = params;
+  const [message, setMessage] = useState("");
+  const [expand, setExpand] = useState(false);
+
+  useEffect(() => {
+    if (command.status === "success") {
+      setMessage(command.content.display || command.content.llm)
+      if (last) {
+        setExpand(true)
+      }
+    }
+    const destory = command.events?.on("streamMessage", ({ message, status }) => {
+      setMessage(message)
+      if (status === "start") {
+        setExpand(true)
+      } else if (status === "complete") {
+        if (!last) {
+          setExpand(false)
+        }
+      }
+    })
+
+    return () => {
+      destory?.();
+    }
+  }, [])
 
   return (
-    <div className={classNames(css['ai-chat-collapsible-code-block'], css['collapsed'])}>
-      <span className={classNames(css['code-header'], css['collapsed'])}>
-        <span className={classNames(css['code-title'], css['collapsed'])}>{command.tool.displayName || command.tool.name}</span>
-        {command.status === "pending" && (
-          <span className={classNames(css['code-title-status'], css['collapsed'], css['pending'])}>
-            <Loading />
-          </span>
-        )}
-         {command.status === "success" && (
-          <span className={classNames(css['code-title-status'], css['collapsed'], css['success'])}>
-            <Success />
-          </span>
-        )}
-      </span>
-    </div>
+    <>
+      <div
+        className={classNames(css['ai-chat-collapsible-code-block'], css['collapsed'])}
+        onClick={() => {
+          if (command.status !== "pending") {
+            setExpand((expand) => !expand);
+          }
+        }}
+      >
+        <span className={classNames(css['code-header'], css['collapsed'])}>
+          <span className={classNames(css['code-title'], css['collapsed'])}>{command.tool.displayName || command.tool.name}</span>
+          {command.status === "pending" && (
+            <span className={classNames(css['code-title-status'], css['collapsed'], css['pending'])}>
+              <Loading />
+            </span>
+          )}
+          {command.status === "success" && (
+            <span className={classNames(css['code-title-status'], css['collapsed'], css['success'])}>
+              <Success />
+            </span>
+          )}
+        </span>
+      </div>
+      {message ? <div className={css['.ai-chat-collapsible-response']} style={{ display: expand ? "block" : "none" }}><BubbleMessage message={message} /></div> : null}
+    </>
   )
 }
 
