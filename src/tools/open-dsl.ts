@@ -69,7 +69,10 @@ DSL定义：将搭建信息总结成可视化的类JSX树状结构，包含当�
           llmContent: `工具 ${NAME} 的调用缺少 ids 参数，请重新规划`
         })
       }
-      return '已打开'
+      return {
+        llmContent: "已打开",
+        displayContent: "已成功读取上下文"
+      }
     },
   }
 }
