@@ -1,5 +1,5 @@
 import { context } from './../context';
-import { MYBRICKS_TOOLS, getPageHierarchy } from "./../tools"
+import { MYBRICKS_TOOLS } from "./../tools"
 
 import { WorkSpace } from './../tools/workspace'
 
@@ -107,7 +107,7 @@ export const requestCommonAgent = (params: any) => {
           }
         }),
         MYBRICKS_TOOLS.GeneratePage({
-          getFocusRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,
+          getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,
           getTargetId: () => targetPageId as string,
           getPageJson() {
             return context.api?.page?.api?.getOutlineInfo(targetPageId)
@@ -143,18 +143,20 @@ export const requestCommonAgent = (params: any) => {
         //   }
         // }),
         MYBRICKS_TOOLS.RefactorComponent({
-          onActions: (actions, status) => {
-            if (targetType === "page") {
-              context.api?.page?.api?.updatePage?.(targetId, actions, status)
-            } else if (targetType === 'uiCom') {
+          onActions: (actions, status, type) => {
+            if (!status) {
+              return 
+            }
+            if (type === "page") {
+              context.api?.page?.api?.updatePage?.(targetPageId, actions, status)
+            } else if (type === 'uiCom') {
               context.api?.uiCom?.api?.updateCom?.(targetId, actions, status)
-            } else {
-              console.warn('doActions，没有合适的目标')
             }
           },
           getPageJson() {
             return context.api?.page?.api?.getOutlineInfo(targetPageId)
           },
+          getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,
           getTargetId: () => targetPageId as string,
           getFocusElementHasChildren() {
             if (context.currentFocus?.type !== 'page') {

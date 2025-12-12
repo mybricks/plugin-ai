@@ -3,7 +3,7 @@ import { getFiles, createActionsParser, getComponentOperationSummary, getCompone
 
 interface GeneratePageToolParams {
   /** 当前根组件信息 */
-  getFocusRootComponentDoc: () => string;
+  getRootComponentDoc: () => string;
   getTargetId: () => string;
   getPageJson: () => any
   /** 应用特殊上下文信息 */
@@ -65,11 +65,11 @@ export default function generatePage(config: GeneratePageToolParams): any {
    - 如果附件中有图片，需要在搭建过程中作为重要的参考，要注意分辨设计稿（或者截图）或者用户绘制的线框图，对于前者、要求最大程度还原图片中的各项功能要素与视觉设计要素、可以做适度的创作发挥，总体要求考虑到功能一致完整与合理性、注意外观视觉美观大方、富有现代感.
 </特别注意>
 
-<当前根组件信息>
-${config.getFocusRootComponentDoc()}
+<当前页面根组件信息>
+${config.getRootComponentDoc()}
 
 IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
-</当前根组件信息>
+</当前页面根组件信息>
 
 <如何搭建以及修改>
   实际上，在手动搭建过程中，通过一系列的action来分步骤完成对于面向组件或其中插槽的添加及修改，下面的actions文件即通过模拟用户行为的方式来完成页面的搭建或修改。
@@ -488,7 +488,7 @@ ${config.examples}
       
       if (actions.length > 0 || status === 'start' || status === 'complete') {
         if (!componentIdToTitleMap) {
-          componentIdToTitleMap = getComponentIdToTitleMap(config?.getPageJson());
+          componentIdToTitleMap = getComponentIdToTitleMap(config?.getPageJson(), pageId);
         }
         config.onActions(actions, status)
         const actionsContent = getComponentOperationSummary(actions, componentIdToTitleMap)
@@ -531,14 +531,14 @@ ${config.examples}
 
       try {
         const llmContent = stripFileBlocks(content);
-        const actionsContent = actions?.length ? getComponentOperationSummary(actions, getComponentIdToTitleMap(config?.getPageJson())) : ""
+        const actionsContent = actions?.length ? getComponentOperationSummary(actions, getComponentIdToTitleMap(config?.getPageJson(), pageId)) : ""
         const summary = (llmContent ? `${llmContent}\n\n` : "") + (actionsContent ? `修改内容如下\n${actionsContent}` : "当前没有内容修改");
 
         return {
           llmContent: summary,
           displayContent: summary
         }
-  //       const summary = getComponentOperationSummary(actions, getComponentIdToTitleMap(config?.getPageJson()))
+  //       const summary = getComponentOperationSummary(actions, getComponentIdToTitleMap(config?.getPageJson(), pageId))
 
   //       return {
   //         llmContent: `根据需求，执行以下操作

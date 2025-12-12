@@ -15,146 +15,56 @@ export function getFiles(files: RxFiles, {
   return result
 }
 
-
-export function getPageHierarchy(outlineInfo: any, currentFocus: any) {
-  // 获取完整的页面结构
-  const pageOutline = outlineInfo;
-
-  // 检查组件树中是否包含目标组件
-  function containsComponent(data: any, targetId: string): boolean {
-    if (!data) return false;
-    if (data.id === targetId) return true;
-
-    if (data.slots && Array.isArray(data.slots)) {
-      return data.slots.some((slot: any) => {
-        if (slot.components && Array.isArray(slot.components)) {
-          return slot.components.some(component => containsComponent(component, targetId));
-        }
-        return false;
-      });
-    }
-    return false;
-  }
-
-  // 检查组件是否有子组件
-  function hasChildren(data: any): boolean {
-    if (!data || !data.slots || !Array.isArray(data.slots)) {
-      return false;
-    }
-    return data.slots.some((slot: any) => {
-      return slot.components && Array.isArray(slot.components) && slot.components.length > 0;
-    });
-  }
-
-  // 生成树形描述
-  function generateTreeDescription(data: any, level = 0): string {
-    const indent = '  '.repeat(level);
-    let result = '';
-
-    if (!data || Object.keys(data).length === 0) {
-      return '无内容，代表内容为空';
-    }
-
-    // 如果是数组，遍历每个元素
-    if (Array.isArray(data)) {
-      if (data.length === 0) {
-        return '无内容，代表内容为空';
-      }
-      data.forEach(item => {
-        result += generateTreeDescription(item, level);
-      });
-      return result;
-    }
-
-    // 处理当前节点
-    if (data.title) {
-      const namespace = data.def?.namespace;
-      const isFocused = (currentFocus?.type === 'uiCom' && data.id === currentFocus?.comId) ||
-        (currentFocus?.type === 'page' && data.id === currentFocus?.pageId);
-      const focusMarker = isFocused ? ' 【当前聚焦】' : '';
-      const collapsedMarker = data._hasCollapsedChildren ? ' 【子组件已折叠】' : '';
-
-      result += `${indent}- ${data.title}[id=${data.id}]${namespace ? `(${namespace})` : ''}${focusMarker}${collapsedMarker}\n`;
-    }
-
-    // 处理slots中的组件
-    if (data.slots && Array.isArray(data.slots)) {
-      data.slots.forEach((slot: any) => {
-        if (slot.components && Array.isArray(slot.components)) {
-          slot.components.forEach(component => {
-            result += generateTreeDescription(component, level + 1);
-          });
-        }
-      });
-    }
-
-    return result;
-  }
-
-  // 根据聚焦类型处理数据
-  let processedData;
-
-  if (currentFocus?.type === 'uiCom') {
-    // 聚焦组件时，过滤出从页面到当前组件的路径
-    function filterToFocusedComponent(data: any): any {
-      if (!data) return null;
-
-      // 如果当前节点就是目标组件，返回完整的当前节点
-      if (data.id === currentFocus.comId) {
-        return data;
-      }
-
-      // 检查子组件中是否包含目标组件
-      if (data.slots && Array.isArray(data.slots)) {
-        const filteredSlots = data.slots.map((slot: any) => {
-          if (slot.components && Array.isArray(slot.components)) {
-            const filteredComponents = slot.components.map(component => {
-              // 如果这个组件包含目标组件，则递归过滤
-              if (containsComponent(component, currentFocus.comId)) {
-                return filterToFocusedComponent(component);
-              } else {
-                // 如果这个组件不在路径上，只保留基本信息，不展开子组件
-                const hasChildComponents = hasChildren(component);
-                return {
-                  title: component.title,
-                  id: component.id,
-                  def: component.def,
-                  _hasCollapsedChildren: hasChildComponents
-                };
-              }
-            }).filter(Boolean);
-
-            return filteredComponents.length > 0 ? { ...slot, components: filteredComponents } : null;
-          }
-          return null;
-        }).filter(Boolean);
-
-        if (filteredSlots.length > 0) {
-          return { ...data, slots: filteredSlots };
-        }
-      }
-      return null;
-    }
-
-    const filteredOutline = filterToFocusedComponent(pageOutline);
-    processedData = {
-      title: '页面',
-      id: currentFocus?.pageId,
-      slots: [{ components: [filteredOutline] }]
-    };
-  } else {
-    // 聚焦页面时，获取完整的页面层级关系
-    processedData = {
-      title: '页面',
-      id: currentFocus?.pageId,
-      slots: [{ components: [pageOutline] }]
-    };
-  }
-
-  return generateTreeDescription(processedData);
+export interface SlotInfo {
+  id: string;
+  title?: string;
+  layout?: any;
+  components?: OutlineNode[];
 }
 
-export function getComponentIdToTitleMap(outlineInfo: any) {
+export interface OutlineNode {
+  id: string;
+  title: string;
+  def?: {
+    namespace?: string;
+  };
+  asRoot?: boolean
+  data?: any;
+  style?: any;
+  slots?: SlotInfo[];
+  _hasCollapsedChildren?: boolean;
+}
+
+const ROOT_NAMESAPCE = 'root'
+const ROOT_ID = '_root_'
+const ROOT_SLOT_ID = '_rootSlot_'
+
+// TODO，设计器多画布和单画布维度不一样
+export function fixPageOutlineInfo(outline: OutlineNode, pageId: string) {
+  if (outline?.id === pageId) {
+    // [单画布]兼容，页面维度没有slots
+    outline.slots = [{
+      id: ROOT_SLOT_ID,
+      components: outline.components
+    }]
+    // 兼容，页面维度为了在jsx中把页面放出来，需要添加namespace
+    outline.def = {
+      namespace: ROOT_NAMESAPCE,
+    }
+    outline.asRoot = true
+    return outline
+  } else {
+    // [多画布] 兼容，多加一层页面维度，之前少了这一层，只到asRoot
+    return {
+      id: pageId,
+      title: '页面',
+      slots: [{ id: ROOT_ID, components: [outline] }]
+    }
+  }
+}
+
+export function getComponentIdToTitleMap(outlineInfo: any, pageId: string) {
+  const outline = fixPageOutlineInfo(outlineInfo, pageId)
   const componentMap = new Map();
 
   // 递归遍历函数
@@ -185,7 +95,7 @@ export function getComponentIdToTitleMap(outlineInfo: any) {
   }
 
   // 开始遍历
-  traverse(outlineInfo);
+  traverse(outline);
 
 
   return componentMap;

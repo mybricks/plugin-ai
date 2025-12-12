@@ -1,12 +1,14 @@
-import { fileFormat, ToolError, RequestError } from '@mybricks/rxai'
+import { fileFormat, RequestError } from '@mybricks/rxai'
 import { getFiles, createActionsParser, getComponentOperationSummary, getComponentIdToTitleMap, stripFileBlocks } from './utils'
 
 interface ModifyComponentToolParams {
-  /** 当所有actions返回时 */
-  onActions: (actions: any[], status: string) => void,
-  getFocusElementHasChildren: () => boolean,
-  getPageJson: () => any
+  /** 当前根组件信息 */
+  getRootComponentDoc: () => string;
   getTargetId: () => string;
+  getPageJson: () => any
+  getFocusElementHasChildren: () => boolean
+  /** 当所有actions返回时 */
+  onActions: (actions: any[], status: string, type: string) => void
 }
 
 const NAME = 'refactor-components-in-page'
@@ -17,10 +19,13 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
   const excuteActionsParser = createActionsParser();
   const hasChildren = config.getFocusElementHasChildren() !== false
 
-
   let componentIdToTitleMap: Map<string, string> | null = null;
   let fileNameToContent: Record<string, string> = {};
   let displayContent = "";
+
+  // TODO，因为updateCom不支持修改_root_，所以在聚焦组件时修改页面使用updatePage，目前是用第一个action的ID来判断是修改页面还是修改组件
+  let firstActionId: string
+  let actionType = 'uiCom'
 
   const pageId = config?.getTargetId();
 
@@ -63,6 +68,12 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
 </工具总览>
 
 重要根据！：action的生成必须基于提供的组件配置文档，不允许捏造、猜测、基于客观事实进行生成。
+
+<当前页面根组件信息>
+${config.getRootComponentDoc()}
+
+IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
+</当前页面根组件信息>
 
 <如何修改>
   通过一系列的action来分步骤完成对组件的修改，请返回以下格式以驱动MyBricks对组件进行修改：
@@ -512,14 +523,27 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
         if (!fileNameToContent[actionsFile!.fileName]) {
           fileNameToContent[actionsFile!.fileName] = "";
         }
+
+        if (actions?.[0]?.comId && !firstActionId) {
+          firstActionId = actions?.[0]?.comId;
+          
+          if (firstActionId === "_root_" || firstActionId === pageId) {
+            actionType = 'page'
+          }
+        }
       }
 
-      if (actions.length > 0 || status === 'start' || status === 'complete') {
+      if (firstActionId) {
+        config.onActions([], 'start', actionType)
+      }
+
+      if (actions.length > 0 || status === 'complete') {
         try {
           if (!componentIdToTitleMap) {
-            componentIdToTitleMap = getComponentIdToTitleMap(config?.getPageJson());
+            componentIdToTitleMap = getComponentIdToTitleMap(config?.getPageJson(), pageId);
+            console.log(componentIdToTitleMap)
           }
-          config.onActions(actions, status)
+          config.onActions(actions, status, actionType)
           const actionsContent = getComponentOperationSummary(actions, componentIdToTitleMap)
 
           if (actionsFile) {
@@ -529,7 +553,7 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
               fileNameToContent[actionsFile!.fileName] += `\n${actionsContent.trim()}`;
             }
           }
-        } catch (error) { }
+        } catch (error) {}
       }
 
       return displayContent = Object.entries(fileNameToContent).reduce((pre, [fileName, content]) => {
@@ -575,7 +599,7 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
 
       try {
         const llmContent = stripFileBlocks(content);
-        const actionsContent = actions?.length ? getComponentOperationSummary(actions, getComponentIdToTitleMap(config?.getPageJson())) : ""
+        const actionsContent = actions?.length ? getComponentOperationSummary(actions, getComponentIdToTitleMap(config?.getPageJson(), pageId)) : ""
         const summary = (llmContent ? `${llmContent}\n\n` : "") + (actionsContent ? `修改内容如下\n${actionsContent}` : "当前没有内容修改");
 
         return {
@@ -583,7 +607,7 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
           displayContent: summary
         }
 
-        //       const summary = getComponentOperationSummary(actions, getComponentIdToTitleMap(config?.getPageJson()))
+        //       const summary = getComponentOperationSummary(actions, getComponentIdToTitleMap(config?.getPageJson(), pageId))
 
         //       return {
         //         llmContent: `根据需求，我们进行如下修改

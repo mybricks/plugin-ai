@@ -1,3 +1,5 @@
+import { OutlineNode, SlotInfo, fixPageOutlineInfo } from './utils'
+
 // 类型定义
 interface DocumentInfo {
   id: string;
@@ -24,25 +26,6 @@ interface FocusInfo {
   comId?: string;
   title?: string;
   type?: 'page' | 'uiCom' | 'section';
-}
-
-interface OutlineNode {
-  id: string;
-  title: string;
-  def?: {
-    namespace?: string;
-  };
-  data?: any;
-  style?: any;
-  slots?: SlotInfo[];
-  _hasCollapsedChildren?: boolean;
-}
-
-interface SlotInfo {
-  id: string;
-  title?: string;
-  layout?: any;
-  components?: OutlineNode[];
 }
 
 interface ComponentsResult {
@@ -76,7 +59,7 @@ class WorkSpace {
     this.api = api;
     this.focusInfo = { ...(config.currentFocus ?? {}) };
 
-    this.focusPageOutlineInfo = this.getOutlineInfo(config.currentFocus.pageId, 'page');
+    this.focusPageOutlineInfo = this.getOutlineInfo(this.focusInfo?.pageId, 'page');
   }
 
   /**
@@ -512,6 +495,10 @@ class FocusDescriptionGenerator {
   }
 }
 
+
+const ROOT_NAMESAPCE = 'root'
+const ROOT_ID = '_root_'
+
 /**
  * 组件信息生成器
  */
@@ -723,13 +710,20 @@ class ComponentsInfoGenerator {
     if (!node?.id) return '';
 
     const namespace = node.def?.namespace;
-    this.namespacesSet.add(namespace);
-
-    const dataStr = JSON.stringify(node.data || {});
+    if (namespace !== ROOT_NAMESAPCE) {
+      this.namespacesSet.add(namespace);
+    }
     const layout = this.extractLayout(node.style);
     const styleArray = this.extractStyleArray(node.style);
 
-    let jsx = `<${namespace} id="${node.id}" data={${dataStr}}`;
+    let jsx
+
+    // asRoot，做特殊处理
+    if (node.asRoot) {
+      jsx = `<${ROOT_NAMESAPCE} id="${ROOT_ID}"` + (node.data ? ` data={${JSON.stringify(node.data || {})}}` : '');
+    } else {
+      jsx = `<${namespace} id="${node.id}"` + (node.data ? ` data={${JSON.stringify(node.data || {})}}` : '');
+    }
 
     if (Object.keys(layout).length > 0) {
       jsx += ` layout={${JSON.stringify(layout)}}`;
@@ -784,30 +778,6 @@ class ComponentsInfoGenerator {
     });
 
     return slotsJSX;
-  }
-}
-
-
-// TODO，设计器多画布和单画布维度不一样
-function fixPageOutlineInfo(outline: OutlineNode, pageId: string) {
-  if (outline?.id === pageId) {
-    // 兼容，页面维度没有slots
-    outline.slots = [{
-      id: 'root',
-      components: outline.components
-    }]
-    // 兼容，页面维度为了在jsx中把页面放出来，需要添加namespace
-    // outline.def = {
-    //   namespace: 'root'
-    // }
-    return outline
-  } else {
-    // 兼容，多加一层页面维度，之前多画布少了这一层，只到asRoot
-    return {
-      id: pageId,
-      title: '页面',
-      slots: [{ id: 'root', components: [outline] }]
-    }
   }
 }
 

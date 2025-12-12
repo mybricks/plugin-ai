@@ -49,7 +49,7 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
         shouldUseExpert: true
       }),
       MYBRICKS_TOOLS.GeneratePage({
-        getFocusRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(pageId) as string,
+        getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(pageId) as string,
         getTargetId: () => pageId as string,
         getPageJson() {
           return context.api?.page?.api?.getOutlineInfo(pageId)
