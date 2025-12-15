@@ -311,8 +311,19 @@ const BubbleCopilotTool = (params: BubbleCopilotToolParams) => {
     }
   }, [])
 
+  const renderMessage = (shouldRender: boolean) =>
+    shouldRender && message ? (
+      <div
+        className={css['ai-chat-collapsible-response']}
+        style={{ display: expand ? "block" : "none" }}
+      >
+        <BubbleMessage message={message} />
+      </div>
+    ) : null;
+
   return (
     <>
+      {renderMessage(command.status === "pending")}
       <div
         className={classNames(css['ai-chat-collapsible-code-block'], css['collapsed'])}
         onClick={() => {
@@ -335,7 +346,7 @@ const BubbleCopilotTool = (params: BubbleCopilotToolParams) => {
           )}
         </span>
       </div>
-      {message ? <div className={css['.ai-chat-collapsible-response']} style={{ display: expand ? "block" : "none" }}><BubbleMessage message={message} /></div> : null}
+      {renderMessage(command.status === "success")}
     </>
   )
 }
