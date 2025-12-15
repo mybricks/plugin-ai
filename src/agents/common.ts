@@ -47,6 +47,7 @@ export const requestCommonAgent = (params: any) => {
 
     // // 页面
     // workspace.openDocument('u_yjFHf')
+    // workspace.openDocument('u_tycgh')
 
     // // 页面 + 组件
     // workspace.openDocument('u_yjFHf')
@@ -136,11 +137,20 @@ export const requestCommonAgent = (params: any) => {
             if (!status) {
               return 
             }
-            if (type === "page") {
-              context.api?.page?.api?.updatePage?.(targetPageId, actions, status)
-            } else if (type === 'uiCom') {
-              context.api?.uiCom?.api?.updateCom?.(targetId, actions, status)
+
+            if (targetType === 'uiCom' && targetId && type === 'uiCom') {
+              const parentId = outlineInfoManager.findParentNodeByComId(
+                workspace.focusPageOutlineInfo,
+                targetId as string
+              )?.id;
+
+              if (parentId && parentId !== targetPageId) {
+                context.api?.uiCom?.api?.updateCom?.(parentId, actions, status)
+                return
+              }
             }
+
+            context.api?.page?.api?.updatePage?.(targetPageId, actions, status)
           },
           componentIdToTitleMap,
           getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,

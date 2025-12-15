@@ -53,12 +53,14 @@ export class OutlineInfoManager {
   }
 
   private normalizePageOutline(outline: OutlineNode, pageId: string): OutlineNode {
+    // 没有设置asRoot组件，兼容成asRoot组件结构
     if (outline?.id === pageId) {
       const normalized: OutlineNode = {
         ...outline,
         slots: [{
           id: ROOT_SLOT_ID,
-          components: outline.components
+          components: outline.components,
+          layout: outline.layout
         }],
         def: {
           ...(outline.def || {}),
@@ -66,12 +68,17 @@ export class OutlineInfoManager {
         },
         asRoot: true
       };
-      return normalized;
+      
+      return {
+        id: pageId,
+        title: outline.title,
+        slots: [{ id: ROOT_ID, components: [normalized] }]
+      };
     }
 
     return {
       id: pageId,
-      title: '页面',
+      title: outline.title,
       slots: [{ id: ROOT_ID, components: [outline] }]
     };
   }
@@ -79,6 +86,8 @@ export class OutlineInfoManager {
   getComponentIdToTitleMap(pageId: string) {
     const outline = this.getPageOutline(pageId);
     const componentMap = new Map<string, string>();
+
+    componentMap.set(ROOT_ID, outline.title ?? '页面根节点');
 
     function traverse(data: any) {
       if (!data) return;
@@ -112,6 +121,26 @@ export class OutlineInfoManager {
 
   generateJSXByOutline(outlineInfo: OutlineNode, targetComponentIds: string[] = []): ComponentsResult {
     return OutlineJSXGenerator.generate(outlineInfo, targetComponentIds);
+  }
+
+  findParentNodeByComId(pageOutlineInfo: OutlineNode, comId: string): OutlineNode | null {
+    function helper(node: OutlineNode): OutlineNode | null {
+      if (!node || !node.slots) return null;
+      for (const slot of node.slots || []) {
+        if (slot.components && Array.isArray(slot.components)) {
+          for (const component of slot.components) {
+            if (component.id === comId) {
+              return node;
+            }
+            // 向下递归
+            const found = helper(component);
+            if (found) return found;
+          }
+        }
+      }
+      return null;
+    }
+    return helper(pageOutlineInfo);
   }
 }
 

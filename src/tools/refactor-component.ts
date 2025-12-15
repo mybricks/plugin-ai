@@ -24,7 +24,7 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
 
   // TODO，因为updateCom不支持修改_root_，所以在聚焦组件时修改页面使用updatePage，目前是用第一个action的ID来判断是修改页面还是修改组件
   let firstActionId: string
-  let actionType = 'uiCom'
+  let actionType = 'page'
 
   const pageId = config?.getTargetId();
 
@@ -526,8 +526,8 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
         if (actions?.[0]?.comId && !firstActionId) {
           firstActionId = actions?.[0]?.comId;
           
-          if (firstActionId === "_root_" || firstActionId === pageId) {
-            actionType = 'page'
+          if (firstActionId !== "_root_" && firstActionId !== pageId) {
+            actionType = 'uiCom'
           }
         }
       }

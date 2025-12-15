@@ -46,7 +46,7 @@ class WorkSpace {
   private openedComponentDocs: string[] = []
 
   /** 当前聚焦页面的大纲 */
-  private focusPageOutlineInfo: OutlineNode
+  focusPageOutlineInfo: OutlineNode
 
   constructor(config: WorkSpaceConfig, api: WorkSpaceAPI, outlineInfo: OutlineInfoManager) {
     this.api = api;
@@ -428,6 +428,16 @@ class PageHierarchyGenerator {
         result += this.generateTreeDescription(item, focusInfo, level);
       });
       return result;
+    }
+
+    // 跳过不展示asRoot组件
+    if (data.asRoot) {
+      if (Array.isArray(data.slots?.[0]?.components)) {
+        data.slots?.[0]?.components.forEach(component => {
+          result += this.generateTreeDescription(component, focusInfo, level);
+        });
+        return result;
+      }
     }
 
     if (data.title) {
