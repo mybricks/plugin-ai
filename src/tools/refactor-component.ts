@@ -529,17 +529,16 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
           if (firstActionId !== "_root_" && firstActionId !== pageId) {
             actionType = 'uiCom'
           }
-        }
-      }
 
-      if (firstActionId) {
-        config.onActions([], 'start', actionType)
+          config.onActions([], 'start', actionType)
+        }
       }
 
       if (actions.length > 0 || status === 'complete') {
         try {
+          const copiedActions = JSON.parse(JSON.stringify(actions));
           config.onActions(actions, status, actionType)
-          const actionsContent = getComponentOperationSummary(actions, config.componentIdToTitleMap)
+          const actionsContent = getComponentOperationSummary(copiedActions, config.componentIdToTitleMap)
 
           if (actionsFile) {
             if (!fileNameToContent[actionsFile!.fileName]) {

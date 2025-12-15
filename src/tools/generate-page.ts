@@ -487,8 +487,9 @@ ${config.examples}
       }
       
       if (actions.length > 0 || status === 'start' || status === 'complete') {
+        const copiedActions = JSON.parse(JSON.stringify(actions));
         config.onActions(actions, status)
-        const actionsContent = getComponentOperationSummary(actions, config.componentIdToTitleMap)
+        const actionsContent = getComponentOperationSummary(copiedActions, config.componentIdToTitleMap)
 
         if (actionsFile) {
           if (!fileNameToContent[actionsFile!.fileName]) {
