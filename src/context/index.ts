@@ -11,6 +11,9 @@ class Context {
   /** 应用传入的系统提示词 */
   prompts?: any;
 
+  /** 是否多画布 */
+  isMutiCanvas: boolean = true
+
   /** 应用传入的创建页面模板 */
   createTemplates?: {
     page: any

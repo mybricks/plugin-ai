@@ -129,6 +129,14 @@ export const requestGenerateCanvasAgent = (params: any) => {
   return new Promise((resolve, reject) => {
     params?.onProgress?.('start');
 
+
+    const createTargetContainer = () => {
+      if (!context.isMutiCanvas) {
+        return { id: '_root_' };
+      }
+      return context.api.page?.api?.createCanvas?.();
+    };
+
     (params.rxai || context.rxai).requestAI({
       ...params,
       message: params?.message,
@@ -155,10 +163,10 @@ export const requestGenerateCanvasAgent = (params: any) => {
             }
             let canvasId
             try {
-              const { id, title } = context.api.page?.api?.createCanvas?.()
-              canvasId = id
+              const canvas = createTargetContainer()
+              canvasId = canvas?.id
             } catch (error) {
-              reject(error)
+              return reject(error)
             }
             resolve('complete')
             if (canvasId) {

@@ -22,7 +22,7 @@ export default function getComponentsDocAndPrd(config: GetComponentsDocAndPrdToo
 工具分类：信息获取类
 前置要求：用户提出过搭建需求（可能是文本，一句话、图片附件、文件附件等需求）
 返回值：需求分析规格说明书（PRD）文件 + 组件选型；`,
-    aiRole: config?.shouldUseExpert ? 'expert' : 'architect',
+    aiRole: 'expert',
     // lastAppendMessage: '需求已分析完成，请继续完成用户需求。',
     getPrompts: () => {
       return `<工具总览>
