@@ -34,7 +34,7 @@ export default function getComponentsDocAndPrd(config: GetComponentsDocAndPrdToo
 
 <任务流程>
   根据「用户需求」和「搭建上下文」，按照以下格式返回内容：
-    ${fileFormat({ content: '(需求分析规格说明书的内容)', fileName: 'XX需求文档.md' })}
+    ${fileFormat({ content: '(需求分析规格说明书的内容，需求说明书仅允许使用列表和加粗，斜体语法)', fileName: 'XX需求文档.md' })}
     
     ${fileFormat({ content: '(搭建所需要的组件选型)', fileName: 'XX需求组件选型.json' })}
     - - 注意：文件内容注意不要出现语法错误，文件声明要保持一致；
@@ -90,7 +90,7 @@ ${config.allowComponents}
     - 组件选型不要想当然的认为英文的namespace就是语义化的，更多关注于中文描述和「何时使用」「注意事项」来判断应该使用什么组件。
   
   接下来，根据上述分析，按照以下格式返回内容：
-  ${fileFormat({ content: '(需求分析规格说明书的内容)', fileName: 'XX需求文档.md' })}
+  ${fileFormat({ content: '(需求分析规格说明书的内容，需求说明书仅允许使用列表和加粗，斜体语法)', fileName: 'XX需求文档.md' })}
   
   ${fileFormat({ content: '(搭建所需要的组件选型)', fileName: 'XX需求组件选型.json' })}
   

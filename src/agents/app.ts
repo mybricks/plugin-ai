@@ -1,23 +1,35 @@
 import { context } from './../context';
 import { MYBRICKS_TOOLS } from "./../tools"
 
-import { WorkSpace } from './../tools/workspace'
+import { WorkSpace } from './workspace/workspace'
+import { FocusOutlineInfoManager, FocusInfo } from './workspace/outline-focus'
 
 export const requestGeneratePageAgent = (pageId: string, pageTitle: string, params: any) => {
 
   const prompts = context.prompts
 
-  const workspace = new WorkSpace({ currentFocus: context.currentFocus } as any, {
+  const focusInfo: FocusInfo = {
+    pageId,
+    comId: undefined,
+    title: pageTitle,
+    type: 'page'
+  };
+
+  const outlineInfoManager = new FocusOutlineInfoManager({
+    api: context.api,
+    focusInfo
+  })
+
+  const componentIdToTitleMap = outlineInfoManager.getComponentIdToTitleMap(pageId);
+
+  const workspace = new WorkSpace({ currentFocus: focusInfo } as any, {
     getAllPageInfo() {
-      return []
-    },
-    getOutlineInfo(id, type) {
       return []
     },
     getComponentDoc(namespace: string) {
       return context.api?.uiCom?.api?.getComEditorPrompts?.(namespace)
     }
-  } as any)
+  } as any, outlineInfoManager)
 
   params?.onProgress?.('start')
 
@@ -54,6 +66,7 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
         getPageJson() {
           return context.api?.page?.api?.getOutlineInfo(pageId)
         },
+        componentIdToTitleMap,
         appendPrompt: prompts.systemAppendPrompts,
         examples: prompts.generatePageActionExamplesPrompts,
         onActions: (actions, status) => {

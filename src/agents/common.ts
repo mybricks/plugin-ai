@@ -1,25 +1,41 @@
 import { context } from './../context';
 import { MYBRICKS_TOOLS } from "./../tools"
 
-import { WorkSpace } from './../tools/workspace'
-import { OutlineInfoManager } from './../tools/outline-info'
+import { WorkSpace } from './workspace/workspace'
+import { FocusOutlineInfoManager, FocusInfo } from './workspace/outline-focus'
 
 export const requestCommonAgent = (params: any) => {
 
   return new Promise((resolve, reject) => {
     const prompts = context.prompts;
 
-    const targetType = context.currentFocus?.type
-    const targetId = targetType === 'uiCom' ? context.currentFocus?.comId : context.currentFocus?.pageId
-    const targetPageId = context.currentFocus?.pageId
+    const focusInfo: FocusInfo = {
+      pageId: (context.currentFocus as any)?.pageId,
+      comId: (context.currentFocus as any)?.comId,
+      title: context.currentFocus?.title,
+      type: (context.currentFocus as any)?.type
+    };
 
-    const outlineInfoManager = new OutlineInfoManager({ api: context.api })
+    const targetType = focusInfo.type;
+    const targetId = targetType === 'uiCom' ? focusInfo.comId : focusInfo.pageId;
+    const targetPageId = focusInfo.pageId;
 
-    const componentIdToTitleMap = outlineInfoManager.getComponentIdToTitleMap(targetPageId);
+    if (!targetPageId) {
+      return reject('缺少聚焦页面id')
+    }
 
-    const workspace = new WorkSpace({ currentFocus: context.currentFocus } as any, {
+    const outlineInfoManager = new FocusOutlineInfoManager({
+      api: context.api,
+      focusInfo
+    });
+
+    const componentIdToTitleMap = targetPageId
+      ? outlineInfoManager.getComponentIdToTitleMap(targetPageId)
+      : new Map<string, string>();
+
+    const workspace = new WorkSpace({ currentFocus: focusInfo } as any, {
       getAllPageInfo() {
-        return context.api.global.api.getAllPageInfo()
+        return (context.api.global.api as any).getAllPageInfo()
       },
       getComponentDoc(namespace: string) {
         return context.api?.uiCom?.api?.getComEditorPrompts?.(namespace)
@@ -28,8 +44,8 @@ export const requestCommonAgent = (params: any) => {
 
     params?.onProgress?.('start')
 
-    const historyFocusDesc = generateHistoryFocusDescription(context.currentFocus);
-    const focusEleDesc = generateFocusTargetDescription(context.currentFocus);
+    const historyFocusDesc = generateHistoryFocusDescription(focusInfo);
+    const focusEleDesc = generateFocusTargetDescription(focusInfo);
 
     const hasAttachment = typeof params?.message !== 'string';
 
@@ -111,38 +127,20 @@ export const requestCommonAgent = (params: any) => {
             context.api?.page?.api?.clearPageContent?.(targetPageId)
           }
         }),
-        // MYBRICKS_TOOLS.GetComponentsInfoByIds({
-        //   id: targetId as string,
-        //   getPageJson(id) {
-        //     return context.api?.page?.api?.getOutlineInfo(id)
-        //   },
-        //   getComInfo(namespace) {
-        //     return context.api?.uiCom?.api?.getComEditorPrompts?.(namespace)
-        //   },
-        //   getComJson(id) {
-        //     return context.api?.uiCom?.api?.getOutlineInfo(id)
-        //   },
-        //   getFocusElementHasChildren() {
-        //     if (context.currentFocus?.type !== 'page') {
-        //       const json = getOutlineInfo()
-        //       if (!json.slots || (Array.isArray(json.slots) && json.slots.length === 0)) {
-        //         return false
-        //       }
-        //     }
-        //     return true
-        //   }
-        // }),
         MYBRICKS_TOOLS.RefactorComponent({
           onActions: (actions, status, type) => {
             if (!status) {
               return 
             }
 
+            // 只有聚焦到组件上，且第一个操作ID是组件ID，且父组件不为页面ID，才会触发组件级更新
             if (targetType === 'uiCom' && targetId && type === 'uiCom') {
-              const parentId = outlineInfoManager.findParentNodeByComId(
-                workspace.focusPageOutlineInfo,
-                targetId as string
-              )?.id;
+              const parentId = workspace.focusPageOutlineInfo
+                ? outlineInfoManager.findParentNodeByComId(
+                  workspace.focusPageOutlineInfo,
+                  targetId as string
+                )?.id
+                : undefined;
 
               if (parentId && parentId !== targetPageId) {
                 context.api?.uiCom?.api?.updateCom?.(parentId, actions, status)
@@ -156,7 +154,7 @@ export const requestCommonAgent = (params: any) => {
           getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,
           getTargetId: () => targetPageId as string,
           getFocusElementHasChildren() {
-            if (context.currentFocus?.type !== 'page') {
+            if (context.currentFocus?.type !== 'page' && targetId) {
               const json = outlineInfoManager.getUiComOutline(targetId)
               if (!json.slots || (Array.isArray(json.slots) && json.slots.length === 0)) {
                 return false
@@ -248,7 +246,7 @@ ${text}
 }
 
 
-function generateHistoryFocusDescription(currentFocus = {}) {
+function generateHistoryFocusDescription(currentFocus: Partial<FocusInfo> = {}) {
   const { pageId, comId, title, type } = currentFocus ?? {}
   
   // 定义聚焦元素的描述部分
@@ -266,7 +264,7 @@ function generateHistoryFocusDescription(currentFocus = {}) {
   return `对于${focusDesc}`;
 }
 
-function generateFocusTargetDescription(currentFocus = {}) {
+function generateFocusTargetDescription(currentFocus: Partial<FocusInfo> = {}) {
   const { pageId, comId, title, type } = currentFocus ?? {}
   
   // 定义聚焦元素的描述部分

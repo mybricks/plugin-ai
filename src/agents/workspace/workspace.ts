@@ -1,4 +1,5 @@
-import { OutlineNode, SlotInfo, OutlineInfoManager } from './outline-info'
+import { OutlineNode } from './outline-info'
+import { FocusOutlineInfoManager, FocusInfo } from './outline-focus'
 
 // 类型定义
 interface DocumentInfo {
@@ -21,13 +22,6 @@ interface PagesData {
   pageAry: PageInfo[];
 }
 
-interface FocusInfo {
-  pageId: string;
-  comId?: string;
-  title?: string;
-  type?: 'page' | 'uiCom' | 'section';
-}
-
 interface WorkSpaceConfig {
   currentFocus: FocusInfo;
 }
@@ -42,18 +36,18 @@ class WorkSpace {
 
   private api: WorkSpaceAPI;
   private focusInfo: FocusInfo;
-  private outlineInfoManager: OutlineInfoManager;
+  private outlineInfoManager: FocusOutlineInfoManager;
   private openedComponentDocs: string[] = []
 
   /** 当前聚焦页面的大纲 */
   focusPageOutlineInfo: OutlineNode
 
-  constructor(config: WorkSpaceConfig, api: WorkSpaceAPI, outlineInfo: OutlineInfoManager) {
+  constructor(config: WorkSpaceConfig, api: WorkSpaceAPI, outlineInfo: FocusOutlineInfoManager) {
     this.api = api;
     this.focusInfo = { ...(config.currentFocus ?? {}) };
     this.outlineInfoManager = outlineInfo;
     
-    this.focusPageOutlineInfo = this.outlineInfoManager.getPageOutline(this.focusInfo?.pageId);
+    this.focusPageOutlineInfo = this.outlineInfoManager.getFocusPageOutline();
   }
 
 
@@ -190,12 +184,9 @@ class WorkSpace {
       pageId: this.focusInfo.pageId
     });
 
-    const focusDescription = FocusDescriptionGenerator.generate(this.focusInfo);
+    const focusDescription = this.outlineInfoManager.generateFocusDescription();
 
-    const contentHierarchy = PageHierarchyGenerator.generate(
-      this.focusPageOutlineInfo,
-      this.focusInfo
-    );
+    const contentHierarchy = this.outlineInfoManager.generateFocusHierarchy();
 
     const openedDocumentsList = this.generateOpenedDocumentsList();
 
@@ -266,20 +257,20 @@ ${this.openedComponentDocs.map(namespace => {
  * 页面树生成器
  */
 class PageTreeGenerator {
-  static generate(pagesInfo: PagesData, options: { pageId?: string } = {}): string {
+  static generate(pagesInfo: PagesData | PagesData[], options: { pageId?: string } = {}): string {
     const { pageId: focusedPageId } = options;
 
     const processedPages = this.processRawData(pagesInfo);
     return this.generateTreeText(processedPages, focusedPageId);
   }
 
-  private static processRawData(rawData: PagesData): PageInfo[] {
+  private static processRawData(rawData: PagesData | PagesData[]): PageInfo[] {
     // 如果 rawData 是数组
     if (Array.isArray(rawData)) {
       const allPages: PageInfo[] = [];
-      rawData.forEach(canvas => {
+      rawData.forEach((canvas: any) => {
         if (canvas.pageAry && Array.isArray(canvas.pageAry)) { // 多画布
-          allPages.push(...canvas.pageAry.map(page => ({
+          allPages.push(...canvas.pageAry.map((page: any) => ({
             id: page.id,
             title: page.title,
             type: page.type,
@@ -298,7 +289,7 @@ class PageTreeGenerator {
       return [];
     }
 
-    return rawData.pageAry.map(page => ({
+    return rawData.pageAry.map((page: PageInfo) => ({
       id: page.id,
       title: page.title,
       type: page.type,
@@ -332,166 +323,5 @@ class PageTreeGenerator {
     return result;
   }
 }
-
-/**
- * 页面层级生成器
- */
-class PageHierarchyGenerator {
-  static generate(outlineInfo: OutlineNode, currentFocus: FocusInfo): string {
-    let processedData: OutlineNode;
-
-    const focusPageId = currentFocus.pageId;
-    const focusComID = currentFocus.comId;
-
-    if (currentFocus.type === 'uiCom') {
-      const filteredOutline = this.filterToFocusedComponent(outlineInfo, focusComID!);
-      processedData = filteredOutline as OutlineNode
-    } else {
-      processedData = outlineInfo
-    }
-
-    return this.generateTreeDescription(processedData, { pageId: focusPageId, comId: focusComID });
-  }
-
-  private static containsComponent(data: OutlineNode, targetId: string): boolean {
-    if (!data) return false;
-    if (data.id === targetId) return true;
-
-    if (data.slots && Array.isArray(data.slots)) {
-      return data.slots.some(slot => {
-        if (slot.components && Array.isArray(slot.components)) {
-          return slot.components.some(component => this.containsComponent(component, targetId));
-        }
-        return false;
-      });
-    }
-    return false;
-  }
-
-  private static hasChildren(data: OutlineNode): boolean {
-    if (!data?.slots || !Array.isArray(data.slots)) {
-      return false;
-    }
-    return data.slots.some(slot => {
-      return slot.components && Array.isArray(slot.components) && slot.components.length > 0;
-    });
-  }
-
-  private static filterToFocusedComponent(data: OutlineNode, targetId: string): OutlineNode | null {
-    if (!data) return null;
-
-    if (data.id === targetId) {
-      return data;
-    }
-
-    if (data.slots && Array.isArray(data.slots)) {
-      const filteredSlots = data.slots.map(slot => {
-        if (slot.components && Array.isArray(slot.components)) {
-          const filteredComponents = slot.components.map(component => {
-            if (this.containsComponent(component, targetId)) {
-              return this.filterToFocusedComponent(component, targetId);
-            } else {
-              const hasChildComponents = this.hasChildren(component);
-              return {
-                ...component,
-                slots: undefined, // 移除子组件
-                _hasCollapsedChildren: hasChildComponents
-              };
-            }
-          }).filter(Boolean) as OutlineNode[];
-
-          return filteredComponents.length > 0 ? { ...slot, components: filteredComponents } : null;
-        }
-        return null;
-      }).filter(Boolean) as SlotInfo[];
-
-      if (filteredSlots.length > 0) {
-        return { ...data, slots: filteredSlots };
-      }
-    }
-    return null;
-  }
-
-  private static generateTreeDescription(data: OutlineNode | OutlineNode[], focusInfo: FocusInfo, level = 0): string {
-    const indent = '  '.repeat(level);
-    let result = '';
-
-    if (!data) {
-      return '无内容，代表内容为空';
-    }
-
-    if (Array.isArray(data)) {
-      if (data.length === 0) {
-        return '无内容，代表内容为空';
-      }
-      data.forEach(item => {
-        result += this.generateTreeDescription(item, focusInfo, level);
-      });
-      return result;
-    }
-
-    // 跳过不展示asRoot组件
-    if (data.asRoot) {
-      if (Array.isArray(data.slots?.[0]?.components)) {
-        data.slots?.[0]?.components.forEach(component => {
-          result += this.generateTreeDescription(component, focusInfo, level);
-        });
-        return result;
-      }
-    }
-
-    if (data.title) {
-      const namespace = data.def?.namespace;
-      const isFocused = data.id === focusInfo.comId ||
-        data.id === focusInfo.pageId;
-      const focusMarker = isFocused ? ' 【当前聚焦】' : '';
-      const collapsedMarker = data._hasCollapsedChildren ? ' 【子组件已折叠】' : '';
-
-      result += `${indent}- ${data.title}[id=${data.id}]${namespace ? `(${namespace})` : ''}${focusMarker}${collapsedMarker}\n`;
-    }
-
-    if (data.slots && Array.isArray(data.slots)) {
-      data.slots.forEach(slot => {
-        if (slot.components && Array.isArray(slot.components)) {
-          slot.components.forEach(component => {
-            result += this.generateTreeDescription(component, focusInfo, level + 1);
-          });
-        }
-      });
-    }
-
-    return result;
-  }
-}
-
-/**
- * 聚焦描述生成器
- */
-class FocusDescriptionGenerator {
-  static generate(currentFocus: FocusInfo): string {
-    const { pageId, comId, title, type } = currentFocus;
-
-    if (!currentFocus || (!currentFocus.pageId && !currentFocus.comId)) {
-      return '当前没有聚焦到任何页面或组件。';
-    }
-
-    let focusDesc = '';
-
-    switch (type) {
-      case 'uiCom':
-        focusDesc = `组件(title=${title},组件id=${comId})`;
-        break;
-      case 'page':
-      case 'section':
-        focusDesc = `页面(title=${title},页面id=${pageId})`;
-        break;
-      default:
-        focusDesc = `未知类型(title=${title})`;
-    }
-
-    return `当前已聚焦到${focusDesc}中，后续用户的提问，关于"这个"、"此"、"整体"，甚至不提主语，都是指代此元素及其子组件内容。`;
-  }
-}
-
 
 export { WorkSpace, type WorkSpaceConfig, type WorkSpaceAPI };
