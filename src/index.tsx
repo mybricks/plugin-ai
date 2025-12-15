@@ -29,7 +29,7 @@ export default function pluginAI(params?: any): any {
 
   context.prompts = prompts
   context.createTemplates = createTemplates ?? {}
-  context.isMutiCanvas = isMutiCanvas
+  context.isMutiCanvas = isMutiCanvas ?? true
 
   // window.requestGenerateCanvasAgent = requestGenerateCanvasAgent
 
