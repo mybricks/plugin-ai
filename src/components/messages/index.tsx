@@ -179,11 +179,11 @@ const BubbleAction = (props: { plan: Plan, onSend?: SenderProps['onSend']; }) =>
     }
   }, [showRender])
 
-
   return (
     <>
       <div className={css['chat-bubble-action']}>
-        {status !== "pending" && onSend && <div
+        {/* TODO 兼容处理，没有pageId，不允许追加 */}
+        {status !== "pending" && onSend && (plan.extension as any).mentions?.[0]?.pageId &&  <div
           className={classNames(css['chat-bubble-action-chat'], {
             [css['focus']]: showRender
           })}
@@ -263,7 +263,7 @@ const BubbleUser = (params: BubbleUserParams) => {
         [css['mention']]: mentions.length
       })}>
         {mentions.length ? (
-          <MentionTag mention={mentions[0]} onClick={onMentionClick}/>
+          <MentionTag mention={mentions[0]} focusarea={true} onClick={onMentionClick}/>
         ) : null}
         <span>
           {content}

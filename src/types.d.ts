@@ -33,12 +33,18 @@ interface AiServiceAPI {
 }
 
 type AiServiceFocusParams = {
-  title: string;
   onProgress: (status: "start" | "ing" | "complete") => void;
-} & (
-  | { type: "uiCom"; comId: string }
-  | { type: "page"; pageId: string }
-)
+  /** 区域才会有 */
+  focusArea?: {
+    selector: string;
+    title: string;
+  }
+  comId: string;
+  pageId: string;
+  title: string;
+  /** 类型，组件、页面 */
+  type: "page" | "uiCom";
+}
 
 type AiServiceRequestParams = {
   type: "uiCom";
