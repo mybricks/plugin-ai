@@ -16,6 +16,7 @@ interface AiServiceAPI {
       getOutlineInfo: (...params: any) => any
       createCanvas: () => { id: string; title: string; }
       createPage: (id: string, title: string, config?: any) => { id: string; onProgress: Function; }
+      getPageOnProcess: (...params: any) => any;
     }
   };
   uiCom: {
@@ -26,6 +27,7 @@ interface AiServiceAPI {
       getComDSLPrompts: (...params: any) => string;
       getComEditorPrompts: (...params: any) => string;
       getOutlineInfo: (...params: any) => any
+      getComOnProcess: (...params: any) => any;
     }
   }
 }

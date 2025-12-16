@@ -30,12 +30,14 @@ interface SenderProps {
     message: string;
     attachments: Attachments;
     mentions: Mention[];
+    [key: string]: any;
   }) => void;
   onMentionClick?: (mention: Mention) => void;
   loading?: boolean;
   placeholder?: string;
   attachmentsPrompt?: string;
   disabled?: boolean;
+  onBlur?: () => void;
 }
 
 interface SenderRef {
@@ -45,7 +47,7 @@ interface SenderRef {
 }
 
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
-  const { loading, placeholder = "请输入", disabled, onMentionClick, attachmentsPrompt } = props;
+  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt } = props;
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [inputContent, setInputContent] = useState<string | null>(null);
@@ -55,7 +57,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   useImperativeHandle(ref, () => {
     return {
       focus: () => {
-        inputEditorRef.current!.focus()
+        if (!disabled) {
+          inputEditorRef.current!.focus()
+        }
       },
       setMentions: (mentions) => {
         setMentions(mentions)
@@ -240,6 +244,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
               onCompositionEnd={onCompositionEnd}
               onInput={onInput}
               onPaste={onPaste}
+              onBlur={onBlur}
             ></div>
             {!inputContent && <div className={css.inputPlaceholder}>
               {placeholder}

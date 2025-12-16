@@ -42,7 +42,7 @@ export default function answerUserQuestion(config: AnswerUserQuestionToolParams)
 </语气和风格>
  
 <任务流程>
-  基于最新的上下文（工作空间、组件文档、DSL等）信息，用自然语言，回答用户的问题，或者提供合理的建议。
+  基于最新的上下文（历史记录、工作空间、组件文档、DSL等）信息，用自然语言，回答用户的问题，或者提供合理的建议。
 </任务流程>
 
 <输出格式>

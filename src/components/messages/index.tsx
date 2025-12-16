@@ -3,10 +3,11 @@ import classNames from "classnames"
 import { Rxai } from "@mybricks/rxai"
 import markdownit from 'markdown-it'
 import { Extension } from "../types";
-import { Loading, Success } from "../icons";
+import { Loading, Success, Chat } from "../icons";
 import { AttachmentsList } from "../attachments";
 import { MentionTag } from "../mention";
 import { Mention } from "../types";
+import { Sender, SenderRef, SenderProps } from "../sender";
 import css from "./index.less"
 
 const md = markdownit()
@@ -27,12 +28,14 @@ interface MessagesParams {
   rxai: Rxai;
 
   onMentionClick?: (mention: Mention) => void;
+
+  onSend: SenderProps['onSend'];
 }
 
 type Plans = Rxai['cacheMessages'];
 
 const Messages = (params: MessagesParams) => {
-  const { user, rxai, copilot, onMentionClick } = params;
+  const { user, rxai, copilot, onSend, onMentionClick } = params;
 
   const mainRef = useRef<HTMLElement>(null);
   const destroysRef = useRef<(() => void)[]>([]);
@@ -90,8 +93,17 @@ const Messages = (params: MessagesParams) => {
 
   return (
     <main ref={mainRef} className={css['ai-chat-messages']}>
-      {plans.map((plan) => {
-        return <Bubble key={plan.id} user={user} plan={plan} copilot={copilot} onMentionClick={onMentionClick}/>
+      {plans.map((plan, index) => {
+        return (
+          <Bubble
+            key={plan.id}
+            user={user}
+            plan={plan}
+            copilot={copilot}
+            onSend={onSend}
+            onMentionClick={onMentionClick}
+          />
+        )
       })}
     </main>
   )
@@ -103,10 +115,11 @@ interface BubbleParams {
   user: User;
   copilot: User;
   plan: Plan;
+  onSend?: SenderProps['onSend'];
   onMentionClick?: (mention: Mention) => void;
 }
 const Bubble = (params: BubbleParams) => {
-  const { user, plan, copilot, onMentionClick } = params;
+  const { user, plan, copilot, onSend, onMentionClick } = params;
   const [userMessage, setUserMessage] = useState<ReturnType<Plan['getUserMessage']>>();
   const destroysRef = useRef<(() => void)[]>([]);
 
@@ -130,7 +143,69 @@ const Bubble = (params: BubbleParams) => {
     <div className={css['chat-bubble-container']}>
       <BubbleUser user={user} message={userMessage} plan={plan} onMentionClick={onMentionClick}/>
       <BubbleCopilot copilot={copilot} plan={plan}/>
+      <BubbleAction plan={plan} onSend={onSend}/>
     </div>
+  )
+}
+
+const BubbleAction = (props: { plan: Plan, onSend?: SenderProps['onSend']; }) => {
+  const { plan, onSend } = props;
+
+  const destroysRef = useRef<(() => void)[]>([]);
+  const [status, setStatus] = useState<Plan['status']>();
+  const [showRender, setShowRender] = useState(false);
+  const senderRef = useRef<SenderRef>(null);
+
+  useLayoutEffect(() => {
+    destroysRef.current.push(
+      plan.events.on('status', (status) => {
+        setStatus(status)
+      }, true),
+    )
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      for (const destroy of destroysRef.current) {
+        destroy()
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (showRender) {
+      senderRef.current!.setMentions((plan.extension as any).mentions || []);
+      senderRef.current!.focus();
+    }
+  }, [showRender])
+
+
+  return (
+    <>
+      <div className={css['chat-bubble-action']}>
+        {status !== "pending" && onSend && <div
+          className={classNames(css['chat-bubble-action-chat'], {
+            [css['focus']]: showRender
+          })}
+          data-mybricks-tip={"基于本次回答继续对话"}
+          onClick={() => {
+            setShowRender(!showRender);
+          }}
+        >
+          <Chat />
+        </div>}
+      </div>
+      {showRender && (
+        <Sender
+          ref={senderRef}
+          placeholder={"您好，我是智能助手，请详细描述您的需求"}
+          onSend={(params) => {
+            onSend!({...params, insertAfter: plan});
+            setShowRender(false);
+          }}
+        />
+      )}
+    </>
   )
 }
 

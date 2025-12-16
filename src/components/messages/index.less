@@ -96,6 +96,34 @@
     // }
   }
 
+  .chat-bubble-action {
+    display: flex;
+    flex-direction: column;
+    color: #AAA;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    padding: 0 13px;
+
+    svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .chat-bubble-action-chat {
+      cursor: pointer;
+      width: 14px;
+      height: 14px;
+
+      &.focus {
+        color: var(--mybricks-color-primary, #FA6400);
+      }
+
+      &:hover {
+        color: var(--mybricks-color-primary, #FA6400);
+      }
+    }
+  }
+
   .chat-bubble-header {
     display: flex;
     align-items: center;

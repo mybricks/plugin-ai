@@ -9,11 +9,12 @@ export const requestCommonAgent = (params: any) => {
   return new Promise((resolve, reject) => {
     const prompts = context.prompts;
 
+    const currentFocus = params.focus || context.currentFocus;
     const focusInfo: FocusInfo = {
-      pageId: (context.currentFocus as any)?.pageId,
-      comId: (context.currentFocus as any)?.comId,
-      title: context.currentFocus?.title,
-      type: (context.currentFocus as any)?.type
+      pageId: (currentFocus as any)?.pageId,
+      comId: (currentFocus as any)?.comId,
+      title: currentFocus?.title,
+      type: (currentFocus as any)?.type
     };
 
     const targetType = focusInfo.type;
@@ -42,10 +43,17 @@ export const requestCommonAgent = (params: any) => {
       }
     } as any, outlineInfoManager)
 
-    params?.onProgress?.('start')
+    let onProgress = params.onProgress;
 
     const historyFocusDesc = generateHistoryFocusDescription(focusInfo);
     const focusEleDesc = generateFocusTargetDescription(focusInfo);
+    if (targetType === "uiCom") {
+      onProgress = context.api.uiCom.api.getComOnProcess(targetId)?.onProgress
+    } else {
+      onProgress = context.api.page.api.getPageOnProcess(targetId)?.onProgress
+    }
+
+    onProgress?.('start')
 
     const hasAttachment = typeof params?.message !== 'string';
 
@@ -78,22 +86,22 @@ export const requestCommonAgent = (params: any) => {
     //   console.error(error)
     // }
     // return
-    
+
 
     context.rxai.requestAI({
       ...params,
       message: params?.message,
-      key: targetId,
+      blockId: targetId,
       // enableLog: true,
       emits: {
         write: () => { },
         complete: () => {
           resolve('complete')
-          params?.onProgress?.("complete");
+          onProgress?.("complete");
         },
         error: () => {
           reject('error')
-          params?.onProgress?.("error");
+          onProgress?.("error");
         },
         cancel: () => {},
       },
@@ -154,7 +162,7 @@ export const requestCommonAgent = (params: any) => {
           getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,
           getTargetId: () => targetPageId as string,
           getFocusElementHasChildren() {
-            if (context.currentFocus?.type !== 'page' && targetId) {
+            if (currentFocus?.type !== 'page' && targetId) {
               const json = outlineInfoManager.getUiComOutline(targetId)
               if (!json.slots || (Array.isArray(json.slots) && json.slots.length === 0)) {
                 return false

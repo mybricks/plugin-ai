@@ -101,6 +101,23 @@ const View = ({ user, copilot, api }: ViewProps) => {
     api[type === "page" ? "focusPage" : "focusCom"](id);
   }
 
+  const onMessagesSend = (sendMessage: Parameters<SenderProps["onSend"]>[0]) => {
+    const { message, attachments, insertAfter,  ...extension } = sendMessage;
+    const { mentions } = extension
+    context.requestStatusTracker.track(sendMessage.mentions[0].id, Agents.requestCommonAgent({
+      message,
+      attachments,
+      insertAfter,
+      extension,
+      focus: {
+        type: mentions[0].type,
+        comId: mentions[0].type === "uiCom" ? mentions[0].id : undefined,
+        pageId: mentions[0].type === "uiCom" ? undefined : mentions[0].id,
+      },
+      onProgress: context.currentFocus?.onProgress
+    }));
+  }
+
   return (
     <div className={classNames(css.view)}>
       <Header />
@@ -108,6 +125,7 @@ const View = ({ user, copilot, api }: ViewProps) => {
         user={user}
         copilot={copilot}
         rxai={context.rxai}
+        onSend={onMessagesSend}
         onMentionClick={onMentionClick}
       />
       <Sender
