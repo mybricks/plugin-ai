@@ -57,9 +57,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   useImperativeHandle(ref, () => {
     return {
       focus: () => {
-        if (!disabled) {
-          inputEditorRef.current!.focus()
-        }
+        inputEditorRef.current!.focus()
       },
       setMentions: (mentions) => {
         setMentions(mentions)
