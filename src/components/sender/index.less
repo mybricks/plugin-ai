@@ -127,6 +127,17 @@
             display: none;
           }
         }
+
+        &.disabled {
+          
+          opacity: 0.5;
+          .attachmentButton {
+            cursor: default;
+            &:hover {
+              background-color: transparent;
+            }
+          }
+        }
       }
 
       .rightArea {

@@ -148,6 +148,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   }
 
   const uploadAttachment = () => {
+    if (loading || disabled) {
+      return;
+    }
     if (checkAttachmentsLimit()) {
       return;
     }
@@ -176,6 +179,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
   const onPaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
     event.preventDefault();
+    if (loading || disabled) {
+      return;
+    }
     const file = event.clipboardData.files[0];
     if (file?.type.startsWith('image/')) {
       if (checkAttachmentsLimit()) {
@@ -250,7 +256,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           </div>
         </div>
         <div className={css.editorAction}>
-          <div className={css.leftArea}>
+          <div className={classNames(css.leftArea, {
+            [css.disabled]: loading || disabled
+          })}>
             <div className={css.attachmentButton} onClick={uploadAttachment}>
               <Attachment />
             </div>
