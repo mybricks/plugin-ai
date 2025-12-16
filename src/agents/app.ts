@@ -35,6 +35,9 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
 
   context.rxai.requestAI({
     ...params,
+    extension: {
+      mentions: [focusInfo]
+    },
     message: params?.message,
     key: pageId,
     emits: {
