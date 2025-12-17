@@ -7,6 +7,7 @@ const NAME = 'build-event-flow'
 buildProcess.toolName = NAME
 
 interface ComponentOutlineInfo {
+  id: string;
   outputs: {
     /** 对应outputId */
     hostId: string;
@@ -18,13 +19,15 @@ function buildProcess(props: any) {
   const streamActionsParser = createActionsParser();
 
   const componentOutlineInfo: ComponentOutlineInfo = props.getComponentOutlineInfo();
-  console.log("[componentOutlineInfo]", componentOutlineInfo);
+  // console.log("[componentOutlineInfo]", componentOutlineInfo);
   const pageOutlineInfo = props.getPageOutlineInfo();
-  console.log("[pageOutlineInfo - 找出所有可用连接输入的节点]", pageOutlineInfo)
+  // console.log("[pageOutlineInfo - 找出所有可用连接输入的节点]", pageOutlineInfo)
 
-  // let Nodes allowed to connect within the current process
+  // let Nodes allowed to connect within the current process 
 
-  function genAllowedContectUI({ id, title, inputs, slots }: any, result: string[] = []) {
+  function genAllowedContectUI(params: any, result: string[] = []) {
+    const { id, title, inputs, slots } = params;
+    // console.log("当前处理的是", params)
     result.push(`组件名称：${title}
 组件ID：${id}
 可连接的输入：${inputs.reduce((pre: string, { hostId, title }: any) => {
@@ -33,6 +36,7 @@ function buildProcess(props: any) {
 
     if (Array.isArray(slots)) {
       slots.forEach((slot) => {
+        // console.log("[slot]", slot);
         slot.components.forEach((component: any) => genAllowedContectUI(component, result))
       })
     }
@@ -99,6 +103,21 @@ function buildProcess(props: any) {
 
 重要根据！：action的生成必须基于提供的可操作节点和组件IO文档，不允许捏造、猜测、基于客观事实进行生成。
 
+<关于MyBricks事件流程>
+  MyBricks是一个低代码平台，允许通过图形化的方式快速搭建开发应用。可以通过拖拽组件、连接端口等方式，快速构建事件逻辑。
+  
+  以下是其中的关键概念：
+  
+  **组件**
+  组件可以是UI组件。
+  
+  **端口**
+  组件的输入端口、输出端口，可以通过连接端口来实现组件之间的数据传递。
+  
+  **流程编排**
+  通过连接组件的端口来实现逻辑的编排，形成一个完整的事件流程。
+</关于MyBricks事件流程>
+
 <当前组件可搭建的事件流程>
 ${componentOutlineInfo.outputs.reduce((pre, {hostId, title}) => {
   return pre + (!pre ? "" : "\n\n") +`事件名称：${title}\noutputId: ${hostId}`;
@@ -116,6 +135,8 @@ ${componentOutlineInfo.outputs.reduce((pre, {hostId, title}) => {
 </当前组件可搭建的事件流程>
 
 <当前流程内允许连接的组件和节点>
+组件或节点的输入会有对应的关联输出，
+
 ui组件
 ${genAllowedContectUI(pageOutlineInfo).join("\n")}
 </当前流程内允许连接的组件和节点>
@@ -176,6 +197,19 @@ ${genAllowedContectUI(pageOutlineInfo).join("\n")}
             })}
           </assistant_response>
         </example>
+        <example>
+          <user_query>点击后给a赋值，赋值完成后隐藏b</user_query>
+          <assistant_response>
+            好的，我将为当前组件的点击事件搭建事件流程，点击后给a赋值，赋值完成后隐藏b
+            
+            ${fileFormat({
+              content: `[comId, outputId, "createEvent"]
+[comId, outputId, "connectTo", {"target":{"type":"component","id":"a","inputId":"input"}}]
+["a", "inputDone", "connectTo", {"target":{"type":"component","id":"b","inputId":"input"}}]`,
+              fileName: '当前组件的点击事件流程搭建.json'
+            })}
+          </assistant_response>
+        </example>
       </examples>
     </connectTo>
   
@@ -214,33 +248,33 @@ ${genAllowedContectUI(pageOutlineInfo).join("\n")}
       if (actions.length > 0 || status === "complete") {
         try {
 
-          console.log("[flow - actions]", JSON.parse(JSON.stringify(actions)))
+          // console.log("[flow - actions]", JSON.parse(JSON.stringify(actions)))
 
           let updateDiagramActions = [];
 
           while (actions.length) {
             const action = actions.shift()!;
-            console.log("[action]", action)
+            // console.log("[action]", action)
             if (action.type !== "connectTo") {
               if (updateDiagramActions.length) {
                 if (!currentDiagram) {
                   console.error("currentDiagram is null", params);
                 } else {
-                  console.log(0, "[🚀 updateDiagram]", currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status)
+                  // console.log(0, "[🚀 updateDiagram]", currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status)
                   context.api.diagram.api.updateDiagram(currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status);
                   currentDiagram.status = "pending";
                   updateDiagramActions = [];
-                  console.log(0, "[✅ updateDiagram]")
+                  // console.log(0, "[✅ updateDiagram]")
                 }
               }
               if (action.type === "createEvent") {
                 if (!diagramIdMap[action.comId]) {
-                  console.log("[🚀 createDiagram]")
+                  // console.log("[🚀 createDiagram]")
                   currentDiagram = {
                     ...context.api.diagram.api.createDiagram("comEvent", { comId: action.comId, outputId: action.outputId }),
                     status: 'idle'
                   };
-                  console.log("[✅ createDiagram]", { ...currentDiagram })
+                  // console.log("[✅ createDiagram]", { ...currentDiagram })
                 }
               }
             } else {
@@ -251,11 +285,11 @@ ${genAllowedContectUI(pageOutlineInfo).join("\n")}
           if (!currentDiagram) {
             console.error("currentDiagram is null", params);
           } else {
-            console.log(1, "[🚀 updateDiagram]", currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status)
+            // console.log(1, "[🚀 updateDiagram]", currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status)
             context.api.diagram.api.updateDiagram(currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status);
             currentDiagram.status = "pending";
             updateDiagramActions = [];
-            console.log(1, "[✅ updateDiagram]")
+            // console.log(1, "[✅ updateDiagram]")
           }
         } catch (error) {}
       }
@@ -263,6 +297,16 @@ ${genAllowedContectUI(pageOutlineInfo).join("\n")}
       return "";
     },
     execute: (params: any) => {
+      const { files, content } = params;
+      const actionsFile = getFiles(files, { extName: 'json' })
+
+      if (!actionsFile) {
+        return {
+          llmContent: content,
+          displayContent: content
+        }
+      }
+  
       return {
         llmContent: "完成",
         displayContent: "完成"
@@ -361,6 +405,26 @@ const formatAction = (_action: string) => {
 
   const [comId, outputId, type, params] = action;
 
+  // TODO: 提示词直接改一下吧
+  if (type === "connectTo") {
+    return {
+      comId,
+      type,
+      params: {
+        from: {
+          type: "com",
+          comId,
+          outputId
+        },
+        to: {
+          type: "com",
+          comId: params.target.id,
+          inputId: params.target.inputId
+        }
+      }
+    }
+  }
+
   return {
     comId,
     outputId,
@@ -368,18 +432,3 @@ const formatAction = (_action: string) => {
     params
   };
 };
-
-
-// <允许连接到以下组件>
-//   ui类型组件:
-//   ${getUIComPromptsInFrame(curFrameModel, viewContext)}
-  
-//   preset类型组件:
-//   ${getJSComPrompts(viewContext)}
-  
-//   openPage类型组件:
-//   ${getGoPagePrompts(pinCtx)}
-  
-//   注意：
-//    - 当前页面id为：${curPageFrame.id}，标题为：${curPageFrame.title}；
-// </允许连接到以下组件>
