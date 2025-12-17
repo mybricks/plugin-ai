@@ -30,6 +30,13 @@ interface AiServiceAPI {
       getComOnProcess: (...params: any) => any;
     }
   }
+  diagram: {
+    title: string;
+    api: {
+      createDiagram: (type: "comEvent", params: { comId: string; outputId: string; }) => { id: string; title: string }
+      updateDiagram: (diagramId: string, actions: any[], status: string) => void;
+    }
+  }
 }
 
 type AiServiceFocusParams = {
