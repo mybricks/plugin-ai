@@ -572,7 +572,6 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
         actions = fixActions(actions, {
           pageId
         })
-        console.log('stream actions', actions)
         if (!fileNameToContent[actionsFile!.fileName]) {
           fileNameToContent[actionsFile!.fileName] = "";
         }

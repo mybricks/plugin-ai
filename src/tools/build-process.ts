@@ -68,17 +68,31 @@ const buildProcess = () => {
       连接到组件的输入端口
       该action在结构上严格遵循以下格式：[comId, outputId, "connectTo", type, targetComId, targetComInputId]
         - comId 代表当前需要搭建事件流程的组件的id
-        - outputId 指的是当前事件对应的的输出端口
+        - outputId 指的是当前事件对应的的输出端口，该id来自组件<可以使用的配置项>中editType为"_event"的配置项所对应的outputId
         - "connectTo" 当前action类型，是一个默认值
         - targetType 连接的目标类型，"component - 组件"
         - targetComId 连接的目标组件id
         - targetComInputId 连接的目标组件的输入id
 
-      例如，当用户要求连接到组件u_comid的输入端口“inputId”，可以返回以下内容：
+      例如，当用户要求组件a的a1事件触发时调用组件b的输入端口b1，可以返回以下内容：
       ${fileFormat({
-        content: `["u_comid", "click", "connectTo", "component", "u_comid2", "hide"]`,
+        content: `[a, a1, , "connectTo", "component", b, b1]`,
         fileName: '连接到组件的输入端口.json'
       })}
+
+      <examples>
+        <example>
+          <user_query>点击后隐藏xx</user_query>
+          <assistant_response>
+            好的，我将为当前组件的点击事件搭建事件流程，点击后隐藏xx
+            
+            ${fileFormat({
+              content: `[comId, outputId, "connectTo", "component", targetComId, targetComInputId]`,
+              fileName: '当前组件的点击事件流程搭建.json'
+            })}
+          </assistant_response>
+        </example>
+      </examples>
     </connectTo>
   
     注意：actions文件每一行遵循 JSON 语法，禁止非法代码，禁止出现内容省略提示、单行注释、省略字符。
@@ -96,20 +110,6 @@ const buildProcess = () => {
       - 禁止重复使用相同的action；
   </关于actions>
 </如何修改>
-
-<examples>
-  <example>
-    <user_query>点击后隐藏xx按钮</user_query>
-    <assistant_response>
-      好的，我将为当前组件的点击事件搭建事件流程，点击后隐藏xx按钮
-      
-      ${fileFormat({
-        content: `["u_comid", "click", "connectTo", "component", "u_comid2", "hide"]`,
-        fileName: '当前组件的点击事件流程搭建.json'
-      })}
-    </assistant_response>
-  </example>
-</examples>
 `
     },
     stream: (params: any) => {
