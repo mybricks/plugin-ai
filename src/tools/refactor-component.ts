@@ -96,8 +96,6 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
     
     <setLayout>
       - 设置组件的布局和尺寸信息，params的格式以Typescript的形式说明如下：
-        
-      \`\`\`typescript
       /**
        * 宽高尺寸
        * number - 具体的px值
@@ -122,13 +120,29 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
         /** 左外边距 */
         marginLeft?: number;
       }
-  
       注意：
       - 1. 只有在flex布局中的组件，可以在layout中使用margin相关配置；
   
       /** 如果组件本身是fixed类型定位，可配置如下layout */
       type setLayout_fixed_params = {
         position: 'fixed';
+        /** 宽 */
+        width: Size;
+        /** 高 */
+        height: Size;
+        /** 距离左侧 */
+        left?: number;
+        /** 距离右侧 */
+        right?: number;
+        /** 距离上方 */
+        top?: number;
+        /** 距离下方 */
+        bottom?: number;
+      }
+
+      /** 如果组件本身是绝对定位，可配置如下layout */
+      type setLayout_absolute_params = {
+        position: 'absolute';
         /** 宽 */
         width: Size;
         /** 高 */
@@ -293,28 +307,39 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
     界面只有两类基本要素:组件、以及组件的插槽，组件的插槽可以嵌套其他组件。
     
     <组件的定位原则>
-      组件的定位有三种方式：flex定位、fixed定位。
+      组件的定位有三种方式：flex定位、absolute定位、fixed定位。
 
       **flex定位**
         - 组件会相对于所在的插槽进行定位；
         - 通过尺寸（width、height） + 外间距（margin）来进行定位；
         - flex布局下的组件不允许使用left、top、right、bottom等定位属性；
+
+      **absolute定位**
+        - 组件会相对于当前组件的插槽进行定位，且脱离文档流；
+        - 通过尺寸（width、height） + 位置（left、top、right、bottom）来进行定位；
+        - absolute定位的组件不允许使用margin；
+      
+        使用absolute定位的例子:
+        ${fileFormat({
+        content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个绝对定位组件","comId":"u_fixed","ns":"组件","layout":{"position":"absolute","width":"100%","height":84,"top":12,"left":0},"configs":[]}]`,
+        fileName: '添加一个absolute定位组件.json'
+      })}
         
       **fixed定位**
-        - 组件会相对于当前组件的插槽进行定位，且脱离文档流；
+        - 组件会相对于整个页面进行定位，且脱离文档流；
         - 通过尺寸（width、height） + 位置（left、top、right、bottom）来进行定位；
         - fixed定位的组件不允许使用margin；
       
         使用fixed定位的例子:
         ${fileFormat({
-        content: `["_root_","_rootSlot_","addChild",{"title":"添加一个固定定位组件","comId":"u_fixed","ns":"组件","layout":{"position":"fixed","width":"100%","height":84,"bottom":0,"left":0},"configs":[]}]`,
+        content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个固定定位组件","comId":"u_fixed","ns":"组件","layout":{"position":"fixed","width":"100%","height":84,"bottom":0,"left":0},"configs":[]}]`,
         fileName: '添加一个fixed定位组件.json'
       })}
 
       在插槽的不同布局下，组件的定位由所在插槽的布局方式决定：
         - 在当前组件的插槽中，可以添加fixed定位的组件，禁止在其他插槽中添加fixed定位的组件；
-        - 如果插槽是flex布局，则子组件只能使用flex定位；
-        - 如果插槽是absolute布局，则子组件只能使用absolute定位；
+        - 如果插槽是flex布局，则子组件只能使用flex定位 或者 absolute定位；
+        - 如果插槽是relative布局，则子组件只能使用absolute定位；
     </组件的定位原则>
    
     <布局原则>
@@ -413,8 +438,28 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
           在上例中:
             - 声明布局编辑器的值，注意布局编辑器必须声明，其中flexDirection也必须声明；
             - 通过layout中的属性，设置成绝对定位效果，在一些特殊的角标等场景下很有效果；
-            
+          
+          **自由定位布局**
+          子组件通过自由定位来布局，无需考虑其他组件的布局影响。
+          下面的例子使用absolute实现自由定位布局:
+          ${fileFormat({
+        content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_absoluteLayout","ns":"布局组件","layout":{"width":"100%","height":300},"configs":[{"path":"常规/布局","value":{"position":"relative"}}]}]
+          ["u_absoluteLayout","插槽id占位","addChild",{"title":"绝对定位组件A","comId":"u_absA","ns":"组件","layout":{"position":"absolute","width":100,"height":40,"top":20,"left":20},"configs":[]}]
+          ["u_absoluteLayout","插槽id占位","addChild",{"title":"绝对定位组件B","comId":"u_absB","ns":"组件","layout":{"position":"absolute","width":80,"height":80,"top":100,"left":150},"configs":[]}]
+          `,
+        fileName: 'absolute自由定位布局.json'
+      })}
+          在上例中:
+            - 宽高不可以配置fit-content，防止内容塌陷；
+            - 声明布局编辑器的值，注意布局编辑器必须声明，其中position声明成relative；
+            - 通过layout中的属性，设置成绝对定位效果，实现自由定位布局；
       </布局使用示例>
+
+      <布局的选用：重要>
+        由于是修改组件，优先参考*原有组件的布局*进行搭建，除非用户有明确要求，否则不建议更改布局方式。
+        - 如果当前组件使用的是flex布局，优先使用flex布局进行搭建；
+        - 如果当前组件使用的是absolute布局，优先使用absolute布局进行搭建；
+      </布局的选用：重要>
 
       <布局注意事项>
         - 布局相关组件在添加时必须配置布局编辑器的值，同时注意flexDirection和justifyContent的配置；
@@ -497,14 +542,21 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
   </example>
 
   <example>
-    <user_query>添加一个右侧按钮</user_query>
+    <user_query>优化下这个排版</user_query>
     <assistant_response>
-      如何定义右侧，首先观察父组件的布局配置，为竖排布局，添加右侧需要先修改父组件布局，添加一个左侧容器，将内容挪动至左侧布局，再添加按钮才会在右侧
+      好的，我们分析下目前的搭建内容，排版上来看，当前原有组件的是绝对定位处理的，可以看出来有几个问题：
+      1. 元素之间没有对齐，显得比较杂乱；
+      2. 作为头像来说，图片大小不合适，改成宽高一致并左边垂直居中；
+      3. 元素之间位置有问题，看起来有几处重叠。
 
+      我们优先使用当前布局，然后通过调整各个组件的位置和尺寸信息完成需求。
+
+      我们调整下看看效果
       ${fileFormat({
-        content: `["u_222", ":root", "doConfig", {"path":"布局","value":{"display": "flex", "flexDirection":"row", "justifyContent":"space-between"}}]
-...`,
-        fileName: '添加右侧按钮.json'
+        content: `["u_text1", ":root", "setLayout", {"position": "absolute", "width": 200, "height": 40, "top": 20, "left": 20}]
+["u_image1", ":root", "setLayout", {"position": "absolute", "width": 100, "height": 100, "top": 80, "left": 20}]
+["u_button1", ":root", "setLayout", {"position": "absolute", "width": 80, "height": 40, "top": 200, "left": 20}]`,
+        fileName: '优化排版.json'
       })}
     </assistant_response>
   </example>
@@ -520,6 +572,7 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
         actions = fixActions(actions, {
           pageId
         })
+        console.log('stream actions', actions)
         if (!fileNameToContent[actionsFile!.fileName]) {
           fileNameToContent[actionsFile!.fileName] = "";
         }

@@ -68,7 +68,7 @@ export class OutlineInfoManager {
         },
         asRoot: true
       };
-      
+
       return {
         id: pageId,
         title: outline.title,
@@ -287,6 +287,18 @@ class OutlineJSXGenerator {
       }
       if (style.alignItems) layout.alignItems = style.alignItems;
       if (style.justifyContent) layout.justifyContent = style.justifyContent;
+      if (style.layout === 'absolute') {
+        layout.position = 'relative';
+      }
+    }
+
+    if (style.position === 'absolute') {
+      ['left', 'right', 'top', 'bottom']
+        .forEach(prop => {
+          if (style[prop] !== undefined) {
+            layout[prop] = style[prop];
+          }
+        })
     }
 
     return layout;

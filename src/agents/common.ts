@@ -72,7 +72,7 @@ export const requestCommonAgent = (params: any) => {
     // return console.log(workspace.getProjectStruct())
 
     // try {
-    //   workspace.openDocument(targetPageId)
+    //   workspace.openDocument('u_K_8oe')
     //   return console.log(workspace.getProjectStruct())
     // } catch (error) {
     //   console.error(error)
