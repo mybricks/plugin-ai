@@ -14,7 +14,8 @@ export const requestCommonAgent = (params: any) => {
       pageId: (currentFocus as any)?.pageId,
       comId: (currentFocus as any)?.comId,
       title: currentFocus?.title,
-      type: (currentFocus as any)?.type
+      type: (currentFocus as any)?.type,
+      focusArea: (currentFocus as any)?.focusArea
     };
 
     const targetType = focusInfo.type;
@@ -273,14 +274,14 @@ function generateHistoryFocusDescription(currentFocus: Partial<FocusInfo> = {}) 
 }
 
 function generateFocusTargetDescription(currentFocus: Partial<FocusInfo> = {}) {
-  const { pageId, comId, title, type } = currentFocus ?? {}
+  const { pageId, comId, title, type, focusArea } = currentFocus ?? {}
   
   // 定义聚焦元素的描述部分
   let focusDesc = '';
   
   // 判断当前聚焦元素类型
   if (type === 'uiCom') {
-    focusDesc = `组件(title=${title},组件id=${comId})`;
+    focusDesc = `组件(title=${title},组件id=${comId},选中区域=${focusArea ? focusArea.selector : ":root"})`;
   } else if (type === 'page') {
     focusDesc = `页面(title=${title},页面id=${pageId})`;
   } else if (type === 'section') {
