@@ -28,6 +28,7 @@ class RequestStatusTracker {
     }).catch((error) => {
       status.state = "rejected";
       status.result = error
+      console.error(error);
     }).finally(() => {
       this.events.emit("promise", {
         id,

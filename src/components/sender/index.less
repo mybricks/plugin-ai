@@ -30,6 +30,10 @@
         line-height: 20px;
         white-space: nowrap;
       }
+
+      .focusarea {
+        color: var(--mybricks-color-primary);
+      }
     }
 
     .topArea {
@@ -125,6 +129,17 @@
 
           input {
             display: none;
+          }
+        }
+
+        &.disabled {
+          
+          opacity: 0.5;
+          .attachmentButton {
+            cursor: default;
+            &:hover {
+              background-color: transparent;
+            }
           }
         }
       }

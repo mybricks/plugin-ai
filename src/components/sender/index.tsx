@@ -30,12 +30,14 @@ interface SenderProps {
     message: string;
     attachments: Attachments;
     mentions: Mention[];
+    [key: string]: any;
   }) => void;
   onMentionClick?: (mention: Mention) => void;
   loading?: boolean;
   placeholder?: string;
   attachmentsPrompt?: string;
   disabled?: boolean;
+  onBlur?: () => void;
 }
 
 interface SenderRef {
@@ -45,7 +47,7 @@ interface SenderRef {
 }
 
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
-  const { loading, placeholder = "请输入", disabled, onMentionClick, attachmentsPrompt } = props;
+  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt } = props;
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [inputContent, setInputContent] = useState<string | null>(null);
@@ -146,6 +148,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   }
 
   const uploadAttachment = () => {
+    if (loading || disabled) {
+      return;
+    }
     if (checkAttachmentsLimit()) {
       return;
     }
@@ -174,6 +179,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
   const onPaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
     event.preventDefault();
+    if (loading || disabled) {
+      return;
+    }
     const file = event.clipboardData.files[0];
     if (file?.type.startsWith('image/')) {
       if (checkAttachmentsLimit()) {
@@ -223,7 +231,12 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           <div className={css.mentions}>
             <span>对于</span>
             <MentionTag mention={mentions[0]} onClick={onMentionClick} />
-            <span>{mentions[0].type === "page" ? "页面" : "组件"}</span>
+            <span>{(mentions[0].type === "page" ? "页面" : "组件") + (mentions[0].focusArea ? "的" : "")}</span>
+            {mentions[0].focusArea ? (
+              <span className={css.focusarea}>
+                {mentions[0].focusArea.title || "区域"}
+              </span>
+            ) : null}
             {/* {mentions.map((mention) => {
               return <MentionTag key={mention.id} mention={mention} onClick={onMentionClick} />
             })} */}
@@ -240,6 +253,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
               onCompositionEnd={onCompositionEnd}
               onInput={onInput}
               onPaste={onPaste}
+              onBlur={onBlur}
             ></div>
             {!inputContent && <div className={css.inputPlaceholder}>
               {placeholder}
@@ -247,7 +261,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           </div>
         </div>
         <div className={css.editorAction}>
-          <div className={css.leftArea}>
+          <div className={classNames(css.leftArea, {
+            [css.disabled]: loading || disabled
+          })}>
             <div className={css.attachmentButton} onClick={uploadAttachment}>
               <Attachment />
             </div>

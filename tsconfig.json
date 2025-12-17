@@ -23,6 +23,7 @@
     "jsx": "react",
     "baseUrl": ".",
     "paths": {
+      "@mybricks/rxai": ["/Users/lianglihao/Documents/GitHub/rxai/src/index.ts"],
     }
   },
   "exclude": [

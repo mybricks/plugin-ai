@@ -5,6 +5,10 @@ export interface FocusInfo {
   comId?: string;
   title?: string;
   type?: 'page' | 'uiCom' | 'section';
+  focusArea?: {
+    selector: string;
+    title: string;
+  }
 }
 
 class PageHierarchyGenerator {

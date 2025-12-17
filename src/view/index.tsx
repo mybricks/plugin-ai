@@ -59,11 +59,8 @@ const View = ({ user, copilot, api }: ViewProps) => {
       } else {
         const type = focus.type;
         const id = type === "page" ? focus.pageId : focus.comId;
-        senderRef.current!.setMentions([{
-          id,
-          type,
-          name: focus.title,
-        }]);
+        const { onProgress, ...other } = focus;
+        senderRef.current!.setMentions([other]);
         focusID.current = id;
         const status = context.requestStatusTracker.getStatus(id);
         statusChange(status.state === "pending" ? "loading" : "normal");
@@ -97,8 +94,22 @@ const View = ({ user, copilot, api }: ViewProps) => {
   }
 
   const onMentionClick: NonNullable<SenderProps["onMentionClick"]> = (mention) => {
-    const { id, type } = mention;
-    api[type === "page" ? "focusPage" : "focusCom"](id);
+    const { id, type, comId, pageId } = mention;
+    api[type === "page" ? "focusPage" : "focusCom"]((type === "page" ? pageId : comId) || id as string);
+  }
+
+  const onMessagesSend = (sendMessage: Parameters<SenderProps["onSend"]>[0]) => {
+    const { message, attachments, insertAfter,  ...extension } = sendMessage;
+    const { mentions } = extension
+    const mention = sendMessage.mentions[0];
+    context.requestStatusTracker.track(mention.type === "page" ? mention.pageId : mention.comId, Agents.requestCommonAgent({
+      message,
+      attachments,
+      insertAfter,
+      extension,
+      focus: mentions[0],
+      onProgress: context.currentFocus?.onProgress
+    }));
   }
 
   return (
@@ -108,6 +119,7 @@ const View = ({ user, copilot, api }: ViewProps) => {
         user={user}
         copilot={copilot}
         rxai={context.rxai}
+        onSend={onMessagesSend}
         onMentionClick={onMentionClick}
       />
       <Sender
