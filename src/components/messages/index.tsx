@@ -288,6 +288,7 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
   const [summary, setSummary] = useState("");
   const [commands, setCommands] = useState<Plan['commands']>([]);
   const [error, setError] = useState("");
+  const [planningMessage, setPlanningMessage] = useState("")
 
   useLayoutEffect(() => {
     destroysRef.current.push(
@@ -299,9 +300,6 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
           return streamMessage + chunk
         });
       }),
-      plan.events.on('streamMessage2', (streamMessage) => {
-        setStreamMessage(streamMessage);
-      }),
       plan.events.on('summary', (summary) => {
         setSummary(summary);
       }),
@@ -312,6 +310,9 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
       plan.events.on('error', (error) => {
         setError(error);
       }),
+      plan.events.on('planningMessage', (planningMessage) => {
+        setPlanningMessage(planningMessage);
+      })
     )
   }, [])
 
@@ -333,6 +334,10 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
       </header>
       <section className={classNames(css['chat-message-container'], css['ai-message'])}>
         <div className={css['markdown-body']}>
+          <div className={css['think']}>
+            {planningMessage ? <BubbleMessage message={`${planningMessage}${loading ? "..." : ""}`} /> : (loading ? <span>正在思考</span> : null)}
+            {loading && !planningMessage && <Loading />}
+          </div>
           {commands.map((command, index) => {
             if (!command.status || command.status === "error") {
               return null;
@@ -342,12 +347,12 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
           {error && <BubbleError message={error} plan={plan}/>}
           {summary && <BubbleMessage message={summary} />}
           {/* {streamMessage && <BubbleMessage message={streamMessage} />} */}
-          {!streamMessage && loading && (
+          {/* {!streamMessage && loading && (
             <div className={css['think']}>
               <span>正在思考</span>
               <Loading />
             </div>
-          )}
+          )} */}
         </div>
       </section>
     </article>
