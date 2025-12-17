@@ -198,7 +198,7 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
         comId:string //新添加的组件id
         layout?: setLayout_flex_params ｜ setLayout_fixed_params //可选，添加组件时可以指定位置和尺寸信息
         configs?: Array<configStyle_params | configProperty_params> // 添加组件可以配置的信息
-        // 辅助标记
+        // 渲染优化
         ignore: boolean //可选，是否添加ignore标记
       }
       \`\`\`
@@ -290,25 +290,30 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
       **flex布局**
       （基本等同于CSS3规范中的flex布局）插槽中的所有子组件通过宽高和margin进行布局。
 
-      <辅助标记使用>
-        在mybricks中，组件最终会绘制到搭建画布上，确定所有组件的尺寸和位置，可以将多余的嵌套布局组件优化掉，所以需要通过辅助标记ignore来忽略多余的嵌套布局。
-        配置流程如下：
-        当布局组件的父组件也为布局组件时，观察当前组件是否配置样式（边框、背景、内间距等），是否可能需要支持事件（点击），父组件是否也是布局组件？
-        - 1. 如果布局组件不配置样式也不需要点击功能，可以添加ignore标记，表示该布局组件仅承担布局功能，可以被优化掉；
-        - 2. 如果布局组件配置了样式或者有可能需要点击功能，不能添加ignore标记，表示该布局组件承担样式功能，不能被优化掉；
-          - 2.1 如何判断有没有可能需要支持事件？
-            - 2.1.1 如果当前布局为图标+文本等常见的导航入口，猜测该布局组件后续需要支持点击功能，不能添加ignore标记；
-        - 3. 如果布局组件的父组件不是布局组件，或者是根组件，不能添加ignore标记，不能被优化掉；
+      <结构优化与ignore标记>
+        设置ignore=true，是在告知系统，对于这个布局容器，它只是为了让内部的子元素横向、纵向排列、分栏分列，它自己不需要背景色、不需要边框、也不需要响应点击事件，它是一个透明的排版辅助框。
+        说明这是一个可以被优化掉的布局容器，系统在最终渲染时，可以将这个布局容器优化掉，减少不必要的嵌套层级。
+        
+        <决策流程>
+        在添加布局类组件（type=addChild）时，必须严格执行以下决策流程来决定是否设置ignore=true：
+        1.检查父级：当前组件的父组件是根组件（_root_）吗？
+          - 是 -> ignore=false (根组件的直接子级不可忽略)
+          - 否 -> 继续下一步。
+        2.检查当前组件属性：
+          - 是否配置了背景色、边框、圆角等可见样式？ -> ignore=false
+          - 是否可能需要响应点击事件（如作为图标+文本等常见的导航入口，后续肯定需要点击）？ -> ignore=false
+        3.判定结果：
+          - 如果上述情况都不满足（即：它只是一个纯粹的透明容器，仅用于 flex 布局），必须设置 -> ignore=true
+        </决策流程>
 
         例子：第一个布局组件仅承担布局功能，可以添加ignore标记；第二个布局组件承担样式功能，不能添加ignore标记。
         ${fileFormat({
           content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_layout","ignore":true,"ns":"组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
         ["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_layout","ns":"组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}},{"path":"样式/样式","style":{"background":"#FFFFFF"}}]}]
         `,
-          fileName: '辅助标记.json'
+          fileName: 'ignore标记.json'
         })}
- 
-      </辅助标记使用>
+      </结构优化与ignore标记>
   
       <布局使用示例>
         **flex布局**
