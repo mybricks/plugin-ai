@@ -173,7 +173,10 @@ export const requestCommonAgent = (params: any) => {
           }
         }),
         MYBRICKS_TOOLS.Answer({}),
-        MYBRICKS_TOOLS.buildProcess(),
+        MYBRICKS_TOOLS.BuildProcess({
+          getComponentOutlineInfo: () => context.api?.uiCom?.api?.getOutlineInfo(focusInfo.comId),
+          getPageOutlineInfo: () => context.api?.page?.api?.getOutlineInfo(focusInfo.pageId),
+        }),
       ],
       planningCheck: (tools: any[]) => {
         const toolNames = tools.map(tool => tool[1]);

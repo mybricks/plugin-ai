@@ -4,16 +4,66 @@ import { getFiles, getComponentOperationSummary, stripFileBlocks } from './utils
 import { context } from './../context';
 
 const NAME = 'build-event-flow'
-// buildProcess.toolName = NAME
+buildProcess.toolName = NAME
 
-const buildProcess = () => {
+interface ComponentOutlineInfo {
+  outputs: {
+    /** 对应outputId */
+    hostId: string;
+    title: string;
+  }[]
+}
+
+function buildProcess(props: any) {
   const streamActionsParser = createActionsParser();
-  // 通过创建或获取进行赋值
-  let diagramId: string | null = null;
+
+  const componentOutlineInfo: ComponentOutlineInfo = props.getComponentOutlineInfo();
+  console.log("[componentOutlineInfo]", componentOutlineInfo);
+  const pageOutlineInfo = props.getPageOutlineInfo();
+  console.log("[pageOutlineInfo - 找出所有可用连接输入的节点]", pageOutlineInfo)
+
+  // let Nodes allowed to connect within the current process
+
+  function genAllowedContectUI({ id, title, inputs, slots }: any, result: string[] = []) {
+    result.push(`组件名称：${title}
+组件ID：${id}
+可连接的输入：${inputs.reduce((pre: string, { hostId, title }: any) => {
+  return pre + `\n名称：${title}, inputId: ${hostId}`
+}, "")}\n`)
+
+    if (Array.isArray(slots)) {
+      slots.forEach((slot) => {
+        slot.components.forEach((component: any) => genAllowedContectUI(component, result))
+      })
+    }
+
+    return result;
+  }
+
+  /** key: comid-outputid -> diagramId */
+  const diagramIdMap: Record<string, {
+    id: string;
+    status: null | "start"
+  }> = {};
+
+  let currentDiagram: { id: string, status: "idle" | "pending" } | null = null;
+
+// <当前输出端口的情况>
+// ${curNodeInfo}
+// </当前输出端口的情况>
   return {
-    name: "build-event-flow",
+    name: NAME,
     displayName: "搭建事件流程",
     description: `搭建组件事件响应流程 - 专处理"当...时，要..."类需求
+
+参数：无
+工具分类：操作执行类
+作用：
+  1. 创建组件事件；
+  2. 搭建事件流程；
+前置依赖：
+  - 必须确保之前进行过「获取DSL」；
+  - 如果需要添加计算组件，确保之前有进行过「组件选型」，添加计算组件必须通过组件选型来获取组件配置文档；
 
 明确调用时机：
 当需求中出现以下任意特征时，请使用本工具：
@@ -49,13 +99,26 @@ const buildProcess = () => {
 
 重要根据！：action的生成必须基于提供的可操作节点和组件IO文档，不允许捏造、猜测、基于客观事实进行生成。
 
-<当前流程面板信息>
-组件事件
-</当前流程面板信息>
+<当前组件可搭建的事件流程>
+${componentOutlineInfo.outputs.reduce((pre, {hostId, title}) => {
+  return pre + (!pre ? "" : "\n\n") +`事件名称：${title}\noutputId: ${hostId}`;
+}, "")}
 
-<可连接的组件>
-当前画布下的所有组件
-</可连接的组件>
+注意：
+  - 除了上述列出的事件外，还可以从组件使用文档的<可以使用的配置项>内获取可创建的事件outputId。
+    {
+      "path": "xx/xx/事件名称",
+      "editType": "_event",
+      "description": "以事件的方式触发逻辑编排",
+      "outputId": "事件对应的outputId"
+    }
+  - 如果上述列出的事件以及<可以使用的配置项>中没有符合要求的事件，不允许捏造、猜测、基于客观事实进行生成。
+</当前组件可搭建的事件流程>
+
+<当前流程内允许连接的组件和节点>
+ui组件
+${genAllowedContectUI(pageOutlineInfo).join("\n")}
+</当前流程内允许连接的组件和节点>
 
 <如何修改>
   通过一系列的action来分步骤完成对事件流程的搭建，请返回以下格式以驱动MyBricks对事件流程的搭建。
@@ -64,21 +127,41 @@ const buildProcess = () => {
     actions.json文件由多个action构成，每个action在结构上存在一些差异。
 
     各action详细说明如下：
+
+    <createEvent>
+      创建事件流程
+      该action在结构上严格遵循以下格式：[comId, outputId, "createEvent"]
+        - comId 当前需要创建事件流程的组件id
+        - outputId 当前需要创建事件流程对应的outputId
+        - "createEvent" 当前action类型，是一个默认值
+      
+      例如，在任何的事件流程搭建之前，都需要先创建流程，可以返回以下action：
+      [comId, outputId, "createEvent"]
+    </createEvent>
+
     <connectTo>
       连接到组件的输入端口
-      该action在结构上严格遵循以下格式：[comId, outputId, "connectTo", type, targetComId, targetComInputId]
-        - comId 代表当前需要搭建事件流程的组件的id
-        - outputId 指的是当前事件对应的的输出端口，该id来自组件<可以使用的配置项>中editType为"_event"的配置项所对应的outputId
+      该action在结构上严格遵循以下格式：[comId, outputId, "connectTo", params]
+        - comId 当前连接输出的组件id
+        - outputId 当前连接输出的outoutId
         - "connectTo" 当前action类型，是一个默认值
-        - targetType 连接的目标类型，"component - 组件"
-        - targetComId 连接的目标组件id
-        - targetComInputId 连接的目标组件的输入id
+        - params 连接的参数，格式以Typescript的形式说明如下：
+          \`\`\`typescript
+          type Params = {
+            /** 连接目标 */ 
+            target: {
+              /** 类型，目前默认为"component" */
+              type: "component";
+              /** 组件id */ */
+              id: string;
+              /** 输入id */
+              inputId: string;
+            }
+          }
+          \`\`\`
 
-      例如，当用户要求组件a的a1事件触发时调用组件b的输入端口b1，可以返回以下内容：
-      ${fileFormat({
-        content: `[a, a1, , "connectTo", "component", b, b1]`,
-        fileName: '连接到组件的输入端口.json'
-      })}
+      例如，当用户要求组件a的a1事件触发时调用组件b的输入端口b1，可以返回以下action：
+      [a, a1, "connectTo", {"target":{"type":"component","id":"b","inputId":"b1"}}]
 
       <examples>
         <example>
@@ -87,7 +170,8 @@ const buildProcess = () => {
             好的，我将为当前组件的点击事件搭建事件流程，点击后隐藏xx
             
             ${fileFormat({
-              content: `[comId, outputId, "connectTo", "component", targetComId, targetComInputId]`,
+              content: `[comId, outputId, "createEvent"]
+[comId, outputId, "connectTo", {"target":{"type":"component","id":"targetComId","inputId":"targetComInputId"}}]`,
               fileName: '当前组件的点击事件流程搭建.json'
             })}
           </assistant_response>
@@ -107,71 +191,76 @@ const buildProcess = () => {
     注意：
       - 返回actions文件内容时，务必注意操作步骤的先后顺序；
         - 有些操作需要在前面操作完成后才能进行；
+        - 搭建流程前，必须先创建流程
       - 禁止重复使用相同的action；
   </关于actions>
 </如何修改>
 `
     },
     stream: (params: any) => {
-      // console.log("[build-event-flow - stream]", params);
       const { files, status } = params;
-      let actions: any = [];
+      let actions: {
+        comId: string;
+        outputId: string;
+        type: string;
+        params: any;
+      }[] = [];
       const actionsFile = getFiles(files, { extName: 'json' })
 
       if (actionsFile) {
-        // console.log("[actionsFile]", actionsFile)
         actions = streamActionsParser(actionsFile.content ?? "");
-        // console.log("[actions]", actions)
-        // actions = fixActions(actions, {
-        //   pageId
-        // })
-        // if (!fileNameToContent[actionsFile!.fileName]) {
-        //   fileNameToContent[actionsFile!.fileName] = "";
-        // }
-
-        // if (actions?.[0]?.comId && !firstActionId) {
-        //   firstActionId = actions?.[0]?.comId;
-          
-        //   if (firstActionId !== "_root_" && firstActionId !== pageId) {
-        //     actionType = 'uiCom'
-        //   }
-
-        //   config.onActions([], 'start', actionType)
-        // }
       }
 
-      if (actions.length > 0 || status === 'complete') {
+      if (actions.length > 0 || status === "complete") {
         try {
-          let start = false;
-          actions.forEach((action: any) => {
-            if (!diagramId) {
-              start = true;
-              diagramId = context.api.diagram.api.createDiagram("comEvent", { comId: action.comId, outputId: action.outputId }).id;
+
+          console.log("[flow - actions]", JSON.parse(JSON.stringify(actions)))
+
+          let updateDiagramActions = [];
+
+          while (actions.length) {
+            const action = actions.shift()!;
+            console.log("[action]", action)
+            if (action.type !== "connectTo") {
+              if (updateDiagramActions.length) {
+                if (!currentDiagram) {
+                  console.error("currentDiagram is null", params);
+                } else {
+                  console.log(0, "[🚀 updateDiagram]", currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status)
+                  context.api.diagram.api.updateDiagram(currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status);
+                  currentDiagram.status = "pending";
+                  updateDiagramActions = [];
+                  console.log(0, "[✅ updateDiagram]")
+                }
+              }
+              if (action.type === "createEvent") {
+                if (!diagramIdMap[action.comId]) {
+                  console.log("[🚀 createDiagram]")
+                  currentDiagram = {
+                    ...context.api.diagram.api.createDiagram("comEvent", { comId: action.comId, outputId: action.outputId }),
+                    status: 'idle'
+                  };
+                  console.log("[✅ createDiagram]", { ...currentDiagram })
+                }
+              }
+            } else {
+              updateDiagramActions.push(action);
             }
-          })
+          }
 
-          // diagram actions status
-          context.api.diagram.api.updateDiagram(diagramId, actions, start ? "start" : status)
-          // const copiedActions = JSON.parse(JSON.stringify(actions));
-          // console.log("[actions]", actions)
-          // config.onActions(actions, status, actionType)
-          // const actionsContent = getComponentOperationSummary(copiedActions, config.componentIdToTitleMap)
-
-          // if (actionsFile) {
-          //   if (!fileNameToContent[actionsFile!.fileName]) {
-          //     fileNameToContent[actionsFile!.fileName] = actionsContent.trim();
-          //   } else {
-          //     fileNameToContent[actionsFile!.fileName] += `\n${actionsContent.trim()}`;
-          //   }
-          // }
+          if (!currentDiagram) {
+            console.error("currentDiagram is null", params);
+          } else {
+            console.log(1, "[🚀 updateDiagram]", currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status)
+            context.api.diagram.api.updateDiagram(currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status);
+            currentDiagram.status = "pending";
+            updateDiagramActions = [];
+            console.log(1, "[✅ updateDiagram]")
+          }
         } catch (error) {}
       }
 
       return "";
-
-      // return displayContent = Object.entries(fileNameToContent).reduce((pre, [fileName, content]) => {
-      //   return pre.replace(fileName, content);
-      // }, replaceContent)
     },
     execute: (params: any) => {
       return {
@@ -189,7 +278,7 @@ const llmActionDemo = ["组件ID", "组件事件输出ID", "connectTo", "compone
 const actionDemo = {
   "comId": "aaa", // 组件
   "type": "connectTo", // 连接到
-  "outputId": "待讨论", // 输入（事件）ID
+  "outputId": "待讨论", // 输出（事件）ID
   "params": {
     "target":{ // 目标
       "type": "component", // 类型
@@ -270,19 +359,27 @@ const formatAction = (_action: string) => {
     return action;
   }
 
-  const [comId, outputId, type, targetType, targetComId, targetComInputId] = action;
-  const newAct = {
-    comId,
-    type,
-    outputId,
-    params: {
-      target: {
-        type: targetType,
-        id: targetComId,
-        inputId: targetComInputId
-      }
-    }
-  };
+  const [comId, outputId, type, params] = action;
 
-  return newAct;
+  return {
+    comId,
+    outputId,
+    type,
+    params
+  };
 };
+
+
+// <允许连接到以下组件>
+//   ui类型组件:
+//   ${getUIComPromptsInFrame(curFrameModel, viewContext)}
+  
+//   preset类型组件:
+//   ${getJSComPrompts(viewContext)}
+  
+//   openPage类型组件:
+//   ${getGoPagePrompts(pinCtx)}
+  
+//   注意：
+//    - 当前页面id为：${curPageFrame.id}，标题为：${curPageFrame.title}；
+// </允许连接到以下组件>

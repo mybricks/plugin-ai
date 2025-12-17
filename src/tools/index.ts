@@ -4,7 +4,7 @@ import RefactorComponent from './refactor-component'
 import AnalyzeAndExpandPrd from './analyze-and-expand-prd';
 import OpenDsl from './open-dsl';
 import Answer from './answer';
-import buildProcess from "./build-process";
+import BuildProcess from "./build-process";
 
 export const MYBRICKS_TOOLS = {
   GeneratePage,
@@ -13,7 +13,7 @@ export const MYBRICKS_TOOLS = {
   AnalyzeAndExpandPrd,
   OpenDsl,
   Answer,
-  buildProcess
+  BuildProcess
 }
 
 export * from './utils'
