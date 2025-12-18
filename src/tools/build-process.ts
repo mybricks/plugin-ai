@@ -74,35 +74,11 @@ function buildProcess(props: any) {
       // TODO: <可连接的组件> 罗列出可连接的ui组件、计算组件，输入输出信息
 
       const componentOutlineInfo: ComponentOutlineInfo = props.getComponentOutlineInfo();
-      console.log("[componentOutlineInfo]", componentOutlineInfo);
+      // console.log("[componentOutlineInfo]", componentOutlineInfo);
       const pageOutlineInfo = props.getPageOutlineInfo();
-      console.log("[pageOutlineInfo - 找出所有可用连接输入的端口]", pageOutlineInfo)
-
-      function genAllowedContectUI(params: any, result: string[] = []) {
-        // const { targetId } = options;
-        const { id, title, inputs, slots } = params;
-        // console.log("当前处理的是", params)
-        result.push(`组件名称：${title}
-    组件ID：${id}
-    可连接的输入：${inputs.reduce((pre: string, { hostId, title, rels }: any) => {
-          return pre + `\n输入端口名称：${title}, 输入id: ${hostId}，${rels?.[0] ? `关联输出端口名称：${rels[0].title}，关联输出端口id：${rels[0].id}` : "无关联输出，禁止该输入的后续连接"}`
-        }, "")}\n`)
-    
-        if (Array.isArray(slots)) {
-          slots.forEach((slot) => {
-            // console.log("[slot]", slot);
-            slot.components.forEach((component: any) => genAllowedContectUI(component, result))
-          })
-        }
-    
-        return result;
-      }
-    
-      console.log(111, findConnectableComponentsForId(pageOutlineInfo, componentOutlineInfo.id))
-
+      // console.log("[pageOutlineInfo - 找出所有可用连接输入的端口]", pageOutlineInfo)
 
       const connectableComponents = findConnectableComponentsForId(pageOutlineInfo, componentOutlineInfo.id).reduce((pre, component: any) => {
-        console.log("[component]", component);
         const { id, title, inputs } = component;
 // <按钮>
 // 组件标题：按钮
@@ -126,8 +102,14 @@ function buildProcess(props: any) {
 </${title}>\n`;
       }, "")
 
+      const createEventFlow = componentOutlineInfo.outputs.reduce((pre, { hostId, title }) => {
+        return pre + (!pre ? "" : "\n\n") + ` - ${title}（${hostId}）`;
+        // return pre + (!pre ? "" : "\n\n") + `事件名称：${title}\noutputId: ${hostId}`;
+      }, "")
 
-      console.log("connectableComponents", connectableComponents);
+
+      // console.log("[connectableComponents]", connectableComponents);
+      // console.log("[createEventFlow]", createEventFlow)
     
 
       return `<工具总览>
@@ -163,9 +145,7 @@ function buildProcess(props: any) {
 </关于MyBricks事件流程>
 
 <当前组件可搭建的事件流程>
-${componentOutlineInfo.outputs.reduce((pre, { hostId, title }) => {
-        return pre + (!pre ? "" : "\n\n") + `事件名称：${title}\noutputId: ${hostId}`;
-      }, "")}
+${createEventFlow}
 
 注意：
   - 除了上述列出的事件外，还可以从组件使用文档的<可以使用的配置项>内获取可创建的事件outputId。
@@ -483,7 +463,7 @@ function findConnectableComponents(jsonData: any, targetId: any) {
 
   // 递归查找所有组件
   function findAllComponents(obj: any, currentScope = null) {
-    const components: any = [];
+    const components: any = [{...obj, scope: currentScope}];
 
     if (obj.slots) {
       obj.slots.forEach((slot: any) => {
