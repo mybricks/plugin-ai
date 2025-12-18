@@ -178,6 +178,8 @@ export const requestCommonAgent = (params: any) => {
           getPageOutlineInfo: () => context.api?.page?.api?.getOutlineInfo(focusInfo.pageId),
           getTargetId: () => targetId,
           getAllComDefPrompts: () => context.api?.global?.api?.getAllComDefPrompts?.(),
+          createDiagram: context.api.diagram.api.createDiagram,
+          updateDiagram: context.api.diagram.api.updateDiagram
         }),
       ],
       planningCheck: (tools: any[]) => {

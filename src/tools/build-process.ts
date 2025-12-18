@@ -1,7 +1,6 @@
 import { fileFormat } from "@mybricks/rxai";
 import { jsonrepair } from 'jsonrepair'
-import { getFiles, getComponentOperationSummary, stripFileBlocks } from './utils'
-import { context } from './../context';
+import { getFiles } from './utils'
 
 const NAME = 'build-event-flow'
 buildProcess.toolName = NAME
@@ -197,21 +196,18 @@ ${connectableComponents}
         - params 连接的参数，格式以Typescript的形式说明如下：
           \`\`\`typescript
           type Params = {
-            /** 连接目标 */ 
-            target: {
-              /** 类型，目前默认为"component" */
-              type: "component";
-              /** 组件id */ */
-              id: string;
-              /** 输入id */
-              inputId: string;
-            }
+            /** 类型，目前默认为"com" */
+            type: "com";
+            /** 组件id */ */
+            comId: string;
+            /** 输入id */
+            inputId: string;
           }
           \`\`\`
 
       例如，当用户要求组件a的a1事件触发时调用组件b的输入端口b1，可以返回以下action：
       ${fileFormat({
-        content: `[a,a1,"connectTo",{"target":{"type":"component","id":"b","inputId":"b1"}}]`,
+        content: `[a,a1,"connectTo",{"type":"com","comId":"b","inputId":"b1"}]`,
         fileName: '连接到组件的输入端口.json'
       })}
 
@@ -223,7 +219,7 @@ ${connectableComponents}
             
             ${fileFormat({
         content: `[comId,outputId,"createEvent"]
-[comId,outputId,"connectTo",{"target":{"type":"component","id":"targetComId","inputId":"targetComInputId"}}]`,
+[comId,outputId,"connectTo",{"type":"com","comId":"targetComId","inputId":"targetComInputId"}]`,
         fileName: '当前组件的点击事件流程搭建.json'
       })}
           </assistant_response>
@@ -235,8 +231,8 @@ ${connectableComponents}
             
             ${fileFormat({
         content: `[comId,outputId,"createEvent"]
-[comId,outputId,"connectTo",{"target":{"type":"component","id":"a","inputId":"input"}}]
-["a","inputDone", "connectTo",{"target":{"type":"component","id":"b","inputId":"input"}}]`,
+[comId,outputId,"connectTo",{"type":"com","comId":"a","inputId":"input"}]
+["a","inputDone", "connectTo",{"type":"com","comId":"b","inputId":"input"}]`,
         fileName: '当前组件的点击事件流程搭建.json'
       })}
           </assistant_response>
@@ -271,9 +267,9 @@ ${connectableComponents}
 
       例如，用户要求ui组件a的a1事件触发时调用js、js-autorun组件b的输入端口b1，b执行结束后把结果传给ui组件c的c1，可以返回以下action：
       ${fileFormat({
-        content: `[a,a1,"createCom",{"title":"b组件标题","ns":"b组件namespace","comId":"b组件id","inputs":["b1"]}]
-[a,a1,"connectTo",{"target":{"type":"component","id":"b组件id","inputId":"b1"}}]
-[b组件id,b组件的输出id,"connectTo",{"target":{"type":"component","id":"c","inputId":"c1"}}]`,
+        content: `[a,a1,"createCom",{"title":"b组件标题","ns":"b组件namespace","comId":"b","inputs":["b1"],"outputs":["b组件的输出id"}]
+[a,a1,"connectTo",{"type":"com","comId":"b","inputId":"b1"}]
+[b组件id,b组件的输出id,"connectTo",{"type":"com","comId":"c","inputId":"c1"}]`,
         fileName: '连接js组件.json'
       })}
 
@@ -282,32 +278,19 @@ ${connectableComponents}
     </createCom>
 
     <examples>
-        <example>
-          <user_query>点击后隐藏xx</user_query>
-          <assistant_response>
-            好的，我将为当前组件的点击事件搭建事件流程，点击后隐藏xx
-            
-            ${fileFormat({
-        content: `[comId,outputId,"createEvent"]
-[comId,outputId,"connectTo",{"target":{"type":"component","id":"targetComId","inputId":"targetComInputId"}}]`,
-        fileName: '当前组件的点击事件流程搭建.json'
-      })}
-          </assistant_response>
-        </example>
-        <example>
-          <user_query>点击后给a赋值，赋值完成后隐藏b</user_query>
-          <assistant_response>
-            好的，我将为当前组件的点击事件搭建事件流程，点击后给a赋值，赋值完成后隐藏b
-            
-            ${fileFormat({
-        content: `[comId,outputId,"createEvent"]
-[comId,outputId,"connectTo",{"target":{"type":"component","id":"a","inputId":"input"}}]
-["a","inputDone", "connectTo",{"target":{"type":"component","id":"b","inputId":"input"}}]`,
-        fileName: '当前组件的点击事件流程搭建.json'
-      })}
-          </assistant_response>
-        </example>
-      </examples>
+      <example>
+        <user_query>点击后获取a内容和b内容</user_query>
+        <assistant_response>
+          好的，我将为当前组件的点击事件搭建事件流程，点击后获取a内容和b内容
+          ${fileFormat({
+            content: `[comId,outputId,"createEvent"]
+[comId,outputId,"connectTo",{"type":"com","comId":"a","inputId":"getValue"}]
+[comId,outputId,"connectTo",{"type":"com","comId":"b","inputId":"getValue"}]`,
+            fileName: '当前组件的点击事件流程搭建.json'
+          })}
+        </assistant_response>
+      </example>
+    </examples>
   
     注意：actions文件每一行遵循 JSON 语法，禁止非法代码，禁止出现内容省略提示、单行注释、省略字符。
       - actions返回的内容格式需要一行一个action，每一个action需要压缩，不要包含缩进等多余的空白字符；
@@ -323,7 +306,7 @@ ${connectableComponents}
         - 有些操作需要在前面操作完成后才能进行；
         - 搭建流程前，必须先创建流程
       - 禁止重复使用相同的action；
-      - 当一个输出要连多个输入端口时，action可能是上下按顺序返回的，一定要注意识别上下action是前后串行还是上下并行，当需要同时获取不同内容时，如果没有前后依赖，往往是并行；
+      - 当一个输出连接多个输入时，确保生成的 actions 按顺序列出所有连接，并判断它们是并行（同时触发，无依赖）还是串行（有先后依赖，需接力执行），避免将独立操作错误地编排为串行。
   </关于actions>
 </如何修改>
 `
@@ -342,6 +325,10 @@ ${connectableComponents}
         actions = streamActionsParser(actionsFile.content ?? "");
       }
 
+      // if (actions.length > 0) {
+      //   console.log("[actions]", [...actions])
+      // }
+
       if (actions.length > 0 || status === "complete") {
         try {
 
@@ -359,7 +346,7 @@ ${connectableComponents}
                   console.error("currentDiagram is null", params);
                 } else {
                   // console.log(0, "[🚀 updateDiagram]", currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status)
-                  context.api.diagram.api.updateDiagram(currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status);
+                  props.updateDiagram(currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status);
                   currentDiagram.status = "pending";
                   updateDiagramActions = [];
                   // console.log(0, "[✅ updateDiagram]")
@@ -369,7 +356,7 @@ ${connectableComponents}
                 if (!diagramIdMap[action.comId]) {
                   // console.log("[🚀 createDiagram]")
                   currentDiagram = {
-                    ...context.api.diagram.api.createDiagram("comEvent", { comId: action.comId, outputId: action.outputId }),
+                    ...props.createDiagram("comEvent", { comId: action.comId, outputId: action.outputId }),
                     status: 'idle'
                   };
                   // console.log("[✅ createDiagram]", { ...currentDiagram })
@@ -385,7 +372,7 @@ ${connectableComponents}
             console.error("currentDiagram is null", params);
           } else {
             // console.log(1, "[🚀 updateDiagram]", currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status)
-            context.api.diagram.api.updateDiagram(currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status);
+            props.updateDiagram(currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status);
             currentDiagram.status = "pending";
             updateDiagramActions = [];
             // console.log(1, "[✅ updateDiagram]")
@@ -415,21 +402,6 @@ ${connectableComponents}
 }
 
 export default buildProcess;
-
-// const llmActionDemo = ["组件ID", "组件事件输出ID", "connectTo", "component", "目标组件ID", "输入ID"]
-
-// const actionDemo = {
-//   "comId": "aaa", // 组件
-//   "type": "connectTo", // 连接到
-//   "outputId": "待讨论", // 输出（事件）ID
-//   "params": {
-//     "target": { // 目标
-//       "type": "component", // 类型
-//       "id": "组件ID", // 组件ID
-//       "inputId": "" // 输入ID
-//     }
-//   }
-// }
 
 export function createActionsParser() {
   const processedLines = new Set();
@@ -516,23 +488,19 @@ const formatAction = (_action: string) => {
           comId,
           outputId
         },
-        to: {
-          type: "com",
-          comId: params.target.id,
-          inputId: params.target.inputId
-        }
+        to: params
       }
     }
   } else if (type === "createCom") {
+    const { ns, ...other } = params;
     return {
       comId,
       type,
       params: {
-        title: params.title,
-        comId: params.comId,
-        namespace: params.ns,
-        inputs: params.inputs || [],
-        outputs: params.outputs || []
+        ...other,
+        namespace: ns,
+        inputs: other.inputs || [],
+        outputs: other.outputs || []
       }
     }
   }
