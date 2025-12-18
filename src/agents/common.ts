@@ -177,6 +177,7 @@ export const requestCommonAgent = (params: any) => {
           getComponentOutlineInfo: () => context.api?.uiCom?.api?.getOutlineInfo(focusInfo.comId),
           getPageOutlineInfo: () => context.api?.page?.api?.getOutlineInfo(focusInfo.pageId),
           getTargetId: () => targetId,
+          getAllComDefPrompts: () => context.api?.global?.api?.getAllComDefPrompts?.(),
         }),
       ],
       planningCheck: (tools: any[]) => {
@@ -212,7 +213,19 @@ export const requestCommonAgent = (params: any) => {
             return resultTools
           }
         }
-        
+
+        const buildProcessIndex = toolNames.indexOf(MYBRICKS_TOOLS.BuildProcess.toolName);
+        if (buildProcessIndex > -1) {
+          // 搭建流程前需要需求分析和组件选型
+          const requirementTools = [MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName];
+          const hasRequirement = toolNames.slice(0, generatePageIndex).some(name => requirementTools.includes(name));
+          
+          if (!hasRequirement) {
+            resultTools.splice(generatePageIndex, 0, ['node', MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName]);
+            return resultTools
+          }
+        }
+
         return resultTools
       },
       formatUserMessage: (text: string) => {

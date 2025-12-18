@@ -107,6 +107,8 @@ function buildProcess(props: any) {
         // return pre + (!pre ? "" : "\n\n") + `事件名称：${title}\noutputId: ${hostId}`;
       }, "")
 
+      // const allowComponents = props.getAllComDefPrompts();
+
 
       // console.log("[connectableComponents]", connectableComponents);
       // console.log("[createEventFlow]", createEventFlow)
@@ -141,10 +143,11 @@ function buildProcess(props: any) {
   组件输入端口id对应的关联输出端口id，即inputId被连接后，组件可以继续通过relOutputId进行连接下一个端口。如果没有对应的关联输出端口，则无法继续连接下一个端口。
 
   **outoutId**
-  组件的输出端口id
+  组件的输出端口id，也是事件id。
 </关于MyBricks事件流程>
 
 <当前组件可搭建的事件流程>
+> 事件名称（事件id）
 ${createEventFlow}
 
 注意：
@@ -153,7 +156,7 @@ ${createEventFlow}
       "path": "xx/xx/事件名称",
       "editType": "_event",
       "description": "以事件的方式触发逻辑编排",
-      "outputId": "事件对应的outputId"
+      "outputId": "事件id"
     }
   - 如果上述列出的事件以及<可以使用的配置项>中没有符合要求的事件，不允许捏造、猜测、基于客观事实进行生成。
 </当前组件可搭建的事件流程>
@@ -175,11 +178,14 @@ ${connectableComponents}
       创建事件流程
       该action在结构上严格遵循以下格式：[comId, outputId, "createEvent"]
         - comId 当前需要创建事件流程的组件id
-        - outputId 当前需要创建事件流程对应的outputId
+        - outputId 当前需要创建事件流程对应的outputId，<当前组件可搭建的事件流程>
         - "createEvent" 当前action类型，是一个默认值
       
-      例如，在任何的事件流程搭建之前，都需要先创建流程，可以返回以下action：
-      [comId, outputId, "createEvent"]
+      例如，在任何的事件流程搭建之前，都需要先创建流程，可以返回以下内容：
+      ${fileFormat({
+        content: `[comId,outputId,"createEvent"]`,
+        fileName: '创建流程.json'
+      })}
     </createEvent>
 
     <connectTo>
@@ -204,7 +210,10 @@ ${connectableComponents}
           \`\`\`
 
       例如，当用户要求组件a的a1事件触发时调用组件b的输入端口b1，可以返回以下action：
-      [a, a1, "connectTo", {"target":{"type":"component","id":"b","inputId":"b1"}}]
+      ${fileFormat({
+        content: `[a,a1,"connectTo",{"target":{"type":"component","id":"b","inputId":"b1"}}]`,
+        fileName: '连接到组件的输入端口.json'
+      })}
 
       <examples>
         <example>
@@ -213,8 +222,8 @@ ${connectableComponents}
             好的，我将为当前组件的点击事件搭建事件流程，点击后隐藏xx
             
             ${fileFormat({
-        content: `[comId, outputId, "createEvent"]
-[comId, outputId, "connectTo", {"target":{"type":"component","id":"targetComId","inputId":"targetComInputId"}}]`,
+        content: `[comId,outputId,"createEvent"]
+[comId,outputId,"connectTo",{"target":{"type":"component","id":"targetComId","inputId":"targetComInputId"}}]`,
         fileName: '当前组件的点击事件流程搭建.json'
       })}
           </assistant_response>
@@ -225,15 +234,80 @@ ${connectableComponents}
             好的，我将为当前组件的点击事件搭建事件流程，点击后给a赋值，赋值完成后隐藏b
             
             ${fileFormat({
-        content: `[comId, outputId, "createEvent"]
-[comId, outputId, "connectTo", {"target":{"type":"component","id":"a","inputId":"input"}}]
-["a", "inputDone", "connectTo", {"target":{"type":"component","id":"b","inputId":"input"}}]`,
+        content: `[comId,outputId,"createEvent"]
+[comId,outputId,"connectTo",{"target":{"type":"component","id":"a","inputId":"input"}}]
+["a","inputDone", "connectTo",{"target":{"type":"component","id":"b","inputId":"input"}}]`,
         fileName: '当前组件的点击事件流程搭建.json'
       })}
           </assistant_response>
         </example>
       </examples>
     </connectTo>
+
+    <createCom>
+      在流程中创建js、js-autorun组件，当需要连接到一个新的js、js-autorun组件时，必须先创建组件
+
+      该action在结构上严格遵循以下格式：[comId, outputId, "createCom", params]
+        - comId 当前连接输出的组件id
+        - outputId 当前连接输出的outoutId
+        - "createCom" 当前action类型，是一个默认值
+        - params 创建组件的参数，格式以Typescript的形式说明如下：
+          \`\`\`typescript
+          type Params = {
+            title:string //被添加组件的标题
+            ns:string // 在 <允许添加的组件 /> 中声明的js或js-autorun组件namespace
+            comId:string //新添加的组件id
+            configs?: Configs // 添加组件可以配置的信息,
+            inputs?: string[] // 动态添加的输入端口id
+            outputs?: string[] // 动态添加的输出端口id
+          }
+
+          //配置属性
+          type Configs = {
+            path:string,//在<当前组件可配置的内容/>中对应的配置项path
+            value: any//需要配置的value
+          }[]
+          \`\`\`
+
+      例如，用户要求ui组件a的a1事件触发时调用js、js-autorun组件b的输入端口b1，b执行结束后把结果传给ui组件c的c1，可以返回以下action：
+      ${fileFormat({
+        content: `[a,a1,"createCom",{"title":"b组件标题","ns":"b组件namespace","comId":"b组件id"}]
+[a,a1,"connectTo",{"target":{"type":"component","id":"b组件id","inputId":"b1"}}]
+[b组件id,b组件的输出id,"connectTo",{"target":{"type":"component","id":"c","inputId":"c1"}}]`,
+        fileName: '连接js组件.json'
+      })}
+
+      注意：
+        - 事件流程内只能创建js或js-autorun组件，只能使用<允许添加的组件/> 中声明的js或js-autorun组件。
+    </createCom>
+
+    <examples>
+        <example>
+          <user_query>点击后隐藏xx</user_query>
+          <assistant_response>
+            好的，我将为当前组件的点击事件搭建事件流程，点击后隐藏xx
+            
+            ${fileFormat({
+        content: `[comId,outputId,"createEvent"]
+[comId,outputId,"connectTo",{"target":{"type":"component","id":"targetComId","inputId":"targetComInputId"}}]`,
+        fileName: '当前组件的点击事件流程搭建.json'
+      })}
+          </assistant_response>
+        </example>
+        <example>
+          <user_query>点击后给a赋值，赋值完成后隐藏b</user_query>
+          <assistant_response>
+            好的，我将为当前组件的点击事件搭建事件流程，点击后给a赋值，赋值完成后隐藏b
+            
+            ${fileFormat({
+        content: `[comId,outputId,"createEvent"]
+[comId,outputId,"connectTo",{"target":{"type":"component","id":"a","inputId":"input"}}]
+["a","inputDone", "connectTo",{"target":{"type":"component","id":"b","inputId":"input"}}]`,
+        fileName: '当前组件的点击事件流程搭建.json'
+      })}
+          </assistant_response>
+        </example>
+      </examples>
   
     注意：actions文件每一行遵循 JSON 语法，禁止非法代码，禁止出现内容省略提示、单行注释、省略字符。
       - actions返回的内容格式需要一行一个action，每一个action需要压缩，不要包含缩进等多余的空白字符；
@@ -277,7 +351,8 @@ ${connectableComponents}
           while (actions.length) {
             const action = actions.shift()!;
             // console.log("[action]", action)
-            if (action.type !== "connectTo") {
+            
+            if (!["connectTo", "createCom"].includes(action.type)) {
               if (updateDiagramActions.length) {
                 if (!currentDiagram) {
                   console.error("currentDiagram is null", params);
@@ -427,6 +502,7 @@ const formatAction = (_action: string) => {
 
   const [comId, outputId, type, params] = action;
 
+
   // TODO: 提示词直接改一下吧
   if (type === "connectTo") {
     return {
@@ -443,6 +519,16 @@ const formatAction = (_action: string) => {
           comId: params.target.id,
           inputId: params.target.inputId
         }
+      }
+    }
+  } else if (type === "createCom") {
+    return {
+      comId,
+      type,
+      params: {
+        namespace: params.ns,
+        inputs: params.inputs || [],
+        outputs: params.outputs || []
       }
     }
   }
