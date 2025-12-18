@@ -199,7 +199,8 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
         layout?: setLayout_flex_params ｜ setLayout_fixed_params //可选，添加组件时可以指定位置和尺寸信息
         configs?: Array<configStyle_params | configProperty_params> // 添加组件可以配置的信息
         // 渲染优化
-        ignore: boolean //可选，是否添加ignore标记
+        ignore?: boolean //可选，是否添加ignore标记
+        enhance?: boolean //可选，是否添加enhance标记
       }
       \`\`\`
       
@@ -290,30 +291,33 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
       **flex布局**
       （基本等同于CSS3规范中的flex布局）插槽中的所有子组件通过宽高和margin进行布局。
 
-      <结构优化与ignore标记>
-        设置ignore=true，是在告知系统，对于这个布局容器，它只是为了让内部的子元素横向、纵向排列、分栏分列，它自己不需要背景色、不需要边框、也不需要响应点击事件，它是一个透明的排版辅助框。
-        说明这是一个可以被优化掉的布局容器，系统在最终渲染时，可以将这个布局容器优化掉，减少不必要的嵌套层级。
-        
-        <决策流程>
-        在添加布局类组件（type=addChild）时，必须严格执行以下决策流程来决定是否设置ignore=true：
-        1.检查父级：当前组件的父组件是根组件（_root_）吗？
-          - 是 -> ignore=false (根组件的直接子级不可忽略)
-          - 否 -> 继续下一步。
-        2.检查当前组件属性：
-          - 是否配置了背景色、边框、圆角等可见样式？ -> ignore=false
-          - 是否可能需要响应点击事件（如作为图标+文本等常见的导航入口，后续肯定需要点击）？ -> ignore=false
-        3.判定结果：
-          - 如果上述情况都不满足（即：它只是一个纯粹的透明容器，仅用于 flex 布局），必须设置 -> ignore=true
-        </决策流程>
+      <辅助标记说明>
+        在 addChild 操作中，可以通过对布局类组件添加辅助标记来指导最终的渲染和布局行为。这些标记是可选的，但合理使用可以极大提升页面的性能和美观度。目前支持以下标记：
+        1. ignore（结构优化标记）
+          作用：当一个容器（通常是布局组件）只用于排列其内部元素（如分栏、对齐），而本身不需要任何可见样式（无背景、无边框、无圆角）且不响应交互（如点击）时，可以添加 ignore=true 标记。系统在最终渲染时，可以将这个布局容器优化掉，减少不必要的嵌套层级。
+          决策流程：（从上往下执行）
+            - 检查父级：父组件是根组件 _root_ 吗？是，则 ignore=false；
+            - 检查当前组件属性：组件本身是否配置了可见样式（背景色、边框、圆角等）？是，则 ignore=false；
+            - 猜测当前组件意图：组件是否可能作为整体被点击（如一个卡片）？是，则 ignore=false；
+            - 检查当前组件插槽：组件是否存在非flex布局的插槽？是，则 ignore=false；
+            - 否则（即：它只是一个纯粹的透明容器，仅用于 flex 布局），ignore=true。
 
-        例子：第一个布局组件仅承担布局功能，可以添加ignore标记；第二个布局组件承担样式功能，不能添加ignore标记。
-        ${fileFormat({
-          content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_layout","ignore":true,"ns":"组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
-        ["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_layout","ns":"组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}},{"path":"样式/样式","style":{"background":"#FFFFFF"}}]}]
-        `,
-          fileName: 'ignore标记.json'
-        })}
-      </结构优化与ignore标记>
+        2. enhance（布局优化标记）
+          作用：当一个flex容器（通常是布局组件）需要进行布局优化时，即从flex布局优化成自由布局，可以添加 enhance=true 标记。
+          决策流程：（从上往下执行）
+            - 检查当前组件属性：组件是否配置了 ignore=true？是，则 enhance=false；
+            - 检查当前组件插槽：组件是否不存在flex布局的插槽？是，则 enhance=false；
+            - 最后检查是否属于图文信息排列展示容器，且配置了flex布局？是，则 enhance=true。
+
+        例子：第一个布局组件仅承担布局功能，可以添加ignore标记；第二个布局组件承担样式功能，不能添加ignore标记，第二个组件里添加了一个居中的文本，判断为信息卡片，添加enhance标记。
+          ${fileFormat({
+            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_layout1","ignore":true,"ns":"组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
+          ["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_layout2","enhance":true,"ns":"组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}},{"path":"样式/样式","style":{"background":"#FFFFFF"}}]}]
+          ["u_layout2","插槽id占位","addChild",{"title":"添加一个文本组件","comId":"u_text1","ns":"组件","layout":{"width":"fit-content","height":"fit-content"},"configs":[{"path":"常规/文本内容","value":"居中文本"}]}]
+          `,
+            fileName: '标记使用.json'
+          })}
+      </辅助标记说明>
   
       <布局使用示例>
         **flex布局**
@@ -521,6 +525,8 @@ ${config.examples}
         rootId,
         pageId
       })
+
+      // console.log('generate-page actions=', JSON.parse(JSON.stringify(actions)));
 
       try {
         const llmContent = stripFileBlocks(content);
