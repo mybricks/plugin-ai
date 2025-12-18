@@ -258,8 +258,8 @@ ${connectableComponents}
             ns:string // 在 <允许添加的组件 /> 中声明的js或js-autorun组件namespace
             comId:string //新添加的组件id
             configs?: Configs // 添加组件可以配置的信息,
-            inputs?: string[] // 动态添加的输入端口id
-            outputs?: string[] // 动态添加的输出端口id
+            inputs: string[] // 动态添加的输入端口id
+            outputs?: string[] // 动态添加的输出端口id，当有下一个节点时必须要声明
           }
 
           //配置属性
@@ -271,7 +271,7 @@ ${connectableComponents}
 
       例如，用户要求ui组件a的a1事件触发时调用js、js-autorun组件b的输入端口b1，b执行结束后把结果传给ui组件c的c1，可以返回以下action：
       ${fileFormat({
-        content: `[a,a1,"createCom",{"title":"b组件标题","ns":"b组件namespace","comId":"b组件id"}]
+        content: `[a,a1,"createCom",{"title":"b组件标题","ns":"b组件namespace","comId":"b组件id","inputs":["b1"]}]
 [a,a1,"connectTo",{"target":{"type":"component","id":"b组件id","inputId":"b1"}}]
 [b组件id,b组件的输出id,"connectTo",{"target":{"type":"component","id":"c","inputId":"c1"}}]`,
         fileName: '连接js组件.json'
@@ -323,6 +323,7 @@ ${connectableComponents}
         - 有些操作需要在前面操作完成后才能进行；
         - 搭建流程前，必须先创建流程
       - 禁止重复使用相同的action；
+      - 当一个输出要连多个输入端口时，action可能是上下按顺序返回的，一定要注意识别上下action是前后串行还是上下并行，当需要同时获取不同内容时，如果没有前后依赖，往往是并行；
   </关于actions>
 </如何修改>
 `
@@ -375,7 +376,8 @@ ${connectableComponents}
                 }
               }
             } else {
-              updateDiagramActions.push(action);
+              const { comId, ...other } = action;
+              updateDiagramActions.push(other);
             }
           }
 
@@ -526,6 +528,8 @@ const formatAction = (_action: string) => {
       comId,
       type,
       params: {
+        title: params.title,
+        comId: params.comId,
         namespace: params.ns,
         inputs: params.inputs || [],
         outputs: params.outputs || []
