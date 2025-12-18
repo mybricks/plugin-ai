@@ -176,6 +176,7 @@ export const requestCommonAgent = (params: any) => {
         MYBRICKS_TOOLS.BuildProcess({
           getComponentOutlineInfo: () => context.api?.uiCom?.api?.getOutlineInfo(focusInfo.comId),
           getPageOutlineInfo: () => context.api?.page?.api?.getOutlineInfo(focusInfo.pageId),
+          getTargetId: () => targetId,
         }),
       ],
       planningCheck: (tools: any[]) => {
