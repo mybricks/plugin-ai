@@ -222,7 +222,8 @@ ${connectableComponents}
 
       例如，用户要求ui组件a的outputa1事件触发时调用js、js-autorun组件b的输入端口inputb1，b执行结束后把结果传给ui组件c的inputc1，可以返回以下action：
       ${fileFormat({
-        content: `["createCom",{type:"calculate","title":"b组件标题","ns":"b组件namespace","comId":"b","inputs":["inputb1"],"outputs":["outputb1"}]
+        content: `[a,outputa1,"createEvent"]
+["createCom",{type:"calculate","title":"b组件标题","ns":"b组件namespace","comId":"b","inputs":["inputb1"],"outputs":["outputb1"}]
 [{type:"com","comId":"a","outputId":"outputa1"},"connectTo",{"type":"com","comId":"b","inputId":"inputb1"}]
 ["createCom",{"type":"uiCom","comId":"c","inputId":"inputc1","instanceId": "instanceIdc1"}]
 [{"type":"com","comId":"b","outputId":""outputb1"},"connectTo",{"type":"com","instanceId":"instanceIdc1"}]`,
@@ -282,7 +283,8 @@ ${connectableComponents}
 
       例如，当用户要求组件a的outputa1事件触发时调用组件b的输入端口inputb1，可以返回以下action：
       ${fileFormat({
-        content: `["createCom",{"type":"uiCom","comId":"b","inputId":"inputb1","instanceId":"instanceIdb1"}]
+        content: `[a,outputa1,"createEvent"]
+["createCom",{"type":"uiCom","comId":"b","inputId":"inputb1","instanceId":"instanceIdb1"}]
 [{"type":"com","comId":"a","outputId":"outputa1"},"connectTo",{"type":"com","instanceId":"instanceIdb1"}]`,
         fileName: '连接到组件的输入端口.json'
       })}
