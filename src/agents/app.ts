@@ -127,10 +127,10 @@ async function createCanvasByAICanvas(canvasId: string, aiCanvas: any) {
 
   pageArray.forEach(async ({ page, pageRef }) => {
     await requestGeneratePageAgent(pageRef.id, page.title, {
-      message: `标题：${page.title}
-<需求>
+      message: `帮忙实现项目「${aiCanvas.title}」的其中一个页面，页面为${page.title}。
+<可供参考的需求>
 ${page.prd}
-</需求>
+</可供参考的需求>
 
 <样式风格>
 ${aiCanvas.style}
