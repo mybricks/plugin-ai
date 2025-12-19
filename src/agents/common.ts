@@ -118,7 +118,8 @@ export const requestCommonAgent = (params: any) => {
           canvasWidth: prompts.canvasWidth,
           onComponentDocOpen: (namespace) => {
             workspace.openComponentDoc(namespace)
-          }
+          },
+          deviceType: context.deviceType,
         }),
         MYBRICKS_TOOLS.GeneratePage({
           getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,

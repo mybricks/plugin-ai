@@ -12,6 +12,7 @@ import { Agents } from './agents'
 import { View } from "./view";
 import { context } from './context';
 import { StartView } from "./startView";
+import { DeviceType } from './types';
 
 export { fileFormat } from '@mybricks/rxai'
 import preset from "./preset"
@@ -30,7 +31,7 @@ export default function pluginAI(params?: any): any {
   context.prompts = prompts
   context.createTemplates = createTemplates ?? {}
   context.isMutiCanvas = isMutiCanvas ?? true
-  context.deviceType = deviceType || 'mobile'
+  context.deviceType = deviceType ?? DeviceType.Mobile
 
   // window.requestGenerateCanvasAgent = requestGenerateCanvasAgent
 

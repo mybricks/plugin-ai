@@ -61,7 +61,8 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
         onComponentDocOpen: (namespace) => {
           workspace.openComponentDoc(namespace)
         },
-        shouldUseExpert: true
+        shouldUseExpert: true,
+        deviceType: context.deviceType,
       }),
       MYBRICKS_TOOLS.GeneratePage({
         getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(pageId) as string,

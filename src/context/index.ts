@@ -1,5 +1,6 @@
 import { Rxai, Events, IDB } from "@mybricks/rxai"
 import { RequestStatusTracker } from "./RequestStatusTracker";
+import { DeviceType } from './../types';
 
 class Context {
   rxai!: Rxai
@@ -14,7 +15,7 @@ class Context {
   /** 是否多画布 */
   isMutiCanvas: boolean = true
 
-  deviceType: 'desktop' | 'mobile' = 'mobile'
+  deviceType: DeviceType = DeviceType.Mobile
 
   /** 应用传入的创建页面模板 */
   createTemplates?: {

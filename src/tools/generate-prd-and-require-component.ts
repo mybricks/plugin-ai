@@ -1,12 +1,15 @@
 import { fileFormat, RequestError, ToolError } from '@mybricks/rxai'
 import { getFiles, stripFileBlocks, jsonSafeParse } from './utils'
+import { getDevicePrompt } from '../preset/prompts';
+import { DeviceType } from './../types'
 
 interface GeneratePrdAndRequireComponentToolParams {
   allowComponents: string;
   examples: string;
   canvasWidth: string;
   onComponentDocOpen: (ns: string) => void;
-  shouldUseExpert?: boolean
+  shouldUseExpert?: boolean,
+  deviceType: DeviceType
 }
 
 const NAME = 'generate-prd-and-require-component'
@@ -41,6 +44,8 @@ export default function generatePrdAndRequireComponent(config: GeneratePrdAndReq
     ${fileFormat({ content: '(搭建所需要的组件选型)', fileName: 'XX需求组件选型.json' })}
     - - 注意：文件内容注意不要出现语法错误，文件声明要保持一致；
 </任务流程>
+
+${getDevicePrompt(config.deviceType)}
 
 <允许使用的组件及其说明>
 
