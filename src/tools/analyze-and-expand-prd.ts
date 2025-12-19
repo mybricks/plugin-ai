@@ -70,6 +70,7 @@ export default function analyzeAndExpandPrd(config: AnalyzeAndExpandPrdParams): 
   - 对话可能由多轮构成，每轮对话中，用户会提出不同的问题或给与信息补充，你需要根据用户的问题、逐步分析处理。
   - 你所面向的用户是MyBricks平台上的用户，这些用户不是专业的开发人员，因此你需要以简洁、易懂的方式，回答用户的问题。
   - 如果附件中有图片，请在设计开发中作为重要参考，进行详细的需求及设计分析，当作用户的需求。
+  - 你的回答面向的是非专业开发人员，请务必使用**简洁、易懂、口语化**的语言。
 </特别注意>
 
 <遵循原则>
@@ -121,13 +122,33 @@ export default function analyzeAndExpandPrd(config: AnalyzeAndExpandPrdParams): 
   </任务三>
 </处理流程>
 
+<回答、输出流程>
+**第一步：深度思考与需求分析（以Markdown格式呈现）**
+在给出正式方案前，你必须先输出一个详细的“**思考过程**”部分。这部分的目标是让用户完全理解你的设计思路。请按照以下结构组织：
+1.  **需求解读**：用一两句话复述并理解用户的核心意图。
+2.  **页面规划逻辑**：
+    *   说明你计划设计哪几个页面（如首页、详情页、个人中心）。
+    *   **为每个页面解释“为什么”**：例如，“因为电商APP的核心流程是‘浏览->查看->购买’，所以我们需要首页（用于浏览发现）、商品详情页（用于决策）、个人中心页（用于管理订单和购物车）”，同时可以列出目的和需求，最好能与最终的json结构保持一致。
+    *   可以制作一个简单的表格来对比各页面的核心目标和内容模块。
+    *   内容尽量丰富
+3.  **设计风格构思**：
+    *   简要说明你为这个应用设定了怎样的视觉风格（如“现代简约的科技感”、“温暖亲和的社区感”）。
+    *   解释颜色选择的原因（如“主色选用蓝色，传递信任与专业感”）。
+    *   内容尽量丰富
+
+**第二步：输出结构化方案（以JSON格式呈现）**
+在“思考过程”之后，输出一个名为\`“【应用标题】项目需求文档.json”\`的JSON代码块。json格式参考<examples>提供的\`"本地生活APP项目需求文档.json"\`。
+
+**注意**：
+ - “思考过程”直接输出即可，不要以一个标题的形式展现出来，否则对话比较割裂，不自然。
+</回答、输出流程>
+
 <examples>
   <example>
     <user_query>一个本地生活APP</user_query>
     <assistant_response>
-      好的，即将为你生成一个关于一个本地生活APP的页面。
+      好的，即将为你生成一个关于一个本地生活APP的项目需求文档。
 
-      这是我的思考结果：
       由于当前信息较少，我们来扩写下需求，一个本地生活APP，一般包含「首页」、「分类页」、「商家详情页」、「个人中心页」等界面。
 
       从需求来看，我觉得可以给应用起「本地生活APP」这个标题。
@@ -145,7 +166,16 @@ export default function analyzeAndExpandPrd(config: AnalyzeAndExpandPrdParams): 
     },
     aiRole: 'architect',
     // aiRole: "expert",
-    execute({ files, content }) {
+    stream(params: any) {
+      const { files, replaceContent } = params;
+      const file = files[0];
+      if (file) {
+        return replaceContent.replace(file.fileName, "正在编写需求文档...");
+      }
+      return replaceContent;
+    },
+    execute(params: any) {
+      const { files, content, replaceContent } = params;
       let errorContent;
       try {
         errorContent = JSON.parse(content)
@@ -154,8 +184,8 @@ export default function analyzeAndExpandPrd(config: AnalyzeAndExpandPrdParams): 
         throw new RequestError(`网络错误，${errorContent?.message}`)
       }
       
-      const projectFile = getFiles(files, { extName: 'json' });
-      let projectJson = {}
+      const projectFile: any = getFiles(files, { extName: 'json' });
+      let projectJson: any = {}
       try {
         projectJson = JSON.parse(projectFile?.content)
 
@@ -170,9 +200,15 @@ export default function analyzeAndExpandPrd(config: AnalyzeAndExpandPrdParams): 
       } catch (error) {
 
       }
-      config.onProjectCreate(projectJson)
-      return content;
+
+      config.onProjectCreate(projectJson);
+
+      if (!projectFile) {
+        return content;
+      } else if (!projectJson.title) {
+        return replaceContent + `\n未生成合法项目文件。`
+      }
+      return replaceContent.replace(projectFile.fileName, "");
     },
-    streamThoughts: true
   };
 }

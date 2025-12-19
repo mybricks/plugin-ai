@@ -207,7 +207,7 @@ ${connectableComponents}
             type: "calculate" // 类型，用于区分节点类型，默认calculate
             title: string // 语义化的节点标题
             ns: string // 在 <允许添加的组件 /> 中声明的js或js-autorun组件namespace
-            comId:string //新添加的组件id
+            comId:string //新添加的组件id，禁止重复使用已存在的组件id
             configs?: Configs // 添加组件可以配置的信息,
             inputs: string[] // 动态添加的输入端口id
             outputs?: string[] // 动态添加的输出端口id，当有下一个节点时必须要声明
@@ -255,7 +255,7 @@ ${connectableComponents}
           // 如果输出端口是js、js-autorun组件节点
           type UiOutput = {
             type: "com";
-            comId: string; //新添加的组件id
+            comId: string; //新添加的组件id，禁止重复使用已存在的组件id
             outputId: string; // 当前节点的输出outputId
           }
           \`\`\`
