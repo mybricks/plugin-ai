@@ -171,12 +171,24 @@ const formatAction = (_action: string) => {
     delete newAct.params.value.display;
   }
 
-  // absolute 布局的转化
+  // flexDirection 的兼容
+  if (newAct.params?.value && newAct.params.value.display === "flex" && !newAct.params.value.flexDirection) {
+    newAct.params.value.flexDirection = "row";
+  }
+
+  // 样式处理
   if (newAct.type === "addChild" && Array.isArray(newAct.params?.configs)) {
     newAct.params.configs.forEach((config) => {
+      
+      // absolute 布局的转化
       if (config?.value?.display === "absolute") {
         config.value.position = "smart";
         delete config.value.display;
+      }
+
+      // flexDirection 的兼容
+      if (config.value && config.value?.display === "flex" && !config.value?.flexDirection) {
+        config.value.flexDirection = "row";
       }
 
       if (config?.style) {
