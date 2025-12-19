@@ -165,7 +165,7 @@ ui组件
 ${connectableComponents}
 </当前流程内允许连接的组件端口说明>
 
-<如何修改>
+<如何通过action搭建事件流程>
   通过一系列的action来分步骤完成对事件流程的搭建，请返回以下格式以驱动MyBricks对事件流程的搭建。
   
   <关于actions>
@@ -175,14 +175,14 @@ ${connectableComponents}
 
     <createEvent>
       创建事件流程
-      该action在结构上严格遵循以下格式：[comId, outputId, "createEvent"]
+      该action在结构上严格遵循以下格式：["createEvent",comId, outputId]
+        - "createEvent" 当前action类型，是一个默认值
         - comId 当前需要创建事件流程的组件id
         - outputId 当前需要创建事件流程对应的outputId，<当前组件可搭建的事件流程>
-        - "createEvent" 当前action类型，是一个默认值
       
       例如，在任何的事件流程搭建之前，都需要先创建流程，可以返回以下内容：
       ${fileFormat({
-        content: `[comId,outputId,"createEvent"]`,
+        content: `["createEvent",comId,outputId]`,
         fileName: '创建流程.json'
       })}
     </createEvent>
@@ -209,8 +209,16 @@ ${connectableComponents}
             ns: string // 在 <允许添加的组件 /> 中声明的js或js-autorun组件namespace
             comId:string //新添加的组件id，禁止重复使用已存在的组件id
             configs?: Configs // 添加组件可以配置的信息,
-            inputs: string[] // 动态添加的输入端口id
-            outputs?: string[] // 动态添加的输出端口id，当有下一个节点时必须要声明
+            // 输入端口列表
+            inputs: {
+              id: string; // 输入端口id
+              title: string; // 输入端口的语义化标题
+            }[]
+            // 输出端口列表，当有下一个节点时必须要声明
+            outputs?: {
+              id: string; // 输出端口id
+              title: string; // 输出端口的语义化标题
+            }[]
           }
 
           // js、js-autorun组件的配置属性
@@ -222,11 +230,11 @@ ${connectableComponents}
 
       例如，用户要求ui组件a的outputa1事件触发时调用js、js-autorun组件b的输入端口inputb1，b执行结束后把结果传给ui组件c的inputc1，可以返回以下action：
       ${fileFormat({
-        content: `[a,outputa1,"createEvent"]
-["createCom",{type:"calculate","title":"b组件标题","ns":"b组件namespace","comId":"b","inputs":["inputb1"],"outputs":["outputb1"}]
+        content: `["createEvent",a,outputa1]
+["createCom",{"type":"calculate","title":"b组件标题","ns":"b组件namespace","comId":"b","inputs":[{"id":"inputb1","title":"语义化标题"}],"outputs":[{"id":"outputb1","title":"语义化标题"}]}]
 [{type:"com","comId":"a","outputId":"outputa1"},"connectTo",{"type":"com","comId":"b","inputId":"inputb1"}]
 ["createCom",{"type":"uiCom","comId":"c","inputId":"inputc1","instanceId": "instanceIdc1"}]
-[{"type":"com","comId":"b","outputId":""outputb1"},"connectTo",{"type":"com","instanceId":"instanceIdc1"}]`,
+[{"type":"com","comId":"b","outputId":""outputb1"},"connectTo",{"type":"com","inputId":"inputc1","instanceId":"instanceIdc1"}]`,
         fileName: '连接js组件.json'
       })}
 
@@ -249,6 +257,7 @@ ${connectableComponents}
           // 如果输出端口是ui组件节点
           type UiOutput = {
             type: "com";
+            outputId: string;  // 当前节点的输出outputId
             instanceId: string; 实例id，由于ui组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分
           }
 
@@ -266,6 +275,8 @@ ${connectableComponents}
           type UIInput = {
             /** 类型，目前默认为"com" */
             type: "com";
+            /** 输入id */
+            inputId: string;
             /** 实例id，由于ui组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分 */
             instanceId: string;
           }
@@ -283,9 +294,9 @@ ${connectableComponents}
 
       例如，当用户要求组件a的outputa1事件触发时调用组件b的输入端口inputb1，可以返回以下action：
       ${fileFormat({
-        content: `[a,outputa1,"createEvent"]
+        content: `["createEvent",a,outputa1]
 ["createCom",{"type":"uiCom","comId":"b","inputId":"inputb1","instanceId":"instanceIdb1"}]
-[{"type":"com","comId":"a","outputId":"outputa1"},"connectTo",{"type":"com","instanceId":"instanceIdb1"}]`,
+[{"type":"com","comId":"a","outputId":"outputa1"},"connectTo",{"type":"com","inputId":"inputb1","instanceId":"instanceIdb1"}]`,
         fileName: '连接到组件的输入端口.json'
       })}
 
@@ -296,9 +307,9 @@ ${connectableComponents}
             好的，我将为当前组件的点击事件搭建事件流程，点击后隐藏xx
             
             ${fileFormat({
-        content: `[comId,outputId,"createEvent"]
+        content: `["createEvent",comId,outputId]
 ["createCom",{"type":"uiCom","comId":"targetComId","inputId":"targetComInputId","instanceId":"instanceIdb1"}]
-[{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","instanceId": "instanceIdb1"}]`,
+[{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","inputId":"targetComInputId","instanceId": "instanceIdb1"}]`,
         fileName: '当前组件的点击事件流程搭建.json'
       })}
           </assistant_response>
@@ -309,11 +320,11 @@ ${connectableComponents}
             好的，我将为当前组件的点击事件搭建事件流程，点击后给a赋值，赋值完成后隐藏b
             
             ${fileFormat({
-        content: `[comId,outputId,"createEvent"]
+        content: `["createEvent",comId,outputId]
 ["createCom",{"type":"uiCom","comId":"a","inputId":"input","instanceId":"instanceIda1"}]
-[{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","instanceId":"instanceIda1"}]
+[{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","inputId":"input","instanceId":"instanceIda1"}]
 ["createCom",{"type":"uiCom","comId":"b","inputId":"input","instanceId":"instanceIdb1"}]
-[{"type":"com","instanceId":"instanceIdb1","outputId":"inputDone"},"connectTo",{"type":"com","instanceId":"instanceIdb1"}]`,
+[{"type":"com","instanceId":"instanceIdb1","outputId":"inputDone"},"connectTo",{"type":"com","inputId":"input","instanceId":"instanceIdb1"}]`,
         fileName: '当前组件的点击事件流程搭建.json'
       })}
           </assistant_response>
@@ -327,11 +338,11 @@ ${connectableComponents}
         <assistant_response>
           好的，我将为当前组件的点击事件搭建事件流程，点击后获取a内容和b内容
           ${fileFormat({
-            content: `[comId,outputId,"createEvent"]
+            content: `["createEvent",comId,outputId]
 ["createCom",{"type":"uiCom","comId":"a","inputId":"getValue","instanceId":"instanceIda1"}]
-[{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","instanceId":"instanceIda1"}]
+[{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","inputId":"getValue","instanceId":"instanceIda1"}]
 ["createCom",{"type":"uiCom","comId":"b","inputId":"getValue","instanceId":"instanceIdb1"}]
-[{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","instanceId":"instanceIdb1"}]`,
+[{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","inputId":"getValue","instanceId":"instanceIdb1"}]`,
             fileName: '当前组件的点击事件流程搭建.json'
           })}
         </assistant_response>
@@ -340,7 +351,7 @@ ${connectableComponents}
   
     注意：actions文件每一行遵循 JSON 语法，禁止非法代码，禁止出现内容省略提示、单行注释、省略字符。
       - actions返回的内容格式需要一行一个action，每一个action需要压缩，不要包含缩进等多余的空白字符；
-      - action内禁止换行，一定要注意把换行符进行转译；
+      - 每一条action都禁止换行，一定要注意把换行符进行转译；
       - 禁止包含任何注释（包括单行//和多行/* */）
       - 禁止出现省略号(...)或任何占位符
       - 确保所有代码都是完整可执行的，不包含示例片段
@@ -355,7 +366,7 @@ ${connectableComponents}
       - 禁止重复使用相同的action；
       - 当一个输出连接多个输入时，确保生成的 actions 按顺序列出所有连接，并判断它们是并行（同时触发，无依赖）还是串行（有先后依赖，需接力执行），避免将独立操作错误地编排为串行。
   </关于actions>
-</如何修改>
+</如何通过action搭建事件流程>
 `
     },
     stream: (params: any) => {
@@ -531,11 +542,11 @@ const formatAction = (_action: string) => {
       type: action[0],
       params
     }
-  } else if (action[2] === "createEvent") {
+  } else if (action[0] === "createEvent") {
     return {
-      comId: action[0],
-      outputId: action[1],
-      type: action[2]
+      comId: action[1],
+      outputId: action[2],
+      type: action[0]
     }
   } else if (action[1] === "connectTo") {
     return {
