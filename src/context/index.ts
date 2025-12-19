@@ -14,6 +14,8 @@ class Context {
   /** 是否多画布 */
   isMutiCanvas: boolean = true
 
+  deviceType: 'desktop' | 'mobile' = 'mobile'
+
   /** 应用传入的创建页面模板 */
   createTemplates?: {
     page: any

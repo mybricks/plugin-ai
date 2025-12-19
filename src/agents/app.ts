@@ -189,7 +189,8 @@ export const requestGenerateCanvasAgent = (params: any) => {
               params?.onProgress?.('ing');
               createCanvasByAICanvas(canvasId, projectJson);
             }
-          }
+          },
+          deviceType: context.deviceType
         })
       ],
     });
