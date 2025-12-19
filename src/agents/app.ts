@@ -52,7 +52,7 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
         // params?.onProgress?.("complete");
       },
     },
-    planList: [MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName, MYBRICKS_TOOLS.GeneratePage.toolName],
+    planList: [`${MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName} -mode generate`, MYBRICKS_TOOLS.GeneratePage.toolName],
     tools: [
       MYBRICKS_TOOLS.GetComponentsDocAndPrd({
         allowComponents: context.api?.global?.api?.getAllComDefPrompts?.(),

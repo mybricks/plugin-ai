@@ -241,7 +241,7 @@ function transformToValidBackground(styles: any): void {
     return;
   }
 
-  const background = styles.background.toString();
+  const background = styles.background.toString().trim();
 
   // 删除原有的background属性
   delete styles.background;
@@ -253,31 +253,245 @@ function transformToValidBackground(styles: any): void {
     return;
   }
 
-  // 提取图片url或渐变
-  // 匹配url()或各种渐变函数，优先检查是否为图片url或渐变（避免被颜色正则误匹配）
-  const imageRegex =
-    /(url\([^)]+\)|linear-gradient\([^)]+\)|radial-gradient\([^)]+\)|conic-gradient\([^)]+\))/;
-  const imageMatch = background.match(imageRegex);
-
-  // 如果找到图片或渐变,设置backgroundImage
-  if (imageMatch && !styles.backgroundImage) {
+  // 解析复合背景
+  const parsedBackground = parseComplexBackground(background);
+  
+  if (parsedBackground.hasImages && !styles.backgroundImage) {
     styles.backgroundColor = 'transparent';
-    styles.backgroundImage = imageMatch[0];
+    styles.backgroundImage = parsedBackground.images.join(', ');
+    
+    // 设置背景位置和尺寸
+    if (parsedBackground.position && !styles.backgroundPosition) {
+      styles.backgroundPosition = parsedBackground.position;
+    }
+    if (parsedBackground.size && !styles.backgroundSize) {
+      styles.backgroundSize = parsedBackground.size;
+    }
+
     return;
+  }
+
+  // 如果只有颜色
+  if (parsedBackground.color && !styles.backgroundColor) {
+    styles.backgroundColor = parsedBackground.color;
+    if (!styles.backgroundImage) {
+      styles.backgroundImage = 'none';
+    }
+    return;
+  }
+
+  // 如果没有找到颜色，但有backgroundImage，设置透明背景色
+  if (styles.backgroundImage && !styles.backgroundColor) {
+    styles.backgroundColor = 'transparent';
+  }
+}
+
+/**
+ * 解析复杂的background值
+ * @param background 原始background字符串
+ * @returns 解析后的对象
+ */
+function parseComplexBackground(background: string) {
+  const result = {
+    images: [] as string[],
+    color: '',
+    position: '',
+    size: '',
+    hasImages: false
+  };
+
+  // 使用更精确的方法来提取图片和渐变
+  const images = extractBackgroundImages(background);
+  
+  if (images.length > 0) {
+    result.hasImages = true;
+    result.images = images;
+    
+    // 提取位置和尺寸信息
+    const positionSizeInfo = extractPositionAndSize(background, images);
+    result.position = positionSizeInfo.position;
+    result.size = positionSizeInfo.size;
   }
 
   // 提取颜色值
-  // 匹配颜色格式: #XXX, #XXXXXX, rgb(), rgba(), hsl(), hsla(), 颜色关键字
-  const colorRegex =
-    /(#[0-9A-Fa-f]{3,6}|rgb\([^)]+\)|rgba\([^)]+\)|hsl\([^)]+\)|hsla\([^)]+\)|[a-zA-Z]+)/;
-  const colorMatch = background.match(colorRegex);
-
-  // 如果找到颜色值,设置backgroundColor
-  if (colorMatch && !styles.backgroundColor) {
-    styles.backgroundColor = colorMatch[0];
-    styles.backgroundImage = 'none'
-    return;
+  const color = extractBackgroundColor(background, images);
+  if (color) {
+    result.color = color;
   }
+
+  return result;
+}
+
+/**
+ * 提取背景图片和渐变
+ */
+function extractBackgroundImages(background: string): string[] {
+  const images: string[] = [];
+  let remaining = background;
+  
+  while (remaining.length > 0) {
+    // 查找下一个函数的开始
+    const urlMatch = remaining.match(/url\s*\(/);
+    const gradientMatch = remaining.match(/(linear-gradient|radial-gradient|conic-gradient)\s*\(/);
+    
+    let nextMatch = null;
+    let matchType = '';
+    
+    if (urlMatch && gradientMatch) {
+      // 选择更早出现的匹配
+      if (urlMatch.index! < gradientMatch.index!) {
+        nextMatch = urlMatch;
+        matchType = 'url';
+      } else {
+        nextMatch = gradientMatch;
+        matchType = 'gradient';
+      }
+    } else if (urlMatch) {
+      nextMatch = urlMatch;
+      matchType = 'url';
+    } else if (gradientMatch) {
+      nextMatch = gradientMatch;
+      matchType = 'gradient';
+    }
+    
+    if (!nextMatch) {
+      break;
+    }
+    
+    const startIndex = nextMatch.index!;
+    const functionStart = remaining.indexOf('(', startIndex) + 1;
+    
+    // 找到匹配的右括号
+    let parenCount = 1;
+    let endIndex = functionStart;
+    
+    while (endIndex < remaining.length && parenCount > 0) {
+      if (remaining[endIndex] === '(') {
+        parenCount++;
+      } else if (remaining[endIndex] === ')') {
+        parenCount--;
+      }
+      endIndex++;
+    }
+    
+    if (parenCount === 0) {
+      // 提取完整的函数
+      const fullFunction = remaining.substring(startIndex, endIndex);
+      images.push(fullFunction);
+      
+      // 移除已处理的部分
+      remaining = remaining.substring(endIndex);
+    } else {
+      // 如果括号不匹配，跳过这个匹配
+      remaining = remaining.substring(startIndex + 1);
+    }
+  }
+  
+  return images;
+}
+
+/**
+ * 提取位置和尺寸信息
+ */
+function extractPositionAndSize(background: string, images: string[]): { position: string; size: string } {
+  let cleanBackground = background;
+  
+  // 移除所有图片和渐变
+  images.forEach(image => {
+    cleanBackground = cleanBackground.replace(image, '');
+  });
+  
+  // 清理多余的逗号和空格
+  cleanBackground = cleanBackground.replace(/,\s*,/g, ',').replace(/^\s*,\s*|\s*,\s*$/g, '').trim();
+  
+  // 匹配位置/尺寸模式 (如: center/cover, top left/contain)
+  const positionSizeMatch = cleanBackground.match(/([^\/,]*?)\/([^\/,]*)/);
+  
+  let position = '';
+  let size = '';
+  
+  if (positionSizeMatch) {
+    const positionPart = positionSizeMatch[1]?.trim();
+    const sizePart = positionSizeMatch[2]?.trim();
+    
+    if (positionPart && isValidBackgroundPosition(positionPart)) {
+      position = positionPart;
+    }
+    
+    if (sizePart && isValidBackgroundSize(sizePart)) {
+      size = sizePart;
+    }
+  } else {
+    // 如果没有找到 / 分隔符，尝试单独匹配位置或尺寸
+    const parts = cleanBackground.split(/\s+/).filter(part => part.length > 0);
+    
+    for (const part of parts) {
+      if (!position && isValidBackgroundPosition(part)) {
+        position = part;
+      } else if (!size && isValidBackgroundSize(part)) {
+        size = part;
+      }
+    }
+  }
+  
+  return { position, size };
+}
+
+/**
+ * 提取背景颜色
+ */
+function extractBackgroundColor(background: string, images: string[]): string {
+  let cleanBackground = background;
+  
+  // 移除所有图片和渐变
+  images.forEach(image => {
+    cleanBackground = cleanBackground.replace(image, '');
+  });
+  
+  // 移除位置和尺寸信息
+  cleanBackground = cleanBackground.replace(/\s*(center|top|bottom|left|right|\d+%|\d+px)\s*/g, ' ');
+  cleanBackground = cleanBackground.replace(/\s*\/\s*(cover|contain|auto|\d+%|\d+px)\s*/g, ' ');
+  cleanBackground = cleanBackground.replace(/,\s*,/g, ',').replace(/^\s*,\s*|\s*,\s*$/g, '').trim();
+
+  // 匹配颜色格式
+  const colorRegex = /(#[0-9A-Fa-f]{3,6}|rgb\([^)]+\)|rgba\([^)]+\)|hsl\([^)]+\)|hsla\([^)]+\)|[a-zA-Z]+)/;
+  const colorMatch = cleanBackground.match(colorRegex);
+  
+  return colorMatch ? colorMatch[0] : '';
+}
+
+/**
+ * 检查是否是有效的背景位置值
+ */
+function isValidBackgroundPosition(value: string): boolean {
+  const positionKeywords = ['center', 'top', 'bottom', 'left', 'right'];
+  const parts = value.split(/\s+/);
+  
+  return parts.every(part => 
+    positionKeywords.includes(part) || 
+    /^\d+%$/.test(part) || 
+    /^\d+px$/.test(part) ||
+    /^-?\d+(\.\d+)?(px|em|rem|%)$/.test(part)
+  );
+}
+
+/**
+ * 检查是否是有效的背景尺寸值
+ */
+function isValidBackgroundSize(value: string): boolean {
+  const sizeKeywords = ['cover', 'contain', 'auto'];
+  
+  if (sizeKeywords.includes(value)) {
+    return true;
+  }
+  
+  const parts = value.split(/\s+/);
+  return parts.every(part => 
+    part === 'auto' ||
+    /^\d+%$/.test(part) || 
+    /^\d+px$/.test(part) ||
+    /^-?\d+(\.\d+)?(px|em|rem|%)$/.test(part)
+  );
 }
 
 /**
