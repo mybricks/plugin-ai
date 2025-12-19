@@ -234,7 +234,7 @@ ${connectableComponents}
     </createCom>
 
     <connectTo>
-      连接到组件的输入端口
+      从一个节点的输出端口连接到下一个节点的输入端口
       该action在结构上严格遵循以下格式：[output, "connectTo", input]
         - output 当前连接的输出端口，格式以Typescript的形式说明如下：
           \`\`\`typescript
@@ -520,10 +520,14 @@ const formatAction = (_action: string) => {
   }
 
   if (action[0] === "createCom") {
+    const { ns, ...params } = action[1]
+    if (ns) {
+      params.namespace = ns;
+    }
     return {
       comId: action[1].comId,
       type: action[0],
-      params: action[1]
+      params
     }
   } else if (action[2] === "createEvent") {
     return {
