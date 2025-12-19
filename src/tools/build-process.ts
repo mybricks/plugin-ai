@@ -161,6 +161,12 @@ ${createEventFlow}
 </当前组件可搭建的事件流程>
 
 <当前流程内允许连接的组件端口说明>
+重要限制：
+- 可调用的UI节点必须严格限制在当前列出的组件范围内
+- 禁止使用任何未在此处明确列出的UI组件
+- 即使需求暗示了某个UI操作，如果对应的UI组件不在列表中，也不能创建
+- 不允许基于相似功能进行推测性连接
+
 ui组件
 ${connectableComponents}
 </当前流程内允许连接的组件端口说明>
@@ -197,7 +203,7 @@ ${connectableComponents}
           // 创建ui节点参数
           type UIParams = {
             type: "uiCom" // 类型，用于区分节点类型，默认uiCom
-            comId: string // 对应组件id
+            comId: string // 对应组件id，仅允许使用<当前流程内允许连接的组件端口说明>内明确列出的ui组件
             inputId: string // 输入端口id
             instanceId: string // 实例id，由于ui组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分
           }
@@ -239,11 +245,17 @@ ${connectableComponents}
       })}
 
       注意：
+        - 绝对限制：事件流程内只能创建js或js-autorun组件，只能使用<允许添加的组件/> 中声明的js或js-autorun组件。
+        - 绝对限制：只能创建<当前流程内允许连接的组件端口说明>内明确列出的ui组件
+        - 即使需求中提到"文本框"、"下拉框"等UI元素，如果不在允许列表中，绝对不能创建
+        - 如果允许列表中只有"按钮"和"账号"组件，就不能创建"密码"组件（除非它在列表中）
+        - 禁止基于组件功能相似性进行推测性创建
+        - 创建ui节点时，comId必须与允许列表中的组件id完全一致
         - 事件流程内只能创建js或js-autorun组件，只能使用<允许添加的组件/> 中声明的js或js-autorun组件。
     </createCom>
 
     <connectTo>
-      从一个节点的输出端口连接到下一个节点的输入端口
+      从一个节点的输出端口连接到下一个节点的输入端口，连接的前提是已经通过<createCom>创建好了可连接的节点
       该action在结构上严格遵循以下格式：[output, "connectTo", input]
         - output 当前连接的输出端口，格式以Typescript的形式说明如下：
           \`\`\`typescript
@@ -345,6 +357,12 @@ ${connectableComponents}
 [{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","inputId":"getValue","instanceId":"instanceIdb1"}]`,
             fileName: '当前组件的点击事件流程搭建.json'
           })}
+        </assistant_response>
+      </example>
+      <example>
+        <user_query>点击后设置a</user_query>
+        <assistant_response>
+          由于a与当前组件不在同一个作用域内，<当前流程内允许连接的组件端口说明>内不存在a组件，无法直接设置
         </assistant_response>
       </example>
     </examples>
@@ -619,7 +637,9 @@ function findConnectableComponents(jsonData: any, targetId: any) {
             });
             // 递归查找嵌套组件
             const nestedComponents = findAllComponents(component, slotScope);
-            components.push(...nestedComponents);
+            components.push(...nestedComponents.filter((nestedComponent: any) => {
+              return nestedComponent.id !== component.id;
+            }));
           });
         }
       });
