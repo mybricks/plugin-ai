@@ -29,7 +29,7 @@ interface MessagesParams {
 
   onMentionClick?: (mention: Mention) => void;
 
-  onSend: SenderProps['onSend'];
+  onSend?: SenderProps['onSend'];
 }
 
 type Plans = Rxai['cacheMessages'];
