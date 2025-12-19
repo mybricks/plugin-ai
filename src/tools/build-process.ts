@@ -187,15 +187,90 @@ ${connectableComponents}
       })}
     </createEvent>
 
+    <createCom>
+      在流程中创建节点，当输入端口在连接到输入端口前必须先创建匹配输出端口的节点
+
+      该action在结构上严格遵循以下格式：["createCom", params]
+        - "createCom" 当前action类型，是一个默认值
+        - params 创建节点的参数，格式以Typescript的形式说明如下：
+          \`\`\`typescript
+          // 创建ui节点参数
+          type UIParams = {
+            type: "uiCom" // 类型，用于区分节点类型，默认uiCom
+            comId: string // 对应组件id
+            inputId: string // 输入端口id
+            instanceId: string // 实例id，由于ui组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分
+          }
+
+          // 创建js、js-autorun节点参数
+          type JSParams = {
+            type: "calculate" // 类型，用于区分节点类型，默认calculate
+            title: string // 语义化的节点标题
+            ns: string // 在 <允许添加的组件 /> 中声明的js或js-autorun组件namespace
+            comId:string //新添加的组件id
+            configs?: Configs // 添加组件可以配置的信息,
+            inputs: string[] // 动态添加的输入端口id
+            outputs?: string[] // 动态添加的输出端口id，当有下一个节点时必须要声明
+          }
+
+          // js、js-autorun组件的配置属性
+          type Configs = {
+            path:string,//在<当前组件可配置的内容/>中对应的配置项path
+            value: any//需要配置的value，如果配置的内容带有换行符，需要进行转译，一定要保证一个action只占一行，禁止换行
+          }[]
+          \`\`\`
+
+      例如，用户要求ui组件a的outputa1事件触发时调用js、js-autorun组件b的输入端口inputb1，b执行结束后把结果传给ui组件c的inputc1，可以返回以下action：
+      ${fileFormat({
+        content: `["createCom",{type:"calculate","title":"b组件标题","ns":"b组件namespace","comId":"b","inputs":["inputb1"],"outputs":["outputb1"}]
+[{type:"com","comId":"a","outputId":"outputa1"},"connectTo",{"type":"com","comId":"b","inputId":"inputb1"}]
+["createCom",{"type":"uiCom","comId":"c","inputId":"inputc1","instanceId": "instanceIdc1"}]
+[{"type":"com","comId":"b","outputId":""outputb1"},"connectTo",{"type":"com","instanceId":"instanceIdc1"}]`,
+        fileName: '连接js组件.json'
+      })}
+
+      注意：
+        - 事件流程内只能创建js或js-autorun组件，只能使用<允许添加的组件/> 中声明的js或js-autorun组件。
+    </createCom>
+
     <connectTo>
       连接到组件的输入端口
-      该action在结构上严格遵循以下格式：[comId, outputId, "connectTo", params]
-        - comId 当前连接输出的组件id
-        - outputId 当前连接输出的outoutId
-        - "connectTo" 当前action类型，是一个默认值
-        - params 连接的参数，格式以Typescript的形式说明如下：
+      该action在结构上严格遵循以下格式：[output, "connectTo", input]
+        - output 当前连接的输出端口，格式以Typescript的形式说明如下：
           \`\`\`typescript
-          type Params = {
+          // 如果输出端口是当前流程的输出
+          type Output1 = {
+            type: "com";
+            comId: string; 当前需要创建事件流程的组件id
+            outputId: string; 当前需要创建事件流程对应的outputId
+          }
+
+          // 如果输出端口是ui组件节点
+          type UiOutput = {
+            type: "com";
+            instanceId: string; 实例id，由于ui组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分
+          }
+
+          // 如果输出端口是js、js-autorun组件节点
+          type UiOutput = {
+            type: "com";
+            comId: string; //新添加的组件id
+            outputId: string; // 当前节点的输出outputId
+          }
+          \`\`\`
+        - "connectTo" 当前action类型，是一个默认值
+        - input 连接的参数，格式以Typescript的形式说明如下：
+          \`\`\`typescript
+          // 连接ui类型的输入端口
+          type UIInput = {
+            /** 类型，目前默认为"com" */
+            type: "com";
+            /** 实例id，由于ui组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分 */
+            instanceId: string;
+          }
+
+          // 连接js、js-autorun类型的输入端口
+          type JSInput = {
             /** 类型，目前默认为"com" */
             type: "com";
             /** 组件id */ */
@@ -205,9 +280,10 @@ ${connectableComponents}
           }
           \`\`\`
 
-      例如，当用户要求组件a的a1事件触发时调用组件b的输入端口b1，可以返回以下action：
+      例如，当用户要求组件a的outputa1事件触发时调用组件b的输入端口inputb1，可以返回以下action：
       ${fileFormat({
-        content: `[a,a1,"connectTo",{"type":"com","comId":"b","inputId":"b1"}]`,
+        content: `["createCom",{"type":"uiCom","comId":"b","inputId":"inputb1","instanceId":"instanceIdb1"}]
+[{"type":"com","comId":"a","outputId":"outputa1"},"connectTo",{"type":"com","instanceId":"instanceIdb1"}]`,
         fileName: '连接到组件的输入端口.json'
       })}
 
@@ -219,7 +295,8 @@ ${connectableComponents}
             
             ${fileFormat({
         content: `[comId,outputId,"createEvent"]
-[comId,outputId,"connectTo",{"type":"com","comId":"targetComId","inputId":"targetComInputId"}]`,
+["createCom",{"type":"uiCom","comId":"targetComId","inputId":"targetComInputId","instanceId":"instanceIdb1"}]
+[{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","instanceId": "instanceIdb1"}]`,
         fileName: '当前组件的点击事件流程搭建.json'
       })}
           </assistant_response>
@@ -231,51 +308,16 @@ ${connectableComponents}
             
             ${fileFormat({
         content: `[comId,outputId,"createEvent"]
-[comId,outputId,"connectTo",{"type":"com","comId":"a","inputId":"input"}]
-["a","inputDone", "connectTo",{"type":"com","comId":"b","inputId":"input"}]`,
+["createCom",{"type":"uiCom","comId":"a","inputId":"input","instanceId":"instanceIda1"}]
+[{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","instanceId":"instanceIda1"}]
+["createCom",{"type":"uiCom","comId":"b","inputId":"input","instanceId":"instanceIdb1"}]
+[{"type":"com","instanceId":"instanceIdb1","outputId":"inputDone"},"connectTo",{"type":"com","instanceId":"instanceIdb1"}]`,
         fileName: '当前组件的点击事件流程搭建.json'
       })}
           </assistant_response>
         </example>
       </examples>
     </connectTo>
-
-    <createCom>
-      在流程中创建js、js-autorun组件，当需要连接到一个新的js、js-autorun组件时，必须先创建组件
-
-      该action在结构上严格遵循以下格式：[comId, outputId, "createCom", params]
-        - comId 当前连接输出的组件id
-        - outputId 当前连接输出的outoutId
-        - "createCom" 当前action类型，是一个默认值
-        - params 创建组件的参数，格式以Typescript的形式说明如下：
-          \`\`\`typescript
-          type Params = {
-            title:string //被添加组件的标题
-            ns:string // 在 <允许添加的组件 /> 中声明的js或js-autorun组件namespace
-            comId:string //新添加的组件id
-            configs?: Configs // 添加组件可以配置的信息,
-            inputs: string[] // 动态添加的输入端口id
-            outputs?: string[] // 动态添加的输出端口id，当有下一个节点时必须要声明
-          }
-
-          //配置属性
-          type Configs = {
-            path:string,//在<当前组件可配置的内容/>中对应的配置项path
-            value: any//需要配置的value
-          }[]
-          \`\`\`
-
-      例如，用户要求ui组件a的a1事件触发时调用js、js-autorun组件b的输入端口b1，b执行结束后把结果传给ui组件c的c1，可以返回以下action：
-      ${fileFormat({
-        content: `[a,a1,"createCom",{"title":"b组件标题","ns":"b组件namespace","comId":"b","inputs":["b1"],"outputs":["b组件的输出id"}]
-[a,a1,"connectTo",{"type":"com","comId":"b","inputId":"b1"}]
-[b组件id,b组件的输出id,"connectTo",{"type":"com","comId":"c","inputId":"c1"}]`,
-        fileName: '连接js组件.json'
-      })}
-
-      注意：
-        - 事件流程内只能创建js或js-autorun组件，只能使用<允许添加的组件/> 中声明的js或js-autorun组件。
-    </createCom>
 
     <examples>
       <example>
@@ -284,8 +326,10 @@ ${connectableComponents}
           好的，我将为当前组件的点击事件搭建事件流程，点击后获取a内容和b内容
           ${fileFormat({
             content: `[comId,outputId,"createEvent"]
-[comId,outputId,"connectTo",{"type":"com","comId":"a","inputId":"getValue"}]
-[comId,outputId,"connectTo",{"type":"com","comId":"b","inputId":"getValue"}]`,
+["createCom",{"type":"uiCom","comId":"a","inputId":"getValue","instanceId":"instanceIda1"}]
+[{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","instanceId":"instanceIda1"}]
+["createCom",{"type":"uiCom","comId":"b","inputId":"getValue","instanceId":"instanceIdb1"}]
+[{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","instanceId":"instanceIdb1"}]`,
             fileName: '当前组件的点击事件流程搭建.json'
           })}
         </assistant_response>
@@ -294,6 +338,7 @@ ${connectableComponents}
   
     注意：actions文件每一行遵循 JSON 语法，禁止非法代码，禁止出现内容省略提示、单行注释、省略字符。
       - actions返回的内容格式需要一行一个action，每一个action需要压缩，不要包含缩进等多余的空白字符；
+      - action内禁止换行，一定要注意把换行符进行转译；
       - 禁止包含任何注释（包括单行//和多行/* */）
       - 禁止出现省略号(...)或任何占位符
       - 确保所有代码都是完整可执行的，不包含示例片段
@@ -474,6 +519,31 @@ const formatAction = (_action: string) => {
     return action;
   }
 
+  if (action[0] === "createCom") {
+    return {
+      comId: action[1].comId,
+      type: action[0],
+      params: action[1]
+    }
+  } else if (action[2] === "createEvent") {
+    return {
+      comId: action[0],
+      outputId: action[1],
+      type: action[2]
+    }
+  } else if (action[1] === "connectTo") {
+    return {
+      comId: action[0].comId || action[0].instanceId,
+      type: action[1],
+      params: {
+        from: action[0],
+        to: action[2]
+      }
+    }
+  }
+
+  return {};
+
   const [comId, outputId, type, params] = action;
 
 
@@ -493,15 +563,13 @@ const formatAction = (_action: string) => {
     }
   } else if (type === "createCom") {
     const { ns, ...other } = params;
+    if (ns) {
+      other.namespace = ns;
+    }
     return {
       comId,
       type,
-      params: {
-        ...other,
-        namespace: ns,
-        inputs: other.inputs || [],
-        outputs: other.outputs || []
-      }
+      params: other
     }
   }
 
