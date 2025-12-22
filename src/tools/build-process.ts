@@ -150,7 +150,7 @@ function buildProcess(props: any) {
 ${createEventFlow}
 
 注意：
-  - 除了上述列出的事件外，还可以从组件使用文档的<可以使用的配置项>内获取可创建的事件outputId。
+  - 除了上述列出的事件外，还可以从<组件使用文档>的<可以使用的配置项>内获取可创建的事件outputId。
     {
       "path": "xx/xx/事件名称",
       "editType": "_event",
@@ -199,8 +199,10 @@ ${connectableComponents}
       该action在结构上严格遵循以下格式：["createCom", params]
         - "createCom" 当前action类型，是一个默认值
         - params 创建节点的参数，格式以Typescript的形式说明如下：
+          - UIParams：当节点为UI节点时，需要传递的参数
+          - JSParams：当节点为JS节点时，需要传递的参数
           \`\`\`typescript
-          // 创建ui节点参数
+          // 创建ui节点参数，仅允许使用<当前流程内允许连接的组件端口说明>内明确列出的ui组件
           type UIParams = {
             type: "uiCom" // 类型，用于区分节点类型，默认uiCom
             comId: string // 对应组件id，仅允许使用<当前流程内允许连接的组件端口说明>内明确列出的ui组件
@@ -211,10 +213,10 @@ ${connectableComponents}
           // 创建js、js-autorun节点参数
           type JSParams = {
             type: "calculate" // 类型，用于区分节点类型，默认calculate
-            title: string // 语义化的节点标题
-            ns: string // 在 <允许添加的组件 /> 中声明的js或js-autorun组件namespace
+            title: string // 节点标题，要高度语义话，能让用户一眼明白这个节点的作用
+            ns: string // 在 <组件使用文档>中声明的js或js-autorun组件namespace
             comId:string //新添加的组件id，禁止重复使用已存在的组件id
-            configs?: Configs // 添加组件可以配置的信息,
+            configs: Configs // 添加组件可以配置的信息,
             // 输入端口列表
             inputs: {
               id: string; // 输入端口id
@@ -230,14 +232,14 @@ ${connectableComponents}
           // js、js-autorun组件的配置属性
           type Configs = {
             path:string,//在<当前组件可配置的内容/>中对应的配置项path
-            value: any//需要配置的value，如果配置的内容带有换行符，需要进行转译，一定要保证一个action只占一行，禁止换行
+            value: any//需要配置的value
           }[]
           \`\`\`
 
       例如，用户要求ui组件a的outputa1事件触发时调用js、js-autorun组件b的输入端口inputb1，b执行结束后把结果传给ui组件c的inputc1，可以返回以下action：
       ${fileFormat({
         content: `["createEvent",a,outputa1]
-["createCom",{"type":"calculate","title":"b组件标题","ns":"b组件namespace","comId":"b","inputs":[{"id":"inputb1","title":"语义化标题"}],"outputs":[{"id":"outputb1","title":"语义化标题"}]}]
+["createCom",{"type":"calculate","title":"b组件标题","ns":"b组件namespace","comId":"b","inputs":[{"id":"inputb1","title":"语义化标题"}],"outputs":[{"id":"outputb1","title":"语义化标题"}],"configs":[{"path":"xx/xx/xx","value":"xxx"}]}]
 [{type:"com","comId":"a","outputId":"outputa1"},"connectTo",{"type":"com","comId":"b","inputId":"inputb1"}]
 ["createCom",{"type":"uiCom","comId":"c","inputId":"inputc1","instanceId": "instanceIdc1"}]
 [{"type":"com","comId":"b","outputId":""outputb1"},"connectTo",{"type":"com","inputId":"inputc1","instanceId":"instanceIdc1"}]`,
@@ -245,36 +247,36 @@ ${connectableComponents}
       })}
 
       注意：
-        - 绝对限制：事件流程内只能创建js或js-autorun组件，只能使用<允许添加的组件/> 中声明的js或js-autorun组件。
-        - 绝对限制：只能创建<当前流程内允许连接的组件端口说明>内明确列出的ui组件
-        - 即使需求中提到"文本框"、"下拉框"等UI元素，如果不在允许列表中，绝对不能创建
-        - 如果允许列表中只有"按钮"和"账号"组件，就不能创建"密码"组件（除非它在列表中）
+        - 绝对限制：事件流程内只能只能使用<组件使用文档>中声明的js或js-autorun组件，以及<当前流程内允许连接的组件端口说明>内明确列出的ui组件。
+        - 即使需求中提到"文本框"、"下拉框"等UI元素，如果不在允许列表中，绝对不能创建。如果允许列表中只有"按钮"和"账号"组件，就不能创建"密码"组件（除非它在列表中）
         - 禁止基于组件功能相似性进行推测性创建
-        - 创建ui节点时，comId必须与允许列表中的组件id完全一致
-        - 事件流程内只能创建js或js-autorun组件，只能使用<允许添加的组件/> 中声明的js或js-autorun组件。
+        - 禁止创建没有意义的节点，所有创建的节点都必须被连接，否则视为没有意义的节点
     </createCom>
 
     <connectTo>
       从一个节点的输出端口连接到下一个节点的输入端口，连接的前提是已经通过<createCom>创建好了可连接的节点
       该action在结构上严格遵循以下格式：[output, "connectTo", input]
         - output 当前连接的输出端口，格式以Typescript的形式说明如下：
+          - Output：当输出端口是当前流程的输出
+          - UIOutput：当输出端口是ui组件节点
+          - JSOutput：当输出端口是js、js-autorun组件节点
           \`\`\`typescript
           // 如果输出端口是当前流程的输出
-          type Output1 = {
+          type Output = {
             type: "com";
             comId: string; 当前需要创建事件流程的组件id
             outputId: string; 当前需要创建事件流程对应的outputId
           }
 
           // 如果输出端口是ui组件节点
-          type UiOutput = {
+          type UIOutput = {
             type: "com";
             outputId: string;  // 当前节点的输出outputId
-            instanceId: string; 实例id，由于ui组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分
+            instanceId: string; // 实例id，由于ui组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分
           }
 
           // 如果输出端口是js、js-autorun组件节点
-          type UiOutput = {
+          type JSOutput = {
             type: "com";
             comId: string; //新添加的组件id，禁止重复使用已存在的组件id
             outputId: string; // 当前节点的输出outputId
@@ -282,6 +284,8 @@ ${connectableComponents}
           \`\`\`
         - "connectTo" 当前action类型，是一个默认值
         - input 连接的参数，格式以Typescript的形式说明如下：
+          - UIInput：当输入端口是ui组件节点
+          - JSInput：当输入端口是js、js-autorun组件节点
           \`\`\`typescript
           // 连接ui类型的输入端口
           type UIInput = {
@@ -298,7 +302,7 @@ ${connectableComponents}
             /** 类型，目前默认为"com" */
             type: "com";
             /** 组件id */ */
-            comId: string;
+            comId: string; // 新添加的组件id，对应<createCom>创建时的comId；
             /** 输入id */
             inputId: string;
           }
@@ -336,12 +340,32 @@ ${connectableComponents}
 ["createCom",{"type":"uiCom","comId":"a","inputId":"input","instanceId":"instanceIda1"}]
 [{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","inputId":"input","instanceId":"instanceIda1"}]
 ["createCom",{"type":"uiCom","comId":"b","inputId":"input","instanceId":"instanceIdb1"}]
-[{"type":"com","instanceId":"instanceIdb1","outputId":"inputDone"},"connectTo",{"type":"com","inputId":"input","instanceId":"instanceIdb1"}]`,
+[{"type":"com","instanceId":"instanceIda1","outputId":"inputDone"},"connectTo",{"type":"com","inputId":"input","instanceId":"instanceIdb1"}]`,
         fileName: '当前组件的点击事件流程搭建.json'
       })}
           </assistant_response>
         </example>
+        <example>
+          <user_query>点击后获取两次a的值</user_query>
+          <assistant_response>
+            好的，我将为当前组件的点击事件搭建事件流程，点击后获取a的值两次
+
+            由于每个输入端口只能被一个输出端口连接，所以即使是相同的输入端口，需要创建两个不同的节点
+
+            ${fileFormat({
+              content: `["createEvent",comId,outputId]
+["createCom",{"type":"uiCom","comId":"a","inputId":"input","instanceId":"instanceIda1"}]
+[{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","inputId":"input","instanceId":"instanceIda1"}]
+["createCom",{"type":"uiCom","comId":"a","inputId":"input","instanceId":"instanceIda2"}]
+[{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","inputId":"input","instanceId":"instanceIda2"}]`,
+              fileName: 'ui节点的相同输入端口连接.json'
+            })}
+          </assistant_response>
+        </example>
       </examples>
+
+      注意：
+        - 关键特性：每个输出端口可以连接多个输入端口，但每个输入端口只能被一个输出端口连接。
     </connectTo>
 
     <examples>
@@ -369,7 +393,6 @@ ${connectableComponents}
   
     注意：actions文件每一行遵循 JSON 语法，禁止非法代码，禁止出现内容省略提示、单行注释、省略字符。
       - actions返回的内容格式需要一行一个action，每一个action需要压缩，不要包含缩进等多余的空白字符；
-      - 每一条action都禁止换行，一定要注意把换行符进行转译；
       - 禁止包含任何注释（包括单行//和多行/* */）
       - 禁止出现省略号(...)或任何占位符
       - 确保所有代码都是完整可执行的，不包含示例片段
@@ -383,6 +406,8 @@ ${connectableComponents}
         - 搭建流程前，必须先创建流程
       - 禁止重复使用相同的action；
       - 当一个输出连接多个输入时，确保生成的 actions 按顺序列出所有连接，并判断它们是并行（同时触发，无依赖）还是串行（有先后依赖，需接力执行），避免将独立操作错误地编排为串行。
+      - 所有创建的节点都必须被连接，禁止创建没有意义的节点。
+      - 节点的每个输入端口只能被连接一次，多次连接会导致错误。
   </关于actions>
 </如何通过action搭建事件流程>
 `
@@ -396,6 +421,7 @@ ${connectableComponents}
         params: any;
       }[] = [];
       const actionsFile = getFiles(files, { extName: 'json' })
+      console.log("[actionsFile]", actionsFile)
 
       if (actionsFile) {
         actions = streamActionsParser(actionsFile.content ?? "");
