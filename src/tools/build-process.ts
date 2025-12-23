@@ -111,17 +111,17 @@ function buildProcess(props: any) {
         return pre + `<${title}>
 组件标题：${title}
 组件id：${id}
-可连接的输入端口：${inputs.length ? inputs.reduce((pre: string, { hostId, title, rels }: any) => {
+可连接的输入端口：${inputs.length ? inputs.reduce((pre: string, { hostId, title, rels, description }: any) => {
   return pre + `
- - ${title}（${hostId}）
+ - ${title}（${hostId}）${description ? `说明：${description}` : ""}
   - 关联输出端口：${rels?.length ? rels.reduce((pre: any, { id, title }: any) => {
     return pre + `${title}（${id}），`
   }, "") : "无"}`
 }, "") : "无"}
-</${title}>\n
 可创建的事件：${outputs?.length ? outputs.reduce((pre: any, { hostId, title }: any) => {
   return pre + ` \n- ${title}（${hostId}）`
-}, "") : "无"}`;
+}, "") : "无"}
+</${title}>\n`;
       }, "")
 
       // const createEventFlow = componentOutlineInfo.outputs.reduce((pre, { hostId, title }) => {
@@ -138,7 +138,7 @@ function buildProcess(props: any) {
 
       return `<工具总览>
 你是一个用于事件流程搭建的工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深流程搭建专家，逻辑严谨，拥有专业的搭建能力。
-你的任务是根据「用户需求」和「当前组件上下文」，生成actions，搭建流程完成用户的需求
+你的任务是根据「用户需求」和「当前组件上下文」以及「需求分析」，生成actions，搭建流程完成用户的需求
 注意：所有的action包含在唯一一份actions文件下。
 </工具总览>
 
@@ -196,11 +196,16 @@ ${allPageInfo}
 </可跳转场景>
 
 <解释actions的调用过程>
-- 输出思考过程
+- 输出思考过程，以通俗易懂的语言，不要出现比如以"思考过程"、"解释"等类似字眼为标题的结构化内容
 - 解释各类无法连接的原因，作用域隔离、组件未声明等
   - 如果组件在页面中，但是不在<当前作用域>内，一定是作用域隔离，在解释中要提到作用域隔离
   - 组件未声明，通常是需要使用的计算组件不存在，没有提供这类计算组件
 </解释actions的调用过程>
+
+<思考建议>
+- 当用户提出刷新某个区域或组件，当区域或组件没有对应实现的输入时，可以思考下是否可以通过调用该区域或组件的下的子组件的输入来完成需求
+- 所有在<组件使用文档>中声明的rtType为js或js-autorun组件都必须被使用，这是需求分析后的组件选型，满足需求是一定要用到的
+</思考建议>
 
 <如何通过action搭建事件流程>
   通过一系列的action来分步骤完成对事件流程的搭建，请返回以下格式以驱动MyBricks对事件流程的搭建。
@@ -222,6 +227,9 @@ ${allPageInfo}
         content: `["createEvent",comId,outputId]`,
         fileName: '创建流程.json'
       })}
+
+      注意：
+       - 创建事件流程后，该事件内必须要有节点连接，否则禁止创建
     </createEvent>
 
     <createCom>
@@ -479,7 +487,7 @@ ${allPageInfo}
 `
     },
     stream: (params: any) => {
-      const { files, status } = params;
+      const { files, status, replaceContent } = params;
       let actions: {
         comId: string;
         outputId: string;
@@ -487,7 +495,6 @@ ${allPageInfo}
         params: any;
       }[] = [];
       const actionsFile = getFiles(files, { extName: 'json' })
-      console.log("[actionsFile]", actionsFile)
 
       if (actionsFile) {
         actions = streamActionsParser(actionsFile.content ?? "");
@@ -550,10 +557,14 @@ ${allPageInfo}
         } catch (error) { }
       }
 
-      return "";
+      const file = files[0];
+      if (file) {
+        return replaceContent.replace(file.fileName, "");
+      }
+      return replaceContent;
     },
     execute: (params: any) => {
-      const { files, content } = params;
+      const { files, content, replaceContent } = params;
       const actionsFile = getFiles(files, { extName: 'json' })
 
       if (!actionsFile) {
@@ -563,10 +574,7 @@ ${allPageInfo}
         }
       }
 
-      return {
-        llmContent: "完成",
-        displayContent: "完成"
-      }
+      return replaceContent.replace(actionsFile.fileName, "");
     },
     aiRole: "architect",
   }
