@@ -1,4 +1,4 @@
-import { fileFormat, RequestError } from '@mybricks/rxai'
+import { fileFormat, RxaiError } from '@mybricks/rxai'
 import { getFiles } from './utils'
 import { getDevicePrompt } from './../preset/prompts'
 import { DeviceType } from './../types'
@@ -133,7 +133,7 @@ ${getDevicePrompt(config.deviceType)}
         errorContent = JSON.parse(content)
       } catch (error) { }
       if (errorContent && errorContent?.message) {
-        throw new RequestError(`网络错误，${errorContent?.message}`)
+        throw new RxaiError(`网络错误，${errorContent?.message}`, "request");
       }
 
       const projectFile: any = getFiles(files, { extName: 'json' });
