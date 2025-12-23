@@ -2,6 +2,7 @@ interface AiServiceAPI {
   global: {
     title: string;
     api: {
+      getAllPageInfo: () => {pageAry: any[]}[];
       getAllComDefPrompts: () => string;
     }
   };
@@ -33,8 +34,8 @@ interface AiServiceAPI {
   diagram: {
     title: string;
     api: {
-      createDiagram: (type: "comEvent", params: { comId: string; outputId: string; }) => { id: string; title: string }
-      updateDiagram: (diagramId: string, actions: any[], status: string) => void;
+      createDiagram: (...args: any) => { id: string; title: string }
+      updateDiagram: (...args: any) => void;
     }
   }
 }

@@ -77,8 +77,28 @@ function buildProcess(props: any) {
       const pageOutlineInfo = props.getPageOutlineInfo();
       // console.log("[pageOutlineInfo - 找出所有可用连接输入的端口]", pageOutlineInfo)
 
+      const targetPageId = props.getPageId();
+      const allPageInfo = props.getAllPageInfo()?.reduce((pre: string, { pageAry }: any) => {
+        return pageAry.reduce((pre: any, { id, title, type, inputs, outputs }: any) => {
+          if (id === targetPageId) {
+            // 跳过当前页
+            return pre;
+          }
+
+          return (pre ? (pre + "\n") : "") + `<${title}>` + 
+          `\n场景名称：${title}` + 
+          `\nsceneId: ${id}` + 
+          `\n输入端口列表：${inputs.reduce((pre: string, { id, title }: any) => {
+            return pre + `\n` + ` - ${title}（${id}）`
+          }, "")}` + 
+          `\n输出端口列表：${outputs.reduce((pre: string, { id, title }: any) => {
+            return pre + `\n` + ` - ${title}（${id}）`
+          }, "")}`
+        }, "")
+      }, "") || "无";
+
       const connectableComponents = findConnectableComponentsForId(pageOutlineInfo, componentOutlineInfo.id).reduce((pre, component: any) => {
-        const { id, title, inputs } = component;
+        const { id, title, inputs, outputs } = component;
 // <按钮>
 // 组件标题：按钮
 // 组件id：u_xxx
@@ -98,13 +118,16 @@ function buildProcess(props: any) {
     return pre + `${title}（${id}），`
   }, "") : "无"}`
 }, "") : "无"}
-</${title}>\n`;
+</${title}>\n
+可创建的事件：${outputs?.length ? outputs.reduce((pre: any, { hostId, title }: any) => {
+  return pre + ` \n- ${title}（${hostId}）`
+}, "") : "无"}`;
       }, "")
 
-      const createEventFlow = componentOutlineInfo.outputs.reduce((pre, { hostId, title }) => {
-        return pre + (!pre ? "" : "\n\n") + ` - ${title}（${hostId}）`;
-        // return pre + (!pre ? "" : "\n\n") + `事件名称：${title}\noutputId: ${hostId}`;
-      }, "")
+      // const createEventFlow = componentOutlineInfo.outputs.reduce((pre, { hostId, title }) => {
+      //   return pre + (!pre ? "" : "\n\n") + ` - ${title}（${hostId}）`;
+      //   // return pre + (!pre ? "" : "\n\n") + `事件名称：${title}\noutputId: ${hostId}`;
+      // }, "")
 
       // const allowComponents = props.getAllComDefPrompts();
 
@@ -119,7 +142,9 @@ function buildProcess(props: any) {
 注意：所有的action包含在唯一一份actions文件下。
 </工具总览>
 
-重要根据！：action的生成必须基于提供的<当前组件可搭建的事件流程>和<当前流程内允许连接的组件端口说明>，不允许捏造、猜测、基于客观事实进行生成。
+<注意>
+1. 关注并分析需求，当需求无法满足时，禁止猜测、曲解用户需求，直接告诉用户无法实现并给出具体的原因
+</注意>
 
 <关于MyBricks事件流程>
   MyBricks是一个低代码平台，可以通过连接端口等方式，快速构建事件逻辑。
@@ -145,9 +170,15 @@ function buildProcess(props: any) {
   组件的输出端口id，也是事件id。
 </关于MyBricks事件流程>
 
-<当前组件可搭建的事件流程>
-> 事件名称（事件id）
-${createEventFlow}
+<当前作用域>
+重要限制：
+- 可调用的UI节点必须严格限制在当前作用域内
+- 禁止使用任何未在此处明确列出的UI组件
+- 即使需求暗示了某个UI操作，如果对应的UI组件不在该列表中，也不能创建
+- 不允许基于相似功能进行推测性连接
+
+UI节点
+${connectableComponents}
 
 注意：
   - 除了上述列出的事件外，还可以从<组件使用文档>的<可以使用的配置项>内获取可创建的事件outputId。
@@ -158,18 +189,18 @@ ${createEventFlow}
       "outputId": "事件id"
     }
   - 如果上述列出的事件以及<可以使用的配置项>中没有符合要求的事件，不允许捏造、猜测、基于客观事实进行生成。
-</当前组件可搭建的事件流程>
+</当前作用域>
 
-<当前流程内允许连接的组件端口说明>
-重要限制：
-- 可调用的UI节点必须严格限制在当前列出的组件范围内
-- 禁止使用任何未在此处明确列出的UI组件
-- 即使需求暗示了某个UI操作，如果对应的UI组件不在列表中，也不能创建
-- 不允许基于相似功能进行推测性连接
+<可跳转场景>
+${allPageInfo}
+</可跳转场景>
 
-ui组件
-${connectableComponents}
-</当前流程内允许连接的组件端口说明>
+<解释actions的调用过程>
+- 输出思考过程
+- 解释各类无法连接的原因，作用域隔离、组件未声明等
+  - 如果组件在页面中，但是不在<当前作用域>内，一定是作用域隔离，在解释中要提到作用域隔离
+  - 组件未声明，通常是需要使用的计算组件不存在，没有提供这类计算组件
+</解释actions的调用过程>
 
 <如何通过action搭建事件流程>
   通过一系列的action来分步骤完成对事件流程的搭建，请返回以下格式以驱动MyBricks对事件流程的搭建。
@@ -184,7 +215,7 @@ ${connectableComponents}
       该action在结构上严格遵循以下格式：["createEvent",comId, outputId]
         - "createEvent" 当前action类型，是一个默认值
         - comId 当前需要创建事件流程的组件id
-        - outputId 当前需要创建事件流程对应的outputId，<当前组件可搭建的事件流程>
+        - outputId 当前需要创建事件流程对应的outputId
       
       例如，在任何的事件流程搭建之前，都需要先创建流程，可以返回以下内容：
       ${fileFormat({
@@ -198,22 +229,21 @@ ${connectableComponents}
 
       该action在结构上严格遵循以下格式：["createCom", params]
         - "createCom" 当前action类型，是一个默认值
-        - params 创建节点的参数，格式以Typescript的形式说明如下：
-          - UIParams：当节点为UI节点时，需要传递的参数
-          - JSParams：当节点为JS节点时，需要传递的参数
+        - params 创建节点的参数，各节点参数格式以Typescript的形式说明如下：
+          - 创建UI节点，可创建节点取自<当前作用域>中列出的组件
           \`\`\`typescript
-          // 创建ui节点参数，仅允许使用<当前流程内允许连接的组件端口说明>内明确列出的ui组件
-          type UIParams = {
+          type Params = {
             type: "uiCom" // 类型，用于区分节点类型，默认uiCom
-            comId: string // 对应组件id，仅允许使用<当前流程内允许连接的组件端口说明>内明确列出的ui组件
-            inputId: string // 输入端口id
-            instanceId: string // 实例id，由于ui组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分
+            comId: string // 对应组件id，仅允许使用<当前作用域>内明确列出的ui组件
+            inputId: string // 输入端口id，仅允许使用<当前作用域>内明确列出的ui组件的**可连接的输入端口**
+            instanceId: string // 实例id，由于ui组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分，在整个actions中，instanceId只能被连接一次
           }
-
-          // 创建js、js-autorun节点参数
-          type JSParams = {
+          \`\`\`
+          - 创建js、js-autorun节点，可创建节点取自<组件使用文档>中声明的js或js-autorun组件
+          \`\`\`typescript
+          type Params = {
             type: "calculate" // 类型，用于区分节点类型，默认calculate
-            title: string // 节点标题，要高度语义话，能让用户一眼明白这个节点的作用
+            title: string // 节点标题，要求高度语义化，能让用户一眼明白这个节点的作用
             ns: string // 在 <组件使用文档>中声明的js或js-autorun组件namespace
             comId:string //新添加的组件id，禁止重复使用已存在的组件id
             configs: Configs // 添加组件可以配置的信息,
@@ -235,6 +265,24 @@ ${connectableComponents}
             value: any//需要配置的value
           }[]
           \`\`\`
+          - 页面跳转，场景跳转，唤起对话框
+          \`\`\`typescript
+          type Params = {
+            type: "scenes" // 类型，用于区分节点类型，默认scenes
+            comId: string //新添加的组件id，禁止重复使用已存在的组件id
+            sceneId: string // 对应<可跳转场景>的sceneId
+            // 输入端口列表，对应<可跳转场景>的场景输入端口列表
+            inputs: {
+              id: string;
+              title: string;
+            }[]
+            // 输出端口列表，对应<可跳转场景>的场景输出端口列表
+            outputs: {
+              id: string;
+              title: string;
+            }[]
+          }
+          \`\`\`
 
       例如，用户要求ui组件a的outputa1事件触发时调用js、js-autorun组件b的输入端口inputb1，b执行结束后把结果传给ui组件c的inputc1，可以返回以下action：
       ${fileFormat({
@@ -247,10 +295,11 @@ ${connectableComponents}
       })}
 
       注意：
-        - 绝对限制：事件流程内只能只能使用<组件使用文档>中声明的js或js-autorun组件，以及<当前流程内允许连接的组件端口说明>内明确列出的ui组件。
-        - 即使需求中提到"文本框"、"下拉框"等UI元素，如果不在允许列表中，绝对不能创建。如果允许列表中只有"按钮"和"账号"组件，就不能创建"密码"组件（除非它在列表中）
+        - 绝对限制：事件流程内只能只能使用<组件使用文档>中声明的js或js-autorun组件，以及<当前作用域>内明确列出的ui组件。
+        - 即使需求中提到"文本框"、"下拉框"等UI元素，如果不在<当前作用域>中，绝对不能创建。如果<当前作用域>中只有"按钮"和"账号"组件，就不能创建"密码"组件（除非它在<当前作用域>中）
         - 禁止基于组件功能相似性进行推测性创建
         - 禁止创建没有意义的节点，所有创建的节点都必须被连接，否则视为没有意义的节点
+        - 所有创建的节点都必须被<connectTo>进行连接
     </createCom>
 
     <connectTo>
@@ -272,7 +321,7 @@ ${connectableComponents}
           type UIOutput = {
             type: "com";
             outputId: string;  // 当前节点的输出outputId
-            instanceId: string; // 实例id，由于ui组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分
+            instanceId: string; // 实例id，由于ui组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分，在整个actions中，instanceId只能被连接一次
           }
 
           // 如果输出端口是js、js-autorun组件节点
@@ -293,7 +342,7 @@ ${connectableComponents}
             type: "com";
             /** 输入id */
             inputId: string;
-            /** 实例id，由于ui组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分 */
+            /** 实例id，由于ui组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分，在整个actions中，instanceId只能被连接一次 */
             instanceId: string;
           }
 
@@ -362,10 +411,20 @@ ${connectableComponents}
             })}
           </assistant_response>
         </example>
+        <example>
+          <user_query>点击后设置a</user_query>
+          <assistant_response>
+            组件a不在当前作用域内，无法设置
+            ${fileFormat({
+              content: `["createEvent",comId,outputId]`,
+              fileName: '组件不在作用域内.json'
+            })}
+          </assistant_response>
+        </example>
       </examples>
 
       注意：
-        - 关键特性：每个输出端口可以连接多个输入端口，但每个输入端口只能被一个输出端口连接。
+        - 每个输出端口可以连接多个输入端口，但每个输入端口只能被一个输出端口连接。
     </connectTo>
 
     <examples>
@@ -386,7 +445,11 @@ ${connectableComponents}
       <example>
         <user_query>点击后设置a</user_query>
         <assistant_response>
-          由于a与当前组件不在同一个作用域内，<当前流程内允许连接的组件端口说明>内不存在a组件，无法直接设置
+          组件a不在当前作用域内，无法设置
+          ${fileFormat({
+            content: `["createEvent",comId,outputId]`,
+            fileName: '组件不在作用域内.json'
+          })}
         </assistant_response>
       </example>
     </examples>
@@ -409,6 +472,9 @@ ${connectableComponents}
       - 所有创建的节点都必须被连接，禁止创建没有意义的节点。
       - 节点的每个输入端口只能被连接一次，多次连接会导致错误。
   </关于actions>
+
+  注意：
+   - 当需求无法通过actions实现时，实事求是告诉用户即可，禁止使用其他方式实现。
 </如何通过action搭建事件流程>
 `
     },
@@ -470,14 +536,16 @@ ${connectableComponents}
             }
           }
 
-          if (!currentDiagram) {
-            console.error("currentDiagram is null", params);
-          } else {
-            // console.log(1, "[🚀 updateDiagram]", currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status)
-            props.updateDiagram(currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status);
-            currentDiagram.status = "pending";
-            updateDiagramActions = [];
-            // console.log(1, "[✅ updateDiagram]")
+          if (updateDiagramActions.length) {
+            if (!currentDiagram) {
+              console.error("currentDiagram is null", params);
+            } else {
+              // console.log(1, "[🚀 updateDiagram]", currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status)
+              props.updateDiagram(currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status);
+              currentDiagram.status = "pending";
+              updateDiagramActions = [];
+              // console.log(1, "[✅ updateDiagram]")
+            }
           }
         } catch (error) { }
       }
@@ -499,7 +567,8 @@ ${connectableComponents}
         llmContent: "完成",
         displayContent: "完成"
       }
-    }
+    },
+    aiRole: "architect",
   }
 }
 
