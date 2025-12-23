@@ -115,7 +115,9 @@ interface Action {
 const formatAction = (_action: string) => {
   let action;
   try {
-    action = JSON.parse(_action);
+    // TODO，后面要提示词处理的，这样replace不合理
+    const fixActionString = _action.replaceAll('{":parent/', '{"path":":parent/')
+    action = JSON.parse(fixActionString);
   } catch (error) {
     try {
       const repairedAction = jsonrepair(_action)
