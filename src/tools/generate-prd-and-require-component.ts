@@ -1,4 +1,4 @@
-import { fileFormat, RequestError, ToolError } from '@mybricks/rxai'
+import { fileFormat, RxaiError } from '@mybricks/rxai'
 import { getFiles, stripFileBlocks, jsonSafeParse } from './utils'
 import { getDevicePrompt } from '../preset/prompts';
 import { DeviceType } from './../types'
@@ -236,16 +236,13 @@ ${config.examples}
         errorContent = JSON.parse(content)
       } catch (error) { }
       if (errorContent && errorContent?.message) {
-        throw new RequestError(`网络错误，${errorContent?.message}`)
+        throw new RxaiError(`网络错误，${errorContent?.message}`, "request");
       }
 
       const prdFile = getFiles(files, { extName: 'md' });
 
       if (!prdFile?.content || prdFile?.content?.trim?.()?.length === 0) {
-        throw new ToolError({
-          llmContent: `未生成或者生成了错误的需求文档，请重试`,
-          displayContent: '生成需求文档失败，请重试'
-        })
+        throw new RxaiError("未生成或者生成了错误的需求文档，请重试", "tool", "生成需求文档失败，请重试")
       }
 
       const requireComsFile = getFiles(files, { extName: 'json' });
@@ -254,10 +251,7 @@ ${config.examples}
       try {
         requireComponents = jsonSafeParse(requireComsFile?.content);
       } catch (error) {
-        throw new ToolError({
-          llmContent: `解析组件选型错误，请检查格式，${error?.message}`,
-          displayContent: '生成组件需求失败，请重试'
-        })
+        throw new RxaiError(`解析组件选型错误，请检查格式，${error?.message}`, "tool", "生成组件需求失败，请重试");
       }
 
       if (Array.isArray(requireComponents)) {

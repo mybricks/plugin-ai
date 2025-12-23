@@ -1,4 +1,4 @@
-import { fileFormat, RequestError } from '@mybricks/rxai'
+import { fileFormat, RxaiError } from '@mybricks/rxai'
 import { getFiles, createActionsParser, getComponentOperationSummary, stripFileBlocks } from './utils'
 
 interface ModifyComponentToolParams {
@@ -613,7 +613,7 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
         errorContent = JSON.parse(content)
       } catch (error) { }
       if (errorContent && errorContent?.message) {
-        throw new RequestError(`网络错误，${errorContent?.message}`)
+        throw new RxaiError(`网络错误，${errorContent?.message}`, "request")
       }
 
       let actions: any = [];

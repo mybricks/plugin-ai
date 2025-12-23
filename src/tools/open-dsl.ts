@@ -1,4 +1,4 @@
-import { fileFormat, RetryError } from '@mybricks/rxai'
+import { fileFormat, RxaiError } from '@mybricks/rxai'
 
 interface ToolParams {
   onOpen?: (id: string) => void
@@ -46,10 +46,7 @@ DSL定义：将搭建信息总结成可视化的类JSX树状结构，包含当�
         const idsAry = ids.split(',')
 
         if (idsAry.length === 0) {
-          throw new RetryError({
-            displayContent: '没有要读取的上下文，请重试',
-            llmContent: `工具 ${NAME} 的调用缺少 ids 参数，请重新规划`
-          })
+          throw new RxaiError(`工具 ${NAME} 的调用缺少 ids 参数，请重新规划`, "retry", '没有要读取的上下文，请重试')
         }
 
         idsAry.forEach(id => {
@@ -57,17 +54,11 @@ DSL定义：将搭建信息总结成可视化的类JSX树状结构，包含当�
             config.onOpen?.(id)
           } catch (error) {
             console.warn(error)
-            throw new RetryError({
-              displayContent: `读取上下文${id}的信息失败，请重试`,
-              llmContent: `工具 ${NAME} 的调用失败，读取${id}的文档失败，错误信息为${error?.message}，请重新规划`
-            })
+            throw new RxaiError(`工具 ${NAME} 的调用失败，读取${id}的文档失败，错误信息为${error?.message}，请重新规划`, "retry", `读取上下文${id}的信息失败，请重试`)
           }
         })
       } else {
-        throw new RetryError({
-          displayContent: '读取上下文失败，请重试',
-          llmContent: `工具 ${NAME} 的调用缺少 ids 参数，请重新规划`
-        })
+        throw new RxaiError(`工具 ${NAME} 的调用缺少 ids 参数，请重新规划`, "retry", '读取上下文失败，请重试')
       }
       return {
         llmContent: "已打开",
