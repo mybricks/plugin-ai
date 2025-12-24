@@ -40,7 +40,7 @@ export const requestCommonAgent = (params: any) => {
         return (context.api.global.api as any).getAllPageInfo()
       },
       getComponentDoc(namespace: string) {
-        return context.api?.uiCom?.api?.getComEditorPrompts?.(namespace)
+        return (context.api?.global?.api?.getComEditorPrompts || context.api?.uiCom?.api?.getComEditorPrompts)?.(namespace)
       }
     } as any, outlineInfoManager)
 
@@ -175,9 +175,9 @@ export const requestCommonAgent = (params: any) => {
         }),
         MYBRICKS_TOOLS.Answer({}),
         MYBRICKS_TOOLS.BuildProcess({
-          getComId: () => focusInfo.comId,
+          // getComId: () => focusInfo.comId,
           getPageId: () => focusInfo.pageId,
-          getComponentOutlineInfo: () => context.api?.uiCom?.api?.getOutlineInfo(focusInfo.comId),
+          // getComponentOutlineInfo: () => context.api?.uiCom?.api?.getOutlineInfo(focusInfo.comId),
           getPageOutlineInfo: () => context.api?.page?.api?.getOutlineInfo(focusInfo.pageId),
           getAllComDefPrompts: () => context.api?.global?.api?.getAllComDefPrompts?.(),
           getAllPageInfo() {
@@ -234,7 +234,7 @@ export const requestCommonAgent = (params: any) => {
           const hasRequirement = toolNames.slice(0, generatePageIndex).some(name => requirementTools.includes(name));
           
           if (!hasRequirement) {
-            resultTools.splice(generatePageIndex, 0, ['node', MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName]);
+            resultTools.splice(generatePageIndex, 0, ['node', MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName, {mode: "refactor"}]);
             return resultTools
           }
         }
