@@ -641,3 +641,29 @@ export function jsonSafeParse(input: string): any {
     }
   }
 }
+
+/** PC */
+type PageInfoSPA = {
+  id: string;
+  title: string;
+  inputs: {id: string; title: string}[];
+  outputs: {id: string; title: string}[];
+}[]
+
+/** 鸿蒙 */
+type PageInfoMPA = {
+  pageAry: PageInfoSPA;
+}[]
+
+/** 获取pages，兼容spa和mpa */
+export const transformPageInfo = (pageInfo: PageInfoSPA | PageInfoMPA) => {
+  const pages: PageInfoSPA[number][] = [];
+  pageInfo?.forEach((page) => {
+    if ("pageAry" in page) {
+      pages.push(...page.pageAry);
+    } else {
+      pages.push(page)
+    }
+  })
+  return pages;
+}

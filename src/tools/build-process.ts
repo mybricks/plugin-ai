@@ -1,6 +1,6 @@
 import { fileFormat } from "@mybricks/rxai";
 import { jsonrepair } from 'jsonrepair'
-import { getFiles } from './utils'
+import { getFiles, transformPageInfo } from './utils'
 
 const NAME = 'build-event-flow'
 buildProcess.toolName = NAME
@@ -16,7 +16,6 @@ interface ComponentOutlineInfo {
 
 function buildProcess(props: any) {
   const streamActionsParser = createActionsParser();
-
 
   // 我需要从这份json中找到id为c的组件的所有的可连接的组件，可连接的组件被scope隔离，编写js实现
 
@@ -34,7 +33,7 @@ function buildProcess(props: any) {
   return {
     name: NAME,
     displayName: "搭建事件流程",
-    description: `搭建组件事件响应流程 - 专处理"当...时，要..."类需求
+    description: `搭建各类事件响应流程 - 专处理"当...时，要..."，"添加...事件/流程"，"增/删/改/查..."，涉及到数据的、以及需要驱动ui更新的等这一类需求
 
 参数：无
 工具分类：操作执行类
@@ -47,7 +46,7 @@ function buildProcess(props: any) {
 
 明确调用时机：
 当需求中出现以下任意特征时，请使用本工具：
-1. 句式特征："点击/输入/选择...后，需要..." 
+1. 句式特征："点击/输入/选择...后，需要..."，"添加事件/流程..."
 2. 关系特征：将组件A的某个事件与组件B的某个动作连接
 3. 流程特征：为交互事件配置后续的响应链
 
@@ -72,32 +71,44 @@ function buildProcess(props: any) {
       // TODO: <当前流程面板信息> 说明当前流程的起始端口
       // TODO: <可连接的组件> 罗列出可连接的ui组件、计算组件，输入输出信息
 
-      const componentOutlineInfo: ComponentOutlineInfo = props.getComponentOutlineInfo();
+      // const componentOutlineInfo: ComponentOutlineInfo = props.getComponentOutlineInfo();
       // console.log("[componentOutlineInfo]", componentOutlineInfo);
       const pageOutlineInfo = props.getPageOutlineInfo();
       // console.log("[pageOutlineInfo - 找出所有可用连接输入的端口]", pageOutlineInfo)
 
       const targetPageId = props.getPageId();
-      const allPageInfo = props.getAllPageInfo()?.reduce((pre: string, { pageAry }: any) => {
-        return pageAry.reduce((pre: any, { id, title, type, inputs, outputs }: any) => {
-          if (id === targetPageId) {
-            // 跳过当前页
-            return pre;
-          }
+      const pages = transformPageInfo(props.getAllPageInfo());
+      const allPageInfo = pages.reduce((pre: string, { id, title, type, inputs, outputs }: any) => {
+        if (id === targetPageId) {
+          // 跳过当前页
+          return pre;
+        }
 
-          return (pre ? (pre + "\n") : "") + `<${title}>` + 
-          `\n场景名称：${title}` + 
-          `\nsceneId: ${id}` + 
-          `\n输入端口列表：${inputs.reduce((pre: string, { id, title }: any) => {
-            return pre + `\n` + ` - ${title}（${id}）`
-          }, "")}` + 
-          `\n输出端口列表：${outputs.reduce((pre: string, { id, title }: any) => {
-            return pre + `\n` + ` - ${title}（${id}）`
-          }, "")}`
-        }, "")
+        return (pre ? (pre + "\n") : "") + `<${title}>` + 
+        `\n场景名称：${title}` + 
+        `\nsceneId: ${id}` + 
+        `\n输入端口列表：${inputs.reduce((pre: string, { id, title }: any) => {
+          return pre + `\n` + ` - ${title}（${id}）`
+        }, "")}` + 
+        `\n输出端口列表：${outputs.reduce((pre: string, { id, title }: any) => {
+          return pre + `\n` + ` - ${title}（${id}）`
+        }, "")}` + 
+        `\n</${title}>`
       }, "") || "无";
 
-      const connectableComponents = findConnectableComponentsForId(pageOutlineInfo, componentOutlineInfo.id).reduce((pre, component: any) => {
+      // TODO: 组织作用域信息
+      const findConnectableComponents = (components: any, result: any[] = []) => {
+        components?.forEach((component: any) => {
+          result.push(component)
+          component.slots?.forEach((slot: any) => {
+            findConnectableComponents(slot.components, result);
+          })
+        })
+
+        return result
+      }
+
+      const connectableComponents = findConnectableComponents(pageOutlineInfo.components ? pageOutlineInfo.components : [pageOutlineInfo]).reduce((pre, component: any) => {
         const { id, title, inputs, outputs } = component;
 // <按钮>
 // 组件标题：按钮
@@ -224,12 +235,14 @@ ${allPageInfo}
       
       例如，在任何的事件流程搭建之前，都需要先创建流程，可以返回以下内容：
       ${fileFormat({
-        content: `["createEvent",comId,outputId]`,
+        content: `["createEvent",comId,outputId]
+["createCom",params]
+[output,"connectTo",input]`,
         fileName: '创建流程.json'
       })}
 
       注意：
-       - 创建事件流程后，该事件内必须要有节点连接，否则禁止创建
+       - 创建事件流程后，该事件流程内必须要搭建具体的逻辑，否则禁止创建
     </createEvent>
 
     <createCom>
