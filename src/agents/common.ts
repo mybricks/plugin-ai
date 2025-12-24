@@ -190,6 +190,10 @@ export const requestCommonAgent = (params: any) => {
           updateDiagram: (...args: any) => {
             // console.log("[updateDiagram - args]", args)
             return context.api.diagram.api.updateDiagram(...args)
+          },
+          updatePage: (...args: any) => {
+            // console.log("[updatePage]", context.api?.page?.api?.updatePage)
+            return context.api?.page?.api?.updatePage?.(focusInfo.pageId, ...args)
           }
         }),
       ],

@@ -17,8 +17,6 @@ interface ComponentOutlineInfo {
 function buildProcess(props: any) {
   const streamActionsParser = createActionsParser();
 
-  // 我需要从这份json中找到id为c的组件的所有的可连接的组件，可连接的组件被scope隔离，编写js实现
-
   /** key: comid-outputid -> diagramId */
   const diagramIdMap: Record<string, {
     id: string;
@@ -82,7 +80,55 @@ function buildProcess(props: any) {
       // console.log("[componentOutlineInfo]", componentOutlineInfo);
       const pageOutlineInfo = props.getPageOutlineInfo();
       // console.log("[pageOutlineInfo - 找出所有可用连接输入的端口]", pageOutlineInfo)
+      const indent = (depth: number) => {
+        return depth ? "  ".repeat(depth) : "";
+      }
+    
+      function scopeBasedComponentStructure(slot: any, depth = 0) {
+        let result = "";
+        const prefix = indent(depth);
+        if (slot.scope) {
+          // 作用域插槽（页面）
+          // 插槽id：_root_
+          // 子组件：
+          result += `${prefix}作用域插槽（${slot.title}）` + 
+            `\n${prefix}插槽id：${slot.id}` + 
+            `\n${prefix}子组件：\n`
+        }
+    
+        slot.components?.forEach((component: any) => {
+          const { id, title, inputs, outputs, slots } = component
+          const prefix = indent(depth);
+          const prefix2 = indent((depth + 1));
+          const prefix3 = indent((depth + 2));
+          const prefix4 = indent((depth + 3));
+    
+          result += `${prefix}- ${title}\n` + 
+            `${prefix2}组件id：${id}\n` +
+            `${prefix2}可连接的输入端口：${inputs?.length ? inputs.filter(({ hostId }: any) => {
+              return !["_config_", "_setStyle"].includes(hostId)
+            }).reduce((pre: string, { hostId, title, rels, description }: any, index: number) => {
+              return pre + `\n${prefix2}${index + 1}. ${title}（${hostId}）` + 
+              (description ? `\n${prefix3}描述：${description}` : "") + 
+              `\n${prefix3}关联输出端口：${rels?.length ? rels.reduce((pre: string, {id, title}: any, index: number) => {
+                return pre + `\n${prefix4}${index + 1}. ${title}（${id}）`
+              }, "") : "无"}`
+            }, "") : "无"}\n\n` + 
+            `${prefix2}可创建的事件：${outputs?.length ? outputs.reduce((pre: string, { hostId, title, description }: any, index: number) => {
+              return pre + `\n${prefix2}${index + 1}. ${title}（${hostId}）` + 
+              (description ? `\n${prefix2}描述：${description}` : "")
+            }, "") : "无"}\n\n`;
+    
+          
+            slots?.forEach((slot: any) => {
+              result += scopeBasedComponentStructure(slot, slot.scope ? depth + 1 : depth);
+            })
+        });
+    
+        return result;
+      }
 
+      const connectableComponents = scopeBasedComponentStructure({id:"_root_", title: "页面", scope: true, components: [pageOutlineInfo]});
       const targetPageId = props.getPageId();
       const pages = transformPageInfo(props.getAllPageInfo());
       const allPageInfo = pages.reduce((pre: string, { id, title, type, inputs, outputs }: any) => {
@@ -103,44 +149,44 @@ function buildProcess(props: any) {
         `\n</${title}>`
       }, "") || "无";
 
-      // TODO: 组织作用域信息
-      const findConnectableComponents = (components: any, result: any[] = []) => {
-        components?.forEach((component: any) => {
-          result.push(component)
-          component.slots?.forEach((slot: any) => {
-            findConnectableComponents(slot.components, result);
-          })
-        })
+//       // TODO: 组织作用域信息
+//       const findConnectableComponents = (components: any, result: any[] = []) => {
+//         components?.forEach((component: any) => {
+//           result.push(component)
+//           component.slots?.forEach((slot: any) => {
+//             findConnectableComponents(slot.components, result);
+//           })
+//         })
 
-        return result
-      }
+//         return result
+//       }
 
-      const connectableComponents = findConnectableComponents(pageOutlineInfo.components ? pageOutlineInfo.components : [pageOutlineInfo]).reduce((pre, component: any) => {
-        const { id, title, inputs, outputs } = component;
-// <按钮>
-// 组件标题：按钮
-// 组件id：u_xxx
-// 可连接的输入端口：
-//  - 修改按钮文本（buttonText）
-//   - 关联输出端口：无
-//  - 设置按钮禁用（setDisabled）
-//   - 关联输出端口：设置按钮禁用完成（setDisabledSuccess）
-// </按钮>
-        return pre + `<${title}>
-组件标题：${title}
-组件id：${id}
-可连接的输入端口：${inputs.length ? inputs.reduce((pre: string, { hostId, title, rels, description }: any) => {
-  return pre + `
- - ${title}（${hostId}）${description ? `说明：${description}` : ""}
-  - 关联输出端口：${rels?.length ? rels.reduce((pre: any, { id, title }: any) => {
-    return pre + `${title}（${id}），`
-  }, "") : "无"}`
-}, "") : "无"}
-可创建的事件：${outputs?.length ? outputs.reduce((pre: any, { hostId, title }: any) => {
-  return pre + ` \n- ${title}（${hostId}）`
-}, "") : "无"}
-</${title}>\n`;
-      }, "")
+//       const connectableComponents = findConnectableComponents(pageOutlineInfo.components ? pageOutlineInfo.components : [pageOutlineInfo]).reduce((pre, component: any) => {
+//         const { id, title, inputs, outputs } = component;
+// // <按钮>
+// // 组件标题：按钮
+// // 组件id：u_xxx
+// // 可连接的输入端口：
+// //  - 修改按钮文本（buttonText）
+// //   - 关联输出端口：无
+// //  - 设置按钮禁用（setDisabled）
+// //   - 关联输出端口：设置按钮禁用完成（setDisabledSuccess）
+// // </按钮>
+//         return pre + `<${title}>
+// 组件标题：${title}
+// 组件id：${id}
+// 可连接的输入端口：${inputs.length ? inputs.reduce((pre: string, { hostId, title, rels, description }: any) => {
+//   return pre + `
+//  - ${title}（${hostId}）${description ? `说明：${description}` : ""}
+//   - 关联输出端口：${rels?.length ? rels.reduce((pre: any, { id, title }: any) => {
+//     return pre + `${title}（${id}），`
+//   }, "") : "无"}`
+// }, "") : "无"}
+// 可创建的事件：${outputs?.length ? outputs.reduce((pre: any, { hostId, title }: any) => {
+//   return pre + ` \n- ${title}（${hostId}）`
+// }, "") : "无"}
+// </${title}>\n`;
+//       }, "")
 
       // const createEventFlow = componentOutlineInfo.outputs.reduce((pre, { hostId, title }) => {
       //   return pre + (!pre ? "" : "\n\n") + ` - ${title}（${hostId}）`;
@@ -186,14 +232,26 @@ function buildProcess(props: any) {
 
   **outoutId**
   组件的输出端口id，也是事件id。
+
+  **作用域插槽**
+  作用域插槽用来对组件进行严格的隔离，作用域插槽内的组件允许连接作用域插槽外的组件，作用域插槽外的组件禁止连接作用域插槽内的组件。
+
+  **变量**
+  变量是一个内置的特殊js组件，用于在各个作用域插槽内缓存数据。但是它区别于js、js-autorun组件的不同之处在于，变量与ui节点一样输入端口可能被多次连接。
+  输入端口：
+  - set 赋值，传入新的变量值
+  - get 读取当前变量值
+  输出端口：
+  - return 输入操作完成后输出最新的变量值
+
 </关于MyBricks事件流程>
 
-<当前作用域>
+<可连接的ui组件说明>
 重要限制：
-- 可调用的UI节点必须严格限制在当前作用域内
 - 禁止使用任何未在此处明确列出的UI组件
 - 即使需求暗示了某个UI操作，如果对应的UI组件不在该列表中，也不能创建
 - 不允许基于相似功能进行推测性连接
+- 重点关注作用域插槽信息，以下节点说明以作用域插槽为分水岭区分父子关系，作用域插槽内组件可以连接作用域插槽外部的组件，作用域插槽外部的组件禁止连接作用域插槽内的组件
 
 UI节点
 ${connectableComponents}
@@ -207,7 +265,7 @@ ${connectableComponents}
       "outputId": "事件id"
     }
   - 如果上述列出的事件以及<可以使用的配置项>中没有符合要求的事件，不允许捏造、猜测、基于客观事实进行生成。
-</当前作用域>
+</可连接的ui组件说明>
 
 <可跳转场景>
 ${allPageInfo}
@@ -215,14 +273,13 @@ ${allPageInfo}
 
 <解释actions的调用过程>
 - 输出思考过程，以通俗易懂的语言，不要出现比如以"思考过程"、"解释"等类似字眼为标题的结构化内容
-- 解释各类无法连接的原因，作用域隔离、组件未声明等
-  - 如果组件在页面中，但是不在<当前作用域>内，一定是作用域隔离，在解释中要提到作用域隔离
-  - 组件未声明，通常是需要使用的计算组件不存在，没有提供这类计算组件
+- 解释各类无法连接的原因，作用域插槽隔离、组件未声明等
 </解释actions的调用过程>
 
 <思考建议>
 - 当用户提出刷新某个区域或组件，当区域或组件没有对应实现的输入时，可以思考下是否可以通过调用该区域或组件的下的子组件的输入来完成需求
 - 所有在<组件使用文档>中声明的rtType为js或js-autorun组件都必须被使用，这是需求分析后的组件选型，满足需求是一定要用到的
+- 当需要临时存储数据、状态跟踪、缓存计算结果、或者数据可能在后续流程被使用或修改时，就需要声明变量来存储它
 </思考建议>
 
 <如何通过action搭建事件流程>
@@ -258,12 +315,12 @@ ${allPageInfo}
       该action在结构上严格遵循以下格式：["createCom", params]
         - "createCom" 当前action类型，是一个默认值
         - params 创建节点的参数，各节点参数格式以Typescript的形式说明如下：
-          - 创建UI节点，可创建节点取自<当前作用域>中列出的组件
+          - 创建UI节点，可创建节点取自<可连接的ui组件说明>中列出的组件
           \`\`\`typescript
           type Params = {
             type: "uiCom" // 类型，用于区分节点类型，默认uiCom
-            comId: string // 对应组件id，仅允许使用<当前作用域>内明确列出的ui组件
-            inputId: string // 输入端口id，仅允许使用<当前作用域>内明确列出的ui组件的**可连接的输入端口**
+            comId: string // 对应组件id，仅允许使用<可连接的ui组件说明>内明确列出的ui组件
+            inputId: string // 输入端口id，仅允许使用<可连接的ui组件说明>内明确列出的ui组件的**可连接的输入端口**
             instanceId: string // 实例id，由于ui组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分，在整个actions中，instanceId只能被连接一次
           }
           \`\`\`
@@ -311,6 +368,14 @@ ${allPageInfo}
             }[]
           }
           \`\`\`
+          - 创建变量节点，可创建节点取自<可连接的ui组件说明>中同作用域下的变量，以及在action过程中创建的变量
+          \`\`\`typescript
+          type Params = {
+            type: "var" // 类型，用于区分节点类型，默认var
+            varId: string // 对应变量组件id，仅允许使用<可连接的ui组件说明>中同作用域下的变量，以及在action过程中创建的变量
+            inputId: string // 输入端口id，仅允许使用<可连接的ui组件说明>内明确列出的ui组件的**可连接的输入端口**
+            instanceId: string // 实例id，由于变量组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分，在整个actions中，instanceId只能被连接一次
+          }
 
       例如，用户要求ui组件a的outputa1事件触发时调用js、js-autorun组件b的输入端口inputb1，b执行结束后把结果传给ui组件c的inputc1，可以返回以下action：
       ${fileFormat({
@@ -323,12 +388,38 @@ ${allPageInfo}
       })}
 
       注意：
-        - 绝对限制：事件流程内只能只能使用<组件使用文档>中声明的js或js-autorun组件，以及<当前作用域>内明确列出的ui组件。
-        - 即使需求中提到"文本框"、"下拉框"等UI元素，如果不在<当前作用域>中，绝对不能创建。如果<当前作用域>中只有"按钮"和"账号"组件，就不能创建"密码"组件（除非它在<当前作用域>中）
+        - 绝对限制：事件流程内只能只能使用<组件使用文档>中声明的js或js-autorun组件，以及<可连接的ui组件说明>内明确列出的ui组件。
+        - 即使需求中提到"文本框"、"下拉框"等UI元素，如果不在<可连接的ui组件说明>中，绝对不能创建。如果<可连接的ui组件说明>中只有"按钮"和"账号"组件，就不能创建"密码"组件（除非它在<可连接的ui组件说明>中）
         - 禁止基于组件功能相似性进行推测性创建
         - 禁止创建没有意义的节点，所有创建的节点都必须被连接，否则视为没有意义的节点
         - 所有创建的节点都必须被<connectTo>进行连接
     </createCom>
+
+    <defineVar>
+      在作用域插槽内创建变量
+      该action在结构上严格遵循以下格式：["defineVar", params]
+        - "defineVar" 当前action类型，是一个默认值
+        - params 创建节点的参数，各节点参数格式以Typescript的形式说明如下：
+          \`\`\`typescript
+          // 作用域插槽下可创建变量，需要提供comId、slotId用于区分添加目标，表达往哪个作用域插槽下添加
+          type Params = {
+            comId: string | "root"; // 当前作用域插槽的父组件id，如果是页面，使用默认值"root"
+            slotId: string; // 当前作用域插槽的slotId
+            id: string; // 新添加的组件id，禁止重复使用已存在的组件id
+            title: string; // 变量标题，要求高度语义化，能让用户一眼明白这个变量的作用
+            schema: Schema; // 标准JSON Schema协议，用于定义类型
+            initValue: any; // 变量的默认值，类型需要与JSON Schema定义保持一致
+          }
+          \`\`\`
+      例如，用户要求ui组件a的outputa1事件触发时存储输出内容，可以返回以下action：
+      ${fileFormat({
+        content: `["createEvent",a,outputa1]
+["defineVar",{"comId":"目标作用域插槽父组件id","slotId":"目标作用域插槽id","id":"新添加的变量id","title":"语义化的变量标题","schema":"标准JSON Schema协议","initValue":"变量初始值"}]
+["createCom",{"type":"var","varId":"新添加的变量id","inputId":"set",""instanceId": "instanceIdvar1""}]
+[{"type":"com","comId":"a","outputId":"outputa1"},"connectTo",{"type":"com","inputId":"set","instanceId":"instanceIdvar1"}]`,
+        fileName: '连接js组件.json'
+      })}
+    </defineVar>
 
     <connectTo>
       从一个节点的输出端口连接到下一个节点的输入端口，连接的前提是已经通过<createCom>创建好了可连接的节点
@@ -337,6 +428,7 @@ ${allPageInfo}
           - Output：当输出端口是当前流程的输出
           - UIOutput：当输出端口是ui组件节点
           - JSOutput：当输出端口是js、js-autorun组件节点
+          - VAROutput：当输出端口是变量组件节点
           \`\`\`typescript
           // 如果输出端口是当前流程的输出
           type Output = {
@@ -358,11 +450,19 @@ ${allPageInfo}
             comId: string; //新添加的组件id，禁止重复使用已存在的组件id
             outputId: string; // 当前节点的输出outputId
           }
+
+          // 如果输出端口是变量组件节点
+          type VAROutput = {
+            type: "com";
+            outputId: string;  // 当前节点的输出outputId
+            instanceId: string; // 实例id，由于变量组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分，在整个actions中，instanceId只能被连接一次
+          }
           \`\`\`
         - "connectTo" 当前action类型，是一个默认值
         - input 连接的参数，格式以Typescript的形式说明如下：
           - UIInput：当输入端口是ui组件节点
           - JSInput：当输入端口是js、js-autorun组件节点
+          - VARInput：当输入端口是变量组件节点
           \`\`\`typescript
           // 连接ui类型的输入端口
           type UIInput = {
@@ -382,6 +482,16 @@ ${allPageInfo}
             comId: string; // 新添加的组件id，对应<createCom>创建时的comId；
             /** 输入id */
             inputId: string;
+          }
+
+          // 连接变量类型的输入端口
+          type VARInput = {
+            /** 类型，目前默认为"com" */
+            type: "com";
+            /** 输入id */
+            inputId: string;
+            /** 实例id，由于变量组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分，在整个actions中，instanceId只能被连接一次 */
+            instanceId: string;
           }
           \`\`\`
 
@@ -442,10 +552,10 @@ ${allPageInfo}
         <example>
           <user_query>点击后设置a</user_query>
           <assistant_response>
-            组件a不在当前作用域内，无法设置
+            由于组件a与当前组件的作用域隔离限制，无法设置
             ${fileFormat({
               content: `["createEvent",comId,outputId]`,
-              fileName: '组件不在作用域内.json'
+              fileName: '组件间的作用域隔离.json'
             })}
           </assistant_response>
         </example>
@@ -473,10 +583,10 @@ ${allPageInfo}
       <example>
         <user_query>点击后设置a</user_query>
         <assistant_response>
-          组件a不在当前作用域内，无法设置
+          由于组件a与当前组件的作用域隔离限制，无法设置
           ${fileFormat({
             content: `["createEvent",comId,outputId]`,
-            fileName: '组件不在作用域内.json'
+            fileName: '组件间的作用域隔离.json'
           })}
         </assistant_response>
       </example>
@@ -534,8 +644,16 @@ ${allPageInfo}
           while (actions.length) {
             const action = actions.shift()!;
             // console.log("[action]", action)
+
+            if (action.type === "defineVar") {
+              // TODO: 创建变量测试
+              // 变量的创建没有顺序，遍历到直接调用即可
+              const { comId, ...other } = action;
+              props.updatePage([other], status)
+              continue
+            }
             
-            if (!["connectTo", "createCom"].includes(action.type)) {
+            if (!["connectTo", "createCom", "defineVar"].includes(action.type)) {
               if (updateDiagramActions.length) {
                 if (!currentDiagram) {
                   console.error("currentDiagram is null", params);
@@ -548,7 +666,7 @@ ${allPageInfo}
                 }
               }
               if (action.type === "createEvent") {
-                if (!diagramIdMap[action.comId]) {
+                if (!diagramIdMap[`${action.comId}-${action.outputId}`]) {
                   // console.log("[🚀 createDiagram]")
                   currentDiagram = {
                     ...props.createDiagram("comEvent", { comId: action.comId, outputId: action.outputId }),
@@ -689,6 +807,17 @@ const formatAction = (_action: string) => {
       outputId: action[2],
       type: action[0]
     }
+  } else if (action[0] === "defineVar") {
+    const params = action[1]
+    if (params.slotId === "_root_") {
+      // 人工干预，如果是_root_，不需要comId
+      Reflect.deleteProperty(params, "comId")
+    }
+    return {
+      comId: action[1].id,
+      type: action[0],
+      params
+    }
   } else if (action[1] === "connectTo") {
     return {
       comId: action[0].comId || action[0].instanceId,
@@ -701,42 +830,6 @@ const formatAction = (_action: string) => {
   }
 
   return {};
-
-  const [comId, outputId, type, params] = action;
-
-
-  // TODO: 提示词直接改一下吧
-  if (type === "connectTo") {
-    return {
-      comId,
-      type,
-      params: {
-        from: {
-          type: "com",
-          comId,
-          outputId
-        },
-        to: params
-      }
-    }
-  } else if (type === "createCom") {
-    const { ns, ...other } = params;
-    if (ns) {
-      other.namespace = ns;
-    }
-    return {
-      comId,
-      type,
-      params: other
-    }
-  }
-
-  return {
-    comId,
-    outputId,
-    type,
-    params
-  };
 };
 
 function findConnectableComponents(jsonData: any, targetId: any) {
