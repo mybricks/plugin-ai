@@ -234,7 +234,7 @@ export const requestCommonAgent = (params: any) => {
           const hasRequirement = toolNames.slice(0, generatePageIndex).some(name => requirementTools.includes(name));
           
           if (!hasRequirement) {
-            resultTools.splice(generatePageIndex, 0, ['node', MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName]);
+            resultTools.splice(generatePageIndex, 0, ['node', MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName, {mode: "refactor"}]);
             return resultTools
           }
         }
