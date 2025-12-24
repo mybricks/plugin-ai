@@ -177,6 +177,16 @@ class WorkSpace {
   }
 
   /**
+   * 检查文档状态
+   */
+  checkDocumentStatus(id: string) {
+    if (this.openedDocuments.some(doc => doc.id === id)) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * 获取项目结构描述
    */
   getProjectStruct(): string {
