@@ -4,6 +4,7 @@ interface AiServiceAPI {
     api: {
       getAllPageInfo: () => {pageAry: any[]}[];
       getAllComDefPrompts: () => string;
+      getComEditorPrompts: (...params: any) => string;
     }
   };
   page: {
@@ -26,6 +27,7 @@ interface AiServiceAPI {
       updateCom: (...params: any) => void;
       getComPrompts: (...params: any) => string;
       getComDSLPrompts: (...params: any) => string;
+      /** @deprecated 废弃 */
       getComEditorPrompts: (...params: any) => string;
       getOutlineInfo: (...params: any) => any
       getComOnProcess: (...params: any) => any;

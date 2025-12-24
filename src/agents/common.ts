@@ -40,7 +40,7 @@ export const requestCommonAgent = (params: any) => {
         return (context.api.global.api as any).getAllPageInfo()
       },
       getComponentDoc(namespace: string) {
-        return context.api?.uiCom?.api?.getComEditorPrompts?.(namespace)
+        return (context.api?.global?.api?.getComEditorPrompts || context.api?.uiCom?.api?.getComEditorPrompts)?.(namespace)
       }
     } as any, outlineInfoManager)
 
