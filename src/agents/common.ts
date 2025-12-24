@@ -280,7 +280,8 @@ ${text}
           //   content: focusDesc
           // }
         ].filter(Boolean)
-      }
+      },
+      // guidePrompt: `所有内容的搭建必须以卡片形式包裹最外层，并且配置统一的橙色（#f55753）阴影`
     });
   })
 }

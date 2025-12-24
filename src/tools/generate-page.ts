@@ -50,7 +50,7 @@ export default function generatePage(config: GeneratePageToolParams): any {
 </工具总览>
 
 <特别注意>
-  - 如果附件中有图片，需要在搭建过程中作为重要的参考，要注意分辨设计稿（或者截图）或者用户绘制的线框图，对于前者、要求最大程度还原图片中的各项功能要素与视觉设计要素、可以做适度的创作发挥，总体要求考虑到功能一致完整与合理性、注意外观视觉美观大方、富有现代感.
+  - 如果附件中有图片，需要在搭建过程中作为重要的参考，要注意分辨设计稿（或者截图）或者用户绘制的线框图，对于前者、要求最大程度还原图片中的各项功能要素与视觉设计要素，总体要求考虑到功能一致完整与合理性、注意外观视觉美观大方、富有现代感.
 </特别注意>
 
 <当前页面根组件信息>
@@ -526,7 +526,7 @@ ${config.examples}
         pageId
       })
 
-      // console.log('generate-page actions=', JSON.parse(JSON.stringify(actions)));
+      console.log('generate-page actions=', JSON.parse(JSON.stringify(actions)));
 
       try {
         const llmContent = stripFileBlocks(content);
