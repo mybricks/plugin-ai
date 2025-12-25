@@ -1,4 +1,5 @@
 import { OutlineInfoManager, type OutlineNode, type SlotInfo } from './outline-info';
+import { ComponentsManager } from './components-manager'
 
 export interface FocusInfo {
   pageId?: string;
@@ -116,7 +117,7 @@ class PageHierarchyGenerator {
       const focusMarker = isFocused ? ' 【当前聚焦】' : '';
       const collapsedMarker = data._hasCollapsedChildren ? ' 【子组件已折叠】' : '';
 
-      result += `${indent}- ${data.title}[id=${data.id}]${namespace ? `(${namespace})` : ''}${focusMarker}${collapsedMarker}\n`;
+      result += `${indent}- ${data.title}[id=${data.id}]${namespace ? `(${ComponentsManager.getAbbreviation(namespace)})` : ''}${focusMarker}${collapsedMarker}\n`;
     }
 
     if (data.slots && Array.isArray(data.slots)) {
