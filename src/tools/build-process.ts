@@ -14,16 +14,23 @@ interface ComponentOutlineInfo {
   }[]
 }
 
+enum Status {
+  IDLE = "IDLE",
+  RUNNING = "RUNNING",
+  FINISHED = "FINISHED"
+}
+
 function buildProcess(props: any) {
   const streamActionsParser = createActionsParser();
 
   /** key: comid-outputid -> diagramId */
   const diagramIdMap: Record<string, {
     id: string;
-    status: null | "start"
+    status: Status
   }> = {};
 
-  let currentDiagram: { id: string, status: "idle" | "pending" } | null = null;
+  let currentDiagram: { id: string, status: Status } | null = null;
+  let updatePageStatus: Status = Status.IDLE;
 
   // <当前输出端口的情况>
   // ${curNodeInfo}
@@ -649,7 +656,12 @@ ${allPageInfo}
               // TODO: 创建变量测试
               // 变量的创建没有顺序，遍历到直接调用即可
               const { comId, ...other } = action;
-              props.updatePage([other], status)
+              if (updatePageStatus === Status.IDLE) {
+                // 默认先执行一次start
+                props.updatePage([], "start")
+                updatePageStatus = Status.RUNNING;
+              }
+              props.updatePage([other], "ing")
               continue
             }
             
@@ -659,8 +671,8 @@ ${allPageInfo}
                   console.error("currentDiagram is null", params);
                 } else {
                   // console.log(0, "[🚀 updateDiagram]", currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status)
-                  props.updateDiagram(currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status);
-                  currentDiagram.status = "pending";
+                  props.updateDiagram(currentDiagram.id, updateDiagramActions, currentDiagram.status === Status.IDLE ? "start" : status);
+                  currentDiagram.status = Status.RUNNING;
                   updateDiagramActions = [];
                   // console.log(0, "[✅ updateDiagram]")
                 }
@@ -670,7 +682,7 @@ ${allPageInfo}
                   // console.log("[🚀 createDiagram]")
                   currentDiagram = {
                     ...props.createDiagram("comEvent", { comId: action.comId, outputId: action.outputId }),
-                    status: 'idle'
+                    status: Status.IDLE
                   };
                   // console.log("[✅ createDiagram]", { ...currentDiagram })
                 }
@@ -686,11 +698,16 @@ ${allPageInfo}
               console.error("currentDiagram is null", params);
             } else {
               // console.log(1, "[🚀 updateDiagram]", currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status)
-              props.updateDiagram(currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status);
-              currentDiagram.status = "pending";
+              props.updateDiagram(currentDiagram.id, updateDiagramActions, currentDiagram.status === Status.IDLE ? "start" : status);
+              currentDiagram.status = Status.RUNNING;
               updateDiagramActions = [];
               // console.log(1, "[✅ updateDiagram]")
             }
+          }
+
+          if (updatePageStatus !== Status.IDLE && status === "complete") {
+            // 如果执行过，最终要调一次complete结束
+            props.updatePage([], "complete")
           }
         } catch (error) { }
       }
