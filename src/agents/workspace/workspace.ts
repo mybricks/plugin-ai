@@ -39,6 +39,8 @@ class WorkSpace {
   private outlineInfoManager: FocusOutlineInfoManager;
   private openedComponentDocs: string[] = []
 
+  private componentsManager: ComponentsManager = new ComponentsManager();
+
   /** 当前聚焦页面的大纲 */
   focusPageOutlineInfo: OutlineNode
 
@@ -46,7 +48,7 @@ class WorkSpace {
     this.api = api;
     this.focusInfo = { ...(config.currentFocus ?? {}) };
     this.outlineInfoManager = outlineInfo;
-    
+
     this.focusPageOutlineInfo = this.outlineInfoManager.getFocusPageOutline();
   }
 
@@ -228,6 +230,12 @@ ${openedDocumentsList}
     }
 
     this.openedComponentDocs.push(namespace)
+
+    // 加载依赖
+    const requires = this.componentsManager.getRequireComponents(namespace)
+    if (Array.isArray(requires) && requires.length) {
+      requires.forEach(ns => this.openComponentDoc(ns))
+    }
   }
 
   closeComponentDoc(namespace: string) {
@@ -331,6 +339,56 @@ class PageTreeGenerator {
     });
 
     return result;
+  }
+}
+
+class ComponentsManager {
+
+  private isLoaded = false
+
+  private componentMap = new Map();
+
+
+  init = () => {
+    if (!window.__comlibs_edit_) {
+      return
+    }
+
+    const forEachComponent = (com, callback) => {
+      if (com?.namespace) {
+        callback?.(com)
+      }
+      if (Array.isArray(com?.comAray)) {
+        com?.comAray.forEach(child => {
+          forEachComponent(child, callback)
+        })
+      }
+    }
+
+    window.__comlibs_edit_.forEach(comlib => {
+      forEachComponent(comlib, (com) => {
+        if (com?.ai) {
+          this.componentMap.set(com.namespace, com.ai)
+        }
+      })
+    })
+
+    this.isLoaded = true
+  }
+
+  getRequireComponents = (ns: string) => {
+    if (!this.isLoaded) {
+      this.init();
+    }
+
+    let res: any = []
+    if (this.componentMap.has(ns)) {
+      const ai = this.componentMap.get(ns);
+      if (Array.isArray(ai.requires)) {
+        res = res.concat(ai.requires)
+      }
+    }
+    return res
   }
 }
 

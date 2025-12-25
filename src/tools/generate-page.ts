@@ -69,7 +69,7 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
 
   <关于actions>
     actions.json文件由多个action构成,每个 action 在结构上都严格遵循以下格式：[comId, target, type, params];
-    - comId 代表要操作的目标组件的id(对于需要生成的新的id，必须采用u_xxxxx，xxxxx是3-7位唯一的字母数字组合);
+    - comId 代表要操作的目标组件的id(对于需要生成的新的id，必须采用u_xxx，xxx是3位唯一的字母数字组合);
     - target 指的是组件的整体或某个部分，以选择器的形式表示，注意当type=addChild时，target为插槽id;
     - type action的类型，包括了 setLayout、doConfig、addChild、delete 几类动作;
     - params 为不同type类型对应的参数;
@@ -195,7 +195,7 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
       type add_params = {
         title:string //被添加组件的标题
         ns:string //在 <允许添加的组件 /> 中声明的组件namespace
-        comId:string //新添加的组件id
+        comId:string //新添加的组件id，不得超过5位长度
         layout?: setLayout_flex_params ｜ setLayout_fixed_params //可选，添加组件时可以指定位置和尺寸信息
         configs?: Array<configStyle_params | configProperty_params> // 添加组件可以配置的信息
         // 渲染优化
@@ -311,9 +311,9 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
 
         例子：第一个布局组件仅承担布局功能，可以添加ignore标记；第二个布局组件承担样式功能，不能添加ignore标记，第二个组件里添加了一个居中的文本，判断为信息卡片，添加enhance标记。
           ${fileFormat({
-            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_layout1","ignore":true,"ns":"组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
-          ["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_layout2","enhance":true,"ns":"组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}},{"path":"样式/样式","style":{"background":"#FFFFFF"}}]}]
-          ["u_layout2","插槽id占位","addChild",{"title":"添加一个文本组件","comId":"u_text1","ns":"组件","layout":{"width":"fit-content","height":"fit-content"},"configs":[{"path":"常规/文本内容","value":"居中文本"}]}]
+            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_div1","ignore":true,"ns":"组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
+          ["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_div2","enhance":true,"ns":"组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}},{"path":"样式/样式","style":{"background":"#FFFFFF"}}]}]
+          ["u_div2","插槽id占位","addChild",{"title":"添加一个文本组件","comId":"u_text1","ns":"组件","layout":{"width":"fit-content","height":"fit-content"},"configs":[{"path":"常规/文本内容","value":"居中文本"}]}]
           `,
             fileName: '标记使用.json'
           })}
@@ -326,8 +326,8 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
           下面的例子使用flex实现左侧固定宽度，右侧自适应布局:
           ${fileFormat({
             content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex1","ns":"布局组件","layout":{"width":"100%","height":60},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
-          ["u_flex1","插槽id占位","addChild",{"title":"左侧固定宽度组件","comId":"u_leftFixed","ns":"组件","layout":{"width":60,"height":40,"marginRight":8},"configs":[]}]
-          ["u_flex1","插槽id占位","addChild",{"title":"右侧自适应组件","comId":"u_rightFlex","ns":"组件","layout":{"width":'100%',"height":40},"configs":[]}]
+          ["u_flex1","插槽id占位","addChild",{"title":"左侧固定宽度组件","comId":"u_lfix1","ns":"组件","layout":{"width":60,"height":40,"marginRight":8},"configs":[]}]
+          ["u_flex1","插槽id占位","addChild",{"title":"右侧自适应组件","comId":"u_rfix1","ns":"组件","layout":{"width":'100%',"height":40},"configs":[]}]
           `,
             fileName: '左侧固定右侧自适应.json'
           })}
@@ -340,10 +340,10 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
           下面的例子使用flex进行嵌套，来实现左侧图标+文本，右侧箭头的布局:
           ${fileFormat({
             content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex1","ns":"布局组件","layout":{"width":"100%","height":60},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","justifyContent":"space-between","alignItems":"center"}}]}]
-          ["u_flex1","插槽id占位","addChild",{"title":"左侧布局组件","comId":"u_leftLayout","ignore": true,"ns":"布局组件","layout":{"width":"fit-content","height":"fit-content"},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center", "justifyContent": "flex-start"}}]}]
-          ["u_leftLayout","插槽id占位","addChild",{"title":"图标组件","comId":"u_icon","ns":"图标组件","layout":{"width":24,"height":24,"marginRight":8},"configs":[]}]
-          ["u_leftLayout","插槽id占位","addChild",{"title":"文本组件","comId":"u_text","ns":"文本组件","layout":{"width":"fit-content","height":"fit-content"},"configs":[]}]
-          ["u_flex1","插槽id占位","addChild",{"title":"箭头图标组件","comId":"u_arrowIcon","ns":"图标组件","layout":{"width":24,"height":24},"configs":[]}]
+          ["u_flex1","插槽id占位","addChild",{"title":"左侧布局组件","comId":"u_lft1","ignore": true,"ns":"布局组件","layout":{"width":"fit-content","height":"fit-content"},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center", "justifyContent": "flex-start"}}]}]
+          ["u_lft1","插槽id占位","addChild",{"title":"图标组件","comId":"u_icon","ns":"图标组件","layout":{"width":24,"height":24,"marginRight":8},"configs":[]}]
+          ["u_lft1","插槽id占位","addChild",{"title":"文本组件","comId":"u_text","ns":"文本组件","layout":{"width":"fit-content","height":"fit-content"},"configs":[]}]
+          ["u_flex1","插槽id占位","addChild",{"title":"箭头图标组件","comId":"u_aric","ns":"图标组件","layout":{"width":24,"height":24},"configs":[]}]
           `,
             fileName: 'flex嵌套实现左右布局.json'
           })}
@@ -417,6 +417,7 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
         - 如果猜测是动态项，使用列表类组件来搭建；
         - 如果猜测是静态内容，优先使用布局，N行M列来搭建；
         - 如果是属于某个组件的内容，使用组件来搭建；
+      10. 如果遇到当前组件无法实现的区域，需要配置一个占位，可以使用符合整体样式的「卡片+文本」来占位；
     </最佳实践>
   </UI搭建原则>
 </如何搭建以及修改>
