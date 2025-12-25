@@ -1,4 +1,5 @@
 import { jsonrepair } from 'jsonrepair'
+import { ComponentsManager } from './../agents/workspace/components-manager'
 
 export function getFiles(files: RxFiles, {
   extName
@@ -162,7 +163,7 @@ const formatAction = (_action: string) => {
   // ns => namespace
   if (newAct.type === "addChild") {
     if (newAct.params?.ns) {
-      newAct.params.namespace = newAct.params.ns;
+      newAct.params.namespace = ComponentsManager.getFullNamespace(newAct.params.ns);
       delete newAct.params.ns;
     }
   }

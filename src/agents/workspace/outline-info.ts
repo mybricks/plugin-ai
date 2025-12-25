@@ -1,3 +1,5 @@
+import { ComponentsManager } from "./components-manager";
+
 export interface SlotInfo {
   id: string;
   title?: string;
@@ -354,10 +356,12 @@ class OutlineJSXGenerator {
 
     let jsx;
 
+    const namespaceTag = ComponentsManager.getAbbreviation(namespace)
+
     if (node.asRoot) {
       jsx = `<${ROOT_NAMESPACE} id="${ROOT_ID}"` + (node.data ? ` data={${JSON.stringify(node.data || {})}}` : '');
     } else {
-      jsx = `<${namespace} id="${node.id}"` + (node.data ? ` data={${JSON.stringify(node.data || {})}}` : '');
+      jsx = `<${namespaceTag} id="${node.id}"` + (node.data ? ` data={${JSON.stringify(node.data || {})}}` : '');
     }
 
     if (Object.keys(layout).length > 0) {
@@ -373,7 +377,7 @@ class OutlineJSXGenerator {
     const slotsJSX = this.generateSlotsJSX(node.slots || [], indent + '  ');
     if (slotsJSX) {
       jsx += slotsJSX;
-      jsx += `\n${indent}</${namespace}>`;
+      jsx += `\n${indent}</${namespaceTag}>`;
     } else {
       jsx += ' />';
     }

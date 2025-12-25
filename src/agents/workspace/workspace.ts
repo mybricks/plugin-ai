@@ -1,5 +1,6 @@
 import { OutlineNode } from './outline-info'
 import { FocusOutlineInfoManager, FocusInfo } from './outline-focus'
+import { ComponentsManager } from './components-manager'
 
 // 类型定义
 interface DocumentInfo {
@@ -38,8 +39,6 @@ class WorkSpace {
   private focusInfo: FocusInfo;
   private outlineInfoManager: FocusOutlineInfoManager;
   private openedComponentDocs: string[] = []
-
-  private componentsManager: ComponentsManager = new ComponentsManager();
 
   /** 当前聚焦页面的大纲 */
   focusPageOutlineInfo: OutlineNode
@@ -232,7 +231,7 @@ ${openedDocumentsList}
     this.openedComponentDocs.push(namespace)
 
     // 加载依赖
-    const requires = this.componentsManager.getRequireComponents(namespace)
+    const requires = ComponentsManager.getRequireComponents(namespace)
     if (Array.isArray(requires) && requires.length) {
       requires.forEach(ns => this.openComponentDoc(ns))
     }
@@ -252,8 +251,9 @@ ${openedDocumentsList}
   getComponentsDocs(): string {
     return `# 组件使用文档
 ${this.openedComponentDocs.map(namespace => {
-      return this.api.getComponentDoc(namespace).replace('<component>', `<${namespace}文档>`).replace('</component>', `</${namespace}文档>`)
-    }).join('')}
+  const abbreviationNs = ComponentsManager.getAbbreviation(namespace);
+  return this.api.getComponentDoc(namespace).replace('<component>', `<${abbreviationNs}文档>`).replace('</component>', `</${abbreviationNs}文档>`).replace(new RegExp(`${namespace}`, 'g'), abbreviationNs)
+}).join('')}
 `
   }
 
@@ -339,56 +339,6 @@ class PageTreeGenerator {
     });
 
     return result;
-  }
-}
-
-class ComponentsManager {
-
-  private isLoaded = false
-
-  private componentMap = new Map();
-
-
-  init = () => {
-    if (!window.__comlibs_edit_) {
-      return
-    }
-
-    const forEachComponent = (com, callback) => {
-      if (com?.namespace) {
-        callback?.(com)
-      }
-      if (Array.isArray(com?.comAray)) {
-        com?.comAray.forEach(child => {
-          forEachComponent(child, callback)
-        })
-      }
-    }
-
-    window.__comlibs_edit_.forEach(comlib => {
-      forEachComponent(comlib, (com) => {
-        if (com?.ai) {
-          this.componentMap.set(com.namespace, com.ai)
-        }
-      })
-    })
-
-    this.isLoaded = true
-  }
-
-  getRequireComponents = (ns: string) => {
-    if (!this.isLoaded) {
-      this.init();
-    }
-
-    let res: any = []
-    if (this.componentMap.has(ns)) {
-      const ai = this.componentMap.get(ns);
-      if (Array.isArray(ai.requires)) {
-        res = res.concat(ai.requires)
-      }
-    }
-    return res
   }
 }
 
