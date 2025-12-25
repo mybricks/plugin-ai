@@ -814,7 +814,8 @@ const formatAction = (_action: string) => {
       params.namespace = ns;
     }
     return {
-      comId: action[1].comId,
+      // 变量是varId，其余都是comId
+      comId: action[1].comId || action[1].varId,
       type: action[0],
       params
     }
