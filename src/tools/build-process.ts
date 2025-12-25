@@ -1,6 +1,7 @@
 import { fileFormat } from "@mybricks/rxai";
 import { jsonrepair } from 'jsonrepair'
 import { getFiles, transformPageInfo } from './utils'
+import { ComponentsManager } from './../agents/workspace/components-manager'
 
 const NAME = 'build-event-flow'
 buildProcess.toolName = NAME
@@ -782,7 +783,7 @@ const formatAction = (_action: string) => {
   if (action[0] === "createCom") {
     const { ns, ...params } = action[1]
     if (ns) {
-      params.namespace = ns;
+      params.namespace = ComponentsManager.getFullNamespace(ns);
     }
     return {
       // 变量是varId，其余都是comId
