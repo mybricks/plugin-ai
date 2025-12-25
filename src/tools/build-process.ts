@@ -5,15 +5,6 @@ import { getFiles, transformPageInfo } from './utils'
 const NAME = 'build-event-flow'
 buildProcess.toolName = NAME
 
-interface ComponentOutlineInfo {
-  id: string;
-  outputs: {
-    /** 对应outputId */
-    hostId: string;
-    title: string;
-  }[]
-}
-
 enum Status {
   IDLE = "IDLE",
   RUNNING = "RUNNING",
@@ -32,13 +23,10 @@ function buildProcess(props: any) {
   let currentDiagram: { id: string, status: Status } | null = null;
   let updatePageStatus: Status = Status.IDLE;
 
-  // <当前输出端口的情况>
-  // ${curNodeInfo}
-  // </当前输出端口的情况>
   return {
     name: NAME,
     displayName: "搭建事件流程",
-    description: `搭建各类事件流程
+    description: `搭建各类事件流程，绑定变量，实现数据驱动
 
 处理以下需求：
   1. 当...时，要...
@@ -46,6 +34,7 @@ function buildProcess(props: any) {
   3. 增/删/改/查...
   4. 数据处理
   5. 驱动ui更新
+  6. 变量绑定
 
 参数：无
 工具分类：操作执行类
@@ -80,62 +69,8 @@ function buildProcess(props: any) {
 提示：如果需求描述了一个"因果链"，本工具就是正确选择。
 `,
     getPrompts: () => {
-      // TODO: <当前流程面板信息> 说明当前流程的起始端口
-      // TODO: <可连接的组件> 罗列出可连接的ui组件、计算组件，输入输出信息
-
-      // const componentOutlineInfo: ComponentOutlineInfo = props.getComponentOutlineInfo();
-      // console.log("[componentOutlineInfo]", componentOutlineInfo);
       const pageOutlineInfo = props.getPageOutlineInfo();
-      // console.log("[pageOutlineInfo - 找出所有可用连接输入的端口]", pageOutlineInfo)
-      const indent = (depth: number) => {
-        return depth ? "  ".repeat(depth) : "";
-      }
-    
-      function scopeBasedComponentStructure(slot: any, depth = 0) {
-        let result = "";
-        const prefix = indent(depth);
-        if (slot.scope) {
-          // 作用域插槽（页面）
-          // 插槽id：_root_
-          // 子组件：
-          result += `${prefix}作用域插槽（${slot.title}）` + 
-            `\n${prefix}插槽id：${slot.id}` + 
-            `\n${prefix}子组件：\n`
-        }
-    
-        slot.components?.forEach((component: any) => {
-          const { id, title, inputs, outputs, slots } = component
-          const prefix = indent(depth);
-          const prefix2 = indent((depth + 1));
-          const prefix3 = indent((depth + 2));
-          const prefix4 = indent((depth + 3));
-    
-          result += `${prefix}- ${title}\n` + 
-            `${prefix2}组件id：${id}\n` +
-            `${prefix2}可连接的输入端口：${inputs?.length ? inputs.filter(({ hostId }: any) => {
-              return !["_config_", "_setStyle"].includes(hostId)
-            }).reduce((pre: string, { hostId, title, rels, description }: any, index: number) => {
-              return pre + `\n${prefix2}${index + 1}. ${title}（${hostId}）` + 
-              (description ? `\n${prefix3}描述：${description}` : "") + 
-              `\n${prefix3}关联输出端口：${rels?.length ? rels.reduce((pre: string, {id, title}: any, index: number) => {
-                return pre + `\n${prefix4}${index + 1}. ${title}（${id}）`
-              }, "") : "无"}`
-            }, "") : "无"}\n\n` + 
-            `${prefix2}可创建的事件：${outputs?.length ? outputs.reduce((pre: string, { hostId, title, description }: any, index: number) => {
-              return pre + `\n${prefix2}${index + 1}. ${title}（${hostId}）` + 
-              (description ? `\n${prefix2}描述：${description}` : "")
-            }, "") : "无"}\n\n`;
-    
-          
-            slots?.forEach((slot: any) => {
-              result += scopeBasedComponentStructure(slot, slot.scope ? depth + 1 : depth);
-            })
-        });
-    
-        return result;
-      }
-
-      const connectableComponents = scopeBasedComponentStructure({id:"_root_", title: "页面", scope: true, components: [pageOutlineInfo]});
+      const connectableComponents = scopeBasedComponentStructure({...pageOutlineInfo, id: "_root_", title: "页面", scope: true });
       const targetPageId = props.getPageId();
       const pages = transformPageInfo(props.getAllPageInfo());
       const allPageInfo = pages.reduce((pre: string, { id, title, type, inputs, outputs }: any) => {
@@ -155,57 +90,6 @@ function buildProcess(props: any) {
         }, "")}` + 
         `\n</${title}>`
       }, "") || "无";
-
-//       // TODO: 组织作用域信息
-//       const findConnectableComponents = (components: any, result: any[] = []) => {
-//         components?.forEach((component: any) => {
-//           result.push(component)
-//           component.slots?.forEach((slot: any) => {
-//             findConnectableComponents(slot.components, result);
-//           })
-//         })
-
-//         return result
-//       }
-
-//       const connectableComponents = findConnectableComponents(pageOutlineInfo.components ? pageOutlineInfo.components : [pageOutlineInfo]).reduce((pre, component: any) => {
-//         const { id, title, inputs, outputs } = component;
-// // <按钮>
-// // 组件标题：按钮
-// // 组件id：u_xxx
-// // 可连接的输入端口：
-// //  - 修改按钮文本（buttonText）
-// //   - 关联输出端口：无
-// //  - 设置按钮禁用（setDisabled）
-// //   - 关联输出端口：设置按钮禁用完成（setDisabledSuccess）
-// // </按钮>
-//         return pre + `<${title}>
-// 组件标题：${title}
-// 组件id：${id}
-// 可连接的输入端口：${inputs.length ? inputs.reduce((pre: string, { hostId, title, rels, description }: any) => {
-//   return pre + `
-//  - ${title}（${hostId}）${description ? `说明：${description}` : ""}
-//   - 关联输出端口：${rels?.length ? rels.reduce((pre: any, { id, title }: any) => {
-//     return pre + `${title}（${id}），`
-//   }, "") : "无"}`
-// }, "") : "无"}
-// 可创建的事件：${outputs?.length ? outputs.reduce((pre: any, { hostId, title }: any) => {
-//   return pre + ` \n- ${title}（${hostId}）`
-// }, "") : "无"}
-// </${title}>\n`;
-//       }, "")
-
-      // const createEventFlow = componentOutlineInfo.outputs.reduce((pre, { hostId, title }) => {
-      //   return pre + (!pre ? "" : "\n\n") + ` - ${title}（${hostId}）`;
-      //   // return pre + (!pre ? "" : "\n\n") + `事件名称：${title}\noutputId: ${hostId}`;
-      // }, "")
-
-      // const allowComponents = props.getAllComDefPrompts();
-
-
-      // console.log("[connectableComponents]", connectableComponents);
-      // console.log("[createEventFlow]", createEventFlow)
-    
 
       return `<工具总览>
 你是一个用于事件流程搭建的工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深流程搭建专家，逻辑严谨，拥有专业的搭建能力。
@@ -245,34 +129,40 @@ function buildProcess(props: any) {
 
   **变量**
   变量是一个内置的特殊js组件，用于在各个作用域插槽内缓存数据。但是它区别于js、js-autorun组件的不同之处在于，变量与ui节点一样输入端口可能被多次连接。
+  变量使用原则：
+  1. 语义唯一性原则：相同语义的数据应该使用同一个变量存储
+  2. 复用优先原则：优先复用已存在的变量，避免重复创建
+  3. 作用域匹配原则：变量必须在正确的作用域内创建和使用
+
   输入端口：
   - set 赋值，传入新的变量值
   - get 读取当前变量值
+
   输出端口：
   - return 输入操作完成后输出最新的变量值
-
 </关于MyBricks事件流程>
 
-<可连接的ui组件说明>
+<可连接的组件说明>
+包含ui组件和变量。
 重要限制：
 - 禁止使用任何未在此处明确列出的UI组件
 - 即使需求暗示了某个UI操作，如果对应的UI组件不在该列表中，也不能创建
 - 不允许基于相似功能进行推测性连接
 - 重点关注作用域插槽信息，以下节点说明以作用域插槽为分水岭区分父子关系，作用域插槽内组件可以连接作用域插槽外部的组件，作用域插槽外部的组件禁止连接作用域插槽内的组件
 
-UI节点
 ${connectableComponents}
 
 注意：
-  - 除了上述列出的事件外，还可以从<组件使用文档>的<可以使用的配置项>内获取可创建的事件outputId。
-    {
-      "path": "xx/xx/事件名称",
-      "editType": "_event",
-      "description": "以事件的方式触发逻辑编排",
-      "outputId": "事件id"
-    }
-  - 如果上述列出的事件以及<可以使用的配置项>中没有符合要求的事件，不允许捏造、猜测、基于客观事实进行生成。
-</可连接的ui组件说明>
+  - 对于UI组件
+    - 除了上述列出的事件外，还可以从<组件使用文档>的<可以使用的配置项>内获取可创建的事件outputId。
+      {
+        "path": "xx/xx/事件名称",
+        "editType": "_event",
+        "description": "以事件的方式触发逻辑编排",
+        "outputId": "事件id"
+      }
+    - 如果上述列出的事件以及<可以使用的配置项>中没有符合要求的事件，不允许捏造、猜测、基于客观事实进行生成。
+</可连接的组件说明>
 
 <可跳转场景>
 ${allPageInfo}
@@ -281,12 +171,21 @@ ${allPageInfo}
 <解释actions的调用过程>
 - 输出思考过程，以通俗易懂的语言，不要出现比如以"思考过程"、"解释"等类似字眼为标题的结构化内容
 - 解释各类无法连接的原因，作用域插槽隔离、组件未声明等
+- 特别说明变量复用决策：当用户需要存储数据时，先检查是否已有同语义变量，如有则说明复用原因
 </解释actions的调用过程>
 
 <思考建议>
 - 当用户提出刷新某个区域或组件，当区域或组件没有对应实现的输入时，可以思考下是否可以通过调用该区域或组件的下的子组件的输入来完成需求
 - 所有在<组件使用文档>中声明的rtType为js或js-autorun组件都必须被使用，这是需求分析后的组件选型，满足需求是一定要用到的
-- 当需要临时存储数据、状态跟踪、缓存计算结果、或者数据可能在后续流程被使用或修改时，就需要声明变量来存储它
+- 当需要临时存储数据、状态跟踪、缓存计算结果、或者数据可能在后续流程被使用或修改时，先检查是否存在同语义变量
+  1. 第一步：分析需求中需要存储的数据的语义
+  2. 第二步：在<可连接的组件说明>中查找是否存在语义相同或相似的变量
+  3. 第三步：如果存在且作用域匹配，必须复用；如果不存在或作用域不匹配，才创建新变量
+  4. 第四步：确保变量标题准确反映存储的数据内容
+- 变量绑定优先原则：
+  1. 当一个ui的输入被调用时，首先检查是否有相对应的变量绑定能力可以替代输入的调用
+  2. 如果有，使用变量绑定方式：创建/复用变量 → 通过<doConfigForBind>绑定到UI组件 → 通过修改变量值驱动UI更新
+  3. 如果没有，使用直接修改方式：仅在变量绑定无法满足需求时使用
 </思考建议>
 
 <如何通过action搭建事件流程>
@@ -299,7 +198,7 @@ ${allPageInfo}
 
     <createEvent>
       创建事件流程
-      该action在结构上严格遵循以下格式：["createEvent",comId, outputId]
+      该action在结构上严格遵循以下格式：["createEvent",comId,outputId]
         - "createEvent" 当前action类型，是一个默认值
         - comId 当前需要创建事件流程的组件id
         - outputId 当前需要创建事件流程对应的outputId
@@ -319,15 +218,15 @@ ${allPageInfo}
     <createCom>
       在流程中创建节点，当输入端口在连接到输入端口前必须先创建匹配输出端口的节点
 
-      该action在结构上严格遵循以下格式：["createCom", params]
+      该action在结构上严格遵循以下格式：["createCom",params]
         - "createCom" 当前action类型，是一个默认值
         - params 创建节点的参数，各节点参数格式以Typescript的形式说明如下：
-          - 创建UI节点，可创建节点取自<可连接的ui组件说明>中列出的组件
+          - 创建UI节点，可创建节点取自<可连接的组件说明>中列出的ui组件
           \`\`\`typescript
           type Params = {
             type: "uiCom" // 类型，用于区分节点类型，默认uiCom
-            comId: string // 对应组件id，仅允许使用<可连接的ui组件说明>内明确列出的ui组件
-            inputId: string // 输入端口id，仅允许使用<可连接的ui组件说明>内明确列出的ui组件的**可连接的输入端口**
+            comId: string // 对应组件id，仅允许使用<可连接的组件说明>内明确列出的ui组件
+            inputId: string // 输入端口id，仅允许使用<可连接的组件说明>内明确列出的ui组件的**可连接的输入端口**
             instanceId: string // 实例id，由于ui组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分，在整个actions中，instanceId只能被连接一次
           }
           \`\`\`
@@ -375,12 +274,12 @@ ${allPageInfo}
             }[]
           }
           \`\`\`
-          - 创建变量节点，可创建节点取自<可连接的ui组件说明>中同作用域下的变量，以及在action过程中创建的变量
+          - 创建变量节点，可创建节点取自<可连接的组件说明>中同作用域下的变量，以及在action过程中创建的变量
           \`\`\`typescript
           type Params = {
             type: "var" // 类型，用于区分节点类型，默认var
-            varId: string // 对应变量组件id，仅允许使用<可连接的ui组件说明>中同作用域下的变量，以及在action过程中创建的变量
-            inputId: string // 输入端口id，仅允许使用<可连接的ui组件说明>内明确列出的ui组件的**可连接的输入端口**
+            varId: string // 对应变量组件id，仅允许使用<可连接的组件说明>中同作用域下的变量，以及在action过程中创建的变量
+            inputId: string // 变量输入端口id
             instanceId: string // 实例id，由于变量组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分，在整个actions中，instanceId只能被连接一次
           }
 
@@ -395,8 +294,8 @@ ${allPageInfo}
       })}
 
       注意：
-        - 绝对限制：事件流程内只能只能使用<组件使用文档>中声明的js或js-autorun组件，以及<可连接的ui组件说明>内明确列出的ui组件。
-        - 即使需求中提到"文本框"、"下拉框"等UI元素，如果不在<可连接的ui组件说明>中，绝对不能创建。如果<可连接的ui组件说明>中只有"按钮"和"账号"组件，就不能创建"密码"组件（除非它在<可连接的ui组件说明>中）
+        - 绝对限制：事件流程内只能只能使用<组件使用文档>中声明的js或js-autorun组件，以及<可连接的组件说明>内明确列出的组件以及action过程中创建的变量。
+        - 即使需求中提到"文本框"、"下拉框"等UI元素，如果不在<可连接的组件说明>中，绝对不能创建。如果<可连接的组件说明>中只有"按钮"和"账号"组件，就不能创建"密码"组件（除非它在<可连接的组件说明>中）
         - 禁止基于组件功能相似性进行推测性创建
         - 禁止创建没有意义的节点，所有创建的节点都必须被连接，否则视为没有意义的节点
         - 所有创建的节点都必须被<connectTo>进行连接
@@ -404,7 +303,7 @@ ${allPageInfo}
 
     <defineVar>
       在作用域插槽内创建变量
-      该action在结构上严格遵循以下格式：["defineVar", params]
+      该action在结构上严格遵循以下格式：["defineVar",params]
         - "defineVar" 当前action类型，是一个默认值
         - params 创建节点的参数，各节点参数格式以Typescript的形式说明如下：
           \`\`\`typescript
@@ -426,11 +325,17 @@ ${allPageInfo}
 [{"type":"com","comId":"a","outputId":"outputa1"},"connectTo",{"type":"com","inputId":"set","instanceId":"instanceIdvar1"}]`,
         fileName: '连接js组件.json'
       })}
+
+      注意：
+        - **强制检查**：在执行defineVar前必须检查<可连接的组件说明>内的变量定义
+        - **语义匹配原则**：若存在语义相同或高度相似的变量，必须复用已有变量，不得新建
+        - **单一语义来源原则**：同一含义的数据应在系统中由唯一的变量定义，并在所有需要的地方复用
+        - **作用域合规**：确保变量在正确的作用域内创建和使用
     </defineVar>
 
     <connectTo>
       从一个节点的输出端口连接到下一个节点的输入端口，连接的前提是已经通过<createCom>创建好了可连接的节点
-      该action在结构上严格遵循以下格式：[output, "connectTo", input]
+      该action在结构上严格遵循以下格式：[output,"connectTo",input]
         - output 当前连接的输出端口，格式以Typescript的形式说明如下：
           - Output：当输出端口是当前流程的输出
           - UIOutput：当输出端口是ui组件节点
@@ -570,7 +475,56 @@ ${allPageInfo}
 
       注意：
         - 每个输出端口可以连接多个输入端口，但每个输入端口只能被一个输出端口连接。
+        - 变量绑定优先
+          1. 当一个ui的输入被调用时，首先检查是否有相对应的变量绑定能力可以替代输入的调用
+          2. 如果有，使用变量绑定方式：创建/复用变量 → 通过<doConfigForBind>绑定到UI组件 → 通过修改变量值驱动UI更新
+          3. 如果没有，使用直接修改方式：仅在变量绑定无法满足需求时使用
     </connectTo>
+
+    <doConfigForBind>
+      变量绑定，当ui组件<可以使用的配置项>中的配置项目有声明**bindWith**，那么这个配置项支持变量绑定功能，绑定的功能描述参考配置项的<description>
+      **重要：变量绑定是官方推荐的面向变量的搭建方式，具有以下优势：**
+        - 一次变量修改可以同时驱动多个UI组件更新
+        - 减少重复的直接UI操作，提高性能
+        - 实现数据与UI的解耦，便于维护
+
+      **使用时机判断：**
+        1. 当ui的输入有相对应的变量绑定能力可以替代输入是时，必须使用变量绑定
+
+      bindWith的格式如下：
+      \`\`\`typescript
+      type BindWith = {
+        with: string; // "data.xx.x"，表示绑定的数据源属性路径以"data"开头，例如：要绑定到"abc"字段，则with为"data.abc"
+        schema: Schema; // 标准JSON Schema协议，表示绑定的数据类型
+      }
+      \`\`\`
+      支持三种绑定形式：
+      1. 数据流入：当变量值发生变更，ui会自动同步
+      2. 数据流出：当ui组件对应绑定的值发生变化，变量值会自动同步
+      3. 双向绑定：「数据流入」和「数据流出」同时生效
+
+      该action在结构上严格遵循以下格式：["doConfigForBind",params]
+        - "doConfigForBind" 当前action类型，是一个默认值
+        - params 创建节点的参数，各节点参数格式以Typescript的形式说明如下：
+        \`\`\`typescript
+        type Params = {
+          comId: string; // 当前需要绑定变量的组件id
+          target: string; // 指的是组件的整体或某个部分，以选择器的形式表示，对应<可以使用的配置项>的选中区域
+          path: string; // 在<当前组件可配置的内容/>中对应的配置项path
+          varId: string; // 对应需要绑定的变量组件id，仅允许使用<可连接的组件说明>中同作用域下的变量，以及在action过程中创建的变量
+          xpath: string; // 对应绑定变量的属性路径，如果就是绑定变量的值，返回空字符串即可，例如：绑定变量a，则path为""。绑定变量a的b属性，则path为"b"。绑定变量a的b属性的c属性，则path为"b.c"。
+        }
+        \`\`\`
+
+      例如，当用户要求组件a的内容与变量b进行绑定：
+      ${fileFormat({
+        content: `["doConfigForBind",{"comId":"a组件id","target":"选中区域","path":"配置项/内容","varId":"变量bid","xpath":"属性路径"}]`,
+        fileName: '将a的内容与变量b绑定.json'
+      })}
+
+      注意：
+        - 如果没有对应的绑定配置项，不允许捏造、猜测；
+    </doConfigForBind>
 
     <examples>
       <example>
@@ -597,6 +551,27 @@ ${allPageInfo}
           })}
         </assistant_response>
       </example>
+      <example>
+        <user_query>点击后同时设置a、b、c三个组件的值</user_query>
+        <assistant_response>
+          好的，我将为当前组件的点击事件搭建事件流程。由于需要同时设置多个组件的值，我会检查这些组件是否支持变量绑定。
+
+          假设a、b、c三个组件都支持变量绑定，我将使用变量绑定方案：
+
+          ${fileFormat({
+            content: `["createEvent",comId,outputId]
+["defineVar",{"comId":"root","slotId":"_root_","id":"sharedValue","title":"共享值","schema":{"type":"string"},"initValue":""}]
+["createCom",{"type":"var","varId":"sharedValue","inputId":"set","instanceId":"instanceIdVar1"}]
+[{"type":"com","comId":"comId","outputId":"outputId"},"connectTo",{"type":"com","inputId":"set","instanceId":"instanceIdVar1"}]
+["doConfigForBind",{"comId":"a","target":"target","path":"path","varId":"sharedValue","xpath":""}]
+["doConfigForBind",{"comId":"b","target":"target","path":"path","varId":"sharedValue","xpath":""}]
+["doConfigForBind",{"comId":"c","target":"target","path":"path","varId":"sharedValue","xpath":""}]`,
+            fileName: '变量绑定方案.json'
+          })}
+
+          这样通过一次变量修改就能同时驱动三个UI组件更新，这是推荐的面向变量的搭建方式。
+        </assistant_response>
+      </example>
     </examples>
   
     注意：actions文件每一行遵循 JSON 语法，禁止非法代码，禁止出现内容省略提示、单行注释、省略字符。
@@ -616,6 +591,7 @@ ${allPageInfo}
       - 当一个输出连接多个输入时，确保生成的 actions 按顺序列出所有连接，并判断它们是并行（同时触发，无依赖）还是串行（有先后依赖，需接力执行），避免将独立操作错误地编排为串行。
       - 所有创建的节点都必须被连接，禁止创建没有意义的节点。
       - 节点的每个输入端口只能被连接一次，多次连接会导致错误。
+      - 优先使用变量绑定能力，这是推荐的面向变量的搭建方式。
   </关于actions>
 
   注意：
@@ -637,23 +613,14 @@ ${allPageInfo}
         actions = streamActionsParser(actionsFile.content ?? "");
       }
 
-      // if (actions.length > 0) {
-      //   console.log("[actions]", [...actions])
-      // }
-
       if (actions.length > 0 || status === "complete") {
         try {
-
-          // console.log("[flow - actions]", JSON.parse(JSON.stringify(actions)))
-
           let updateDiagramActions = [];
 
           while (actions.length) {
             const action = actions.shift()!;
-            // console.log("[action]", action)
 
             if (action.type === "defineVar") {
-              // TODO: 创建变量测试
               // 变量的创建没有顺序，遍历到直接调用即可
               const { comId, ...other } = action;
               if (updatePageStatus === Status.IDLE) {
@@ -663,6 +630,15 @@ ${allPageInfo}
               }
               props.updatePage([other], "ing")
               continue
+            } else if (action.type === "doConfig") {
+              if (updatePageStatus === Status.IDLE) {
+                // 默认先执行一次start
+                props.updatePage([], "start")
+                updatePageStatus = Status.RUNNING;
+              }
+              console.log("[action]", action)
+              props.updatePage([action], "ing")
+              continue
             }
             
             if (!["connectTo", "createCom", "defineVar"].includes(action.type)) {
@@ -670,21 +646,17 @@ ${allPageInfo}
                 if (!currentDiagram) {
                   console.error("currentDiagram is null", params);
                 } else {
-                  // console.log(0, "[🚀 updateDiagram]", currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status)
                   props.updateDiagram(currentDiagram.id, updateDiagramActions, currentDiagram.status === Status.IDLE ? "start" : status);
                   currentDiagram.status = Status.RUNNING;
                   updateDiagramActions = [];
-                  // console.log(0, "[✅ updateDiagram]")
                 }
               }
               if (action.type === "createEvent") {
                 if (!diagramIdMap[`${action.comId}-${action.outputId}`]) {
-                  // console.log("[🚀 createDiagram]")
                   currentDiagram = {
                     ...props.createDiagram("comEvent", { comId: action.comId, outputId: action.outputId }),
                     status: Status.IDLE
                   };
-                  // console.log("[✅ createDiagram]", { ...currentDiagram })
                 }
               }
             } else {
@@ -697,11 +669,9 @@ ${allPageInfo}
             if (!currentDiagram) {
               console.error("currentDiagram is null", params);
             } else {
-              // console.log(1, "[🚀 updateDiagram]", currentDiagram.id, updateDiagramActions, currentDiagram.status === "idle" ? "start" : status)
               props.updateDiagram(currentDiagram.id, updateDiagramActions, currentDiagram.status === Status.IDLE ? "start" : status);
               currentDiagram.status = Status.RUNNING;
               updateDiagramActions = [];
-              // console.log(1, "[✅ updateDiagram]")
             }
           }
 
@@ -732,12 +702,13 @@ ${allPageInfo}
       return replaceContent.replace(actionsFile.fileName, "");
     },
     aiRole: "architect",
+    // aiRole: 'expert',
   }
 }
 
 export default buildProcess;
 
-export function createActionsParser() {
+function createActionsParser() {
   const processedLines = new Set();
 
   return function parseActions(text: string) {
@@ -836,6 +807,21 @@ const formatAction = (_action: string) => {
       type: action[0],
       params
     }
+  } else if (action[0] === "doConfigForBind") {
+    const { comId, target, path, varId, xpath } = action[1];
+    return {
+      type: "doConfig",
+      comId,
+      target,
+      params: {
+        path,
+        bindWith: {
+          type: "var",
+          varId,
+          xpath
+        }
+      }
+    }
   } else if (action[1] === "connectTo") {
     return {
       comId: action[0].comId || action[0].instanceId,
@@ -850,88 +836,53 @@ const formatAction = (_action: string) => {
   return {};
 };
 
-function findConnectableComponents(jsonData: any, targetId: any) {
-  const result = {
-    connectableComponents: [],
-    targetComponent: null
-  };
-
-  // 递归查找所有组件
-  function findAllComponents(obj: any, currentScope = null) {
-    const components: any = [{...obj, scope: currentScope}];
-
-    if (obj.slots) {
-      obj.slots.forEach((slot: any) => {
-        const slotScope = slot.scope !== undefined ? slot.scope : currentScope;
-        if (slot.components) {
-          slot.components.forEach((component: any) => {
-            components.push({
-              ...component,
-              scope: slotScope
-            });
-            // 递归查找嵌套组件
-            const nestedComponents = findAllComponents(component, slotScope);
-            components.push(...nestedComponents.filter((nestedComponent: any) => {
-              return nestedComponent.id !== component.id;
-            }));
-          });
-        }
-      });
-    }
-
-    return components;
-  }
-
-  // 获取所有组件
-  const allComponents = findAllComponents(jsonData);
-
-  // 查找目标组件
-  const targetComponent = allComponents.find((comp: any) => comp.id === targetId);
-  if (!targetComponent) {
-    return result;
-  }
-
-  result.targetComponent = targetComponent;
-
-  // 查找可连接的组件（在同一scope内的组件）
-  const connectableComponents = allComponents.filter((comp: any) => {
-    // 排除自己
-    if (comp.id === targetId) return false;
-
-    // 检查scope隔离
-    // 如果两个组件都没有scope或scope相同，则可以连接
-    const targetScope = targetComponent.scope;
-    const compScope = comp.scope;
-
-    // 如果都没有scope或scope相同，则可以连接
-    if (targetScope === compScope) {
-      return true;
-    }
-
-    // 如果其中一个没有scope，另一个有scope，需要进一步判断
-    // 通常情况下，没有scope的组件可以与任何组件连接
-    if (targetScope === null || targetScope === undefined ||
-      compScope === null || compScope === undefined) {
-      return true;
-    }
-
-    return false;
-  });
-
-  result.connectableComponents = connectableComponents;
-
-  return result;
+const indent = (depth: number) => {
+  return depth ? "  ".repeat(depth) : "";
 }
 
-// 使用示例
-function findConnectableComponentsForId(jsonData: any, targetId: any) {
-  const result = findConnectableComponents(jsonData, targetId);
+function scopeBasedComponentStructure(slot: any, depth = 0) {
+  let result = "";
+  const prefix = indent(depth);
+  const prefix2 = indent((depth + 1));
+  const prefix3 = indent((depth + 2));
+  const prefix4 = indent((depth + 3));
+  if (slot.scope) {
+    const { id, title, vars } = slot;
+    
+    result += `${prefix}作用域插槽（${title}）` + 
+      `\n${prefix}插槽id：${id}` + 
+      (vars?.length ? `\n${prefix}当前变量列表：${vars.reduce((pre: string, { id, title, schema }: any, index: number) => {
+        return pre + `\n${prefix}${index + 1}. ${title}` + `\n${prefix2}变量id：${id}` 
+        // TODO：目前schema定义不全，只放出变量的会有干扰
+        // + `\n${prefix2}schema定义：${JSON.stringify(schema)}`
+      }, "")}\n` : "") + 
+      `\n${prefix}子组件：\n`
+  }
 
-  return [result.targetComponent].concat(result.connectableComponents)
+  slot.components?.forEach((component: any) => {
+    const { id, title, inputs, outputs, slots } = component
 
-  // 返回可连接组件的详细信息
-  // return {
-  //   targetComponent: result.targetComponent,
-  //   connectableComponents: result.connectableComponents,
-  // };
+    result += `${prefix}- ${title}\n` + 
+      `${prefix2}组件id：${id}\n` +
+      `${prefix2}可连接的输入端口：${inputs?.length ? inputs.filter(({ hostId }: any) => {
+        return !["_config_", "_setStyle"].includes(hostId)
+      }).reduce((pre: string, { hostId, title, rels, description }: any, index: number) => {
+        return pre + `\n${prefix2}${index + 1}. ${title}（${hostId}）` + 
+        (description ? `\n${prefix3}描述：${description}` : "") + 
+        `\n${prefix3}关联输出端口：${rels?.length ? rels.reduce((pre: string, {id, title}: any, index: number) => {
+          return pre + `\n${prefix4}${index + 1}. ${title}（${id}）`
+        }, "") : "无"}`
+      }, "") : "无"}\n\n` + 
+      `${prefix2}可创建的事件：${outputs?.length ? outputs.reduce((pre: string, { hostId, title, description }: any, index: number) => {
+        return pre + `\n${prefix2}${index + 1}. ${title}（${hostId}）` + 
+        (description ? `\n${prefix2}描述：${description}` : "")
+      }, "") : "无"}\n\n`;
+
+    
+      slots?.forEach((slot: any) => {
+        result += scopeBasedComponentStructure(slot, slot.scope ? depth + 1 : depth);
+      })
+  });
+
+  return result;
 }
