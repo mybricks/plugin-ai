@@ -24,7 +24,10 @@ export default function generatePage(config: GeneratePageToolParams): any {
   const streamActionsParser = createActionsParser();
   const excuteActionsParser = createActionsParser();
 
-  const pageJson = config?.getPageJson();
+  let pageJson = config?.getPageJson();
+  if (pageJson?.components?.[0]?.asRoot) {
+    pageJson = pageJson?.components?.[0]
+  }
   const hasRootCom = pageJson?.asRoot;
   const rootId = hasRootCom ? pageJson.id : undefined;
   const pageId = config?.getTargetId();
