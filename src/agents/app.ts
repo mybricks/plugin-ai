@@ -67,8 +67,8 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
       MYBRICKS_TOOLS.GeneratePage({
         getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(pageId) as string,
         getTargetId: () => pageId as string,
-        getPageJson() {
-          return context.api?.page?.api?.getOutlineInfo(pageId)
+        getRootIdByPageId(pageId: string) {
+          return outlineInfoManager.getPageMetaInfo(pageId)?.rootId
         },
         componentIdToTitleMap,
         appendPrompt: prompts.systemAppendPrompts,

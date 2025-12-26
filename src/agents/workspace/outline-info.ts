@@ -20,6 +20,16 @@ export interface OutlineNode {
   _hasCollapsedChildren?: boolean;
 }
 
+// 设计器给出的 OutlineNode
+export interface OriginOutlineNode extends OutlineNode {
+  components: OutlineNode[]
+  layout: {
+    width: string | number
+    height: string | number
+  }
+}
+
+
 export interface ComponentsResult {
   id: string;
   jsx: string;
@@ -38,7 +48,7 @@ export class OutlineInfoManager {
     this.api = api;
   }
 
-  private getOutlineInfo(id: string, type: string) {
+  private getOutlineInfo(id: string, type: string): OriginOutlineNode {
     if (type !== 'page') {
       return this.api?.uiCom?.api?.getOutlineInfo(id)
     } else {
@@ -54,18 +64,52 @@ export class OutlineInfoManager {
     return this.getOutlineInfo(componentId, 'uiCom');
   }
 
-  private normalizePageOutline(outline: OutlineNode, pageId: string): OutlineNode {
-    // 没有设置asRoot组件，兼容成asRoot组件结构
+  private getOriginOutlineRootCom = (originOutline: OriginOutlineNode) => {
+    return originOutline?.components?.[0]?.asRoot ? originOutline?.components?.[0] : null
+  }
+
+  getPageMetaInfo(pageId: string) {
+    const originOutlineJson =  this.getOutlineInfo(pageId, 'page')
+
+    const rootId = this.getOriginOutlineRootCom(originOutlineJson) ? this.getOriginOutlineRootCom(originOutlineJson)?.id : undefined;
+
+    return {
+      pageId,
+      rootId
+    }
+  }
+  
+
+  private normalizePageOutline(outline: OriginOutlineNode, pageId: string): OutlineNode {
     if (outline?.id === pageId) {
-      const normalized: OutlineNode = {
-        ...outline,
-        slots: [{
-          id: ROOT_SLOT_ID,
-          components: outline.components,
-          layout: outline.layout
-        }],
+
+      let rootNode: OutlineNode = outline
+      let rootSlots: SlotInfo[] | undefined = [{
+        id: ROOT_SLOT_ID,
+        components: outline?.components,
+        layout: outline?.layout
+      }];
+      const whInfo: any = {
+        width: outline?.layout?.width,
+        height: outline?.layout?.height,
+      }
+
+      // 说明有asRoot组件，把asRoot的信息往上提取一层
+      const rootCom = this.getOriginOutlineRootCom(outline)
+      if (!!rootCom) {
+        rootNode = rootCom;
+        rootSlots = rootNode.slots
+      }
+
+      const normalized = {
+        ...rootNode,
+        style: {
+          ...(rootNode.style ?? {}),
+          ...whInfo, // 注意用的是页面的宽高
+        },
+        slots: rootSlots,
         def: {
-          ...(outline.def || {}),
+          version: '1.0.0',
           namespace: ROOT_NAMESPACE
         },
         asRoot: true
@@ -73,7 +117,7 @@ export class OutlineInfoManager {
 
       return {
         id: pageId,
-        title: outline.title,
+        title: outline.title, // 注意用的是页面的title
         slots: [{ id: ROOT_ID, components: [normalized] }]
       };
     }

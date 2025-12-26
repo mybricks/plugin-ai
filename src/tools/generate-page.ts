@@ -5,7 +5,7 @@ interface GeneratePageToolParams {
   /** 当前根组件信息 */
   getRootComponentDoc: () => string;
   getTargetId: () => string;
-  getPageJson: () => any
+  getRootIdByPageId: (id: string) => string | undefined;
   componentIdToTitleMap: Map<string, string>;
   /** 应用特殊上下文信息 */
   appendPrompt: string;
@@ -24,13 +24,8 @@ export default function generatePage(config: GeneratePageToolParams): any {
   const streamActionsParser = createActionsParser();
   const excuteActionsParser = createActionsParser();
 
-  let pageJson = config?.getPageJson();
-  if (pageJson?.components?.[0]?.asRoot) {
-    pageJson = pageJson?.components?.[0]
-  }
-  const hasRootCom = pageJson?.asRoot;
-  const rootId = hasRootCom ? pageJson.id : undefined;
   const pageId = config?.getTargetId();
+  const rootId = config?.getRootIdByPageId(pageId);
 
   let fileNameToContent: Record<string, string> = {};
   let displayContent = "";
@@ -569,7 +564,6 @@ function fixActions(actions: any[], {
   rootId?: string,
   pageId?: string
 }) {
-  if (!rootId) return actions;
   return (actions ?? []).map(action => {
     if (action.comId === rootId && action.type === 'addChild' && action.target === '_rootSlot_') {
       action.comId = '_root_'

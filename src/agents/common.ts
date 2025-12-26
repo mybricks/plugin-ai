@@ -58,7 +58,7 @@ export const requestCommonAgent = (params: any) => {
 
     const hasAttachment = typeof params?.message !== 'string';
 
-    // workspace.openDocument('u_YZ0su')
+    // workspace.openDocument('u_qLciw]')
 
     // workspace.openDocument('u_ADKKC')
 
@@ -81,7 +81,9 @@ export const requestCommonAgent = (params: any) => {
     // return console.log(workspace.getProjectStruct())
 
     // try {
-    //   workspace.openDocument('u_K_8oe')
+    //   workspace.openDocument(targetPageId)
+
+    //   // workspace.openDocument('u_gOo4J')
     //   return console.log(workspace.getProjectStruct())
     // } catch (error) {
     //   console.error(error)
@@ -124,8 +126,8 @@ export const requestCommonAgent = (params: any) => {
         MYBRICKS_TOOLS.GeneratePage({
           getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,
           getTargetId: () => targetPageId as string,
-          getPageJson() {
-            return context.api?.page?.api?.getOutlineInfo(targetPageId)
+          getRootIdByPageId(pageId: string) {
+            return outlineInfoManager.getPageMetaInfo(pageId)?.rootId
           },
           componentIdToTitleMap,
           appendPrompt: prompts.systemAppendPrompts,
