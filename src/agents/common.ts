@@ -83,8 +83,11 @@ export const requestCommonAgent = (params: any) => {
     // try {
     //   workspace.openDocument(targetPageId)
 
-    //   // workspace.openDocument('u_gOo4J')
+    //   workspace.openDocument('u_gOo4J')
     //   return console.log(workspace.getProjectStruct())
+
+    //   workspace.openComponentDoc('mybricks.normal-pc.antd5.form-container')
+    //   return console.log(workspace.getComponentsDocs());
     // } catch (error) {
     //   console.error(error)
     // }
