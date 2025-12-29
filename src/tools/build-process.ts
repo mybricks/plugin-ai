@@ -13,6 +13,12 @@ enum Status {
 }
 
 function buildProcess(props: any) {
+  // const pageOutlineInfo = props.getPageOutlineInfo();
+  // const connectableComponents = scopeBasedComponentStructure({...pageOutlineInfo, id: "_root_", title: "页面", scope: true });
+  // console.log("[pageOutlineInfo]", pageOutlineInfo);
+  // console.log("[connectableComponents]", connectableComponents)
+  // throw new Error("stop")
+
   const streamActionsParser = createActionsParser();
 
   /** key: comid-outputid -> diagramId */
@@ -128,6 +134,21 @@ function buildProcess(props: any) {
 
   **作用域插槽**
   作用域插槽用来对组件进行严格的隔离，作用域插槽内的组件允许连接作用域插槽外的组件，作用域插槽外的组件禁止连接作用域插槽内的组件。
+  它是**数据传递桥梁**，用于实现父组件向子组件的数据传递和UI更新控制。
+  核心机制：
+  1. **流程编排能力**：作用域插槽本身支持完整的事件流程搭建
+   - 作用域插槽有自己的输入端口（接收父组件数据）
+   - 作用域插槽内可以搭建任意复杂的流程逻辑
+   - 通过流程编排将数据分发给作用域插槽内的各个子组件
+  2. **UI更新机制**：作用域插槽内组件的UI更新依赖插槽的流程编排
+   - 父组件数据变化 → 插槽输入端口 → 插槽内流程 → 子组件输入 → UI更新
+   - **重要**：仅仅更新父组件数据不会自动更新插槽内UI，必须通过作用域插槽流程编排实现
+
+  搭建要求：
+  当父组件的输入被连接且该组件包含作用域插槽时，必须：
+  1. 创建作用域插槽的事件流程（使用slotId）
+  2. 在作用域插槽流程中连接作用域插槽内的子组件
+  3. 确保数据能正确传递到每个需要的子组件
 
   **变量**
   变量是一个内置的特殊js组件，用于在各个作用域插槽内缓存数据。但是它区别于js、js-autorun组件的不同之处在于，变量与ui节点一样输入端口可能被多次连接。
@@ -237,13 +258,14 @@ ${allPageInfo}
 
 <思考建议>
 - 当用户提出刷新某个区域或组件，当区域或组件没有对应实现的输入时，可以思考下是否可以通过调用该区域或组件的下的子组件的输入来完成需求
-- 所有在<组件使用文档>中声明的rtType为js或js-autorun组件都必须被使用，这是需求分析后的组件选型，满足需求是一定要用到的
+- 所有在<组件使用文档>中声明的rtType为js或js-autorun的组件都必须被使用，这是需求分析后的组件选型，是必须要用到的
 - 当需要临时存储数据、状态跟踪、缓存计算结果、或者数据可能在后续流程被使用或修改时，先检查是否存在同语义变量
   1. 第一步：分析需求中需要存储的数据的语义
   2. 第二步：在<可连接的组件说明>中查找是否存在语义相同或相似的变量
   3. 第三步：如果存在且作用域匹配，必须复用；如果不存在或作用域不匹配，才创建新变量
   4. 第四步：确保变量标题准确反映存储的数据内容
 - 参考<变量绑定方案>，判断实现当前需求是否需要使用变量绑定方案；
+- 当被连接的组件有作用域插槽时，思考是否需要创建作用域插槽流程以更新插槽内的组件
 </思考建议>
 
 <如何通过action搭建事件流程>
@@ -256,17 +278,29 @@ ${allPageInfo}
 
     <createEvent>
       创建事件流程
-      该action在结构上严格遵循以下格式：["createEvent",comId,outputId]
+      该action在结构上严格遵循以下格式：["createEvent",params]
         - "createEvent" 当前action类型，是一个默认值
-        - comId 当前需要创建事件流程的组件id
-        - outputId 当前需要创建事件流程对应的outputId
-      
+        - params 创建事件流程的参数，各节点参数格式以Typescript的形式说明如下：
+          - 创建组件的事件
+          \`\`\`typescript
+          type Params {
+            comId: string; // 当前需要创建事件流程的组件id  
+            outputId: string; // 当前需要创建事件流程的组件事件对应的outputId
+          }
+          \`\`\`
+          - 创建作用域插槽的事件，当需要为**作用域插槽**搭建内部流程以响应外部传入的数据时，调用这个action。
+          type Params {
+            comId: string; // 当前需要创建事件流程的组件id  
+            slotId: string; // 当前需要创建事件流程的组件插槽对应的id
+          }
+          \`\`\`
+
       例如，在任何的事件流程搭建之前，都需要先创建流程，可以返回以下内容：
       ${fileFormat({
-        content: `["createEvent",comId,outputId]
+        content: `["createEvent",{"comId":"comId","outputId":"outputId"}]
 ["createCom",params]
-[output,"connectTo",input]`,
-        fileName: '创建流程.json'
+["connectTo",output,input]`,
+        fileName: '创建组件事件流程.json'
       })}
 
       注意：
@@ -343,11 +377,11 @@ ${allPageInfo}
 
       例如，用户要求ui组件a的outputa1事件触发时调用js、js-autorun组件b的输入端口inputb1，b执行结束后把结果传给ui组件c的inputc1，可以返回以下action：
       ${fileFormat({
-        content: `["createEvent",a,outputa1]
+        content: `["createEvent",{"comId":"a","outputId":"outputa1"}]
 ["createCom",{"type":"calculate","title":"b组件标题","ns":"b组件namespace","comId":"b","inputs":[{"id":"inputb1","title":"语义化标题"}],"outputs":[{"id":"outputb1","title":"语义化标题"}],"configs":[{"path":"xx/xx/xx","value":"xxx"}]}]
-[{type:"com","comId":"a","outputId":"outputa1"},"connectTo",{"type":"com","comId":"b","inputId":"inputb1"}]
+["connectTo",{type:"com","comId":"a","outputId":"outputa1"},{"type":"com","comId":"b","inputId":"inputb1"}]
 ["createCom",{"type":"uiCom","comId":"c","inputId":"inputc1","instanceId": "instanceIdc1"}]
-[{"type":"com","comId":"b","outputId":""outputb1"},"connectTo",{"type":"com","inputId":"inputc1","instanceId":"instanceIdc1"}]`,
+["connectTo",{"type":"com","comId":"b","outputId":""outputb1"},{"type":"com","inputId":"inputc1","instanceId":"instanceIdc1"}]`,
         fileName: '连接js组件.json'
       })}
 
@@ -377,10 +411,10 @@ ${allPageInfo}
           \`\`\`
       例如，用户要求ui组件a的outputa1事件触发时存储输出内容，可以返回以下action：
       ${fileFormat({
-        content: `["createEvent",a,outputa1]
+        content: `["createEvent",{"comId":"a","outputId":"outputa1"}]
 ["defineVar",{"comId":"目标作用域插槽父组件id","slotId":"目标作用域插槽id","id":"新添加的变量id","title":"语义化的变量标题","schema":"标准JSON Schema协议","initValue":"变量初始值"}]
 ["createCom",{"type":"var","varId":"新添加的变量id","inputId":"set",""instanceId": "instanceIdvar1""}]
-[{"type":"com","comId":"a","outputId":"outputa1"},"connectTo",{"type":"com","inputId":"set","instanceId":"instanceIdvar1"}]`,
+["connectTo",{"type":"com","comId":"a","outputId":"outputa1"},{"type":"com","inputId":"set","instanceId":"instanceIdvar1"}]`,
         fileName: '连接js组件.json'
       })}
 
@@ -393,49 +427,55 @@ ${allPageInfo}
 
     <connectTo>
       从一个节点的输出端口连接到下一个节点的输入端口，连接的前提是已经通过<createCom>创建好了可连接的节点
-      该action在结构上严格遵循以下格式：[output,"connectTo",input]
+      该action在结构上严格遵循以下格式：["connectTo",output,input]
+        - "connectTo" 当前action类型，是一个默认值
         - output 当前连接的输出端口，格式以Typescript的形式说明如下：
-          - Output：当输出端口是当前流程的输出
-          - UIOutput：当输出端口是ui组件节点
-          - JSOutput：当输出端口是js、js-autorun组件节点
-          - VAROutput：当输出端口是变量组件节点
+          - 当输出端口是当前流程的输出
           \`\`\`typescript
-          // 如果输出端口是当前流程的输出
           type Output = {
             type: "com";
             comId: string; 当前需要创建事件流程的组件id
             outputId: string; 当前需要创建事件流程对应的outputId
           }
-
+          \`\`\`
+          - 当输出端口是ui组件节点
+          \`\`\`typescript
           // 如果输出端口是ui组件节点
-          type UIOutput = {
+          type Output = {
             type: "com";
             outputId: string;  // 当前节点的输出outputId
             instanceId: string; // 实例id，由于ui组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分，在整个actions中，instanceId只能被连接一次
           }
-
-          // 如果输出端口是js、js-autorun组件节点
-          type JSOutput = {
+          \`\`\`
+          - 当输出端口是js、js-autorun组件节点
+          \`\`\`typescript
+          type Output = {
             type: "com";
             comId: string; //新添加的组件id，禁止重复使用已存在的组件id
             outputId: string; // 当前节点的输出outputId
           }
-
-          // 如果输出端口是变量组件节点
-          type VAROutput = {
+          \`\`\`
+          - 当输出端口是变量组件节点
+          \`\`\`typescript
+          type Output = {
             type: "com";
             outputId: string;  // 当前节点的输出outputId
             instanceId: string; // 实例id，由于变量组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分，在整个actions中，instanceId只能被连接一次
           }
           \`\`\`
-        - "connectTo" 当前action类型，是一个默认值
-        - input 连接的参数，格式以Typescript的形式说明如下：
-          - UIInput：当输入端口是ui组件节点
-          - JSInput：当输入端口是js、js-autorun组件节点
-          - VARInput：当输入端口是变量组件节点
+          - 当输出端口是作用域插槽的输入
           \`\`\`typescript
-          // 连接ui类型的输入端口
-          type UIInput = {
+          type Output = {
+            type: "frame";
+            comId: string; // 作用域插槽的父组件id
+            frameId: string; // 作用域插槽的id
+            outputId: string; // 对应作用域插槽的输入id
+          }
+          \`\`\`
+        - input 连接的参数，格式以Typescript的形式说明如下：
+          - 当输入端口是ui组件节点
+          \`\`\`typescript
+          type Input = {
             /** 类型，目前默认为"com" */
             type: "com";
             /** 输入id */
@@ -443,9 +483,10 @@ ${allPageInfo}
             /** 实例id，由于ui组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分，在整个actions中，instanceId只能被连接一次 */
             instanceId: string;
           }
-
-          // 连接js、js-autorun类型的输入端口
-          type JSInput = {
+          \`\`\`
+          - 当输入端口是js、js-autorun组件节点
+          \`\`\`typescript
+          type Input = {
             /** 类型，目前默认为"com" */
             type: "com";
             /** 组件id */ */
@@ -453,9 +494,10 @@ ${allPageInfo}
             /** 输入id */
             inputId: string;
           }
-
-          // 连接变量类型的输入端口
-          type VARInput = {
+          \`\`\`
+          - 当输入端口是变量组件节点
+          \`\`\`typescript
+          type Input = {
             /** 类型，目前默认为"com" */
             type: "com";
             /** 输入id */
@@ -467,9 +509,9 @@ ${allPageInfo}
 
       例如，当用户要求组件a的outputa1事件触发时调用组件b的输入端口inputb1，可以返回以下action：
       ${fileFormat({
-        content: `["createEvent",a,outputa1]
+        content: `["createEvent",{"comId":"a","outputId":"outputa1"}]
 ["createCom",{"type":"uiCom","comId":"b","inputId":"inputb1","instanceId":"instanceIdb1"}]
-[{"type":"com","comId":"a","outputId":"outputa1"},"connectTo",{"type":"com","inputId":"inputb1","instanceId":"instanceIdb1"}]`,
+["connectTo",{"type":"com","comId":"a","outputId":"outputa1"},{"type":"com","inputId":"inputb1","instanceId":"instanceIdb1"}]`,
         fileName: '连接到组件的输入端口.json'
       })}
 
@@ -480,9 +522,9 @@ ${allPageInfo}
             好的，我将为当前组件的点击事件搭建事件流程，点击后隐藏xx
             
             ${fileFormat({
-        content: `["createEvent",comId,outputId]
+        content: `["createEvent",{"comId":"comId","outputId":"outputId"}]
 ["createCom",{"type":"uiCom","comId":"targetComId","inputId":"targetComInputId","instanceId":"instanceIdb1"}]
-[{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","inputId":"targetComInputId","instanceId": "instanceIdb1"}]`,
+["connectTo",{"type":"com","comId":comId,"outputId":outputId},{"type":"com","inputId":"targetComInputId","instanceId": "instanceIdb1"}]`,
         fileName: '当前组件的点击事件流程搭建.json'
       })}
           </assistant_response>
@@ -493,11 +535,11 @@ ${allPageInfo}
             好的，我将为当前组件的点击事件搭建事件流程，点击后给a赋值，赋值完成后隐藏b
             
             ${fileFormat({
-        content: `["createEvent",comId,outputId]
+        content: `["createEvent",{"comId":"comId","outputId":"outputId"}]
 ["createCom",{"type":"uiCom","comId":"a","inputId":"input","instanceId":"instanceIda1"}]
-[{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","inputId":"input","instanceId":"instanceIda1"}]
+["connectTo",{"type":"com","comId":comId,"outputId":outputId},{"type":"com","inputId":"input","instanceId":"instanceIda1"}]
 ["createCom",{"type":"uiCom","comId":"b","inputId":"input","instanceId":"instanceIdb1"}]
-[{"type":"com","instanceId":"instanceIda1","outputId":"inputDone"},"connectTo",{"type":"com","inputId":"input","instanceId":"instanceIdb1"}]`,
+["connectTo",{"type":"com","instanceId":"instanceIda1","outputId":"inputDone"},{"type":"com","inputId":"input","instanceId":"instanceIdb1"}]`,
         fileName: '当前组件的点击事件流程搭建.json'
       })}
           </assistant_response>
@@ -510,11 +552,11 @@ ${allPageInfo}
             由于每个输入端口只能被一个输出端口连接，所以即使是相同的输入端口，需要创建两个不同的节点
 
             ${fileFormat({
-              content: `["createEvent",comId,outputId]
+              content: `["createEvent",{"comId":"comId","outputId":"outputId"}]
 ["createCom",{"type":"uiCom","comId":"a","inputId":"input","instanceId":"instanceIda1"}]
-[{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","inputId":"input","instanceId":"instanceIda1"}]
+["connectTo",{"type":"com","comId":comId,"outputId":outputId},{"type":"com","inputId":"input","instanceId":"instanceIda1"}]
 ["createCom",{"type":"uiCom","comId":"a","inputId":"input","instanceId":"instanceIda2"}]
-[{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","inputId":"input","instanceId":"instanceIda2"}]`,
+["connectTo",{"type":"com","comId":comId,"outputId":outputId},{"type":"com","inputId":"input","instanceId":"instanceIda2"}]`,
               fileName: 'ui节点的相同输入端口连接.json'
             })}
           </assistant_response>
@@ -524,7 +566,7 @@ ${allPageInfo}
           <assistant_response>
             由于组件a与当前组件的作用域隔离限制，无法设置
             ${fileFormat({
-              content: `["createEvent",comId,outputId]`,
+              content: `["createEvent",{"comId":"comId","outputId":"outputId"}]`,
               fileName: '组件间的作用域隔离.json'
             })}
           </assistant_response>
@@ -568,7 +610,7 @@ ${allPageInfo}
         fileName: '将a的内容与变量b绑定.json'
       })}
 
-      </examples>
+      <examples>
         <example>
           <user_query>点击后将展示各字段内容到组件a、b、c</user_query>
           <assistant_response>
@@ -577,13 +619,13 @@ ${allPageInfo}
             由于a、b、c三个组件支持变量绑定，我将使用变量绑定方案：
 
             ${fileFormat({
-              content: `["createEvent",comId,outputId]
+              content: `["createEvent",{"comId":"comId","outputId":"outputId"}]
 ["defineVar",{"comId":"root","slotId":"_root_","id":"object","title":"对象值","schema":{"type":"object","properties":{"x":{"type":"string"},"y":{"type":"string"},"z":{"type":"string"}}},"initValue":{}}]
 ["doConfigForBind",{"comId":"a","target":"target","path":"path","varId":"object","xpath":"/x"}]
 ["doConfigForBind",{"comId":"b","target":"target","path":"path","varId":"object","xpath":"/y"}]
 ["doConfigForBind",{"comId":"c","target":"target","path":"path","varId":"object","xpath":"/z"}]
 ["createCom",{"type":"var","varId":"object","inputId":"set","instanceId":"instanceIdVar1"}]
-[{"type":"com","comId":"comId","outputId":"outputId"},"connectTo",{"type":"com","inputId":"set","instanceId":"instanceIdVar1"}]`,
+["connectTo",{"type":"com","comId":"comId","outputId":"outputId"},{"type":"com","inputId":"set","instanceId":"instanceIdVar1"}]`,
               fileName: '变量绑定方案.json'
             })}
 
@@ -602,11 +644,11 @@ ${allPageInfo}
         <assistant_response>
           好的，我将为当前组件的点击事件搭建事件流程，点击后获取a内容和b内容
           ${fileFormat({
-            content: `["createEvent",comId,outputId]
+            content: `["createEvent",{"comId":"comId","outputId":"outputId"}]
 ["createCom",{"type":"uiCom","comId":"a","inputId":"getValue","instanceId":"instanceIda1"}]
-[{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","inputId":"getValue","instanceId":"instanceIda1"}]
+["connectTo",{"type":"com","comId":comId,"outputId":outputId},{"type":"com","inputId":"getValue","instanceId":"instanceIda1"}]
 ["createCom",{"type":"uiCom","comId":"b","inputId":"getValue","instanceId":"instanceIdb1"}]
-[{"type":"com","comId":comId,"outputId":outputId},"connectTo",{"type":"com","inputId":"getValue","instanceId":"instanceIdb1"}]`,
+["connectTo",{"type":"com","comId":comId,"outputId":outputId},{"type":"com","inputId":"getValue","instanceId":"instanceIdb1"}]`,
             fileName: '当前组件的点击事件流程搭建.json'
           })}
         </assistant_response>
@@ -616,7 +658,7 @@ ${allPageInfo}
         <assistant_response>
           由于组件a与当前组件的作用域隔离限制，无法设置
           ${fileFormat({
-            content: `["createEvent",comId,outputId]`,
+            content: `["createEvent",{"comId":"comId","outputId":"outputId"}]`,
             fileName: '组件间的作用域隔离.json'
           })}
         </assistant_response>
@@ -629,10 +671,10 @@ ${allPageInfo}
           由于a、b、c三个组件支持变量绑定，我将使用变量绑定方案：
 
           ${fileFormat({
-            content: `["createEvent",comId,outputId]
+            content: `["createEvent",{"comId":"comId","outputId":"outputId"}]
 ["defineVar",{"comId":"root","slotId":"_root_","id":"sharedValue","title":"共享值","schema":{"type":"string"},"initValue":""}]
 ["createCom",{"type":"var","varId":"sharedValue","inputId":"set","instanceId":"instanceIdVar1"}]
-[{"type":"com","comId":"comId","outputId":"outputId"},"connectTo",{"type":"com","inputId":"set","instanceId":"instanceIdVar1"}]
+["connectTo",{"type":"com","comId":"comId","outputId":"outputId"},{"type":"com","inputId":"set","instanceId":"instanceIdVar1"}]
 ["doConfigForBind",{"comId":"a","target":"target","path":"path","varId":"sharedValue","xpath":""}]
 ["doConfigForBind",{"comId":"b","target":"target","path":"path","varId":"sharedValue","xpath":""}]
 ["doConfigForBind",{"comId":"c","target":"target","path":"path","varId":"sharedValue","xpath":""}]`,
@@ -640,6 +682,25 @@ ${allPageInfo}
           })}
 
           这样通过一次变量修改就能同时驱动三个UI组件更新，这是推荐的面向变量的搭建方式。
+        </assistant_response>
+      </example>
+      <example>
+        <user_query>点击后刷新列表</user_query>
+        <assistant_response>
+          好的，我将为当前组件的点击事件搭建事件流程，点击后刷新列表，同时更新每一项内的子组件
+
+          流程说明：列表组件更新数据，通过作用域插槽流程刷新插槽内子组件数据
+
+          ${fileFormat({
+            content: `["createEvent",{"comId":"comId","outputId":"outputId"}]
+["createCom",{"type":"uiCom","comId":"list","inputId":"setValue","instanceId":"instanceIda1"}]
+["connectTo",{"type":"com","comId":comId,"outputId":outputId},{"type":"com","inputId":"setValue","instanceId":"instanceIda1"}]
+["createEvent",{"comId":"list","slotId":"slotId"}]
+["createCom",{"type":"uiCom","comId":"listchild","inputId":"setValue","instanceId":"instanceIdListchild1"}]
+["connectTo",{"type":"frame","comId":"list","frameId":"frameId","outputId":"outputId"},{"type":"com","inputId":"setValue","instanceId":"instanceIdListchild1"}]
+`,
+            fileName: '点击后刷新列表同时将每一项数据传入子组件.json'
+          })}
         </assistant_response>
       </example>
     </examples>
@@ -662,6 +723,7 @@ ${allPageInfo}
       - 所有创建的节点都必须被连接，禁止创建没有意义的节点。
       - 节点的每个输入端口只能被连接一次，多次连接会导致错误。
       - 优先使用变量绑定方案，这是推荐的面向变量的搭建方式，通过<变量绑定方案>进行判断是否需要使用。
+      - 带有作用域插槽的组件，组件数据的更新不代表组件视觉的更新，需要考虑创建作用域插槽的事件。
   </关于actions>
 
   注意：
@@ -674,6 +736,7 @@ ${allPageInfo}
       let actions: {
         comId: string;
         outputId: string;
+        slotId: string;
         type: string;
         params: any;
       }[] = [];
@@ -706,7 +769,6 @@ ${allPageInfo}
                 props.updatePage([], "start")
                 updatePageStatus = Status.RUNNING;
               }
-              console.log("[action]", action)
               props.updatePage([action], "ing")
               continue
             }
@@ -722,11 +784,13 @@ ${allPageInfo}
                 }
               }
               if (action.type === "createEvent") {
-                if (!diagramIdMap[`${action.comId}-${action.outputId}`]) {
+                const { comId, slotId, outputId } = action;
+
+                if (!diagramIdMap[`${comId}-${slotId || outputId}`]) {
                   currentDiagram = {
-                    ...props.createDiagram("comEvent", { comId: action.comId, outputId: action.outputId }),
-                    status: Status.IDLE
-                  };
+                    status: Status.IDLE,
+                    ...(slotId ? props.getDiagramInfo(comId, slotId) : props.createDiagram("comEvent", { comId, outputId })),
+                  }
                 }
               }
             } else {
@@ -862,9 +926,8 @@ const formatAction = (_action: string) => {
     }
   } else if (action[0] === "createEvent") {
     return {
-      comId: action[1],
-      outputId: action[2],
-      type: action[0]
+      type: action[0],
+      ...action[1]
     }
   } else if (action[0] === "defineVar") {
     const params = action[1]
@@ -892,12 +955,12 @@ const formatAction = (_action: string) => {
         }
       }
     }
-  } else if (action[1] === "connectTo") {
+  } else if (action[0] === "connectTo") {
     return {
-      comId: action[0].comId || action[0].instanceId,
-      type: action[1],
+      comId: action[1].comId || action[1].instanceId,
+      type: action[0],
       params: {
-        from: action[0],
+        from: action[1],
         to: action[2]
       }
     }
@@ -917,10 +980,13 @@ function scopeBasedComponentStructure(slot: any, depth = 0) {
   const prefix3 = indent((depth + 2));
   const prefix4 = indent((depth + 3));
   if (slot.scope) {
-    const { id, title, vars } = slot;
+    const { id, title, vars, inputs } = slot;
     
     result += `${prefix}作用域插槽（${title}）` + 
       `\n${prefix}插槽id：${id}` + 
+      `\n${prefix}插槽输入：${inputs?.length ? inputs.reduce((pre: string, { id, title, schema }: any, index: number) => {
+        return pre + `\n${prefix2}${index + 1}. ${title}（${id}）`
+      }, "") : "无"}\n\n` +
       (vars?.length ? `\n${prefix}当前变量列表：${vars.reduce((pre: string, { id, title, schema }: any, index: number) => {
         return pre + `\n${prefix}${index + 1}. ${title}` + `\n${prefix2}变量id：${id}` 
         // TODO：目前schema定义不全，只放出变量的会有干扰

@@ -38,6 +38,7 @@ interface AiServiceAPI {
     api: {
       createDiagram: (...args: any) => { id: string; title: string }
       updateDiagram: (...args: any) => void;
+      getDiagramInfo: (...args: any) => any;
     }
   }
 }
