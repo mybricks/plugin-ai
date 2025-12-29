@@ -135,6 +135,7 @@ function buildProcess(props: any) {
   1. 语义唯一性原则：相同语义的数据应该使用同一个变量存储
   2. 复用优先原则：优先复用已存在的变量，避免重复创建
   3. 作用域匹配原则：变量必须在正确的作用域内创建和使用
+  4. 维护组件状态原则：如果组件的状态需要被其他组件读取或控制且本身不提供状态读取能力，就需要使用变量来实现状态的共享
 
   输入端口：
   - set 赋值，传入新的变量值
@@ -287,7 +288,7 @@ ${allPageInfo}
             instanceId: string // 实例id，由于ui组件的输入端口可能被多次连接，所以需要一个唯一的instanceId来做区分，在整个actions中，instanceId只能被连接一次
           }
           \`\`\`
-          - 创建js、js-autorun节点，可创建节点取自<组件使用文档>中声明的js或js-autorun组件
+          - 创建js、js-autorun节点，可创建节点取自<组件使用文档>中声明的js或js-autorun组件，如果没有声明，禁止编造、创造。
           \`\`\`typescript
           type Params = {
             type: "calculate" // 类型，用于区分节点类型，默认calculate
