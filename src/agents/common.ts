@@ -154,6 +154,8 @@ export const requestCommonAgent = (params: any) => {
 //           appendPrompt: `<对于当前搭建有以下特殊上下文>
 //   <搭建画布信息>
 //     当前正在搭建各类智能穿戴设备的表盘，画布的宽度和高度我们建议设置为300*300，所有内容必须使用*绝对定位*布局绘制到画布上。
+
+//     注意：根组件的布局必须设置position=absolute（绝对定位）和具体的宽高。
 //   </搭建画布信息>
 // </对于当前搭建有以下特殊上下文>`,
 //           examples: `<example>
@@ -166,7 +168,7 @@ export const requestCommonAgent = (params: any) => {
 //     ${fileFormat({
 //     content: `["_root_",":root","setLayout",{"height": 300, "width": "300"}]
 //     ["_root_",":root","doConfig",{"path":"root/标题","value":"科技风表盘"}]
-//     ["_root_",":root","doConfig",{"path":"root/布局","value":{"display":"flex","flexDirection":"column"}}]
+//     ["_root_",":root","doConfig",{"path":"root/布局","value":{"position": "absolute"}}]
 //     ["_root_",":root","doConfig",{"path":"root/样式","value":{"background":"linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 50%, #16213e 100%)"}}]
 //     ["_root_","_rootSlot_","addChild",{"title":"数字时间显示","ns":"somelib.text","comId":"u_digital_time","layout":{"position":"absolute","top":200,"left":100,"width":100,"height":30},"configs":[{"path":"内容","value":"14:30:25"}]}]
 //     `,
