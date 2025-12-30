@@ -112,6 +112,25 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
   
       注意：
       - 1. 只有在flex布局中的组件，可以在layout中使用margin相关配置；
+
+      \`\`\`typescript
+      /** 对于flex布局的插槽，我们可以添加absolute定位的组件 */
+      type setLayout_absolute_params = {
+        position: 'absolute';
+        /** 宽 */
+        width: Size;
+        /** 高 */
+        height: Size;
+        /** 距离左侧 */
+        left?: number;
+        /** 距离右侧 */
+        right?: number;
+        /** 距离上方 */
+        top?: number;
+        /** 距离下方 */
+        bottom?: number;
+      }
+      \`\`\`
   
       \`\`\`typescript
       /** 如果组件本身是fixed类型定位，可配置如下layout */
@@ -194,7 +213,7 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
         title:string //被添加组件的标题
         ns:string //在 <允许添加的组件 /> 中声明的组件namespace
         comId:string //新添加的组件id，不得超过5位长度
-        layout?: setLayout_flex_params ｜ setLayout_fixed_params //可选，添加组件时可以指定位置和尺寸信息
+        layout?: setLayout_flex_params ｜ setLayout_fixed_params ｜ setLayout_absolute_params //可选，添加组件时可以指定位置和尺寸信息
         configs?: Array<configStyle_params | configProperty_params> // 添加组件可以配置的信息
         // 渲染优化
         ignore?: boolean //可选，是否添加ignore标记
@@ -259,7 +278,7 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
     界面只有两类基本要素:组件、以及组件的插槽，组件的插槽可以嵌套其他组件。
     
     <组件的定位原则>
-      组件的定位有三种方式：flex定位、fixed定位。
+      组件的定位有三种方式：flex定位、fixed、absolute定位。
 
       **flex定位**
         - 组件会相对于所在的插槽进行定位；
@@ -279,8 +298,7 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
 
       在插槽的不同布局下，组件的定位由所在插槽的布局方式决定：
         - 在当前组件的插槽中，可以添加fixed定位的组件，禁止在其他插槽中添加fixed定位的组件；
-        - 如果插槽是flex布局，则子组件只能使用flex定位；
-        - 如果插槽是absolute布局，则子组件只能使用absolute定位；
+        - 如果插槽是flex布局，则子组件主要使用flex定位，特殊情况下使用absolute定位；
     </组件的定位原则>
    
     <布局原则>
@@ -340,7 +358,7 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
             content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex1","ns":"布局组件","layout":{"width":"100%","height":60},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","justifyContent":"space-between","alignItems":"center"}}]}]
           ["u_flex1","插槽id占位","addChild",{"title":"左侧布局组件","comId":"u_lft1","ignore": true,"ns":"布局组件","layout":{"width":"fit-content","height":"fit-content"},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center", "justifyContent": "flex-start"}}]}]
           ["u_lft1","插槽id占位","addChild",{"title":"图标组件","comId":"u_icon","ns":"图标组件","layout":{"width":24,"height":24,"marginRight":8},"configs":[]}]
-          ["u_lft1","插槽id占位","addChild",{"title":"文本组件","comId":"u_text","ns":"文本组件","layout":{"width":"fit-content","height":"fit-content"},"configs":[]}]
+          ["u_lft1","插槽id占位","addChild",{"title":"文本组件","comId":"u_text","ns":"文本组件","layout":{"width":"100%","height":"fit-content"},"configs":[]}]
           ["u_flex1","插槽id占位","addChild",{"title":"箭头图标组件","comId":"u_aric","ns":"图标组件","layout":{"width":24,"height":24},"configs":[]}]
           `,
             fileName: 'flex嵌套实现左右布局.json'

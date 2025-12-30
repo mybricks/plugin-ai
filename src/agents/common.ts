@@ -4,6 +4,8 @@ import { MYBRICKS_TOOLS } from "./../tools"
 import { WorkSpace } from './workspace/workspace'
 import { FocusOutlineInfoManager, FocusInfo } from './workspace/outline-focus'
 
+import { fileFormat, RxaiError } from '@mybricks/rxai'
+
 export const requestCommonAgent = (params: any) => {
 
   return new Promise((resolve, reject) => {
@@ -142,6 +144,46 @@ export const requestCommonAgent = (params: any) => {
             context.api?.page?.api?.clearPageContent?.(targetPageId)
           }
         }),
+//         MYBRICKS_TOOLS.GeneratePage({
+//           getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,
+//           getTargetId: () => targetPageId as string,
+//           getRootIdByPageId(pageId: string) {
+//             return outlineInfoManager.getPageMetaInfo(pageId)?.rootId
+//           },
+//           componentIdToTitleMap,
+//           appendPrompt: `<对于当前搭建有以下特殊上下文>
+//   <搭建画布信息>
+//     当前正在搭建各类智能穿戴设备的表盘，画布的宽度和高度我们建议设置为300*300，所有内容必须使用*绝对定位*布局绘制到画布上。
+//   </搭建画布信息>
+// </对于当前搭建有以下特殊上下文>`,
+//           examples: `<example>
+//   <user_query>搭建一个科技风表盘</user_query>
+//   <assistant_response>
+//     好的，我们来实现一个科技风的表盘，搭建过程如下：
+//     1. 首先，必须配置合理的表盘宽度和高度、标题、布局以及样式；
+//     2. 其次搭建各类元素，将各类表盘元素放置到合适的位置；
+
+//     ${fileFormat({
+//     content: `["_root_",":root","setLayout",{"height": 300, "width": "300"}]
+//     ["_root_",":root","doConfig",{"path":"root/标题","value":"科技风表盘"}]
+//     ["_root_",":root","doConfig",{"path":"root/布局","value":{"display":"flex","flexDirection":"column"}}]
+//     ["_root_",":root","doConfig",{"path":"root/样式","value":{"background":"linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 50%, #16213e 100%)"}}]
+//     ["_root_","_rootSlot_","addChild",{"title":"数字时间显示","ns":"somelib.text","comId":"u_digital_time","layout":{"position":"absolute","top":200,"left":100,"width":100,"height":30},"configs":[{"path":"内容","value":"14:30:25"}]}]
+//     `,
+//     fileName: '生成科技风表盘操作步骤.json'
+//   })}
+
+//     注意：
+//     - 表盘所有元素必须由自由布局绘制而成
+//   </assistant_response>
+// </example>`,
+//           onActions: (actions, status) => {
+//             context.api?.page?.api?.updatePage?.(targetPageId, actions, status)
+//           },
+//           onClearPage: () => {
+//             context.api?.page?.api?.clearPageContent?.(targetPageId)
+//           }
+//         }),
         MYBRICKS_TOOLS.RefactorComponent({
           onActions: (actions, status, type) => {
             if (!status) {
