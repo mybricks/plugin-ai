@@ -244,7 +244,7 @@ export const requestCommonAgent = (params: any) => {
             return context.api.diagram.api.getDiagramInfo(...args)
           },
           updatePage: (...args: any) => {
-            // console.log("[updatePage]", context.api?.page?.api?.updatePage)
+            // console.log("[updatePage]", args)
             return context.api?.page?.api?.updatePage?.(focusInfo.pageId, ...args)
           }
         }),

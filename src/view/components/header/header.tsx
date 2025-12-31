@@ -18,7 +18,7 @@ const Header = () => {
         name: `rxai-${new Date().getTime()}.json`
       })
     } catch (e) {
-
+      console.error("[@mybricks/plugin-ai - exportRxai - error]", e);
     }
   }
 
