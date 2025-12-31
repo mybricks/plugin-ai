@@ -36,7 +36,7 @@ export function getComponentOperationSummary(operations = [], componentIdToTitle
         if (!componentActions[configTitle]) {
           componentActions[configTitle] = { configs: [] };
         }
-        const simplifiedPath = params.path.split('/').pop();
+        const simplifiedPath = params.path?.split?.('/')?.pop?.();
         componentActions[configTitle].configs.push(simplifiedPath);
         break;
 
@@ -48,7 +48,7 @@ export function getComponentOperationSummary(operations = [], componentIdToTitle
 
         // 2. 如果新组件有配置，单独记录配置操作
         if (params.configs && params.configs.length > 0) {
-          const childConfigs = params.configs.map(config => config.path.split('/').pop());
+          const childConfigs = params.configs.map(config => config.path?.split?.('/')?.pop?.());
           results.push(`• 配置【${params.title}】：设置了 ${childConfigs.join('、')} 等属性`);
         }
         break;
