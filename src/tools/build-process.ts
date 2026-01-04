@@ -88,16 +88,25 @@ function buildProcess(props: any) {
           return pre;
         }
 
-        return (pre ? (pre + "\n") : "") + `<${title}>` + 
-        `\n场景名称：${title}` + 
-        `\nsceneId: ${id}` + 
-        `\n输入端口列表：${inputs.reduce((pre: string, { id, title }: any) => {
-          return pre + `\n` + ` - ${title}（${id}）`
+        return (pre ? (pre + "\n") : "") + `- ${title}` + 
+        `\n  页面id：${id}` + 
+        `\n  输入端口列表：${inputs.reduce((pre: string, { id, title }: any) => {
+          return pre + `\n    - ${title}（${id}）`
         }, "")}` + 
-        `\n输出端口列表：${outputs.reduce((pre: string, { id, title }: any) => {
-          return pre + `\n` + ` - ${title}（${id}）`
-        }, "")}` + 
-        `\n</${title}>`
+        `\n\n  输出端口列表：${outputs.reduce((pre: string, { id, title }: any) => {
+          return pre + `\n    - ${title}（${id}）`
+        }, "")}`
+
+        // return (pre ? (pre + "\n") : "") + `<${title}>` + 
+        // `\n场景名称：${title}` + 
+        // `\nsceneId: ${id}` + 
+        // `\n输入端口列表：${inputs.reduce((pre: string, { id, title }: any) => {
+        //   return pre + `\n` + ` - ${title}（${id}）`
+        // }, "")}` + 
+        // `\n输出端口列表：${outputs.reduce((pre: string, { id, title }: any) => {
+        //   return pre + `\n` + ` - ${title}（${id}）`
+        // }, "")}` + 
+        // `\n</${title}>`
       }, "") || "无";
 
       return `<工具总览>
@@ -204,9 +213,9 @@ ${connectableComponents}
     - 如果上述列出的事件以及<可以使用的配置项>中没有符合要求的事件，不允许捏造、猜测、基于客观事实进行生成。
 </可连接的组件说明>
 
-<可跳转场景>
+<可跳转页面>
 ${allPageInfo}
-</可跳转场景>
+</可跳转页面>
 
 <解释actions的调用过程>
 - 输出思考过程，以通俗易懂的语言，不要出现比如以"思考过程"、"解释"等类似字眼为标题的结构化内容
@@ -381,18 +390,18 @@ ${allPageInfo}
             value: any//需要配置的value
           }[]
           \`\`\`
-          - 页面跳转，场景跳转，唤起对话框
+          - 页面跳转，唤起对话框
           \`\`\`typescript
           type Params = {
             type: "scenes" // 类型，用于区分节点类型，默认scenes
             comId: string //新添加的组件id，禁止重复使用已存在的组件id
-            sceneId: string // 对应<可跳转场景>的sceneId
-            // 输入端口列表，对应<可跳转场景>的场景输入端口列表
+            sceneId: string // 对应<可跳转页面>的页面id
+            // 输入端口列表，对应<可跳转页面>的输入端口列表
             inputs: {
               id: string;
               title: string;
             }[]
-            // 输出端口列表，对应<可跳转场景>的场景输出端口列表
+            // 输出端口列表，对应<可跳转页面>的输出端口列表
             outputs: {
               id: string;
               title: string;
