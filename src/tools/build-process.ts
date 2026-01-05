@@ -13,6 +13,9 @@ enum Status {
 }
 
 const getCurrentFocusComponentDescription = (params: any) => {
+  if (!params) {
+    return "";
+  }
   const { type, outlineInfo } = params;
   const { id, title, data, inputs, outputs } = outlineInfo;
   if (type === "logicCom") {
@@ -28,7 +31,7 @@ const getCurrentFocusComponentDescription = (params: any) => {
       return pre + `\n  - ${title}（${hostId}）`
     }, "") + "\n" : "无"}` +
     `注意：
-- 除了上述列出的输入、输出外，还可以从<组件使用文档>的<可以使用的配置项>内查看组件是否支持创建输入和输出项目。` + 
+- 除了上述列出的输入、输出外，还可以从<组件使用文档>的<可以使用的配置项>内查看组件是否支持创建输入、输出项。` + 
     "\n</当前聚焦组件说明>"
   }
 
@@ -154,6 +157,7 @@ function buildProcess(props: any) {
 <注意>
 - 关注并分析需求，当需求无法满足时，禁止猜测、曲解用户需求，直接告诉用户无法实现并给出具体的原因
 - 基于事实和现状，禁止有任何假设性的内容
+- 除actions外，禁止返回任何其它的代码块语法
 </注意>
 
 <关于MyBricks事件流程>
@@ -364,7 +368,7 @@ ${allPageInfo}
     各action详细说明如下：
 
     <createEvent>
-      创建事件流程
+      创建UI组件的事件流程
       该action在结构上严格遵循以下格式：["createEvent",params]
         - "createEvent" 当前action类型，是一个默认值
         - params 创建事件流程的参数，各节点参数格式以Typescript的形式说明如下：
@@ -479,7 +483,7 @@ ${allPageInfo}
         - 禁止基于组件功能相似性进行推测性创建
         - 禁止创建没有意义的节点，所有创建的节点都必须被连接，否则视为没有意义的节点
         - 所有创建的节点都必须被<connectTo>进行连接
-        - comId和instanceId需要严格保证全局唯一性
+        - 创建节点时comId和instanceId需要严格保证全局唯一性，禁止重复创建
     </createCom>
 
     <updateCom>
@@ -969,8 +973,8 @@ ${allPageInfo}
 
       return replaceContent.replace(actionsFile.fileName, "");
     },
-    // aiRole: "architect",
-    aiRole: 'expert',
+    aiRole: "architect",
+    // aiRole: 'expert',
   }
 }
 
@@ -1102,10 +1106,13 @@ const formatAction = (_action: string) => {
     const params = action[1]
     params.configs = params.configs.map((config: any) => {
       return {
-        ...config,
         comId: params.comId,
         target: ":root",
-        type: action[0]
+        type: "doConfig",
+        params: {
+          path: config.path,
+          value: config.value
+        }
       }
     })
     return {

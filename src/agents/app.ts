@@ -86,7 +86,20 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
           workspace.openDocument(focusInfo.pageId!);
           return context.api?.page?.api?.getOutlineInfo(focusInfo.pageId)
         },
-        getAllComDefPrompts: () => context.api?.global?.api?.getAllComDefPrompts?.(),
+        getComponentOutlineInfo: () => {
+          const { type, comId } = focusInfo
+          if (type === "uiCom") {
+            return {
+              type,
+              outlineInfo: context.api?.uiCom?.api?.getOutlineInfo(comId)
+            }
+          } else if (type === "logicCom") {
+            return {
+              type,
+              outlineInfo: context.api?.logicCom?.api?.getOutlineInfo(comId)
+            }
+          }
+        },
         getAllPageInfo() {
           return context.api?.global?.api?.getAllPageInfo()
         },
@@ -99,13 +112,26 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
           return context.api.diagram.api.updateDiagram(...args)
         },
         getDiagramInfo: (...args: any) => {
+          if (!args[0]) {
+            if (focusInfo.diagramId) {
+              return {
+                id: focusInfo.diagramId
+              }
+            }
+
+            return null
+          }
           return context.api.diagram.api.getDiagramInfo(...args)
         },
         updatePage: (...args: any) => {
           // console.log("[updatePage]", args)
           return context.api?.page?.api?.updatePage?.(focusInfo.pageId, ...args)
-        }
-      }),
+        },
+        updateCom: (...args: any) => {
+          // console.log("[updateCom]", args)
+          return context.api?.logicCom?.api?.updateCom?.(...args)
+        },
+      }),,
     ],
     // presetMessages: () => [
     //   {
