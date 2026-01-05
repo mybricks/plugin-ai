@@ -114,26 +114,28 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
     //   }
     // ],
     presetMessages: () => {
+      const projectStruct = `# 工作空间 \n 当前为空项目`;;
+      const componentsDocs = workspace.getComponentsDocs();
+      const hasComponentsDocs = workspace.hasComponentsDocs();
+      
+      // 合并内容
+      let projectInfo = projectStruct;
+      if (hasComponentsDocs) {
+        projectInfo = `${projectStruct}\n\n${componentsDocs}`;
+      }
+      
       return [
-        ...(workspace.checkDocumentStatus(focusInfo.pageId!) ? [{
+        {
           role: 'user',
-          content: workspace.getProjectStruct()
+          content: `<当前项目信息>\n${projectInfo}\n</当前项目信息>`
         },
         {
           role: 'assistant',
-          content: '收到，谢谢你提供的项目信息～'
-        }] : [null]),
-        ...(workspace.hasComponentsDocs() ? [
-          {
-            role: 'user',
-            content: workspace.getComponentsDocs()
-          },
-          {
-            role: 'assistant',
-            content: '收到，我会根据组件配置完成任务～'
-          },
-      ] : [null]),
-      ].filter(Boolean)
+          content: hasComponentsDocs 
+            ? '收到，谢谢你提供的项目信息和组件文档，我会根据这些信息完成任务～'
+            : '收到，谢谢你提供的项目信息，我会根据这些信息完成任务～'
+        },
+      ]
     }
     // presetMessages: [
     //   {
