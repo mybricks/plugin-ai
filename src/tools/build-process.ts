@@ -12,6 +12,40 @@ enum Status {
   FINISHED = "FINISHED"
 }
 
+const getCurrentFocusComponentDescription = (params: any) => {
+  const { type, outlineInfo } = params;
+  const { id, title, data, inputs, outputs } = outlineInfo;
+  if (type === "logicCom") {
+    return "<当前聚焦组件说明>" + 
+    "\n类型：计算组件" +
+    `\n标题：${title}` +
+    `\nid：${id}` +
+    `\n数据源：${JSON.stringify(data)}` + 
+    `\n输入项：${inputs?.length ? inputs.reduce((pre: string, { hostId, title }: any) => {
+      return pre + `\n  - ${title}（${hostId}）`
+    }, "") + "\n" : "无"}` +
+    `\n输出项：${outputs?.length ? outputs.reduce((pre: string, { hostId, title }: any) => {
+      return pre + `\n  - ${title}（${hostId}）`
+    }, "") + "\n" : "无"}` +
+    `注意：
+- 除了上述列出的输入、输出外，还可以从<组件使用文档>的<可以使用的配置项>内查看组件是否支持创建输入和输出项目。` + 
+    "\n</当前聚焦组件说明>"
+  }
+
+  return "";
+}
+
+const initDiagram = (diagramInfo: any) => {
+  if (!diagramInfo) {
+    return null
+  }
+
+  return {
+    ...diagramInfo,
+    status: Status.IDLE
+  }
+}
+
 function buildProcess(props: any) {
   // const pageOutlineInfo = props.getPageOutlineInfo();
   // const connectableComponents = scopeBasedComponentStructure({...pageOutlineInfo, id: "_root_", title: "页面", scope: true });
@@ -26,14 +60,15 @@ function buildProcess(props: any) {
     id: string;
     status: Status
   }> = {};
-
-  let currentDiagram: { id: string, status: Status } | null = null;
+  let currentDiagram: { id: string, status: Status } | null = initDiagram(props.getDiagramInfo());
   let updatePageStatus: Status = Status.IDLE;
+  let updateComStatus: Status = Status.IDLE;
 
   return {
     name: NAME,
-    displayName: "搭建事件流程",
-    description: `搭建各类事件流程，绑定变量，实现数据驱动
+    // displayName: "搭建事件流程",
+    displayName: "事件/逻辑配置",
+    description: `配置计算组件，搭建各类事件流程，绑定变量，实现数据驱动
 
 处理以下需求：
   1. 当...时，要...
@@ -44,6 +79,7 @@ function buildProcess(props: any) {
   6. 变量绑定
   7. 根据..数据搭建/开发
   8. 把..改成动态、涉及到驱动ui的
+  9. 对计算组件的配置
 
 参数：无
 工具分类：操作执行类
@@ -79,7 +115,7 @@ function buildProcess(props: any) {
 `,
     getPrompts: () => {
       const pageOutlineInfo = props.getPageOutlineInfo();
-      const connectableComponents = scopeBasedComponentStructure({...pageOutlineInfo, id: "_root_", title: "页面", scope: true });
+      const connectableComponents = pageOutlineInfo ? scopeBasedComponentStructure({...pageOutlineInfo, id: "_root_", title: "页面", scope: true }) : "";
       const targetPageId = props.getPageId();
       const pages = transformPageInfo(props.getAllPageInfo());
       const allPageInfo = pages.reduce((pre: string, { id, title, type, inputs, outputs }: any) => {
@@ -191,6 +227,8 @@ function buildProcess(props: any) {
   变量绑定：高效的数据驱动方案，通过「doConfigForBind」实现“变量→UI”“UI→变量”的单向/双向同步，适用于多组件数据同步、跨页面共享等场景。
 </关于MyBricks事件流程>
 
+${getCurrentFocusComponentDescription(props.getComponentOutlineInfo())}
+
 <可连接的组件说明>
 包含ui组件和变量。
 重要限制：
@@ -215,6 +253,10 @@ ${connectableComponents}
 
 <可跳转页面>
 ${allPageInfo}
+
+注意：
+- 只能跳转到上述页面，禁止捏造、猜测。
+- 如果需求中要求跳转A页面，但是A页面不在上述列表中，禁止创建页面跳转相关节点，并说明原因。
 </可跳转页面>
 
 <解释actions的调用过程>
@@ -264,6 +306,10 @@ ${allPageInfo}
   6. **需求明确表达要改成动态数据/动态渲染等**
   </什么时候必须使用变量绑定>
 
+  <什么时候不允许使用变量绑定>
+  - 组件本身不支持变量绑定，无法使用本方案，禁止创建对应变量
+  </什么时候不允许使用变量绑定>
+
   <变量绑定使用案例>
   案例1：更新"成绩表"，多个成绩展示组件同步更新
   - 变量：成绩表（含语文, 数学, 英语）
@@ -300,7 +346,7 @@ ${allPageInfo}
   3. 第三步：如果存在且作用域匹配，必须复用；如果不存在或作用域不匹配，才创建新变量
   4. 第四步：确保变量标题准确反映存储的数据内容
 
-- 参考<变量绑定方案>，判断实现当前需求是否需要使用变量绑定方案；
+- 参考<变量绑定方案>，判断当前组件是否支持使用变量绑定方案，如果支持，判断实现当前需求是否需要使用变量绑定方案；
 - 拿到需求后，先判断是否涉及「带作用域插槽的组件」（如表单、列表），若涉及，优先规划插槽流程的搭建；
   1. 搭建前必须确认：父组件→插槽输入端口→插槽内子组件的完整数据链路，确保每个环节的端口ID准确；
   2. 若需求需要“批量更新插槽内多个子组件”，优先使用变量绑定方案：创建一个结构化变量，绑定所有子组件，通过更新变量实现批量同步，减少连接步骤；
@@ -390,7 +436,7 @@ ${allPageInfo}
             value: any//需要配置的value
           }[]
           \`\`\`
-          - 页面跳转，唤起对话框
+          - 页面跳转，唤起对话框，如果<可跳转页面>中没有对应页面，禁止创建页面跳转节点。
           \`\`\`typescript
           type Params = {
             type: "scenes" // 类型，用于区分节点类型，默认scenes
@@ -433,7 +479,35 @@ ${allPageInfo}
         - 禁止基于组件功能相似性进行推测性创建
         - 禁止创建没有意义的节点，所有创建的节点都必须被连接，否则视为没有意义的节点
         - 所有创建的节点都必须被<connectTo>进行连接
+        - comId和instanceId需要严格保证全局唯一性
     </createCom>
+
+    <updateCom>
+      更新已存在的计算组件节点配置，使用<组件可配置的内容/>的配置项，对组件的属性进行配置；
+      如果配置项的type在 <常见editType的使用 /> 中有说明，务必遵守其中的说明及注意事项；
+      该action在结构上严格遵循以下格式：["updateCom",params]
+        - "updateCom" 当前action类型，是一个默认值
+        - params 更新节点的参数，各节点参数格式以Typescript的形式说明如下：
+          \`\`\`typescript
+          type Params = {
+            comId: string; //当前需要更新配置的组件id
+            configs: {
+              path: string; //在<当前组件可配置的内容/>中对应的配置项path
+              value: any;   //需要配置的value
+            }[]
+          }
+          \`\`\`
+        
+      例如，用户要求把计算组件b的配置项A设置为"hello"把配置项B设置为"world"，可以返回以下action：
+      ${fileFormat({
+        content: `["updateCom",{"comId":"b","configs":[{"path":"A","value":"hello"},{"path":"B","value":"world"}]}]`,
+        fileName: '配置计算组件.json'
+      })}
+
+      注意：
+        - 如果是新的计算组件，应该在<createCom>的configs中直接进行配置，减少不必要的action调用
+        - 一次性调用<updateCom>进行批量更新，避免多次调用
+    </updateCom>
 
     <defineVar>
       在作用域插槽内创建变量
@@ -814,6 +888,15 @@ ${allPageInfo}
               }
               props.updatePage([action], "ing")
               continue
+            } else if (action.type === "updateCom") {
+              const { comId, params } = action;
+              if (updateComStatus === Status.IDLE) {
+                // 默认先执行一次start
+                props.updateCom(comId, [], "start")
+                updateComStatus = Status.RUNNING;
+              }
+              props.updateCom(comId, params.configs, "ing")
+              continue
             }
             
             if (!["connectTo", "createCom", "defineVar"].includes(action.type)) {
@@ -856,7 +939,13 @@ ${allPageInfo}
             // 如果执行过，最终要调一次complete结束
             props.updatePage([], "complete")
           }
-        } catch (error) { }
+          if (updateComStatus !== Status.IDLE && status === "complete") {
+            // 如果执行过，最终要调一次complete结束
+            props.updateCom([], "complete")
+          }
+        } catch (error) {
+          console.error(error);
+        }
       }
 
       const file = files[0];
@@ -880,8 +969,8 @@ ${allPageInfo}
 
       return replaceContent.replace(actionsFile.fileName, "");
     },
-    aiRole: "architect",
-    // aiRole: 'expert',
+    // aiRole: "architect",
+    aiRole: 'expert',
   }
 }
 
@@ -1008,6 +1097,21 @@ const formatAction = (_action: string) => {
         from: action[1],
         to: action[2]
       }
+    }
+  } else if (action[0] === "updateCom") {
+    const params = action[1]
+    params.configs = params.configs.map((config: any) => {
+      return {
+        ...config,
+        comId: params.comId,
+        target: ":root",
+        type: action[0]
+      }
+    })
+    return {
+      comId: params.comId,
+      type: action[0],
+      params
     }
   }
 

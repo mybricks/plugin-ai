@@ -6,22 +6,41 @@ import { FocusOutlineInfoManager, FocusInfo } from './workspace/outline-focus'
 
 import { fileFormat, RxaiError } from '@mybricks/rxai'
 
+const getFocusInfo = (focus: any) => {
+  const focusInfo: FocusInfo = {
+    pageId: focus?.pageId,
+    comId: focus?.comId,
+    title: focus?.title,
+    type: focus?.type,
+    focusArea: focus?.focusArea
+  };
+
+  if (focus.type === "logicCom") {
+    focusInfo.pageId = focus.rootFrameId;
+    focusInfo.diagramId = focus.diagramId;
+  }
+
+  return focusInfo;
+}
+
+const getTargetId = (focus: FocusInfo) => {
+  if (['uiCom', 'logicCom'].includes(focus.type!)) {
+    return focus.comId
+  }
+
+  return focus.pageId;
+} 
+
 export const requestCommonAgent = (params: any) => {
 
   return new Promise((resolve, reject) => {
     const prompts = context.prompts;
 
     const currentFocus = params.focus || context.currentFocus;
-    const focusInfo: FocusInfo = {
-      pageId: (currentFocus as any)?.pageId,
-      comId: (currentFocus as any)?.comId,
-      title: currentFocus?.title,
-      type: (currentFocus as any)?.type,
-      focusArea: (currentFocus as any)?.focusArea
-    };
+    const focusInfo = getFocusInfo(currentFocus);
 
     const targetType = focusInfo.type;
-    const targetId = targetType === 'uiCom' ? focusInfo.comId : focusInfo.pageId;
+    const targetId = getTargetId(focusInfo);
     const targetPageId = focusInfo.pageId;
 
     if (!targetPageId) {
@@ -52,7 +71,7 @@ export const requestCommonAgent = (params: any) => {
     const focusEleDesc = generateFocusTargetDescription(focusInfo);
     if (targetType === "uiCom") {
       onProgress = context.api.uiCom.api.getComOnProcess(targetId)?.onProgress
-    } else {
+    } else if (targetType === "page") {
       onProgress = context.api.page.api.getPageOnProcess(targetId)?.onProgress
     }
 
@@ -213,7 +232,7 @@ export const requestCommonAgent = (params: any) => {
           getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,
           getTargetId: () => targetPageId as string,
           getFocusElementHasChildren() {
-            if (currentFocus?.type !== 'page' && targetId) {
+            if (!['page', 'logicCom'].includes(currentFocus?.type) && targetId) {
               const json = outlineInfoManager.getUiComOutline(targetId)
               if (!json.slots || (Array.isArray(json.slots) && json.slots.length === 0)) {
                 return false
@@ -226,9 +245,21 @@ export const requestCommonAgent = (params: any) => {
         MYBRICKS_TOOLS.BuildProcess({
           // getComId: () => focusInfo.comId,
           getPageId: () => focusInfo.pageId,
-          // getComponentOutlineInfo: () => context.api?.uiCom?.api?.getOutlineInfo(focusInfo.comId),
+          getComponentOutlineInfo: () => {
+            const { type, comId } = focusInfo
+            if (type === "uiCom") {
+              return {
+                type,
+                outlineInfo: context.api?.uiCom?.api?.getOutlineInfo(comId)
+              }
+            } else if (type === "logicCom") {
+              return {
+                type,
+                outlineInfo: context.api?.logicCom?.api?.getOutlineInfo(comId)
+              }
+            }
+          },
           getPageOutlineInfo: () => context.api?.page?.api?.getOutlineInfo(focusInfo.pageId),
-          getAllComDefPrompts: () => context.api?.global?.api?.getAllComDefPrompts?.(),
           getAllPageInfo() {
             return context.api?.global?.api?.getAllPageInfo()
           },
@@ -241,12 +272,25 @@ export const requestCommonAgent = (params: any) => {
             return context.api.diagram.api.updateDiagram(...args)
           },
           getDiagramInfo: (...args: any) => {
+            if (!args[0]) {
+              if (focusInfo.diagramId) {
+                return {
+                  id: focusInfo.diagramId
+                }
+              }
+
+              return null
+            }
             return context.api.diagram.api.getDiagramInfo(...args)
           },
           updatePage: (...args: any) => {
             // console.log("[updatePage]", args)
             return context.api?.page?.api?.updatePage?.(focusInfo.pageId, ...args)
-          }
+          },
+          updateCom: (...args: any) => {
+            // console.log("[updateCom]", args)
+            return context.api?.logicCom?.api?.updateCom?.(...args)
+          },
         }),
       ],
       planningCheck: (tools: any[]) => {
@@ -352,6 +396,8 @@ function generateHistoryFocusDescription(currentFocus: Partial<FocusInfo> = {}) 
     focusDesc = `页面(title=${title},页面id=${pageId})`;
   } else if (type === 'section') {
     focusDesc = `页面(title=${title},页面id=${pageId})`;
+  } else if (type === "logicCom") {
+    focusDesc = `计算组件(title=${title},组件id=${comId})`;
   }
   
   return `对于${focusDesc}`;
@@ -370,6 +416,8 @@ function generateFocusTargetDescription(currentFocus: Partial<FocusInfo> = {}) {
     focusDesc = `页面(title=${title},页面id=${pageId})`;
   } else if (type === 'section') {
     focusDesc = `页面(title=${title},页面id=${pageId})`;
+  } else if (type === "logicCom") {
+    focusDesc = `计算组件(title=${title},组件id=${comId})`;
   }
   
   return focusDesc;
