@@ -40,6 +40,13 @@ interface AiServiceAPI {
       updateDiagram: (...args: any) => void;
       getDiagramInfo: (...args: any) => any;
     }
+  },
+  logicCom: {
+    title: string;
+    api: {
+      getOutlineInfo: (...params: any) => any;
+      updateCom: (...params: any) => any;
+    }
   }
 }
 

@@ -5,11 +5,12 @@ export interface FocusInfo {
   pageId?: string;
   comId?: string;
   title?: string;
-  type?: 'page' | 'uiCom' | 'section';
+  type?: 'page' | 'uiCom' | 'section' | 'logicCom';
   focusArea?: {
     selector: string;
     title: string;
   }
+  diagramId?: string;
 }
 
 class PageHierarchyGenerator {
