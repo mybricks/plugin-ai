@@ -179,9 +179,23 @@ const formatAction = (_action: string) => {
     newAct.params.value.flexDirection = "row";
   }
 
-  // 样式处理
+  // addChild兼容
   if (newAct.type === "addChild" && Array.isArray(newAct.params?.configs)) {
     newAct.params.configs.forEach((config) => {
+
+      // path value幻觉，直接用key value的情况
+      if (!config?.path && Object.keys(config).length === 1) {
+        const firstKey = Object.keys(config)[0];
+        const value = config[firstKey]
+        delete config[firstKey];
+        config.path = firstKey
+        config.value = value
+      }
+
+      if (config.parent) {
+        config.path = `:parent/${config.path}`;
+        delete config.parent;
+      }
       
       // absolute 布局的转化
       if (config?.value?.display === "absolute") {
