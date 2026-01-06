@@ -1,78 +1,216 @@
+// @ts-nocheck
 import { context } from './../src/context';
 import { createActionsParser } from './../src/tools/utils'
 
 window.plugin_ai_context = context
 
+// const mockActions = ``
+
 window.getActions = () => {
   const parser = createActionsParser();
 
-  const actions = parser(`["u_bP96M",":root","setLayout",{"height":812}]
-["u_bP96M",":root","doConfig",{"path":"页面/顶部栏/导航栏类型","value":"none"}]
-["u_bP96M",":root","doConfig",{"path":"样式/内容区/背景","style":{"background":"linear-gradient(180deg, #2C2C2C 0%, #1A1A1A 100%)"}}]
-["u_9nu7q",":root","setLayout",{"height":60,"marginTop":40}]
-["u_9nu7q",":root","doConfig",{"path":"样式/样式","style":{"background":"transparent"}}]
-["u_VQsE6",":root","doConfig",{"path":"图标/高级属性/颜色","value":"#FFFFFF"}]
-["u__KtoC",":root","doConfig",{"path":"图标/高级属性/颜色","value":"#FFFFFF"}]
-["u__1wt2",":root","setLayout",{"width":260,"height":260,"marginTop":60}]
-["u__1wt2",":root","doConfig",{"path":"图片/基础属性/图片链接","value":"https://ai.mybricks.world/image-search?term=music+album&w=260&h=260"}]
-["u__1wt2",":root","doConfig",{"path":"样式/图片","style":{"borderRadius":"50%","boxShadow":"0 8px 24px rgba(236,65,65,0.4)","border":"8px solid rgba(236,65,65,0.2)"}}]
-["u_SqSzi",":root","setLayout",{"height":80,"marginTop":40}]
-["u_SqSzi",":root","doConfig",{"path":"样式/样式","style":{"background":"transparent"}}]
-["u_us8Mh",":root","doConfig",{"path":"样式/样式","style":{"fontSize":"20px","fontWeight":"600","color":"#FFFFFF","lineHeight":"28px","textAlign":"center"}}]
-["u_zzXqb",":root","doConfig",{"path":"样式/样式","style":{"fontSize":"14px","color":"#999999","lineHeight":"20px","textAlign":"center"}}]
-["u_KeW8_",":root","setLayout",{"marginTop":40}]
-["u_KeW8_",":root","doConfig",{"path":"进度条/进度条样式/进度条颜色","value":"#EC4141"}]
-["u_KeW8_",":root","doConfig",{"path":"进度条/进度条样式/背景颜色","value":"#404040"}]
-["u_1qTfg",":root","setLayout",{"height":80,"marginTop":40}]
-["u_1qTfg",":root","doConfig",{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","justifyContent":"center","alignItems":"center"}}]
-["u_1qTfg",":root","doConfig",{"path":"样式/样式","style":{"background":"transparent"}}]
-["u_TQgO2",":root","setLayout",{"width":40,"height":40,"marginRight":60}]
-["u_TQgO2",":root","doConfig",{"path":"图标/基础属性/大小","value":32}]
-["u_TQgO2",":root","doConfig",{"path":"图标/高级属性/颜色","value":"#FFFFFF"}]
-["u_taXoA",":root","setLayout",{"width":64,"height":64}]
-["u_taXoA",":root","doConfig",{"path":"图标/基础属性/大小","value":40}]
-["u_taXoA",":root","doConfig",{"path":"图标/高级属性/颜色","value":"#FFFFFF"}]
-["u_taXoA",":root","doConfig",{"path":"样式/图标","style":{"background":"#EC4141","borderRadius":"50%","padding":"12px"}}]
-["u_VES3L",":root","setLayout",{"width":40,"height":40,"marginLeft":60}]
-["u_VES3L",":root","doConfig",{"path":"图标/基础属性/大小","value":32}]
-["u_VES3L",":root","doConfig",{"path":"图标/高级属性/颜色","value":"#FFFFFF"}]
-["u_YuwH7",":root","setLayout",{"height":60,"marginTop":50}]
-["u_YuwH7",":root","doConfig",{"path":"样式/样式","style":{"background":"transparent"}}]
-["u_XfIIA",":root","doConfig",{"path":"图标/基础属性/大小","value":28}]
-["u_XfIIA",":root","doConfig",{"path":"图标/高级属性/颜色","value":"#EC4141"}]
-["u_cLtQM",":root","doConfig",{"path":"图标/基础属性/大小","value":28}]
-["u_cLtQM",":root","doConfig",{"path":"图标/高级属性/颜色","value":"#FFFFFF"}]
-["u_d4cyl",":root","doConfig",{"path":"图标/基础属性/大小","value":28}]
-["u_d4cyl",":root","doConfig",{"path":"图标/高级属性/颜色","value":"#FFFFFF"}]
-["u_NW2ja",":root","doConfig",{"path":"图标/基础属性/大小","value":28}]
-["u_NW2ja",":root","doConfig",{"path":"图标/高级属性/颜色","value":"#FFFFFF"}]
-`);
+  const actions = parser(mockActions);
 
   console.log(actions)
 
   return actions
 }
 
-window.testComActions = () => (async (api) => {
-    // 移动元素
-    await api?.uiCom?.api?.updateCom('u_bP96M', window.getActions(), 'start');
+/**
+ * 测试执行actions，支持组件和页面两种模式
+ * @param type - 'com' 表示组件模式，'page' 表示页面模式
+ * @param id - 组件ID或页面ID
+ * @param delay - 每个action之间的延迟时间（毫秒），默认200ms
+ */
+window.testActions = async (
+  type = 'page',
+  id = type === 'com' ? 'u_bP96M' : 'u_zjHOb',
+  delay = 200
+) => {
+  const api = window.plugin_ai_context.api;
+  const actionsToExecute = window.getActions();
+  
+  if (type === 'com') {
+    // 组件模式
+    const updateApi = api?.uiCom?.api?.updateCom;
+    if (!updateApi) {
+      console.error('Component API not available');
+      return;
+    }
     
-    // 延迟
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // 开始执行
+    await updateApi(id, [], 'start');
     
-    // 最后调用空数组，第三个参数为complete
-    await api?.uiCom?.api?.updateCom('u_bP96M', [], 'complete');
+    // 遍历执行每个action
+    for (let i = 0; i < actionsToExecute.length; i++) {
+      // 添加延迟
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      
+      // 执行当前action
+      await updateApi(id, [actionsToExecute[i]], 'ing');
+    }
     
-})(window.plugin_ai_context.api);
+    // 最后调用空数组，参数为complete
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    await updateApi(id, [], 'complete');
+  } else {
+    // 页面模式
+    const updateApi = api?.page?.api?.updatePage;
+    if (!updateApi) {
+      console.error('Page API not available');
+      return;
+    }
+    
+    // 开始执行
+    await updateApi(id, [], 'start');
+    
+    // 遍历执行每个action
+    for (let i = 0; i < actionsToExecute.length; i++) {
+      // 添加延迟
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      
+      // 执行当前action
+      await updateApi(id, [actionsToExecute[i]], 'ing');
+    }
+    
+    // 最后调用空数组，参数为complete
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    await updateApi(id, [], 'complete');
+  }
+};
 
-window.testPageActions = () => (async (api) => {
-    // 移动元素
-    await api?.page?.api?.updatePage('u___Zn5', window.getActions(), 'start');
-    
-    // 延迟
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    // 最后调用空数组，第三个参数为complete
-    await api?.page?.api?.updatePage('u___Zn5', [], 'complete');
-    
-})(window.plugin_ai_context.api);
+// Helper function to format a value as JavaScript code with proper indentation
+function formatValue(value, indent = 0) {
+  const indentStr = '  '.repeat(indent);
+  const nextIndentStr = '  '.repeat(indent + 1);
+  
+  if (value === null) {
+    return 'null';
+  }
+  
+  if (value === undefined) {
+    return 'undefined';
+  }
+  
+  if (typeof value === 'string') {
+    return JSON.stringify(value);
+  }
+  
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return '[]';
+    }
+    const items = value.map(item => {
+      const itemStr = formatValue(item, indent + 1);
+      // Handle multi-line items
+      if (itemStr.includes('\n')) {
+        return `${nextIndentStr}${itemStr}`;
+      }
+      return `${nextIndentStr}${itemStr}`;
+    }).join(',\n');
+    return `[\n${items}\n${indentStr}]`;
+  }
+  
+  if (typeof value === 'object') {
+    const keys = Object.keys(value);
+    if (keys.length === 0) {
+      return '{}';
+    }
+    const items = keys.map(key => {
+      const val = formatValue(value[key], indent + 1);
+      // If the value is multi-line, format it properly
+      if (val.includes('\n')) {
+        return `${nextIndentStr}"${key}": ${val}`;
+      }
+      return `${nextIndentStr}"${key}": ${val}`;
+    }).join(',\n');
+    return `{\n${items}\n${indentStr}}`;
+  }
+  
+  return String(value);
+}
+
+// Helper function to format a single action object as JavaScript code
+function formatAction(action, indent = 1) {
+  const indentStr = '  '.repeat(indent);
+  const nextIndent = indent + 1;
+  const nextIndentStr = '  '.repeat(nextIndent);
+  
+  const parts = [];
+  parts.push(`${indentStr}{`);
+  
+  if (action.comId !== undefined) {
+    parts.push(`${nextIndentStr}"comId": ${JSON.stringify(action.comId)},`);
+  }
+  
+  if (action.type !== undefined) {
+    parts.push(`${nextIndentStr}"type": ${JSON.stringify(action.type)},`);
+  }
+  
+  if (action.target !== undefined) {
+    parts.push(`${nextIndentStr}"target": ${JSON.stringify(action.target)},`);
+  }
+  
+  if (action.params !== undefined) {
+    const paramsStr = formatValue(action.params, nextIndent);
+    // Remove trailing comma from params if it's an object/array
+    const cleanParams = paramsStr.replace(/,\s*$/, '');
+    parts.push(`${nextIndentStr}"params": ${cleanParams}`);
+  }
+  
+  parts.push(`${indentStr}}`);
+  
+  return parts.join('\n');
+}
+
+// Function to format the entire actions array as mockActions variable declaration
+function formatActionsArray(actions) {
+  if (actions.length === 0) {
+    return 'let mockActions = [];';
+  }
+  
+  const formattedActions = actions.map((action, index) => {
+    const actionStr = formatAction(action, 1);
+    return index < actions.length - 1 ? `${actionStr},` : actionStr;
+  }).join('\n');
+  
+  return `let mockActions = [\n${formattedActions}\n];`;
+}
+
+// Main function to generate the complete actions.ts file content
+window.generateActionsFile = (pageId, delay = 200) => {
+  const actionsToFormat = window.getActions();
+  const actionsArrayStr = formatActionsArray(actionsToFormat);
+  
+  const executeFunctionStr = `async function executeActionsWithDelay(pageId, actions, delay, api) {
+// 开始执行
+await api.updatePage(pageId, [], "start");
+
+// 遍历执行每个action
+for (let i = 0; i < actions.length; i++) {
+  // 添加延迟
+  await new Promise((resolve) => setTimeout(resolve, delay));
+
+  // 执行当前action
+  await api.updatePage(pageId, [actions[i]], "ing");
+}
+
+// 最后调用空数组，参数为complete
+await new Promise((resolve) => setTimeout(resolve, delay));
+await api.updatePage(pageId, [], "complete");
+}`;
+
+  const defaultPageId = pageId || "'u_l3x7M'";
+  const executeCallStr = `\nexecuteActionsWithDelay(${defaultPageId}, mockActions, ${delay}, window.plugin_ai_context.api?.page?.api)`;
+
+  const fullContent = `${actionsArrayStr}\n\n${executeFunctionStr}${executeCallStr}\n`;
+
+  console.log('Generated actions.ts content:');
+  console.log(fullContent);
+  
+  return fullContent;
+};

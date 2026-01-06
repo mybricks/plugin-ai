@@ -1,5 +1,6 @@
 import { jsonrepair } from 'jsonrepair'
 import { ComponentsManager } from './../agents/workspace/components-manager'
+import { ENABLED_ACTION_TAGS } from '../constants'
 
 export function getFiles(files: RxFiles, {
   extName
@@ -165,6 +166,14 @@ const formatAction = (_action: string) => {
     if (newAct.params?.ns) {
       newAct.params.namespace = ComponentsManager.getFullNamespace(newAct.params.ns);
       delete newAct.params.ns;
+    }
+  }
+
+  // 标记使用
+  if (newAct.type === 'addChild') {
+    if (!ENABLED_ACTION_TAGS && (newAct.params.enhance || newAct.params.ignore)) {
+      delete newAct.params.enhance;
+      delete newAct.params.ignore;
     }
   }
 

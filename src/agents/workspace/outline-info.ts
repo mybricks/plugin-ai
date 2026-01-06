@@ -345,7 +345,7 @@ class OutlineJSXGenerator {
     }
 
     if (style.position === 'absolute') {
-      ['left', 'right', 'top', 'bottom']
+      ['left', 'right', 'top', 'bottom', 'widthFact', 'heightFact', 'position']
         .forEach(prop => {
           if (style[prop] !== undefined) {
             layout[prop] = style[prop];
