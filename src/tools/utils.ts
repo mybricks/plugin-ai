@@ -255,6 +255,11 @@ const formatAction = (_action: string) => {
   if (newAct.type === "addChild" && newAct.params?.layout) {
     // 兼容margin
     transformToValidMargins(newAct.params?.layout);
+
+    // 支持width=auto
+    if (newAct.params?.layout?.width === 'auto') {
+      newAct.params.layout.width = '100%';
+    }
   }
 
   return newAct;
@@ -596,8 +601,6 @@ function transformToValidMargins(styles: any): void {
  */
 export function createActionsParser() {
   const processedLines = new Set<string>();
-  // 维护以 comId 为 key 的 action 索引
-  const comIdToActionMap = new Map<string, Action>();
 
   return function parseActions(text: string) {
     const newActions = [];
@@ -646,7 +649,7 @@ export function createActionsParser() {
       }
     }
 
-    processedLines.clear();
+    // processedLines.clear();
 
     return newActions;
   };

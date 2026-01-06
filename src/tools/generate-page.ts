@@ -89,9 +89,10 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
        * number - 具体的px值
        * fit-content - 适应内容
        * 100% - 填充
+       * auto - 自动填充，等同于flex=1
        * 只能是三者其一，明确不允许使用其他属性，比如calc等方法
        */
-      type Size = number | "fit-content" | "100%"
+      type Size = number | "fit-content" | "100%" | "auto"
     
       /** flex中子组件定位，可配置如下layout */
       type setLayout_flex_params = {
@@ -336,17 +337,17 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
         **flex布局**
           子组件通过嵌套来搭建，无需考虑子组件的宽度和高度。
 
-          下面的例子使用flex实现左侧固定宽度，右侧自适应布局:
+          下面的例子使用flex实现左侧固定宽度，右侧自适应宽度布局，右侧宽度配置width=auto:
           ${fileFormat({
             content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex1","ns":"布局组件","layout":{"width":"100%","height":60},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
           ["u_flex1","插槽id占位","addChild",{"title":"左侧固定宽度组件","comId":"u_lfix1","ns":"组件","layout":{"width":60,"height":40,"marginRight":8},"configs":[]}]
-          ["u_flex1","插槽id占位","addChild",{"title":"右侧自适应组件","comId":"u_rfix1","ns":"组件","layout":{"width":'100%',"height":40},"configs":[]}]
+          ["u_flex1","插槽id占位","addChild",{"title":"右侧自适应组件","comId":"u_rfix1","ns":"组件","layout":{"width":"auto","height":40},"configs":[]}]
           `,
-            fileName: '左侧固定右侧自适应.json'
+            fileName: '左侧固定宽度+右侧自适应宽度.json'
           })}
           在上例中:
             - 声明布局编辑器的值，注意布局编辑器必须声明，其中flexDirection也必须声明，关注justifyContent效果，默认为flex-start；
-            - 左侧组件使用固定宽度，右侧组件使用width=100%(效果等同于flex=1)实现自适应宽度；
+            - 左侧组件使用固定宽度，右侧组件使用width=auto(效果等同于flex=1)实现自适应宽度；
             - 通过marginRight配置左侧组件与右侧组件的间距；
           
           
