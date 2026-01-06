@@ -98,6 +98,8 @@ interface AddChildActionParams {
   ns?: string;
   layout?: any;
   configs: Config[];
+  ignore?: boolean;
+  enhance?: boolean;
 }
 
 interface DoConfigActionParams {
@@ -171,9 +173,20 @@ const formatAction = (_action: string) => {
 
   // 标记使用
   if (newAct.type === 'addChild') {
-    if (!ENABLED_ACTION_TAGS && (newAct.params.enhance || newAct.params.ignore)) {
-      delete newAct.params.enhance;
-      delete newAct.params.ignore;
+    if (ENABLED_ACTION_TAGS) {
+      
+      if (newAct.params.ignore) {
+        // TODO：标记的兼容，对于配置了ignore，但是有padding的组件，直接替换成enhance，因为直接去掉，底层的100%组件宽高会失效。
+        if (newAct?.params?.configs?.some(config => Object.keys(config?.style ?? {}).some(key => key.startsWith('padding')))) {
+          newAct.params.enhance = true;
+          delete newAct.params.ignore;
+        }
+      }
+    } else {
+      if (newAct.params.enhance || newAct.params.ignore) {
+        delete newAct.params.enhance;
+        delete newAct.params.ignore;
+      }
     }
   }
 
@@ -582,7 +595,9 @@ function transformToValidMargins(styles: any): void {
  * @returns {Function} 解析函数
  */
 export function createActionsParser() {
-  const processedLines = new Set();
+  const processedLines = new Set<string>();
+  // 维护以 comId 为 key 的 action 索引
+  const comIdToActionMap = new Map<string, Action>();
 
   return function parseActions(text: string) {
     const newActions = [];
@@ -630,6 +645,8 @@ export function createActionsParser() {
         }
       }
     }
+
+    processedLines.clear();
 
     return newActions;
   };
