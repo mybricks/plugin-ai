@@ -58,7 +58,7 @@ const View = ({ user, copilot, api }: ViewProps) => {
         statusChange("disabled");
       } else {
         const type = focus.type;
-        const id = type === "page" ? focus.pageId : focus.comId;
+        const id = ["page", "section"].includes(type) ? focus.pageId : focus.comId;
         const { onProgress, ...other } = focus;
         senderRef.current!.setMentions([other]);
         focusID.current = id;

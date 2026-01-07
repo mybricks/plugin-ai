@@ -232,7 +232,7 @@ export const requestCommonAgent = (params: any) => {
           getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,
           getTargetId: () => targetPageId as string,
           getFocusElementHasChildren() {
-            if (!['page', 'logicCom'].includes(currentFocus?.type) && targetId) {
+            if (!['page', 'logicCom', 'section'].includes(currentFocus?.type) && targetId) {
               const json = outlineInfoManager.getUiComOutline(targetId)
               if (!json.slots || (Array.isArray(json.slots) && json.slots.length === 0)) {
                 return false
