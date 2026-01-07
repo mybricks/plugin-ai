@@ -117,7 +117,7 @@ async function checkFetchTarget(): Promise<FetchTarget> {
 
 const transfromExtendParams = (extendParams: { aiRole?: any }) => {
   const { aiRole } = extendParams;
-  let model = "google/gemini-2.5-flash";
+  let model = "google/gemini-3-flash-preview";
   let role = "default";
 
   if (!aiRole) {
