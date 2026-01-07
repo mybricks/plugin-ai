@@ -9,6 +9,7 @@ interface ModifyComponentToolParams {
   getFocusElementHasChildren: () => boolean
   /** 当所有actions返回时 */
   onActions: (actions: any[], status: string, type: string) => void
+  getFocusElementAiRole?: () => boolean;
 }
 
 const NAME = 'refactor-components-in-page'
@@ -563,7 +564,7 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
   </example>
 </examples>`
     },
-    aiRole: hasChildren ? 'expert' : 'architect',
+    aiRole: config.getFocusElementAiRole?.() || (hasChildren ? 'expert' : 'architect'),
     stream({ files, status, replaceContent }) {
       let actions: any = [];
       const actionsFile = getFiles(files, { extName: 'json' })

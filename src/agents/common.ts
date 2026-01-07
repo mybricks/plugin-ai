@@ -5,6 +5,7 @@ import { WorkSpace } from './workspace/workspace'
 import { FocusOutlineInfoManager, FocusInfo } from './workspace/outline-focus'
 
 import { fileFormat, RxaiError } from '@mybricks/rxai'
+import { ComponentsManager } from './workspace/components-manager'
 
 const getFocusInfo = (focus: any) => {
   const focusInfo: FocusInfo = {
@@ -231,13 +232,21 @@ export const requestCommonAgent = (params: any) => {
           getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,
           getTargetId: () => targetPageId as string,
           getFocusElementHasChildren() {
-            if (!['page', 'logicCom'].includes(currentFocus?.type) && targetId) {
+            if (!['page', 'logicCom', 'section'].includes(currentFocus?.type) && targetId) {
               const json = outlineInfoManager.getUiComOutline(targetId)
               if (!json.slots || (Array.isArray(json.slots) && json.slots.length === 0)) {
                 return false
               }
             }
             return true
+          },
+          getFocusElementAiRole() {
+            if (focusInfo?.type === "uiCom") {
+              const comInfo = context.api.uiCom.api.getOutlineInfo(focusInfo.comId);
+              const aiComponent = ComponentsManager.getAiComponent(comInfo.def.namespace);
+              return aiComponent?.prompts?.aiRole;
+            }
+            return null
           }
         }),
         MYBRICKS_TOOLS.Answer({}),
@@ -348,7 +357,21 @@ export const requestCommonAgent = (params: any) => {
         return resultTools
       },
       formatUserMessage: (text: string) => {
+        let prefix = "";
+
+        if (focusInfo.type === "uiCom") {
+          const comInfo = context.api.uiCom.api.getOutlineInfo(focusInfo.comId);
+          const aiComponent = ComponentsManager.getAiComponent(comInfo.def.namespace);
+          if (aiComponent.prompts.injectUserMessage) {
+            prefix = "<聚焦特殊元素特别说明>" +
+            `\n${aiComponent.prompts.usage}` +
+            // `\n${context.api.global.api.getComEditorPrompts(comInfo.def.namespace)}` +
+            "\n</聚焦特殊元素特别说明>"
+          }
+        }
+
         return `对于聚焦元素${focusEleDesc}，用户提出的消息为：
+${prefix}
 <用户消息>
 ${text}
 </用户消息>`

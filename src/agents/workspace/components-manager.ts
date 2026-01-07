@@ -88,4 +88,9 @@ export class ComponentsManager {
     this.namespaceAbbrevMap.clear()
     this.abbreviationMap.clear()
   }
+
+  static getAiComponent(namespace: string) {
+    this.init()
+    return this.aiComponentMap.get(namespace)
+  }
 }

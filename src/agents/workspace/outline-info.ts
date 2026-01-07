@@ -51,7 +51,7 @@ export class OutlineInfoManager {
   private getOutlineInfo(id: string, type: string): OriginOutlineNode {
     if (type === "logicCom") {
       return this.api?.logicCom?.api?.getOutlineInfo(id)
-    } else if (['uiCom', 'section'].includes(type)) {
+    } else if (type === "uiCom") {
       return this.api?.uiCom?.api?.getOutlineInfo(id)
     } else {
       return this.api?.page?.api?.getOutlineInfo(id)
