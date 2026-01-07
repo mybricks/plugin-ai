@@ -590,7 +590,11 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
       if (actions.length > 0 || status === 'complete') {
         try {
           const copiedActions = JSON.parse(JSON.stringify(actions));
-          config.onActions(actions, status, actionType)
+          try {
+            config.onActions(actions, status, actionType)
+          } catch (error) {
+            console.error('refactor-component onActions error', error);
+          }
           const actionsContent = getComponentOperationSummary(copiedActions, config.componentIdToTitleMap)
 
           if (actionsFile) {

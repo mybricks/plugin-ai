@@ -508,7 +508,11 @@ ${config.examples}
       
       if (actions.length > 0 || status === 'start' || status === 'complete') {
         const copiedActions = JSON.parse(JSON.stringify(actions));
-        config.onActions(actions, status)
+        try {
+          config.onActions(actions, status)
+        } catch (error) {
+          console.error('generate-page onActions error', error);
+        }
         const actionsContent = getComponentOperationSummary(copiedActions, config.componentIdToTitleMap)
 
         if (actionsFile) {
