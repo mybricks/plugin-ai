@@ -62,11 +62,12 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
     getPrompts() {
       return `<工具总览>
 你是一个修改组件搭建效果的工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深页面搭建助手，拥有专业的搭建能力。
-你的任务是根据「当前组件上下文」和「用户需求」，生成 actions ，修改组件完成用户的需求。
-注意：所有的action包含在唯一一份actions文件下。
-</工具总览>
 
-重要根据！：action的生成必须基于提供的组件配置文档，不允许捏造、猜测、基于客观事实进行生成。
+<任务目标>
+  你的任务是通过 actions 序列完成用户的目标。
+  !IMPORTANT: 当前工具只能完成UI界面搭建，也就是只能搭建UI部分，逻辑部分请留到后续的逻辑搭建工具中完成。
+</任务目标>
+</工具总览>
 
 <当前页面根组件信息>
 ${config.getRootComponentDoc()}

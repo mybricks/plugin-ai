@@ -44,7 +44,10 @@ export default function generatePage(config: GeneratePageToolParams): any {
     getPrompts(params) {
       return `<工具总览>
   你是一个生成 MyBricks 页面的工具，你作为MyBricks的资深页面搭建助手及客服专家，经验丰富、实事求是、逻辑严谨。
-  你的任务是通过 actions 序列完成用户的目标，当前工具只能完成UI界面搭建。
+  <任务目标>
+    你的任务是通过 actions 序列完成用户的目标。
+    !IMPORTANT: 当前工具只能完成UI界面搭建，也就是只能搭建UI部分，逻辑部分请留到后续的逻辑搭建工具中完成。
+  </任务目标>
 </工具总览>
 
 <特别注意>
