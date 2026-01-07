@@ -116,7 +116,11 @@ interface Action {
   params: ActionParams;
 }
 
-const formatAction = (_action: string) => {
+// 第二个参数用于透传当前解析器实例内的 comId -> params 映射，方便后续 O(1) 快查
+const formatAction = (
+  _action: string,
+  comIdToParamsMap?: Map<string, AddChildActionParams>
+) => {
   let action;
   try {
     // TODO，后面要提示词处理的，这样replace不合理
@@ -175,11 +179,33 @@ const formatAction = (_action: string) => {
   if (newAct.type === 'addChild') {
     if (ENABLED_ACTION_TAGS) {
       
-      if (newAct.params.ignore) {
+      if (newAct.params?.ignore) {
         // TODO：标记的兼容，对于配置了ignore，但是有padding的组件，直接替换成enhance，因为直接去掉，底层的100%组件宽高会失效。
         if (newAct?.params?.configs?.some(config => Object.keys(config?.style ?? {}).some(key => key.startsWith('padding')))) {
           newAct.params.enhance = true;
           delete newAct.params.ignore;
+        }
+
+        // TODO：标记的兼容，如果配置了enhance或者ignore的不是布局组件，需要删除该标记
+        if (!ComponentsManager.isLayoutComponent(newAct.params.namespace)) {
+          delete newAct.params.enhance;
+          delete newAct.params.ignore;
+        }
+
+        // TODO：标记的兼容，关注配置了ignore的父级元素是否为布局组件，如果不是，需要改成enhance而不是ignore，因为其他组件没有setLayout函数
+        if (comIdToParamsMap) {
+          const parentParams = comIdToParamsMap.get(newAct.comId);
+          if (!parentParams) { // 没有父级组件，直接删除标记
+            delete newAct.params.enhance;
+            delete newAct.params.ignore;
+          } else {
+            // 有父级组件，判断父级组件是否为布局组件
+            const parentNamespace = parentParams?.namespace;
+            if (parentNamespace && !ComponentsManager.isLayoutComponent(parentNamespace)) {
+              newAct.params.enhance = true;
+              delete newAct.params.ignore;
+            }
+          }
         }
       }
     } else {
@@ -260,6 +286,11 @@ const formatAction = (_action: string) => {
     if (newAct.params?.layout?.width === 'auto') {
       newAct.params.layout.width = '100%';
     }
+  }
+
+  // 在所有兼容性处理之后，再记录 addChild 的配置，保证 namespace / layout 等信息已经就绪
+  if (comIdToParamsMap && newAct.type === "addChild") {
+    comIdToParamsMap.set(newAct.params.comId, JSON.parse(JSON.stringify(newAct.params)) as AddChildActionParams);
   }
 
   return newAct;
@@ -601,6 +632,8 @@ function transformToValidMargins(styles: any): void {
  */
 export function createActionsParser() {
   const processedLines = new Set<string>();
+  // 针对单个解析器实例的 comId -> params 映射，避免跨会话长期存储
+  const comIdToParamsMap = new Map<string, AddChildActionParams>();
 
   return function parseActions(text: string) {
     const newActions = [];
@@ -620,7 +653,7 @@ export function createActionsParser() {
       }
 
       try {
-        const parsedAction = formatAction(trimmedLine);
+        const parsedAction = formatAction(trimmedLine, comIdToParamsMap);
         if (parsedAction.comId) {
           newActions.push(parsedAction);
           processedLines.add(trimmedLine);
@@ -638,7 +671,7 @@ export function createActionsParser() {
       // 如果文本以换行符结尾，说明最后一行是完整的
       if ((text.endsWith("\n")) && !processedLines.has(trimmedLastLine)) {
         try {
-          const parsedAction = formatAction(trimmedLastLine);
+          const parsedAction = formatAction(trimmedLastLine, comIdToParamsMap);
           if (parsedAction.comId) {
             newActions.push(parsedAction);
             processedLines.add(trimmedLastLine);

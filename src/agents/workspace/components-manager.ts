@@ -60,6 +60,31 @@ export class ComponentsManager {
   }
 
   /**
+   * 判断是否为布局组件（asLayout）
+   */
+  static isLayoutComponent = (namespace: string): boolean => {
+    this.init()
+    const ai = this.aiComponentMap.get(this.getFullNamespace(namespace))
+    return !!ai?.asLayout
+  }
+
+  /**
+   * 获取所有布局组件的 namespace 缩写数组
+   */
+  static getLayoutComponentsAbbreviationNs = (): string[] => {
+    this.init()
+    const res: string[] = []
+
+    this.aiComponentMap.forEach((ai, namespace) => {
+      if (ai?.asLayout) {
+        res.push(this.getAbbreviation(namespace))
+      }
+    })
+
+    return res
+  }
+
+  /**
    * 根据完整namespace获取缩写
    * @param namespace 完整的namespace
    * @returns 缩写namespace，如果没有缩写则返回原namespace

@@ -249,7 +249,10 @@ ${openedDocumentsList}
    * 获取组件文档
    */
   getComponentsDocs(): string {
+    const layoutComponentsNs = ComponentsManager.getLayoutComponentsAbbreviationNs()
     return `# 组件使用文档
+${layoutComponentsNs.length ? `在以下所有组件中，特别的，${layoutComponentsNs.map(ns => ns).join('、')} 是用于基础布局的组件，辅助标记也仅可以用于这些组件` : ''}
+
 ${this.openedComponentDocs.map(namespace => {
   const abbreviationNs = ComponentsManager.getAbbreviation(namespace);
   return this.api.getComponentDoc(namespace).replace('<component>', `<${abbreviationNs}文档>`).replace('</component>', `</${abbreviationNs}文档>`).replace(new RegExp(`${namespace}`, 'g'), abbreviationNs)
