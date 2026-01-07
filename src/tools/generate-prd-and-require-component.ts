@@ -6,7 +6,6 @@ import { DeviceType } from './../types'
 interface GeneratePrdAndRequireComponentToolParams {
   allowComponents: string;
   examples: string;
-  canvasWidth: string;
   onComponentDocOpen: (ns: string) => void;
   shouldUseExpert?: boolean,
   deviceType: DeviceType

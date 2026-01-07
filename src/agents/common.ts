@@ -141,7 +141,6 @@ export const requestCommonAgent = (params: any) => {
         MYBRICKS_TOOLS.GetComponentsDocAndPrd({
           allowComponents: context.api?.global?.api?.getAllComDefPrompts?.(),
           examples: prompts.prdExamplesPrompts,
-          canvasWidth: prompts.canvasWidth,
           onComponentDocOpen: (namespace) => {
             workspace.openComponentDoc(namespace)
           },

@@ -226,7 +226,6 @@ function generatePageActionExamplesPrompts() {
 }
 
 const prompts = {
-  canvasWidth: '375',
   systemAppendPrompts: systemAppendPrompts(),
   prdExamplesPrompts: prdExamplesPrompts(),
   generatePageActionExamplesPrompts: generatePageActionExamplesPrompts(),
