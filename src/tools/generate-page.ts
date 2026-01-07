@@ -196,6 +196,7 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
         注意：
         - 当需要修改组件的样式时，只允许修改style编辑器description中声明的属性；
         - 当需要修改组件的样式时，背景统一使用background,而非backgroundColor等属性；
+        - 基于需求分析中的*数据需求*与*事件流程*，通过配置对应的属性，提供相匹配的能力与事件支持；
     </doConfig>
   
     <addChild>
