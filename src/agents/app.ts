@@ -60,6 +60,7 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
         onComponentDocOpen: (namespace) => {
           workspace.openComponentDoc(namespace)
         },
+        appendPrompt: prompts.systemAppendPrompts,
         shouldUseExpert: true,
         deviceType: context.deviceType,
       }),

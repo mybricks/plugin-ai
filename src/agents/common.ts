@@ -144,6 +144,7 @@ export const requestCommonAgent = (params: any) => {
           onComponentDocOpen: (namespace) => {
             workspace.openComponentDoc(namespace)
           },
+          appendPrompt: prompts.systemAppendPrompts,
           deviceType: context.deviceType,
         }),
         MYBRICKS_TOOLS.GeneratePage({
