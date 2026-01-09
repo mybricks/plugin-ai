@@ -744,3 +744,88 @@ export const transformPageInfo = (pageInfo: PageInfoSPA | PageInfoMPA) => {
   })
   return pages;
 }
+
+const formatVarAction = (
+  _action: string,
+) => {
+  let action;
+  try {
+    // TODO，后面要提示词处理的，这样replace不合理
+    const fixActionString = _action.replaceAll('{":parent/', '{"path":":parent/')
+    action = JSON.parse(fixActionString);
+  } catch (error) {
+    try {
+      const repairedAction = jsonrepair(_action)
+      action = JSON.parse(repairedAction)
+      console.log("[action]", action)
+    } catch (error) {
+      console.error("repair action error", error);
+    }
+  }
+
+  if (!Array.isArray(action)) {
+    return action;
+  }
+
+  return action;
+};
+
+export const createVarActionsParser = () => {
+  const processedLines = new Set<string>();
+
+  return function parseActions(text: string) {
+    const newActions = [];
+    const lines = text.split("\n").filter(line => line.trim() !== '');
+
+    // 只处理除了最后一行之外的所有行（最后一行可能不完整）
+    const linesToProcess = lines.slice(0, -1);
+    const lastLine = lines[lines.length - 1];
+
+    // 处理完整的行
+    for (const line of linesToProcess) {
+      const trimmedLine = line.trim();
+
+      // 跳过空行和已处理的行
+      if (!trimmedLine || processedLines.has(trimmedLine)) {
+        continue;
+      }
+
+      try {
+        const parsedAction = formatVarAction(trimmedLine);
+        // if (parsedAction.comId) {
+        //   newActions.push(parsedAction);
+        //   processedLines.add(trimmedLine);
+        // }
+        newActions.push(parsedAction);
+        processedLines.add(trimmedLine);
+      } catch (error) {
+        // 这是真正的解析错误（完整的行但格式错误）
+        processedLines.add(trimmedLine); // 标记为已处理，避免重复尝试
+      }
+    }
+
+    // 处理最后一行
+    if (lastLine && lastLine.trim()) {
+      const trimmedLastLine = lastLine.trim();
+
+      // 如果文本以换行符结尾，说明最后一行是完整的
+      if ((text.endsWith("\n")) && !processedLines.has(trimmedLastLine)) {
+        try {
+          const parsedAction = formatVarAction(trimmedLastLine);
+          // if (parsedAction.comId) {
+          //   newActions.push(parsedAction);
+          //   processedLines.add(trimmedLastLine);
+          // }
+          newActions.push(parsedAction);
+          processedLines.add(trimmedLastLine);
+        } catch (error) {
+          processedLines.add(trimmedLastLine);
+        }
+      }
+    }
+
+    // processedLines.clear();
+
+    return newActions;
+  };
+}

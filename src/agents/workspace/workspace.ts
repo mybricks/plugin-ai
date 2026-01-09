@@ -257,20 +257,22 @@ ${this.openedComponentDocs.map(namespace => {
   const abbreviationNs = ComponentsManager.getAbbreviation(namespace);
   const componentInfo = ComponentsManager.getAiComponent(namespace)
   const inputs = componentInfo.all?.inputs?.reduce?.((pre: string, { id, title }: any) => {
-    return pre + `${id}（${title}）\n`
+    return pre + `  - ${id}（${title}）\n`
   }, "")
-
   const isUI = !componentInfo.all.rtType;
-
-  const slots = componentInfo.all?.slots?.reduce?.((pre: string, { id, title, type }: any) => {
-    return pre + `${id}（${title}）${type === "scope" ? "- 作用域插槽" : ""}\n`
+  const slots = componentInfo.all?.slots?.reduce?.((pre: string, { id, title, type, description, inputs }: any) => {
+    const isScope = type === "scope" && inputs?.length;
+    return pre + `  - ${id}（${title}${description ? ` - ${description}` : ""}）${type === "scope" ? "- 作用域插槽" : ""}\n` + 
+    (isScope ? inputs.reduce((pre: string, { id, title, desc }: any) => {
+      return pre + `    - ${id}（${title}）${desc ? ` - ${desc}` : ""}\n`
+    }, ""): "")
   }, "")
 
   return this.api.getComponentDoc(namespace)
   .replace("<使用说明>", (isUI ? `<inputs>
-  ${inputs || "无\n"}</inputs>\n\n` : "") + "<使用说明>")
+${inputs || "无\n"}</inputs>\n\n` : "") + "<使用说明>")
   .replace("<使用说明>", (isUI ? `<slots>
-  ${slots || "无\n"}</slots>\n\n` : "") + "<使用说明>")
+${slots || "无\n"}</slots>\n\n` : "") + "<使用说明>")
   .replace('<component>', `<${abbreviationNs}文档>`).replace('</component>', `</${abbreviationNs}文档>`).replace(new RegExp(`${namespace}`, 'g'), abbreviationNs)
 }).join('')}
 `

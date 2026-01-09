@@ -1,5 +1,6 @@
 import { fileFormat } from '@mybricks/rxai'
-import { getFiles, createActionsParser, getComponentOperationSummary, stripFileBlocks } from './utils'
+import { getFiles, createActionsParser, getComponentOperationSummary, stripFileBlocks, createVarActionsParser } from './utils'
+import { context } from "../context";
 
 interface GeneratePageToolParams {
   /** 当前根组件信息 */
@@ -13,8 +14,16 @@ interface GeneratePageToolParams {
   examples: string;
   /** 当所有actions返回时 */
   onActions: (actions: any[], status: string) => void
+  /** 初始化变量相关 */
+  onVarActions: (actions: any[], status: string) => void
   /** 清空当前画布信息 */
   onClearPage: () => void
+}
+
+enum Status {
+  IDLE = "IDLE",
+  RUNNING = "RUNNING",
+  FINISHED = "FINISHED"
 }
 
 const NAME = 'clear-and-generate-page'
@@ -24,11 +33,15 @@ export default function generatePage(config: GeneratePageToolParams): any {
   const streamActionsParser = createActionsParser();
   const excuteActionsParser = createActionsParser();
 
+  const streamVarActionsParser = createVarActionsParser();
+
   const pageId = config?.getTargetId();
   const rootId = config?.getRootIdByPageId(pageId);
 
   let fileNameToContent: Record<string, string> = {};
   let displayContent = "";
+
+  let varDiagrams: Record<string, { id: string; status: Status }> = {}
 
   return {
     name: NAME,
@@ -460,23 +473,24 @@ ${fileFormat({
   变量可以跨作用域插槽进行监听。
   </关于作用域插槽的说明>
 
-  <关于actions>
-    <字段说明>
-    *inputId*:
-    输入节点的输入id，UI组件参考组件文档的<inputs>，计算组件参考组件文档的<使用说明>；
-    </字段说明>
+  <作用域插槽定位规则>
+  - 页面级作用域：comId为"_root_"，slotId为"_rootSlot_"
+  - 组件级作用域：根据具体组件的comId和对应的作用域slotId定位
+  </作用域插槽定位规则>
 
+  <关于actions>
     各action详细说明如下：
 
     <createVar>
     创建变量，在结构上严格遵循以下格式：["createVar",params]
-    - 在组件的作用域插槽内创建变量（禁止在其它位置创建变量），通过组件的comId和作用域slotId来唯一定位变量的创建位置；
+    - 在作用域插槽内创建变量
     - params的格式以Typescript的形式说明如下：
     \`\`\`typescript
     type CreateVarParams {
-      target: { // 创建变量的目标位置，如果是页面级变量，comId默认"_root_"，slotId默认"_rootSlot_"。
+      target: { // 创建变量的作用域插槽定位
         comId: string; // 目标组件的id
         slotId: string; // 目标组件的作用域插槽id
+        inputId？: string; // 如果创建在组件级作用域插槽内，必须声明插槽的输入id，根据<slots>下作用域插槽下的输入说明分析如何使用
       }
       title: string; // 定义语义化的变量名
       schema: Schema; // 标准JSON Schema协议，用于定义类型
@@ -487,31 +501,20 @@ ${fileFormat({
     </createVar>
 
     <connect>
-    连接，将两个节点的输出和输入相连接。
-    在结构上严格遵循以下格式：["connect",from,to]
-    = from代表输出节点，格式以Typescript的形式说明如下：
-      - 当输出节点是事件的起点时：
-      \`\`\`typescript
-      type ConnectFrom {
-        comId: string; // 组件的id
-        outputId: string; // 输出id
-        slotId?: string; // 如果是作用域插槽的输出，需要声明作用域插槽slotId
-      }
-      \`\`\`
-      - 当输出节点是组件时：
-      \`\`\`typescript
-      type ConnectFrom {
-        comId: string; // 组件的id
-        outputId: string; // 输出id
-        instance?: string; // 实例id，保证唯一性，当输出节点是UI组件和变量时必须声明
-      }
-      \`\`\`
-    - to代表输入节点，格式以Typescript的形式说明如下：
+    连接，将变量与UI组件的输入连接
+    在结构上严格遵循以下格式：["connect",varParams,comParams]
+    - varParams的格式以Typescript的形式说明如下：
     \`\`\`typescript
-    type ConnectTo {
-      comId: string; // 组件的id
-      inputId: string; // <字段说明.inputId>
-      instance?: string; // 实例id，保证唯一性，当输入节点是UI组件和变量时必须声明
+    type VarParams {
+      comId: string; // 变量id
+      xpath: string; // 变量值的属性路径，使用举例：需要变量a，则值为""。需要变量a的b属性，则值为"/b"。需要变量a的b属性的c属性，则值为"/b/c"。以/开头，以/分割。
+    }
+    \`\`\`
+    - comParams的格式以Typescript的形式说明如下：
+    \`\`\`typescript
+    type ComParams {
+      comId: string; // UI组件id
+      inputId: string; // 输入id，参考UI组件文档的<inputs>，如果没有对应语义的输入项，禁止返回；
     }
     \`\`\`
     </connect>
@@ -520,31 +523,55 @@ ${fileFormat({
   <示例>
   *用户信息*：
   ${fileFormat({
-    content: `["createVar",{"target":{"comId":"comId","slotId":"作用域slotId"},"title":"用户信息","schema":{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"number"}}},"value":{"name":"张三","age":18},"comId":"uuid"}]
-["connect",{"from":{"comId":"uuid","outputId":"onChange"},"to":{"comId":"comId","inputId":"设置用户信息","instance":"uuid"}}]`,
+    content: `["createVar",{"target":{"comId":"comId","slotId":"作用域slotId"},"title":"用户信息","schema":{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"number"}}},"value":{"name":"张三","age":18},"comId":"u_userinfo"}]
+["connect",{"comId":"u_userinfo","xpath":"/name"},{"comId":"u_username","inputId":"设置内容"}]
+["connect",{"comId":"u_userinfo","xpath":"/age"},{"comId":"u_userage","inputId":"设置内容"}]`,
+    fileName: '初始化数据操作步骤.json'
+  })}
+
+  *列表渲染*：
+  ${fileFormat({
+    content: `["createVar",{"target":{"comId":"comId","slotId":"作用域slotId"},"title":"商品列表","schema":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"price":{"type":"number"},"image":{"type":"string"},"description":{"type":"string"}}}},"value":[{"id":"1","name":"iPhone 15","price":5999,"image":"https://example.com/iphone15.jpg","description":"最新款iPhone"},{"id":"2","name":"MacBook Pro","price":12999,"image":"https://example.com/macbook.jpg","description":"专业级笔记本电脑"},{"id":"3","name":"AirPods Pro","price":1999,"image":"https://example.com/airpods.jpg","description":"降噪耳机"}],"comId":"u_productList"}]
+["connect",{"comId":"u_productList","xpath":""},{"comId":"u_listContainer","inputId":"数据源"}]
+["createVar",{"target":{"comId":"u_listContainer","slotId":"itemSlot","inputId":"当前项"},"title":"当前商品","schema":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"price":{"type":"number"},"image":{"type":"string"},"description":{"type":"string"}}},"value":{"id":"","name":"","price":0,"image":"","description":""},"comId":"u_currentProduct"}]
+["connect",{"comId":"u_currentProduct","xpath":"/name"},{"comId":"u_productName","inputId":"设置内容"}]
+["connect",{"comId":"u_currentProduct","xpath":"/price"},{"comId":"u_productPrice","inputId":"设置内容"}]
+["connect",{"comId":"u_currentProduct","xpath":"/image"},{"comId":"u_productImage","inputId":"图片地址"}]
+["connect",{"comId":"u_currentProduct","xpath":"/description"},{"comId":"u_productDesc","inputId":"设置内容"}]`,
     fileName: '初始化数据操作步骤.json'
   })}
   </示例>
 
   <注意>
-  - 创建的变量必须覆盖<需求文档>中列出的所有*初始化数据*条目，确保不遗漏任何一项；
-  - 禁止将<需求文档>中列出的*初始化数据*条目进行合并，必须按照需求逐一创建变量，缺少变量会带来不可挽回的损失；
+  - 创建的变量必须覆盖<需求文档>中列出的所有*初始化数据*条目，确保不遗漏任何一项，缺少变量会带来不可挽回的损失；
   - 无论UI组件是否已经有静态配置或默认值，都必须通过变量进行驱动更新，确保初始化数据的正确性；
   </注意>
 
   <最佳实践>
   在实践执行的过程中，每一步都要返回你的思考结果
-  1. 阅读<需求文档>里*初始化数据*条目，思考变量的作用，变量对应驱动的UI组件，该UI组件位于哪一个作用域插槽内；
-  2. 创建变量；
-  3. 通过connect操作，将变量的输出连接到UI组件的输入；
+  1. 阅读<需求文档>里*初始化数据*条目，并思考：
+    - 各变量的含义和作用
+    - 是否有可以合并的变量，例如（表格数据源 + 分页信息、用户头像 + 用户信息等）
+    - 变量需要驱动哪个UI组件，该UI组件位于哪一个作用域插槽内
+    - 根据UI组件的<使用说明>以及<slots>相关信息，识别是否需要在其作用域插槽内创建变量，例如（列表类、需要循环渲染子组件的组件，需要额外创建作用域子项的变量）
+  2. 创建变量，并思考：
+    - 所需创建变量的Schema和value，做到按需创建，创建的key都能够connect到具体的UI组件；
+    - 变量驱动UI是否需要取内部属性；
+    - 如果取内部属性，属性是否都用上了，例如：用户信息变量（name，age，add，等），需要把所有属性都connect到具体的UI组件。
+  3. 通过connect操作，将变量连接到UI组件的输入；
   </最佳实践>
 
   <额外输出>
-  1. <需求文档>里*初始化数据*内有哪些需要创建的变量，分别用于驱动哪个UI组件；
+  1. 阅读<需求文档>里*初始化数据*条目，并思考，输出思考结果：
+    - 各变量的含义和作用
+    - 是否有可以合并的变量，例如（表格数据源 + 分页信息、用户头像 + 用户信息等）
+    - 变量需要驱动哪个UI组件，该UI组件位于哪一个作用域插槽内
+    - 根据UI组件的<使用说明>以及<slots>相关信息，识别是否需要在其作用域插槽内创建变量，例如（列表类、需要循环渲染子组件的组件，需要额外创建作用域子项的变量）
   2. 你都<createVar>创建了哪些变量，创建在哪里；
   3. 你都<connect>连接了哪些变量和UI组件；
-  4. 说明原因；
-  5. 你是否了解各UI组件所处的作用域插槽是哪里；
+  4. 变量值或变量的属性是否被完全使用；
+  5. 说明原因；
+  6. 你是否了解各UI组件所处的作用域插槽是哪里；
   </额外输出>
 </如何搭建初始化数据以及修改>
 
@@ -606,14 +633,21 @@ ${config.examples}
 </examples>`
     },
     stream({ files, status, replaceContent }) {
-      let actions: any = [];
-      const actionsFile = getFiles(files, {extName: 'json' })
+      let actions = [];
+      let varActions = [];
+
+      const actionsFile = getFiles([files[0] || {}], {extName: 'json' })
+      const varActionsFile = getFiles([files[1] || {}], {extName: 'json' })
 
       if (actionsFile) {
         actions = streamActionsParser(actionsFile.content ?? "");
         if (!fileNameToContent[actionsFile!.fileName]) {
           fileNameToContent[actionsFile!.fileName] = "";
         }
+      }
+
+      if (varActionsFile) {
+        varActions = streamVarActionsParser(varActionsFile.content ?? "");
       }
 
       actions = fixActions(actions, {
@@ -625,7 +659,7 @@ ${config.examples}
         config.onClearPage()
       }
       
-      if (actions.length > 0 || status === 'start' || status === 'complete') {
+      if (actions.length > 0 || varActions.length > 0 || status === 'start' || status === 'complete') {
         const copiedActions = JSON.parse(JSON.stringify(actions));
         try {
           config.onActions(actions, status)
@@ -641,6 +675,136 @@ ${config.examples}
             fileNameToContent[actionsFile!.fileName] += `\n${actionsContent.trim()}`;
           }
         }
+
+        try {
+          varActions.forEach((action: any) => {
+            if (action[0] === "createVar") {
+              const { comId, schema, target, title, value } = action[1];
+              const targetId = config.getTargetId();
+              const newAction = {
+                type: "defineVar",
+                params: {
+                  comId: target.comId === "_root_" ? null : target.comId,
+                  slotId: target.slotId === "_rootSlot_" ? "_root_" : target.slotId,
+                  id: comId,
+                  title,
+                  schema,
+                  initValue: value
+                }
+              }
+              try {
+                console.log("[创建变量]", newAction)
+                context.api?.page?.api?.updatePage?.(targetId, [newAction], status)
+              } catch (e) {
+              }
+            } else if (action[0] === "connect") {
+              const varParams = action[1];
+              const uiComParams = action[2]
+
+              let varDiagram = varDiagrams[varParams.comId]
+
+              if (!varDiagram) {
+                varDiagram = varDiagrams[varParams.comId] = {
+                  ...context.api?.diagram?.api?.getDiagramInfoByVarId(action[1].comId),
+                  status: Status.IDLE
+                }
+              }
+
+              const varInstanceId = String(Math.random())
+              const uiComInstanceId = String(Math.random())
+              const newActions = varParams.xpath ? [
+                // 创建变量节点
+                {
+                  type: "createCom",
+                  params: {
+                    type: "var",
+                    varId: varParams.comId,
+                    inputId: "get",
+                    instanceId: varInstanceId,
+                    xpath: varParams.xpath,
+                  }
+                },
+                // 创建UI组件节点
+                {
+                  type: "createCom",
+                  params: {
+                    type: "uiCom",
+                    params: {
+                      comId: uiComParams.comId,
+                      inputId: uiComParams.inputId,
+                      instanceId: uiComInstanceId
+                    }
+                  }
+                },
+                // 变量值变更到读变量
+                {
+                  type: "connectTo",
+                  params: {
+                    from: {
+                      type: "com",
+                      comId: varParams.comId,
+                      outputId: "changed",
+                    },
+                    to: {
+                      type: "com",
+                      inputId: "get",
+                      instanceId: varInstanceId
+                    }
+                  }
+                },
+                // 变量return值到ui组件的输入
+                {
+                  type: "connectTo",
+                  params: {
+                    from: {
+                      type: "com",
+                      instanceId: varInstanceId,
+                      outputId: "return"
+                    },
+                    to: {
+                      type: "com",
+                      instanceId: uiComInstanceId,
+                      inputId: uiComParams.inputId
+                    }
+                  }
+                },
+              ] : [
+                // 创建UI组件节点
+                {
+                  type: "createCom",
+                  params: {
+                    type: "uiCom",
+                    params: {
+                      comId: uiComParams.comId,
+                      inputId: uiComParams.inputId,
+                      instanceId: uiComInstanceId
+                    }
+                  }
+                },
+                // 变量值变更到UI组件
+                {
+                  type: "connectTo",
+                  params: {
+                    from: {
+                      type: "com",
+                      comId: varParams.comId,
+                      outputId: "changed",
+                    },
+                    to: {
+                      type: "com",
+                      instanceId: uiComInstanceId,
+                      inputId: uiComParams.inputId
+                    }
+                  }
+                },
+              ]
+              console.log("[连接ui组件]", newActions)
+              context.api?.diagram?.api?.updateDiagram(varDiagram.id, newActions, varDiagram.status === Status.IDLE ? "start" : status)
+            }
+          })
+        } catch (error) {
+          console.error('generate-page onVarActions error', error);
+        }
       }
 
       return displayContent = Object.entries(fileNameToContent).reduce((pre, [fileName, content]) => {
@@ -650,6 +814,8 @@ ${config.examples}
     execute({ files, content }) {
       let actions: any = [];
       const actionsFile = getFiles(files, {extName: 'json' })
+
+      console.log("[files]", files);
 
       if (!actionsFile) {
         return {
