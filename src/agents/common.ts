@@ -318,12 +318,12 @@ export const requestCommonAgent = (params: any) => {
           const requirementTools = [MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName, MYBRICKS_TOOLS.OpenDsl.toolName];
           const hasRequirement = toolNames.slice(0, generatePageIndex).some(name => requirementTools.includes(name));
 
-          if (prompts.enableDefaultEventFlow) {
-            const buildProcessIndex = toolNames.indexOf(MYBRICKS_TOOLS.BuildProcess.toolName);
-            if (buildProcessIndex === -1) {
-              resultTools.push(['node', MYBRICKS_TOOLS.BuildProcess.toolName])
-            }
-          }
+          // if (prompts.enableDefaultEventFlow) {
+          //   const buildProcessIndex = toolNames.indexOf(MYBRICKS_TOOLS.BuildProcess.toolName);
+          //   if (buildProcessIndex === -1) {
+          //     resultTools.push(['node', MYBRICKS_TOOLS.BuildProcess.toolName])
+          //   }
+          // }
           
           if (!hasRequirement) {
             resultTools.splice(generatePageIndex, 0, ['node', MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName]);

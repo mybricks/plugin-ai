@@ -26,7 +26,10 @@ export class ComponentsManager {
     window.__comlibs_edit_.forEach((comlib: any) => {
       forEachComponent(comlib, (com) => {
         if (com?.ai) {
-          this.aiComponentMap.set(com.namespace, com.ai)
+          this.aiComponentMap.set(com.namespace, {
+            ...com.ai,
+            all: com
+          })
           
           const abbreviation = com.namespace
             .replace('mybricks.normal-pc.antd5.', 'pc.')

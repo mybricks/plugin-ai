@@ -255,7 +255,23 @@ ${layoutComponentsNs.length ? `在以下所有组件中，特别的，${layoutCo
 
 ${this.openedComponentDocs.map(namespace => {
   const abbreviationNs = ComponentsManager.getAbbreviation(namespace);
-  return this.api.getComponentDoc(namespace).replace('<component>', `<${abbreviationNs}文档>`).replace('</component>', `</${abbreviationNs}文档>`).replace(new RegExp(`${namespace}`, 'g'), abbreviationNs)
+  const componentInfo = ComponentsManager.getAiComponent(namespace)
+  const inputs = componentInfo.all?.inputs?.reduce?.((pre: string, { id, title }: any) => {
+    return pre + `${id}（${title}）\n`
+  }, "")
+
+  const isUI = !componentInfo.all.rtType;
+
+  const slots = componentInfo.all?.slots?.reduce?.((pre: string, { id, title, type }: any) => {
+    return pre + `${id}（${title}）${type === "scope" ? "- 作用域插槽" : ""}\n`
+  }, "")
+
+  return this.api.getComponentDoc(namespace)
+  .replace("<使用说明>", (isUI ? `<inputs>
+  ${inputs || "无\n"}</inputs>\n\n` : "") + "<使用说明>")
+  .replace("<使用说明>", (isUI ? `<slots>
+  ${slots || "无\n"}</slots>\n\n` : "") + "<使用说明>")
+  .replace('<component>', `<${abbreviationNs}文档>`).replace('</component>', `</${abbreviationNs}文档>`).replace(new RegExp(`${namespace}`, 'g'), abbreviationNs)
 }).join('')}
 `
   }

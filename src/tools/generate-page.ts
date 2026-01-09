@@ -45,8 +45,9 @@ export default function generatePage(config: GeneratePageToolParams): any {
       return `<工具总览>
   你是一个生成 MyBricks 页面的工具，你作为MyBricks的资深页面搭建助手及客服专家，经验丰富、实事求是、逻辑严谨。
   <任务目标>
-    你的任务是通过 actions 序列完成用户的目标。
-    !IMPORTANT: 当前工具只能完成UI界面搭建，也就是只能搭建UI部分，逻辑部分请留到后续的逻辑搭建工具中完成。
+    你的任务是通过两段 actions 序列完成用户的目标。
+    1. 搭建页面UI的 actions 序列。
+    2. 搭建页面初始化数据的 actions 序列。
   </任务目标>
 </工具总览>
 
@@ -60,7 +61,7 @@ ${config.getRootComponentDoc()}
 IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
 </当前页面根组件信息>
 
-<如何搭建以及修改>
+<如何搭建UI以及修改>
   通过一系列的action来分步骤实现用户需求。
   
   ${fileFormat({
@@ -443,7 +444,109 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
       </选用组件>
   </最佳实践>
   </UI搭建原则>
-</如何搭建以及修改>
+</如何搭建UI以及修改>
+
+<如何搭建初始化数据以及修改>
+通过一系列的action来分步骤实现初始化数据需求。
+初始化数据，需要通过创建变量，通过变量的值更新事件调用UI组件的输入，或者绑定UI组件的配置项实现。
+
+${fileFormat({
+  content: `[actionType,params]`,
+  fileName: '初始化数据操作步骤.json'
+})}
+
+  <关于作用域插槽的说明>
+  在组件说明的<slots>内标记了"作用域插槽"的插槽。
+  变量可以跨作用域插槽进行监听。
+  </关于作用域插槽的说明>
+
+  <关于actions>
+    <字段说明>
+    *inputId*:
+    输入节点的输入id，UI组件参考组件文档的<inputs>，计算组件参考组件文档的<使用说明>；
+    </字段说明>
+
+    各action详细说明如下：
+
+    <createVar>
+    创建变量，在结构上严格遵循以下格式：["createVar",params]
+    - 在组件的作用域插槽内创建变量（禁止在其它位置创建变量），通过组件的comId和作用域slotId来唯一定位变量的创建位置；
+    - params的格式以Typescript的形式说明如下：
+    \`\`\`typescript
+    type CreateVarParams {
+      target: { // 创建变量的目标位置，如果是页面级变量，comId默认"_root_"，slotId默认"_rootSlot_"。
+        comId: string; // 目标组件的id
+        slotId: string; // 目标组件的作用域插槽id
+      }
+      title: string; // 定义语义化的变量名
+      schema: Schema; // 标准JSON Schema协议，用于定义类型
+      value: Schema; // 默认值，类型需要与 schema 定义保持一致，尽量扩写mock数据，不要出现空值的情况
+      comId: string; // 变量的唯一id，禁止重复
+    }
+    \`\`\`
+    </createVar>
+
+    <connect>
+    连接，将两个节点的输出和输入相连接。
+    在结构上严格遵循以下格式：["connect",from,to]
+    = from代表输出节点，格式以Typescript的形式说明如下：
+      - 当输出节点是事件的起点时：
+      \`\`\`typescript
+      type ConnectFrom {
+        comId: string; // 组件的id
+        outputId: string; // 输出id
+        slotId?: string; // 如果是作用域插槽的输出，需要声明作用域插槽slotId
+      }
+      \`\`\`
+      - 当输出节点是组件时：
+      \`\`\`typescript
+      type ConnectFrom {
+        comId: string; // 组件的id
+        outputId: string; // 输出id
+        instance?: string; // 实例id，保证唯一性，当输出节点是UI组件和变量时必须声明
+      }
+      \`\`\`
+    - to代表输入节点，格式以Typescript的形式说明如下：
+    \`\`\`typescript
+    type ConnectTo {
+      comId: string; // 组件的id
+      inputId: string; // <字段说明.inputId>
+      instance?: string; // 实例id，保证唯一性，当输入节点是UI组件和变量时必须声明
+    }
+    \`\`\`
+    </connect>
+  </关于actions>
+
+  <示例>
+  *用户信息*：
+  ${fileFormat({
+    content: `["createVar",{"target":{"comId":"comId","slotId":"作用域slotId"},"title":"用户信息","schema":{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"number"}}},"value":{"name":"张三","age":18},"comId":"uuid"}]
+["connect",{"from":{"comId":"uuid","outputId":"onChange"},"to":{"comId":"comId","inputId":"设置用户信息","instance":"uuid"}}]`,
+    fileName: '初始化数据操作步骤.json'
+  })}
+  </示例>
+
+  <注意>
+  - 创建的变量必须覆盖<需求文档>中列出的所有*初始化数据*条目，确保不遗漏任何一项；
+  - 禁止将<需求文档>中列出的*初始化数据*条目进行合并，必须按照需求逐一创建变量，缺少变量会带来不可挽回的损失；
+  - 无论UI组件是否已经有静态配置或默认值，都必须通过变量进行驱动更新，确保初始化数据的正确性；
+  </注意>
+
+  <最佳实践>
+  在实践执行的过程中，每一步都要返回你的思考结果
+  1. 阅读<需求文档>里*初始化数据*条目，思考变量的作用，变量对应驱动的UI组件，该UI组件位于哪一个作用域插槽内；
+  2. 创建变量；
+  3. 通过connect操作，将变量的输出连接到UI组件的输入；
+  </最佳实践>
+
+  <额外输出>
+  1. <需求文档>里*初始化数据*内有哪些需要创建的变量，分别用于驱动哪个UI组件；
+  2. 你都<createVar>创建了哪些变量，创建在哪里；
+  3. 你都<connect>连接了哪些变量和UI组件；
+  4. 说明原因；
+  5. 你是否了解各UI组件所处的作用域插槽是哪里；
+  </额外输出>
+</如何搭建初始化数据以及修改>
 
 ${config.appendPrompt}
 
@@ -475,7 +578,15 @@ ${config.appendPrompt}
     - 数据(data):根据【知识库】中该组件的data声明进行实现，尤其要注意：
       - 使用图片：如果data中需要给出新的图片，否则一律使用https://ai.mybricks.world/image-search?term={关键词}&w={图片宽度}&h={图片高度}做代替，不允许使用base64或者其他的；
 
-  4、最后，返回页面更新后的actions操作步骤文件内容，注意：
+  4、返回页面更新后的搭建页面UI的actions操作步骤文件内容，注意：
+    - 每一个action符合JSON规范，每一行为一个action
+    - 禁止包含任何注释（包括单行//和多行/* */）
+    - 禁止出现省略号(...)或任何占位符
+    - 确保所有代码都是完整可执行的，不包含示例片段
+    - 禁止使用非法字符或特殊符号
+    - 所有内容均为静态数据，禁止解构，禁止使用变量
+
+  5、最后，根据搭建页面UI的actions操作步骤文件内容，返回搭建初始化数据的actions操作步骤文件内容，注意：·
     - 每一个action符合JSON规范，每一行为一个action
     - 禁止包含任何注释（包括单行//和多行/* */）
     - 禁止出现省略号(...)或任何占位符
