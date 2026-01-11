@@ -43,6 +43,54 @@ export default function generatePage(config: GeneratePageToolParams): any {
 
   let varDiagrams: Record<string, { id: string; status: Status }> = {}
 
+  class PromiseStack {
+    status: Status = Status.RUNNING;
+    stack: any[] = [];
+    currentPromise: any = null;
+
+    add(promiseFn: any) {
+      this.stack.push(promiseFn);
+      this.run();
+    }
+
+    async run() {
+      let catchNext = false;
+      try {
+        if (this.currentPromise) {
+          return;
+        }
+        const promiseFn = this.stack.shift();
+        if (promiseFn) {
+          const promise = promiseFn();
+          if (Object.prototype.toString.call(promise) === "[object Promise]") {
+            this.currentPromise = promise;
+            catchNext = true;
+            await promise;
+            this.currentPromise = null;
+            this.run();
+            // promise.finally(() => {
+            //   this.currentPromise = null;
+            //   this.run();
+            // })
+          } else {
+            this.run();
+          }
+        }
+      } catch (e) {
+        if (catchNext) {
+          this.currentPromise = null;
+          this.run();
+        }
+      }
+    }
+
+    finish() {
+      this.status = Status.FINISHED
+    }
+  }
+
+  const promiseStack = new PromiseStack();
+
   return {
     name: NAME,
     displayName: "生成页面",
@@ -662,7 +710,8 @@ ${config.examples}
       if (actions.length > 0 || varActions.length > 0 || status === 'start' || status === 'complete') {
         const copiedActions = JSON.parse(JSON.stringify(actions));
         try {
-          config.onActions(actions, status)
+          // config.onActions(actions, status)
+          promiseStack.add(() => context.api?.page?.api?.updatePage?.(config.getTargetId(), actions, status))
         } catch (error) {
           console.error('generate-page onActions error', error);
         }
@@ -694,112 +743,110 @@ ${config.examples}
               }
               try {
                 console.log("[创建变量]", newAction)
-                context.api?.page?.api?.updatePage?.(targetId, [newAction], status)
+                promiseStack.add(() => context.api?.page?.api?.updatePage?.(targetId, [newAction], status))
               } catch (e) {
               }
             } else if (action[0] === "connect") {
-              const varParams = action[1];
-              const uiComParams = action[2]
+              promiseStack.add(() => {
+                const varParams = action[1];
+                const uiComParams = action[2]
 
-              let varDiagram = varDiagrams[varParams.comId]
+                let varDiagram = varDiagrams[varParams.comId]
 
-              if (!varDiagram) {
-                varDiagram = varDiagrams[varParams.comId] = {
-                  ...context.api?.diagram?.api?.getDiagramInfoByVarId(action[1].comId),
-                  status: Status.IDLE
+                if (!varDiagram) {
+                  varDiagram = varDiagrams[varParams.comId] = {
+                    ...context.api?.diagram?.api?.getDiagramInfoByVarId(action[1].comId),
+                    status: Status.IDLE
+                  }
                 }
-              }
 
-              const varInstanceId = String(Math.random())
-              const uiComInstanceId = String(Math.random())
-              const newActions = varParams.xpath ? [
-                // 创建变量节点
-                {
-                  type: "createCom",
-                  params: {
-                    type: "var",
-                    varId: varParams.comId,
-                    inputId: "get",
-                    instanceId: varInstanceId,
-                    xpath: varParams.xpath,
-                  }
-                },
-                // 创建UI组件节点
-                {
-                  type: "createCom",
-                  params: {
-                    type: "uiCom",
+                const varInstanceId = String(Math.random())
+                const uiComInstanceId = String(Math.random())
+                const newActions = varParams.xpath ? [
+                  // 创建变量节点
+                  {
+                    type: "createCom",
                     params: {
-                      comId: uiComParams.comId,
-                      inputId: uiComParams.inputId,
-                      instanceId: uiComInstanceId
-                    }
-                  }
-                },
-                // 变量值变更到读变量
-                {
-                  type: "connectTo",
-                  params: {
-                    from: {
-                      type: "com",
-                      comId: varParams.comId,
-                      outputId: "changed",
-                    },
-                    to: {
-                      type: "com",
+                      type: "var",
+                      varId: varParams.comId,
                       inputId: "get",
-                      instanceId: varInstanceId
-                    }
-                  }
-                },
-                // 变量return值到ui组件的输入
-                {
-                  type: "connectTo",
-                  params: {
-                    from: {
-                      type: "com",
                       instanceId: varInstanceId,
-                      outputId: "return"
-                    },
-                    to: {
-                      type: "com",
-                      instanceId: uiComInstanceId,
-                      inputId: uiComParams.inputId
+                      xpath: varParams.xpath,
                     }
-                  }
-                },
-              ] : [
-                // 创建UI组件节点
-                {
-                  type: "createCom",
-                  params: {
-                    type: "uiCom",
+                  },
+                  // 创建UI组件节点
+                  {
+                    type: "createCom",
                     params: {
+                      type: "uiCom",
                       comId: uiComParams.comId,
                       inputId: uiComParams.inputId,
                       instanceId: uiComInstanceId
                     }
-                  }
-                },
-                // 变量值变更到UI组件
-                {
-                  type: "connectTo",
-                  params: {
-                    from: {
-                      type: "com",
-                      comId: varParams.comId,
-                      outputId: "changed",
-                    },
-                    to: {
-                      type: "com",
-                      instanceId: uiComInstanceId,
-                      inputId: uiComParams.inputId
+                  },
+                  // 变量值变更到读变量
+                  {
+                    type: "connectTo",
+                    params: {
+                      from: {
+                        type: "com",
+                        comId: varParams.comId,
+                        outputId: "changed",
+                      },
+                      to: {
+                        type: "com",
+                        inputId: "get",
+                        instanceId: varInstanceId
+                      }
                     }
-                  }
-                },
-              ]
-              console.log("[连接ui组件]", newActions)
-              context.api?.diagram?.api?.updateDiagram(varDiagram.id, newActions, varDiagram.status === Status.IDLE ? "start" : status)
+                  },
+                  // 变量return值到ui组件的输入
+                  {
+                    type: "connectTo",
+                    params: {
+                      from: {
+                        type: "com",
+                        instanceId: varInstanceId,
+                        outputId: "return"
+                      },
+                      to: {
+                        type: "com",
+                        instanceId: uiComInstanceId,
+                        inputId: uiComParams.inputId
+                      }
+                    }
+                  },
+                ] : [
+                  // 创建UI组件节点
+                  {
+                    type: "createCom",
+                    params: {
+                      type: "uiCom",
+                      comId: uiComParams.comId,
+                      inputId: uiComParams.inputId,
+                      instanceId: uiComInstanceId
+                    }
+                  },
+                  // 变量值变更到UI组件
+                  {
+                    type: "connectTo",
+                    params: {
+                      from: {
+                        type: "com",
+                        comId: varParams.comId,
+                        outputId: "changed",
+                      },
+                      to: {
+                        type: "com",
+                        instanceId: uiComInstanceId,
+                        inputId: uiComParams.inputId
+                      }
+                    }
+                  },
+                ]
+                console.log("[连接ui组件]", newActions)
+                return context.api?.diagram?.api?.updateDiagram(varDiagram.id, newActions, varDiagram.status === Status.IDLE ? "start" : status)
+              })
             }
           })
         } catch (error) {
