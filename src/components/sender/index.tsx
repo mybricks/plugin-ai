@@ -221,7 +221,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
   return (
     <div className={css.container}>
-      <div className={css.editor}>
+      <div className={classNames(css.editor, {
+        [css.noMentions]: !mentions.length
+      })}>
         {attachments.length ? (
           <div className={css.topArea}>
             <AttachmentsList attachments={attachments} onDelete={onAttachmentsDelete}/>

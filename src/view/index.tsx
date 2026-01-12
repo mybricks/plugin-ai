@@ -64,6 +64,9 @@ const View = ({ user, copilot, api }: ViewProps) => {
         focusID.current = id;
         const status = context.requestStatusTracker.getStatus(id);
         statusChange(status.state === "pending" ? "loading" : "normal");
+        setTimeout(() => {
+          senderRef.current!.focus();
+        })
       }
     }, true)
     const disconnectPromiseStatusTracker = context.requestStatusTracker.events.on("promise", (promise) => {

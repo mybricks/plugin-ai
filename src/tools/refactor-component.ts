@@ -593,6 +593,7 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
       }
 
       if (actions.length > 0 || status === 'complete') {
+        const currentStatus = status === 'complete' ? "ing" : status;
         try {
           const copiedActions = JSON.parse(JSON.stringify(actions));
           try {
@@ -608,7 +609,7 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
                 }
               }
             })
-            promiseStack.add(() => config.onActions(actions, status, actionType))
+            promiseStack.add(() => config.onActions(actions, currentStatus, actionType))
           } catch (error) {
             console.error('refactor-component onActions error', error);
           }
