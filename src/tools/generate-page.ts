@@ -1,6 +1,7 @@
 import { fileFormat } from '@mybricks/rxai'
-import { getFiles, createActionsParser, getComponentOperationSummary, stripFileBlocks, createVarActionsParser } from './utils'
+import { getFiles, createActionsParser, getComponentOperationSummary, stripFileBlocks, createVarActionsParser, uuid } from './utils'
 import { context } from "../context";
+import { ComponentsManager } from "../agents/workspace/components-manager";
 
 interface GeneratePageToolParams {
   /** 当前根组件信息 */
@@ -14,8 +15,6 @@ interface GeneratePageToolParams {
   examples: string;
   /** 当所有actions返回时 */
   onActions: (actions: any[], status: string) => void
-  /** 初始化变量相关 */
-  onVarActions: (actions: any[], status: string) => void
   /** 清空当前画布信息 */
   onClearPage: () => void
 }
@@ -29,6 +28,101 @@ enum Status {
 const NAME = 'clear-and-generate-page'
 generatePage.toolName = NAME
 
+class PromiseStack {
+  status: Status = Status.RUNNING;
+  stack: any[] = [];
+  currentPromise: any = null;
+
+  add(promiseFn: any) {
+    this.stack.push(promiseFn);
+    this.run();
+  }
+
+  async run() {
+    let catchNext = false;
+    try {
+      if (this.currentPromise) {
+        return;
+      }
+      const promiseFn = this.stack.shift();
+      if (promiseFn) {
+        const promise = promiseFn();
+        if (Object.prototype.toString.call(promise) === "[object Promise]") {
+          this.currentPromise = promise;
+          catchNext = true;
+          await promise;
+          this.currentPromise = null;
+          this.run();
+        } else {
+          this.run();
+        }
+      }
+    } catch (e) {
+      console.error(e)
+      if (catchNext) {
+        this.currentPromise = null;
+        this.run();
+      }
+    }
+  }
+
+  finish() {
+    this.status = Status.FINISHED
+  }
+}
+
+class UITree {
+  nodeMap = new Map();
+  comIdToNamespace = new Map();
+  comIdMap = new Map();
+  
+  getComId(comId: string) {
+    if (!this.comIdMap.has(comId)) {
+      const newComId = uuid();
+      this.comIdMap.set(comId, newComId)
+    }
+
+    return this.comIdMap.get(comId);
+  }
+
+  addNode(node: any) {
+    const { id, parent } = node;
+    const namespace = this.comIdToNamespace.get(parent.id);
+    let scope = false
+    if (namespace) {
+      const component = ComponentsManager.getAiComponent(namespace);
+      if (component?.all?.slots?.find((slot: any) => slot.id === parent.slotId)?.type === "scope") {
+        scope = true;
+      }
+    }
+    this.nodeMap.set(id, {
+      id,
+      parent: {
+        ...parent,
+        scope
+      }
+    });
+  }
+
+  getScope(nodeId: any) {
+    let node = this.nodeMap.get(nodeId);
+    while (node) {
+      if (node.parent.id === "_root_") {
+        return node.parent;
+      }
+      if (node.parent.scope) {
+        return node.parent;
+      }
+
+      node = this.nodeMap.get(node.parent.id);
+    }
+  }
+
+  setNamespace(comId: string, namespace: string) {
+    this.comIdToNamespace.set(comId, namespace);
+  }
+}
+
 export default function generatePage(config: GeneratePageToolParams): any {
   const streamActionsParser = createActionsParser();
   const excuteActionsParser = createActionsParser();
@@ -41,55 +135,9 @@ export default function generatePage(config: GeneratePageToolParams): any {
   let fileNameToContent: Record<string, string> = {};
   let displayContent = "";
 
-  let varDiagrams: Record<string, { id: string; status: Status }> = {}
-
-  class PromiseStack {
-    status: Status = Status.RUNNING;
-    stack: any[] = [];
-    currentPromise: any = null;
-
-    add(promiseFn: any) {
-      this.stack.push(promiseFn);
-      this.run();
-    }
-
-    async run() {
-      let catchNext = false;
-      try {
-        if (this.currentPromise) {
-          return;
-        }
-        const promiseFn = this.stack.shift();
-        if (promiseFn) {
-          const promise = promiseFn();
-          if (Object.prototype.toString.call(promise) === "[object Promise]") {
-            this.currentPromise = promise;
-            catchNext = true;
-            await promise;
-            this.currentPromise = null;
-            this.run();
-            // promise.finally(() => {
-            //   this.currentPromise = null;
-            //   this.run();
-            // })
-          } else {
-            this.run();
-          }
-        }
-      } catch (e) {
-        if (catchNext) {
-          this.currentPromise = null;
-          this.run();
-        }
-      }
-    }
-
-    finish() {
-      this.status = Status.FINISHED
-    }
-  }
-
+  const diagrams: Record<string, string> = {};
   const promiseStack = new PromiseStack();
+  const uiTree = new UITree();
 
   return {
     name: NAME,
@@ -518,7 +566,7 @@ ${fileFormat({
 
   <关于作用域插槽的说明>
   在组件说明的<slots>内标记了"作用域插槽"的插槽。
-  变量可以跨作用域插槽进行监听。
+  禁止跨作用域的<connect>。
   </关于作用域插槽的说明>
 
   <作用域插槽定位规则>
@@ -551,6 +599,7 @@ ${fileFormat({
     <connect>
     连接，将变量与UI组件的输入连接
     在结构上严格遵循以下格式：["connect",varParams,comParams]
+    - 禁止跨作用域的连接
     - varParams的格式以Typescript的形式说明如下：
     \`\`\`typescript
     type VarParams {
@@ -606,7 +655,8 @@ ${fileFormat({
     - 所需创建变量的Schema和value，做到按需创建，创建的key都能够connect到具体的UI组件；
     - 变量驱动UI是否需要取内部属性；
     - 如果取内部属性，属性是否都用上了，例如：用户信息变量（name，age，add，等），需要把所有属性都connect到具体的UI组件。
-  3. 通过connect操作，将变量连接到UI组件的输入；
+  3. 通过connect操作，将变量连接到UI组件的输入，并思考：
+    - 连接的UI组件是否存在作用域插槽隔离
   </最佳实践>
 
   <额外输出>
@@ -616,7 +666,8 @@ ${fileFormat({
     - 变量需要驱动哪个UI组件，该UI组件位于哪一个作用域插槽内
     - 根据UI组件的<使用说明>以及<slots>相关信息，识别是否需要在其作用域插槽内创建变量，例如（列表类、需要循环渲染子组件的组件，需要额外创建作用域子项的变量）
   2. 你都<createVar>创建了哪些变量，创建在哪里；
-  3. 你都<connect>连接了哪些变量和UI组件；
+  3. 你都<connect>连接了哪些变量和UI组件，输出思考结果：
+    - 变量是否和连接的UI组件在同一个作用域，只有相同作用域才可以连接；
   4. 变量值或变量的属性是否被完全使用；
   5. 说明原因；
   6. 你是否了解各UI组件所处的作用域插槽是哪里；
@@ -711,6 +762,27 @@ ${config.examples}
         const copiedActions = JSON.parse(JSON.stringify(actions));
         try {
           // config.onActions(actions, status)
+          actions.forEach((action) => {
+            if (action.type === "addChild") {
+              const childComId = action.params.comId;
+              action.params.comId = uiTree.getComId(childComId);
+              uiTree.setNamespace(action.params.comId, action.params.namespace);
+
+              const parentComId = action.comId;
+
+              if (parentComId !== "_root_") {
+                action.comId = uiTree.getComId(parentComId);
+              }
+
+              uiTree.addNode({
+                id: action.params.comId,
+                parent: {
+                  id: action.comId,
+                  slotId: action.target,
+                }
+              })
+            }
+          })
           promiseStack.add(() => context.api?.page?.api?.updatePage?.(config.getTargetId(), actions, status))
         } catch (error) {
           console.error('generate-page onActions error', error);
@@ -730,127 +802,213 @@ ${config.examples}
             if (action[0] === "createVar") {
               const { comId, schema, target, title, value } = action[1];
               const targetId = config.getTargetId();
+
+              const targetComId = target.comId === "_root_" ? null : uiTree.getComId(target.comId);
+              const varComId = uiTree.getComId(comId);
+              uiTree.addNode({
+                id: varComId,
+                parent: {
+                  id: targetComId || "_root_",
+                  slotId: target.slotId,
+                }
+              })
+
               const newAction = {
                 type: "defineVar",
                 params: {
-                  comId: target.comId === "_root_" ? null : target.comId,
+                  comId: targetComId,
                   slotId: target.slotId === "_rootSlot_" ? "_root_" : target.slotId,
-                  id: comId,
+                  id: varComId,
                   title,
                   schema,
                   initValue: value
                 }
               }
-              try {
-                console.log("[创建变量]", newAction)
-                promiseStack.add(() => context.api?.page?.api?.updatePage?.(targetId, [newAction], status))
-              } catch (e) {
-              }
-            } else if (action[0] === "connect") {
               promiseStack.add(() => {
-                const varParams = action[1];
-                const uiComParams = action[2]
-
-                let varDiagram = varDiagrams[varParams.comId]
-
-                if (!varDiagram) {
-                  varDiagram = varDiagrams[varParams.comId] = {
-                    ...context.api?.diagram?.api?.getDiagramInfoByVarId(action[1].comId),
-                    status: Status.IDLE
-                  }
-                }
-
+                console.log("[创建变量]", newAction)
+                context.api?.page?.api?.updatePage?.(targetId, [newAction], status)
+              })
+              if (target.inputId) {
+                // 创建插槽输入到变量的赋值
                 const varInstanceId = String(Math.random())
-                const uiComInstanceId = String(Math.random())
-                const newActions = varParams.xpath ? [
+                const newActions = [
                   // 创建变量节点
                   {
                     type: "createCom",
                     params: {
                       type: "var",
-                      varId: varParams.comId,
-                      inputId: "get",
+                      varId: varComId,
+                      inputId: "set",
                       instanceId: varInstanceId,
-                      xpath: varParams.xpath,
                     }
                   },
-                  // 创建UI组件节点
-                  {
-                    type: "createCom",
-                    params: {
-                      type: "uiCom",
-                      comId: uiComParams.comId,
-                      inputId: uiComParams.inputId,
-                      instanceId: uiComInstanceId
-                    }
-                  },
-                  // 变量值变更到读变量
                   {
                     type: "connectTo",
                     params: {
                       from: {
-                        type: "com",
-                        comId: varParams.comId,
-                        outputId: "changed",
+                        type: "frame",
+                        comId: targetComId,
+                        frameId: target.slotId,
+                        outputId: target.inputId
                       },
                       to: {
                         type: "com",
-                        inputId: "get",
+                        inputId: "set",
                         instanceId: varInstanceId
                       }
                     }
                   },
-                  // 变量return值到ui组件的输入
-                  {
-                    type: "connectTo",
-                    params: {
-                      from: {
-                        type: "com",
-                        instanceId: varInstanceId,
-                        outputId: "return"
-                      },
-                      to: {
-                        type: "com",
-                        instanceId: uiComInstanceId,
-                        inputId: uiComParams.inputId
-                      }
-                    }
-                  },
-                ] : [
-                  // 创建UI组件节点
-                  {
-                    type: "createCom",
-                    params: {
-                      type: "uiCom",
-                      comId: uiComParams.comId,
-                      inputId: uiComParams.inputId,
-                      instanceId: uiComInstanceId
-                    }
-                  },
-                  // 变量值变更到UI组件
-                  {
-                    type: "connectTo",
-                    params: {
-                      from: {
-                        type: "com",
-                        comId: varParams.comId,
-                        outputId: "changed",
-                      },
-                      to: {
-                        type: "com",
-                        instanceId: uiComInstanceId,
-                        inputId: uiComParams.inputId
-                      }
-                    }
-                  },
                 ]
-                console.log("[连接ui组件]", newActions)
-                return context.api?.diagram?.api?.updateDiagram(varDiagram.id, newActions, varDiagram.status === Status.IDLE ? "start" : status)
+                promiseStack.add(() => {
+                  const diagramId = context.api?.diagram?.api?.getDiagramInfo(targetComId, target.slotId).id;
+                  diagrams[`${targetComId}_${target.slotId}`] = diagramId;
+                  context.api?.diagram?.api?.updateDiagram(diagramId, newActions, "start")
+                })
+              }
+            } else if (action[0] === "connect") {
+              const varParams = action[1];
+              const uiComParams = action[2]
+              const varComId = uiTree.getComId(varParams.comId);
+              const uiComId = uiTree.getComId(uiComParams.comId);
+
+              const scope: any = {
+                status,
+              }
+
+              const uiScope = uiTree.getScope(uiComId);
+              const varScope = uiTree.getScope(varComId);
+              let diagramKey = varComId
+
+              if ((uiScope.id !== varScope.id) || (uiScope.slotId !== varScope.slotId)) {
+                diagramKey = `${uiScope.id}_${uiScope.slotId}_${varComId}`;
+
+                if (!diagrams[diagramKey]) {
+                  diagrams[diagramKey] = "pending"
+                  const newAction = {
+                    type: "defineListener",
+                    params: {
+                      comId: uiScope.id,
+                      slotId: uiScope.slotId,
+                      varId: varComId
+                    }
+                  }
+                  const targetId = config.getTargetId();
+                  promiseStack.add(() => context.api?.page?.api?.updatePage?.(targetId, [newAction], status))
+                  promiseStack.add(() => {
+                    diagrams[diagramKey] = context.api?.diagram?.api?.getDiagramInfoByListenerInfo(uiScope.id, uiScope.slotId, varComId).id;
+                    scope.status = "start";
+                  })
+                }
+              } else {
+                if (!diagrams[diagramKey]) {
+                  promiseStack.add(() => {
+                    diagrams[diagramKey] = context.api?.diagram?.api?.getDiagramInfoByVarId(varComId).id;
+                  })
+                  scope.status = "start";
+                }
+              }
+
+              const varInstanceId = String(Math.random())
+              const uiComInstanceId = String(Math.random())
+              const newActions = varParams.xpath ? [
+                // 创建变量节点
+                {
+                  type: "createCom",
+                  params: {
+                    type: "var",
+                    varId: varComId,
+                    inputId: "get",
+                    instanceId: varInstanceId,
+                    xpath: varParams.xpath,
+                  }
+                },
+                // 创建UI组件节点
+                {
+                  type: "createCom",
+                  params: {
+                    type: "uiCom",
+                    comId: uiComId,
+                    inputId: uiComParams.inputId,
+                    instanceId: uiComInstanceId
+                  }
+                },
+                // 变量值变更到读变量
+                {
+                  type: "connectTo",
+                  params: {
+                    from: {
+                      type: "com",
+                      comId: varComId,
+                      outputId: "changed",
+                    },
+                    to: {
+                      type: "com",
+                      inputId: "get",
+                      instanceId: varInstanceId
+                    }
+                  }
+                },
+                // 变量return值到ui组件的输入
+                {
+                  type: "connectTo",
+                  params: {
+                    from: {
+                      type: "com",
+                      instanceId: varInstanceId,
+                      outputId: "return"
+                    },
+                    to: {
+                      type: "com",
+                      instanceId: uiComInstanceId,
+                      inputId: uiComParams.inputId
+                    }
+                  }
+                },
+              ] : [
+                // 创建UI组件节点
+                {
+                  type: "createCom",
+                  params: {
+                    type: "uiCom",
+                    comId: uiComId,
+                    inputId: uiComParams.inputId,
+                    instanceId: uiComInstanceId
+                  }
+                },
+                // 变量值变更到UI组件
+                {
+                  type: "connectTo",
+                  params: {
+                    from: {
+                      type: "com",
+                      comId: varComId,
+                      outputId: "changed",
+                    },
+                    to: {
+                      type: "com",
+                      instanceId: uiComInstanceId,
+                      inputId: uiComParams.inputId
+                    }
+                  }
+                },
+              ]
+              console.log("[连接ui组件]", newActions)
+              promiseStack.add(() => {
+                context.api?.diagram?.api?.updateDiagram(diagrams[diagramKey], newActions, scope.status)
               })
             }
           })
         } catch (error) {
           console.error('generate-page onVarActions error', error);
+        }
+        
+        if (status === "complete") {
+          promiseStack.add(() => {
+            context.api?.page?.api?.updatePage?.(config.getTargetId(), [], status)
+            Object.entries(diagrams).forEach(([_, id]) => {
+              context.api?.diagram?.api?.updateDiagram(id, [], status)
+            })
+          })
         }
       }
 
