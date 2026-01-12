@@ -690,6 +690,7 @@ ${config.examples}
       }
       
       if (actions.length > 0 || varActions.length > 0 || status === 'start' || status === 'complete') {
+        const currentStatus = status === 'complete' ? "ing" : status;
         const copiedActions = JSON.parse(JSON.stringify(actions));
         try {
           // config.onActions(actions, status)
@@ -714,7 +715,7 @@ ${config.examples}
               })
             }
           })
-          promiseStack.add(() => config.onActions(actions, status))
+          promiseStack.add(() => config.onActions(actions, currentStatus))
         } catch (error) {
           console.error('generate-page onActions error', error);
         }
@@ -756,7 +757,7 @@ ${config.examples}
               }
               promiseStack.add(() => {
                 console.log("[创建变量]", newAction)
-                return config.onActions([newAction], status)
+                return config.onActions([newAction], currentStatus)
               })
               if (target.inputId) {
                 // 创建插槽输入到变量的赋值
@@ -802,7 +803,7 @@ ${config.examples}
               const uiComId = uiTree.getComId(uiComParams.comId);
 
               const scope: any = {
-                status,
+                status: currentStatus,
               }
 
               const uiScope = uiTree.getScope(uiComId);
@@ -822,7 +823,7 @@ ${config.examples}
                       varId: varComId
                     }
                   }
-                  promiseStack.add(() => config.onActions([newAction], status))
+                  promiseStack.add(() => config.onActions([newAction], currentStatus))
                   promiseStack.add(() => {
                     diagrams[diagramKey] = context.api?.diagram?.api?.getDiagramInfoByListenerInfo(uiScope.id, uiScope.slotId, varComId).id;
                     scope.status = "start";

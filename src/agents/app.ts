@@ -52,7 +52,7 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
         // params?.onProgress?.("complete");
       },
     },
-    planList: [`${MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName} -mode generate`, MYBRICKS_TOOLS.GeneratePage.toolName],
+    planList: [`${MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName} -mode generate`, MYBRICKS_TOOLS.GeneratePage.toolName, MYBRICKS_TOOLS.BuildProcess.toolName, MYBRICKS_TOOLS.BuildProcess.toolName],
     tools: [
       MYBRICKS_TOOLS.GetComponentsDocAndPrd({
         allowComponents: context.api?.global?.api?.getAllComDefPrompts?.(),
@@ -208,6 +208,32 @@ ${page.prd}
 <样式风格>
 ${aiCanvas.style}
 </样式风格>
+
+<事件流程>
+必须分析/搭建的流程：
+1. 基于可跳转页面，深度分析页面间的关联性和逻辑关系，构建合理的页面跳转流程。
+    - 关联性分析要求：
+      1. **功能关联分析**：识别页面间的功能依赖关系和业务逻辑连接
+      2. **用户路径分析**：梳理用户在页面间的自然跳转流程和跳转需求
+      3. **信息层级分析**：判断页面间的信息深度关系（概览→详情→操作）
+      4. **交互触发点识别**：精准定位可触发跳转的组件和交互元素
+  
+    - 页面关联性判断维度：
+      - 信息承接关系：上级页面信息如何延续到下级页面
+      - 操作逻辑关系：用户完成某操作后的自然跳转路径
+      - 数据传递关系：页面间需要传递的参数和状态信息
+      - 返回路径关系：用户如何回到上一级或相关页面
+
+    - 跳转流程构建原则：
+      - 只能包含页面跳转逻辑，禁止其他业务逻辑节点
+      - 基于真实用户操作习惯设计跳转路径
+      - 确保每个跳转都有明确的触发组件和目标页面
+      - 构建完整的正向和反向导航路径
+
+注意：
+1. 除上述“必须分析/搭建的流程”所述的内容外，禁止一切其它形式的事件流程和变量。
+2. 事件流程需求分析必须包含页面跳转
+</事件流程>
 `,
       onProgress: pageRef.onProgress,
       id: pageRef.id,

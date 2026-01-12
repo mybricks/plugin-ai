@@ -15,6 +15,13 @@
     color: rgba(0, 0, 0, .9);
     cursor: default;
 
+    &.noMentions {
+      background-color: #f7f7f7;
+      .inputPlaceholder {
+        color: rgba(0, 0, 0, .4) !important;
+      }
+    }
+
     &:focus-within {
       border-color: var(--mybricks-color-primary);
     }
