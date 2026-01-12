@@ -1,5 +1,5 @@
 import { fileFormat, RxaiError } from '@mybricks/rxai'
-import { getFiles, createActionsParser, getComponentOperationSummary, stripFileBlocks } from './utils'
+import { getFiles, createActionsParser, getComponentOperationSummary, stripFileBlocks, ComIdTransform, PromiseStack } from './utils'
 
 interface ModifyComponentToolParams {
   /** 当前根组件信息 */
@@ -10,6 +10,7 @@ interface ModifyComponentToolParams {
   /** 当所有actions返回时 */
   onActions: (actions: any[], status: string, type: string) => void
   getFocusElementAiRole?: () => boolean;
+  getComIds: () => any;
 }
 
 const NAME = 'refactor-components-in-page'
@@ -28,6 +29,8 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
   let actionType = 'page'
 
   const pageId = config?.getTargetId();
+  const comIdTransform = new ComIdTransform(config.getComIds());
+  const promiseStack = new PromiseStack();
 
   return {
     name: NAME,
@@ -585,7 +588,7 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
             actionType = 'uiCom'
           }
 
-          config.onActions([], 'start', actionType)
+          promiseStack.add(() => config.onActions([], 'start', actionType))
         }
       }
 
@@ -593,7 +596,19 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
         try {
           const copiedActions = JSON.parse(JSON.stringify(actions));
           try {
-            config.onActions(actions, status, actionType)
+            actions.forEach((action: any) => {
+              if (action.type === "addChild") {
+                const childComId = action.params.comId;
+                action.params.comId = comIdTransform.getComId(childComId);
+
+                const parentComId = action.comId;
+
+                if (parentComId !== "_root_") {
+                  action.comId = comIdTransform.getComId(parentComId);
+                }
+              }
+            })
+            promiseStack.add(() => config.onActions(actions, status, actionType))
           } catch (error) {
             console.error('refactor-component onActions error', error);
           }
@@ -607,6 +622,10 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
             }
           }
         } catch (error) {}
+
+        if (status === "complete") {
+          promiseStack.add(() => config.onActions([], status, actionType))
+        }
       }
 
       return displayContent = Object.entries(fileNameToContent).reduce((pre, [fileName, content]) => {

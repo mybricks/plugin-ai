@@ -792,10 +792,6 @@ export const createVarActionsParser = () => {
 
       try {
         const parsedAction = formatVarAction(trimmedLine);
-        // if (parsedAction.comId) {
-        //   newActions.push(parsedAction);
-        //   processedLines.add(trimmedLine);
-        // }
         newActions.push(parsedAction);
         processedLines.add(trimmedLine);
       } catch (error) {
@@ -812,10 +808,6 @@ export const createVarActionsParser = () => {
       if ((text.endsWith("\n")) && !processedLines.has(trimmedLastLine)) {
         try {
           const parsedAction = formatVarAction(trimmedLastLine);
-          // if (parsedAction.comId) {
-          //   newActions.push(parsedAction);
-          //   processedLines.add(trimmedLastLine);
-          // }
           newActions.push(parsedAction);
           processedLines.add(trimmedLastLine);
         } catch (error) {
@@ -838,4 +830,62 @@ export const uuid = (len = 5) => {
 		rtn += UUID_SEED.charAt(Math.floor(Math.random() * maxPos));
 	}
 	return 'u_' + rtn;
+}
+
+export class ComIdTransform {
+  comIdMap: Record<string, string> = {};
+
+  constructor(comIds: string[]) {
+    const { comIdMap } = this;
+    comIds.forEach((comId) => {
+      comIdMap[comId] = comId;
+    })
+  }
+  
+  getComId(comId: string) {
+    if (!this.comIdMap[comId]) {
+      const newComId = uuid();
+      this.comIdMap[comId] = newComId;
+    }
+
+    return this.comIdMap[comId];
+  }
+}
+
+export class PromiseStack {
+  stack: any[] = [];
+  currentPromise: any = null;
+
+  add(promiseFn: any) {
+    this.stack.push(promiseFn);
+    this.run();
+  }
+
+  async run() {
+    let catchNext = false;
+    try {
+      if (this.currentPromise) {
+        return;
+      }
+      const promiseFn = this.stack.shift();
+      if (promiseFn) {
+        const promise = promiseFn();
+        if (Object.prototype.toString.call(promise) === "[object Promise]") {
+          this.currentPromise = promise;
+          catchNext = true;
+          await promise;
+          this.currentPromise = null;
+          this.run();
+        } else {
+          this.run();
+        }
+      }
+    } catch (e) {
+      console.error(e)
+      if (catchNext) {
+        this.currentPromise = null;
+        this.run();
+      }
+    }
+  }
 }

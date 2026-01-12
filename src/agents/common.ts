@@ -157,11 +157,11 @@ export const requestCommonAgent = (params: any) => {
           appendPrompt: prompts.systemAppendPrompts,
           examples: prompts.generatePageActionExamplesPrompts,
           onActions: (actions, status) => {
-            context.api?.page?.api?.updatePage?.(targetPageId, actions, status)
+            return context.api?.page?.api?.updatePage?.(targetPageId, actions, status)
           },
           onClearPage: () => {
             context.api?.page?.api?.clearPageContent?.(targetPageId)
-          }
+          },
         }),
 //         MYBRICKS_TOOLS.GeneratePage({
 //           getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,
@@ -221,12 +221,11 @@ export const requestCommonAgent = (params: any) => {
                 : undefined;
 
               if (parentId && parentId !== targetPageId) {
-                context.api?.uiCom?.api?.updateCom?.(parentId, actions, status)
-                return
+                return context.api?.uiCom?.api?.updateCom?.(parentId, actions, status)
               }
             }
 
-            context.api?.page?.api?.updatePage?.(targetPageId, actions, status)
+            return context.api?.page?.api?.updatePage?.(targetPageId, actions, status)
           },
           componentIdToTitleMap,
           getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,
@@ -247,6 +246,15 @@ export const requestCommonAgent = (params: any) => {
               return aiComponent?.prompts?.aiRole;
             }
             return null
+          },
+          getComIds() {
+            const comIds: string[] = [];
+
+            outlineInfoManager.getComponentIdToTitleMap(targetPageId).forEach((value, key) => {
+              comIds.push(key);
+            })
+
+            return comIds;
           }
         }),
         MYBRICKS_TOOLS.Answer({}),

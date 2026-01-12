@@ -1,5 +1,5 @@
 import { fileFormat } from '@mybricks/rxai'
-import { getFiles, createActionsParser, getComponentOperationSummary, stripFileBlocks, createVarActionsParser, uuid } from './utils'
+import { getFiles, createActionsParser, getComponentOperationSummary, stripFileBlocks, createVarActionsParser, PromiseStack, ComIdTransform } from './utils'
 import { context } from "../context";
 import { ComponentsManager } from "../agents/workspace/components-manager";
 
@@ -19,70 +19,16 @@ interface GeneratePageToolParams {
   onClearPage: () => void
 }
 
-enum Status {
-  IDLE = "IDLE",
-  RUNNING = "RUNNING",
-  FINISHED = "FINISHED"
-}
-
 const NAME = 'clear-and-generate-page'
 generatePage.toolName = NAME
-
-class PromiseStack {
-  status: Status = Status.RUNNING;
-  stack: any[] = [];
-  currentPromise: any = null;
-
-  add(promiseFn: any) {
-    this.stack.push(promiseFn);
-    this.run();
-  }
-
-  async run() {
-    let catchNext = false;
-    try {
-      if (this.currentPromise) {
-        return;
-      }
-      const promiseFn = this.stack.shift();
-      if (promiseFn) {
-        const promise = promiseFn();
-        if (Object.prototype.toString.call(promise) === "[object Promise]") {
-          this.currentPromise = promise;
-          catchNext = true;
-          await promise;
-          this.currentPromise = null;
-          this.run();
-        } else {
-          this.run();
-        }
-      }
-    } catch (e) {
-      console.error(e)
-      if (catchNext) {
-        this.currentPromise = null;
-        this.run();
-      }
-    }
-  }
-
-  finish() {
-    this.status = Status.FINISHED
-  }
-}
 
 class UITree {
   nodeMap = new Map();
   comIdToNamespace = new Map();
-  comIdMap = new Map();
+  comIdTransform = new ComIdTransform([]);
   
   getComId(comId: string) {
-    if (!this.comIdMap.has(comId)) {
-      const newComId = uuid();
-      this.comIdMap.set(comId, newComId)
-    }
-
-    return this.comIdMap.get(comId);
+    return this.comIdTransform.getComId(comId);
   }
 
   addNode(node: any) {
@@ -783,7 +729,7 @@ ${config.examples}
               })
             }
           })
-          promiseStack.add(() => context.api?.page?.api?.updatePage?.(config.getTargetId(), actions, status))
+          promiseStack.add(() => config.onActions(actions, status))
         } catch (error) {
           console.error('generate-page onActions error', error);
         }
@@ -801,7 +747,6 @@ ${config.examples}
           varActions.forEach((action: any) => {
             if (action[0] === "createVar") {
               const { comId, schema, target, title, value } = action[1];
-              const targetId = config.getTargetId();
 
               const targetComId = target.comId === "_root_" ? null : uiTree.getComId(target.comId);
               const varComId = uiTree.getComId(comId);
@@ -826,7 +771,7 @@ ${config.examples}
               }
               promiseStack.add(() => {
                 console.log("[创建变量]", newAction)
-                context.api?.page?.api?.updatePage?.(targetId, [newAction], status)
+                return config.onActions([newAction], status)
               })
               if (target.inputId) {
                 // 创建插槽输入到变量的赋值
@@ -862,7 +807,7 @@ ${config.examples}
                 promiseStack.add(() => {
                   const diagramId = context.api?.diagram?.api?.getDiagramInfo(targetComId, target.slotId).id;
                   diagrams[`${targetComId}_${target.slotId}`] = diagramId;
-                  context.api?.diagram?.api?.updateDiagram(diagramId, newActions, "start")
+                  return context.api?.diagram?.api?.updateDiagram(diagramId, newActions, "start")
                 })
               }
             } else if (action[0] === "connect") {
@@ -892,8 +837,7 @@ ${config.examples}
                       varId: varComId
                     }
                   }
-                  const targetId = config.getTargetId();
-                  promiseStack.add(() => context.api?.page?.api?.updatePage?.(targetId, [newAction], status))
+                  promiseStack.add(() => config.onActions([newAction], status))
                   promiseStack.add(() => {
                     diagrams[diagramKey] = context.api?.diagram?.api?.getDiagramInfoByListenerInfo(uiScope.id, uiScope.slotId, varComId).id;
                     scope.status = "start";
@@ -903,8 +847,8 @@ ${config.examples}
                 if (!diagrams[diagramKey]) {
                   promiseStack.add(() => {
                     diagrams[diagramKey] = context.api?.diagram?.api?.getDiagramInfoByVarId(varComId).id;
+                    scope.status = "start";
                   })
-                  scope.status = "start";
                 }
               }
 
@@ -994,7 +938,7 @@ ${config.examples}
               ]
               console.log("[连接ui组件]", newActions)
               promiseStack.add(() => {
-                context.api?.diagram?.api?.updateDiagram(diagrams[diagramKey], newActions, scope.status)
+                return context.api?.diagram?.api?.updateDiagram(diagrams[diagramKey], newActions, scope.status)
               })
             }
           })
@@ -1004,7 +948,7 @@ ${config.examples}
         
         if (status === "complete") {
           promiseStack.add(() => {
-            context.api?.page?.api?.updatePage?.(config.getTargetId(), [], status)
+            config.onActions([], status)
             Object.entries(diagrams).forEach(([_, id]) => {
               context.api?.diagram?.api?.updateDiagram(id, [], status)
             })

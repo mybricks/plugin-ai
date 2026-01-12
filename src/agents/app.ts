@@ -74,7 +74,7 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
         appendPrompt: prompts.systemAppendPrompts,
         examples: prompts.generatePageActionExamplesPrompts,
         onActions: (actions, status) => {
-          context.api?.page?.api?.updatePage?.(pageId, actions, status)
+          return context.api?.page?.api?.updatePage?.(pageId, actions, status)
         },
         onClearPage: () => {
           context.api?.page?.api?.clearPageContent?.(pageId)
