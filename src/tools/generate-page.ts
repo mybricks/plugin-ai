@@ -147,7 +147,7 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
        * 宽高尺寸
        * number - 具体的px值
        * fit-content - 适应内容
-       * 100% - 填充
+       * 100% - 填充，仅允许100%，不允许其他百分比宽度
        * auto - 自动填充，等同于flex=1
        * 只能是三者其一，明确不允许使用其他属性，比如calc等方法
        */
@@ -435,6 +435,20 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
           在上例中:
             - 声明布局编辑器的值，注意布局编辑器必须声明，其中flexDirection声明成column；
             - 通过alignItems来实现子组件的垂直居中； 
+          
+          下面的例子使用flex进行横向左右均分布局，实现各占一半的效果:
+          ${fileFormat({
+            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex0","ignore": true,"ns":"布局组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","justifyContent":"space-between","alignItems":"center"}}]}]
+          ["u_flex0","插槽id占位","addChild",{"title":"A组件","comId":"u_a","ns":"组件","layout":{"width":"auto","height":40,"marginRight":8},"configs":[]}]
+          ["u_flex0","插槽id占位","addChild",{"title":"B组件","comId":"u_b","ns":"组件","layout":{"width":"auto","height":40},"configs":[]}]
+          `,
+            fileName: '左右各占一半布局.json'
+          })}
+          在上例中:
+            - 为了实现各占一半，配置A组件和B组件的宽度都为自适应auto（效果等同于flex=1），实现各占一半的效果；
+              - 注意：不允许配置百分比宽度；
+            - 判断仅布局，添加ignore标记，优化搭建内容。
+            - 通过marginRight配置左侧组件与右侧组件的间距；
 
           下面的例子使用flex进行横向均分或等分布局，实现一行N列的效果:
           ${fileFormat({
@@ -448,7 +462,8 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
           在上例中:
             - 声明布局编辑器的值，注意布局编辑器必须声明，其中flexDirection也必须声明；
             - 针对内容元素的尺寸，配置合理的高度，防止内容溢出；
-            - 为了实现均分，请对子元素配置宽度和高度的固定值，保证卡片之间存在间距，避免大小不一导致的非均分效果；
+            - 为了实现均分，保证卡片之间存在间距，配置卡片宽度和高度都为固定值
+              - 注意：不允许配置百分比宽度；
             - 判断仅布局，添加ignore标记，优化搭建内容。
 
           特殊地，在flex布局中的元素还可以配置position=absolute，用于实现绝对定位效果:
@@ -632,8 +647,7 @@ ${config.appendPrompt}
     - 标题(title):组件的标题；
     - 布局(layout):组件的宽高与外间距信息，只能声明width、height、margin，不允许使用padding等属性；
     - 样式(styleAry):根据组件声明的css给出合理的设计实现；
-    - 数据(data):根据【知识库】中该组件的data声明进行实现，尤其要注意：
-      - 使用图片：如果data中需要给出新的图片，否则一律使用https://ai.mybricks.world/image-search?term={关键词}&w={图片宽度}&h={图片高度}做代替，不允许使用base64或者其他的；
+    - 数据(data):根据【知识库】中该组件的data声明进行实现；
 
   4、返回页面更新后的搭建页面UI的actions操作步骤文件内容，注意：
     - 每一个action符合JSON规范，每一行为一个action
