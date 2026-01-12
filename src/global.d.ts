@@ -40,6 +40,7 @@ interface AiServiceAPI {
       updateDiagram: (...args: any) => void;
       getDiagramInfo: (...args: any) => any;
       getDiagramInfoByVarId: (...args: any) => any;
+      getDiagramInfoByListenerInfo: (...args: any) => any;
     }
   },
   logicCom: {
