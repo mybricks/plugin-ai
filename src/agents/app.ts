@@ -200,7 +200,8 @@ async function createCanvasByAICanvas(canvasId: string, aiCanvas: any) {
     }
   }
 
-  pageArray.forEach(async ({ page, pageRef }) => {
+  pageArray.forEach(async ({ page, pageRef }, index) => {
+    const otherPage = pageArray.slice(0, index).concat(pageArray.slice(index + 1))
     await requestGeneratePageAgent(pageRef.id, page.title, {
       message: `帮忙实现项目「${aiCanvas.title}」的其中一个页面，页面为${page.title}。
 <可供参考的需求>
@@ -216,13 +217,15 @@ ${(pageArray ?? []).map(p => `- ${p.page.title}`).join('\n')}
 </正在实现的页面列表>
 
 <事件流程>
-必须分析/搭建的流程：
+当前项目有以下${otherPage.length}张页面可以跳转
+${otherPage.reduce((pre: string, { page, pageRef }: any) => {
+return pre + `- ${page.title}（${pageRef.id}）\n`
+}, "")}
 
-基于正在实现的页面列表，分析页面间的关联性和逻辑关系，分析组件中可能的页面跳转流程。
+基于页面的名称、事实，分析页面间的关联性、组件事件中可能的页面跳转流程，例如某个按钮的点击事件跳转一个正确的页面。
 
 注意：
-1. 除上述“必须分析/搭建的流程”所述的内容外，禁止一切其它形式的事件流程和变量。
-2. 事件流程需求分析必须包含页面跳转
+1. 除页面跳转外，禁止一切其它形式的事件流程和变量。
 </事件流程>
 `,
       onProgress: pageRef.onProgress,
