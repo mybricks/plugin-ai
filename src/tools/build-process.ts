@@ -1,6 +1,6 @@
 import { fileFormat } from "@mybricks/rxai";
 import { jsonrepair } from 'jsonrepair'
-import { getFiles, transformPageInfo } from './utils'
+import { getFiles, transformPageInfo, PromiseStack } from './utils'
 import { ComponentsManager } from './../agents/workspace/components-manager'
 
 const NAME = 'build-event-flow'
@@ -66,6 +66,7 @@ function buildProcess(props: any) {
   let currentDiagram: { id: string, status: Status } | null = initDiagram(props.getDiagramInfo());
   let updatePageStatus: Status = Status.IDLE;
   let updateComStatus: Status = Status.IDLE;
+  const promiseStack = new PromiseStack();
 
   return {
     name: NAME,
@@ -441,7 +442,7 @@ ${allPageInfo}
             value: any//需要配置的value
           }[]
           \`\`\`
-          - 页面跳转，唤起对话框，如果<可跳转页面>中没有对应页面，禁止创建页面跳转节点。
+          - 页面跳转，唤起对话框，如果<可跳转页面>中没有对应页面，禁止创建页面跳转节点。页面跳转只允许在组件的事件内，禁止在作用域插槽的内部流程使用。
           \`\`\`typescript
           type Params = {
             type: "scenes" // 类型，用于区分节点类型，默认scenes
@@ -884,27 +885,27 @@ ${allPageInfo}
               const { comId, ...other } = action;
               if (updatePageStatus === Status.IDLE) {
                 // 默认先执行一次start
-                props.updatePage([], "start")
+                promiseStack.add(() => props.updatePage([], "start"))
                 updatePageStatus = Status.RUNNING;
               }
-              props.updatePage([other], "ing")
+              promiseStack.add(() => props.updatePage([other], "ing"))
               continue
             } else if (action.type === "doConfig") {
               if (updatePageStatus === Status.IDLE) {
                 // 默认先执行一次start
-                props.updatePage([], "start")
+                promiseStack.add(() => props.updatePage([], "start"))
                 updatePageStatus = Status.RUNNING;
               }
-              props.updatePage([action], "ing")
+              promiseStack.add(() => props.updatePage([action], "ing"))
               continue
             } else if (action.type === "updateCom") {
               const { comId, params } = action;
               if (updateComStatus === Status.IDLE) {
                 // 默认先执行一次start
-                props.updateCom(comId, [], "start")
+                promiseStack.add(() => props.updateCom(comId, [], "start"))
                 updateComStatus = Status.RUNNING;
               }
-              props.updateCom(comId, params.configs, "ing")
+              promiseStack.add(() => props.updateCom(comId, params.configs, "ing"))
               continue
             }
             
@@ -913,7 +914,9 @@ ${allPageInfo}
                 if (!currentDiagram) {
                   console.error("currentDiagram is null", params);
                 } else {
-                  props.updateDiagram(currentDiagram.id, updateDiagramActions, currentDiagram.status === Status.IDLE ? "start" : status);
+                  const diagram = {...currentDiagram}
+                  const actions = [...updateDiagramActions]
+                  promiseStack.add(() => props.updateDiagram(diagram.id, actions, diagram.status === Status.IDLE ? "start" : "ing"))
                   currentDiagram.status = Status.RUNNING;
                   updateDiagramActions = [];
                 }
@@ -926,6 +929,7 @@ ${allPageInfo}
                     status: Status.IDLE,
                     ...(slotId ? props.getDiagramInfo(comId, slotId) : props.createDiagram("comEvent", { comId, outputId })),
                   }
+                  diagramIdMap[`${comId}-${slotId || outputId}`] = {...currentDiagram!};
                 }
               }
             } else {
@@ -938,7 +942,9 @@ ${allPageInfo}
             if (!currentDiagram) {
               console.error("currentDiagram is null", params);
             } else {
-              props.updateDiagram(currentDiagram.id, updateDiagramActions, currentDiagram.status === Status.IDLE ? "start" : status);
+              const diagram = {...currentDiagram}
+              const actions = [...updateDiagramActions]
+              promiseStack.add(() => props.updateDiagram(diagram.id, actions, diagram.status === Status.IDLE ? "start" : "ing"))
               currentDiagram.status = Status.RUNNING;
               updateDiagramActions = [];
             }
@@ -955,6 +961,14 @@ ${allPageInfo}
         } catch (error) {
           console.error(error);
         }
+      }
+
+      if (status === "complete") {
+        promiseStack.add(() => {
+          Object.entries(diagramIdMap).forEach(([_, { id }]) => {
+            props.updateDiagram(id, [], "complete");
+          })
+        })
       }
 
       const file = files[0];

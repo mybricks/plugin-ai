@@ -565,9 +565,10 @@ ${fileFormat({
     \`\`\`typescript
     type ComParams {
       comId: string; // UI组件id
-      inputId: string; // 输入id，参考UI组件文档的<inputs>，如果没有对应语义的输入项，禁止返回；
+      inputId: string; // 在选择inputId时，必须仔细阅读目标UI组件文档中<inputs>部分的描述，确保其语义与变量的用途完全匹配；
     }
     \`\`\`
+    - 如果目标UI组件在<inputs>部分中没有找到任何可用的输入与变量语义匹配、或者<inputs>内容为“无”，则**严禁**生成<connect>。
     </connect>
   </关于actions>
 
@@ -612,7 +613,7 @@ ${fileFormat({
     - 依赖数组类型数据驱动的组件，如果有作用域插槽，需要思考是否要在作用域插槽内创建变量来驱动子组件。
   3. 通过connect操作，将变量连接到UI组件的输入，并思考：
     - 连接的UI组件是否存在作用域插槽隔离
-    - UI组件文档的<inputs>，驶入是否满足数据驱动需求，不满足的禁止连接
+    - 阅读UI组件文档的<inputs>，判断输入是否满足数据驱动需求，如果满足使用对应的inputId值，不满足的禁止连接。
   </最佳实践>
 </如何搭建初始化数据以及修改>
 
@@ -723,6 +724,11 @@ ${config.examples}
                   slotId: action.target,
                 }
               })
+            } else if (action.type === "doConfig") {
+              const comId = action.comId;
+              if (comId !== "_root_") {
+                action.comId = uiTree.getComId(comId);
+              }
             }
           })
           promiseStack.add(() => config.onActions(actions, currentStatus))
@@ -961,6 +967,7 @@ ${config.examples}
       const actionsFile = getFiles(files, {extName: 'json' })
 
       console.log("[files]", files);
+      console.log("[uiTree]", uiTree)
 
       if (!actionsFile) {
         return {
