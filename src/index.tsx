@@ -16,6 +16,13 @@ import { DeviceType } from './types';
 
 export { fileFormat } from '@mybricks/rxai'
 import preset from "./preset"
+import { apiRecorder } from './api-record-replay';
+import { replay, replayFromJSON, ReplayAPI, ReplayOptions } from './api-record-replay';
+import { RecordedAction } from './api-record-replay';
+
+// 导出收集和回放相关的接口
+export { apiRecorder, replay, replayFromJSON };
+export type { RecordedAction, ReplayAPI, ReplayOptions };
 
 const transformParams = (params: any = {}) => {
   return Object.assign({...preset}, params);
@@ -47,6 +54,30 @@ export default function pluginAI(params?: any): any {
       aiService: {
         init(api: AiServiceAPI) {
           context.api = api;
+
+          // 在 context.designer 上挂载新的 API（带记录功能）
+          if (api?.page?.api) {
+            const originalCreatePage = api.page.api.createPage;
+            const originalCreateCanvas = api.page.api.createCanvas;
+            const originalUpdatePage = api.page.api.updatePage;
+
+            context.designer = {
+              createPage: async (id: string, title: string, config?: any) => {
+                const params = [id, title, config];
+                apiRecorder.record('createPage', params);
+                return originalCreatePage.call(api.page.api, id, title, config);
+              },
+              createCanvas: async () => {
+                const params: any[] = [];
+                apiRecorder.record('createCanvas', params);
+                return originalCreateCanvas.call(api.page.api);
+              },
+              updatePage: async (...params: any[]) => {
+                apiRecorder.record('updatePage', params);
+                return originalUpdatePage.apply(api.page.api, params);
+              }
+            };
+          }
 
           const useMock = !!mock?.length;
           

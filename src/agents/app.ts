@@ -52,7 +52,7 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
         // params?.onProgress?.("complete");
       },
     },
-    planList: [`${MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName} -mode generate`, MYBRICKS_TOOLS.GeneratePage.toolName, MYBRICKS_TOOLS.BuildProcess.toolName, MYBRICKS_TOOLS.BuildProcess.toolName],
+    planList: [`${MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName} -mode generate`, MYBRICKS_TOOLS.GeneratePage.toolName, MYBRICKS_TOOLS.BuildProcess.toolName],
     tools: [
       MYBRICKS_TOOLS.GetComponentsDocAndPrd({
         allowComponents: context.api?.global?.api?.getAllComDefPrompts?.(),
@@ -74,7 +74,7 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
         appendPrompt: prompts.systemAppendPrompts,
         examples: prompts.generatePageActionExamplesPrompts,
         onActions: (actions, status) => {
-          return context.api?.page?.api?.updatePage?.(pageId, actions, status)
+          return context.designer?.updatePage?.(pageId, actions, status)
         },
         onClearPage: () => {
           context.api?.page?.api?.clearPageContent?.(pageId)
@@ -125,7 +125,7 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
         },
         updatePage: (...args: any) => {
           // console.log("[updatePage]", args)
-          return context.api?.page?.api?.updatePage?.(focusInfo.pageId, ...args)
+          return context.designer?.updatePage?.(focusInfo.pageId, ...args)
         },
         updateCom: (...args: any) => {
           // console.log("[updateCom]", args)
@@ -189,13 +189,15 @@ async function createCanvasByAICanvas(canvasId: string, aiCanvas: any) {
   // TOOD，之前不去掉设计器会有报错
   await sleep(1000)
 
-  const pageArray = [];
+  const pageArray: Array<{ page: any; pageRef: { id: string; onProgress: Function } }> = [];
 
   for (let index = 0; index < aiCanvas.pages.length; index++) {
     const page = aiCanvas.pages[index];
 
-    const pageRef = await context.api.page?.api?.createPage?.(canvasId, page.title, context.createTemplates?.page?.({ title: page.title }))
-    pageArray.push({ page, pageRef })
+    const pageRef = await context.designer?.createPage?.(canvasId, page.title, context.createTemplates?.page?.({ title: page.title }))
+    if (pageRef) {
+      pageArray.push({ page, pageRef })
+    }
   }
 
   pageArray.forEach(async ({ page, pageRef }) => {
@@ -209,26 +211,14 @@ ${page.prd}
 ${aiCanvas.style}
 </样式风格>
 
+<正在实现的页面列表>
+${(pageArray ?? []).map(p => `- ${p.page.title}`).join('\n')}
+</正在实现的页面列表>
+
 <事件流程>
 必须分析/搭建的流程：
-1. 基于可跳转页面，深度分析页面间的关联性和逻辑关系，构建合理的页面跳转流程。
-    - 关联性分析要求：
-      1. **功能关联分析**：识别页面间的功能依赖关系和业务逻辑连接
-      2. **用户路径分析**：梳理用户在页面间的自然跳转流程和跳转需求
-      3. **信息层级分析**：判断页面间的信息深度关系（概览→详情→操作）
-      4. **交互触发点识别**：精准定位可触发跳转的组件和交互元素
-  
-    - 页面关联性判断维度：
-      - 信息承接关系：上级页面信息如何延续到下级页面
-      - 操作逻辑关系：用户完成某操作后的自然跳转路径
-      - 数据传递关系：页面间需要传递的参数和状态信息
-      - 返回路径关系：用户如何回到上一级或相关页面
 
-    - 跳转流程构建原则：
-      - 只能包含页面跳转逻辑，禁止其他业务逻辑节点
-      - 基于真实用户操作习惯设计跳转路径
-      - 确保每个跳转都有明确的触发组件和目标页面
-      - 构建完整的正向和反向导航路径
+基于正在实现的页面列表，分析页面间的关联性和逻辑关系，分析组件中可能的页面跳转流程。
 
 注意：
 1. 除上述“必须分析/搭建的流程”所述的内容外，禁止一切其它形式的事件流程和变量。
@@ -246,11 +236,11 @@ export const requestGenerateCanvasAgent = (params: any) => {
     params?.onProgress?.('start');
 
 
-    const createTargetContainer = () => {
+    const createTargetContainer = async () => {
       if (!context.isMutiCanvas) {
         return { id: '_root_' };
       }
-      return context.api.page?.api?.createCanvas?.();
+      return await context.designer?.createCanvas?.() || { id: '_root_' };
     };
 
     (params.rxai || context.rxai).requestAI({
@@ -273,14 +263,14 @@ export const requestGenerateCanvasAgent = (params: any) => {
       planList: [MYBRICKS_TOOLS.AnalyzeAndExpandPrd.toolName],
       tools: [
         MYBRICKS_TOOLS.AnalyzeAndExpandPrd({
-          onProjectCreate: (projectJson) => {
+          onProjectCreate: async (projectJson) => {
             if (!projectJson || !projectJson.title) {
               return resolve("complete");
               // return reject('不合法的项目文件')
             }
             let canvasId
             try {
-              const canvas = createTargetContainer()
+              const canvas = await createTargetContainer()
               canvasId = canvas?.id
             } catch (error) {
               return reject(error)

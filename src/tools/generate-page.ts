@@ -126,7 +126,7 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
 
   <关于actions>
     actions.json文件由多个action构成,每个 action 在结构上都严格遵循以下格式：[comId, target, type, params];
-    - comId 代表要操作的目标组件的id(对于需要生成的新的id，必须采用u_xxx，xxx是3位唯一的字母数字组合);
+    - comId 代表要操作的目标组件的id(对于需要生成的新的id，必须采用u_xxx，xxx是5位唯一的字母数字组合);
     - target 指的是组件的整体或某个部分，以选择器的形式表示，注意当type=addChild时，target为插槽id;
     - type action的类型，包括了 setLayout、doConfig、addChild、delete 几类动作;
     - params 为不同type类型对应的参数;
@@ -266,7 +266,7 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
       type add_params = {
         title:string //被添加组件的标题
         ns:string //在 <允许添加的组件 /> 中声明的UI组件namespace
-        comId:string //新添加的组件id，不得超过5位长度
+        comId:string // 新添加的组件uuid，不得超过5位长度，不可与前面添加的组件ID重复
         layout?: setLayout_flex_params ｜ setLayout_fixed_params ｜ setLayout_absolute_params //可选，添加组件时可以指定位置和尺寸信息
         configs?: Array<configStyle_params | configProperty_params> // 添加组件可以配置的信息
         // 渲染优化

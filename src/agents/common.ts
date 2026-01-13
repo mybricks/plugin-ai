@@ -157,7 +157,7 @@ export const requestCommonAgent = (params: any) => {
           appendPrompt: prompts.systemAppendPrompts,
           examples: prompts.generatePageActionExamplesPrompts,
           onActions: (actions, status) => {
-            return context.api?.page?.api?.updatePage?.(targetPageId, actions, status)
+            return context.designer?.updatePage?.(targetPageId, actions, status)
           },
           onClearPage: () => {
             context.api?.page?.api?.clearPageContent?.(targetPageId)
@@ -225,7 +225,7 @@ export const requestCommonAgent = (params: any) => {
               }
             }
 
-            return context.api?.page?.api?.updatePage?.(targetPageId, actions, status)
+            return context.designer?.updatePage?.(targetPageId, actions, status)
           },
           componentIdToTitleMap,
           getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,
@@ -300,11 +300,9 @@ export const requestCommonAgent = (params: any) => {
             return context.api.diagram.api.getDiagramInfo(...args)
           },
           updatePage: (...args: any) => {
-            // console.log("[updatePage]", args)
-            return context.api?.page?.api?.updatePage?.(focusInfo.pageId, ...args)
+            return context.designer?.updatePage?.(focusInfo.pageId, ...args)
           },
           updateCom: (...args: any) => {
-            // console.log("[updateCom]", args)
             return context.api?.logicCom?.api?.updateCom?.(...args)
           },
         }),

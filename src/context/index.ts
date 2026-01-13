@@ -9,6 +9,13 @@ class Context {
   api!: AiServiceAPI;
   aiViewAPI!: AiViewApi;
 
+  /** 设计器 API（带记录功能） */
+  designer?: {
+    createPage: (id: string, title: string, config?: any) => Promise<{ id: string; onProgress: Function; }>;
+    createCanvas: () => Promise<{ id: string; title: string; }>;
+    updatePage: (...params: any[]) => Promise<void>;
+  };
+
   /** 应用传入的系统提示词 */
   prompts?: any;
 
