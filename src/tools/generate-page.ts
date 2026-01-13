@@ -126,7 +126,7 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
 
   <关于actions>
     actions.json文件由多个action构成,每个 action 在结构上都严格遵循以下格式：[comId, target, type, params];
-    - comId 代表要操作的目标组件的id(对于需要生成的新的id，必须采用u_xxx，xxx是5位唯一的字母数字组合);
+    - comId 代表要操作的目标组件的id;
     - target 指的是组件的整体或某个部分，以选择器的形式表示，注意当type=addChild时，target为插槽id;
     - type action的类型，包括了 setLayout、doConfig、addChild、delete 几类动作;
     - params 为不同type类型对应的参数;
@@ -258,15 +258,13 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
       - addChild代表向目标组件的插槽中添加内容，需要满足两个条件:
         1. 目标组件中目前有定义插槽，且已知插槽的id是什么；
         2. 被添加的组件只能使用 <允许添加的组件/> 中声明的*UI组件*；
-      
-      - 第三个参数target代表要添加子组件的插槽id；
       - params的格式以Typescript的形式说明如下：
       
       \`\`\`typescript
       type add_params = {
         title:string //被添加组件的标题
         ns:string //在 <允许添加的组件 /> 中声明的UI组件namespace
-        comId:string // 新添加的组件uuid，不得超过5位长度，不可与前面添加的组件ID重复
+        comId:string // 新添加的组件5位uuid，禁止重复，在所有UI组件中唯一
         layout?: setLayout_flex_params ｜ setLayout_fixed_params ｜ setLayout_absolute_params //可选，添加组件时可以指定位置和尺寸信息
         configs?: Array<configStyle_params | configProperty_params> // 添加组件可以配置的信息
         // 渲染优化
@@ -277,32 +275,34 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
       
       例如：
       ${fileFormat({
-        content: `["u_ou1rs","content","addChild",{"title":"添加的文本组件","ns":"namespace占位","comId":"u_iiusd7"}]`,
+        content: `["u_ou1rs","content","addChild",{"title":"添加的文本组件","ns":"namespace占位","comId":"u_iysd7"}]`,
         fileName: '添加文本组件步骤.json'
       })}
 
       ${fileFormat({
-        content: `["u_ou1rs","content","addChild",{"title":"背景图","ns":"namespace占位","comId":"u_iiusd7","layout":{"width":"100%","height":200,"marginTop":8,"marginLeft":12,"marginRight":12},"configs":[{"path":"常规/图片地址","value":"https://ai.mybricks.world/image-search?term=风景"},{"path":"样式/图片","style":{"borderRadius":"8px"}}]}]`,
+        content: `["u_ou1rs","content","addChild",{"title":"背景图","ns":"namespace占位","comId":"u_ko4sn","layout":{"width":"100%","height":200,"marginTop":8,"marginLeft":12,"marginRight":12},"configs":[{"path":"常规/图片地址","value":"https://ai.mybricks.world/image-search?term=风景"},{"path":"样式/图片","style":{"borderRadius":"8px"}}]}]`,
         fileName: '添加带配置属性的步骤.json'
       })}
   
       ${fileFormat({
-        content: `["u_ou1rs","content","addChild",{"title":"添加的布局组件","ns":"namespace占位","comId":"u_iiusd7","ignore": true}]`,
+        content: `["u_ou1rs","content","addChild",{"title":"添加的布局组件","ns":"namespace占位","comId":"u_nb5yg","ignore": true}]`,
         fileName: '添加带ignore标记的步骤.json'
       })}
   
       注意:
+        - 新添加的组件ID必须使用5位唯一的字母数字组合，禁止重复，在所有UI组件中唯一；
         - 要充分考虑被添加的组件与其他组件之间的间距以及位置关系，确保添加的组件的美观度的同时、且不会与其他组件重叠或冲突；
     </addChild>
 
     <delete>
       - 删除组件
 
-      例如，当用户要求删除组件u_ou1rs，可以返回以下内容：
+      例如，当用户要求删除组件u_o21rs，可以返回以下内容：
       ${fileFormat({
-        content: `["u_ou1rs",":root","delete"]`,
-        fileName: '删除组件.json'
+        content: `["u_o21rs",":root","delete"]`,
+        fileName: '删除组件整体.json'
       })}
+      注意：删除时，必须删除组件的整体，不能删除组件的某个部分，所以使用:root选择器。
     </delete>
   
     注意：actions文件每一行遵循 JSON 语法，禁止非法代码，禁止出现内容省略提示、单行注释、省略字符。
@@ -313,13 +313,6 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
       - 禁止使用{}、{{}}这类变量绑定语法，并不支持此语法
       - 禁止使用非法字符或特殊符号
       - 所有内容均为静态数据，禁止解构，禁止使用变量
-    
-    其中，target选择器的组成可以是组件id + 选择器的形式，例如：
-      - :root - 组件整体；
-      - :btn - 组件的按钮部分；
-      - #u_iiusd7 :root - 组件id为u_iiusd7的组件整体；
-      - #u_iiusd7 :btn - 组件id为u_iiusd7的按钮部分；
-    组件id可以从上下文中获取。
    
     注意：
       - 返回actions文件内容时，务必注意操作步骤的先后顺序；
@@ -348,7 +341,7 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
       
         使用fixed定位的例子:
         ${fileFormat({
-          content: `["_root_","_rootSlot_","addChild",{"title":"添加一个固定定位组件","comId":"u_fixed","ns":"组件","layout":{"position":"fixed","width":"100%","height":84,"bottom":0,"left":0},"configs":[]}]`,
+          content: `["_root_","_rootSlot_","addChild",{"title":"添加一个固定定位组件","comId":"u_fu3nr","ns":"组件","layout":{"position":"fixed","width":"100%","height":84,"bottom":0,"left":0},"configs":[]}]`,
           fileName: '添加一个fixed定位组件.json'
         })}
 
@@ -384,9 +377,9 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
 
         例子：第一个布局组件仅承担布局功能，可以添加ignore标记；第二个布局组件承担样式功能，不能添加ignore标记，第二个组件里添加了一个居中的文本，判断为信息卡片，添加enhance标记。
           ${fileFormat({
-            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_div1","ignore":true,"ns":"组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
-          ["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_div2","enhance":true,"ns":"组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}},{"path":"样式/样式","style":{"background":"#FFFFFF"}}]}]
-          ["u_div2","插槽id占位","addChild",{"title":"添加一个文本组件","comId":"u_text1","ns":"组件","layout":{"width":"fit-content","height":"fit-content"},"configs":[{"path":"常规/文本内容","value":"居中文本"}]}]
+            content: `["目标组件id","插槽id占位","addChild",{"title":"第一个布局","comId":"u_dk98v","ignore":true,"ns":"组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
+          ["目标组件id","插槽id占位","addChild",{"title":"第二个布局","comId":"u_sdj3k","enhance":true,"ns":"组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}},{"path":"样式/样式","style":{"background":"#FFFFFF"}}]}]
+          ["u_sdj3k","插槽id占位","addChild",{"title":"文本","comId":"u_tn5ix","ns":"组件","layout":{"width":"fit-content","height":"fit-content"},"configs":[{"path":"常规/文本内容","value":"居中文本"}]}]
           `,
             fileName: '标记使用.json'
           })}
@@ -398,9 +391,9 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
 
           下面的例子使用flex实现左侧固定宽度，右侧自适应宽度布局，右侧宽度配置width=auto:
           ${fileFormat({
-            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex1","ns":"布局组件","layout":{"width":"100%","height":60},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
-          ["u_flex1","插槽id占位","addChild",{"title":"左侧固定宽度组件","comId":"u_lfix1","ns":"组件","layout":{"width":60,"height":40,"marginRight":8},"configs":[]}]
-          ["u_flex1","插槽id占位","addChild",{"title":"右侧自适应组件","comId":"u_rfix1","ns":"组件","layout":{"width":"auto","height":40},"configs":[]}]
+            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex0","ns":"布局组件","layout":{"width":"100%","height":60},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
+          ["u_flex0","插槽id占位","addChild",{"title":"左侧固定宽度组件","comId":"u_lf4x1","ns":"组件","layout":{"width":60,"height":40,"marginRight":8},"configs":[]}]
+          ["u_flex0","插槽id占位","addChild",{"title":"右侧自适应组件","comId":"u_rfo1x","ns":"组件","layout":{"width":"auto","height":40},"configs":[]}]
           `,
             fileName: '左侧固定宽度+右侧自适应宽度.json'
           })}
@@ -413,10 +406,10 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
           下面的例子使用flex进行嵌套，来实现左侧图标+文本，右侧箭头的布局:
           ${fileFormat({
             content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex1","ns":"布局组件","layout":{"width":"100%","height":60},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","justifyContent":"space-between","alignItems":"center"}}]}]
-          ["u_flex1","插槽id占位","addChild",{"title":"左侧布局组件","comId":"u_lft1","ignore": true,"ns":"布局组件","layout":{"width":"fit-content","height":"fit-content"},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center", "justifyContent": "flex-start"}}]}]
-          ["u_lft1","插槽id占位","addChild",{"title":"图标组件","comId":"u_icon","ns":"图标组件","layout":{"width":24,"height":24,"marginRight":8},"configs":[]}]
-          ["u_lft1","插槽id占位","addChild",{"title":"文本组件","comId":"u_text","ns":"文本组件","layout":{"width":"100%","height":"fit-content"},"configs":[]}]
-          ["u_flex1","插槽id占位","addChild",{"title":"箭头图标组件","comId":"u_aric","ns":"图标组件","layout":{"width":24,"height":24},"configs":[]}]
+          ["u_flex1","插槽id占位","addChild",{"title":"左侧布局组件","comId":"u_pl92s","ignore": true,"ns":"布局组件","layout":{"width":"fit-content","height":"fit-content"},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center", "justifyContent": "flex-start"}}]}]
+          ["u_pl92s","插槽id占位","addChild",{"title":"图标组件","comId":"u_i98js","ns":"图标组件","layout":{"width":24,"height":24,"marginRight":8},"configs":[]}]
+          ["u_pl92s","插槽id占位","addChild",{"title":"文本组件","comId":"u_tsdo2","ns":"文本组件","layout":{"width":"100%","height":"fit-content"},"configs":[]}]
+          ["u_flex1","插槽id占位","addChild",{"title":"箭头图标组件","comId":"u_ar762","ns":"图标组件","layout":{"width":24,"height":24},"configs":[]}]
           `,
             fileName: 'flex嵌套实现左右布局.json'
           })}
@@ -438,9 +431,9 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
           
           下面的例子使用flex进行横向左右均分布局，实现各占一半的效果:
           ${fileFormat({
-            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex0","ignore": true,"ns":"布局组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","justifyContent":"space-between","alignItems":"center"}}]}]
-          ["u_flex0","插槽id占位","addChild",{"title":"A组件","comId":"u_a","ns":"组件","layout":{"width":"auto","height":40,"marginRight":8},"configs":[]}]
-          ["u_flex0","插槽id占位","addChild",{"title":"B组件","comId":"u_b","ns":"组件","layout":{"width":"auto","height":40},"configs":[]}]
+            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex3","ignore": true,"ns":"布局组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","justifyContent":"space-between","alignItems":"center"}}]}]
+          ["u_flex3","插槽id占位","addChild",{"title":"A组件","comId":"u_a321s","ns":"组件","layout":{"width":"auto","height":40,"marginRight":8},"configs":[]}]
+          ["u_flex3","插槽id占位","addChild",{"title":"B组件","comId":"u_b321s","ns":"组件","layout":{"width":"auto","height":40},"configs":[]}]
           `,
             fileName: '左右各占一半布局.json'
           })}
@@ -452,10 +445,10 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
 
           下面的例子使用flex进行横向均分或等分布局，实现一行N列的效果:
           ${fileFormat({
-            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex0","ignore": true,"ns":"布局组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","justifyContent":"space-between","alignItems":"center"}}]}]
-          ["u_flex0","插槽id占位","addChild",{"title":"A组件","comId":"u_a","ns":"组件","layout":{"width":40,"height":40},"configs":[]}]
-          ["u_flex0","插槽id占位","addChild",{"title":"B组件","comId":"u_b","ns":"组件","layout":{"width":40,"height":40},"configs":[]}]
-          ["u_flex0","插槽id占位","addChild",{"title":"C组件","comId":"u_c","ns":"组件","layout":{"width":40,"height":40},"configs":[]}]
+            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex4","ignore": true,"ns":"布局组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","justifyContent":"space-between","alignItems":"center"}}]}]
+          ["u_flex4","插槽id占位","addChild",{"title":"A组件","comId":"u_aksi","ns":"组件","layout":{"width":40,"height":40},"configs":[]}]
+          ["u_flex4","插槽id占位","addChild",{"title":"B组件","comId":"u_b293e","ns":"组件","layout":{"width":40,"height":40},"configs":[]}]
+          ["u_flex4","插槽id占位","addChild",{"title":"C组件","comId":"u_csim2","ns":"组件","layout":{"width":40,"height":40},"configs":[]}]
           `,
             fileName: '一行N列布局.json'
           })}
@@ -468,9 +461,9 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
 
           特殊地，在flex布局中的元素还可以配置position=absolute，用于实现绝对定位效果:
           ${fileFormat({
-            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex3","ns":"布局组件","layout":{"width":"100%","height":200},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
-          ["u_flex3","插槽id占位","addChild",{"title":"绝对定位组件","comId":"u_absolute","ns":"组件","layout":{"position":"absolute","width":100,"height":40,"top":20,"left":20},"configs":[]}]
-          ["u_flex3","插槽id占位","addChild",{"title":"普通组件","comId":"u_normal","ns":"组件","layout":{"width":80,"height":80},"configs":[]}]
+            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex5","ns":"布局组件","layout":{"width":"100%","height":200},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
+          ["u_flex5","插槽id占位","addChild",{"title":"绝对定位组件","comId":"u_abs12","ns":"组件","layout":{"position":"absolute","width":100,"height":40,"top":20,"left":20},"configs":[]}]
+          ["u_flex5","插槽id占位","addChild",{"title":"普通组件","comId":"u_nor12","ns":"组件","layout":{"width":80,"height":80},"configs":[]}]
           `,
             fileName: '绝对定位效果.json'
           })}
