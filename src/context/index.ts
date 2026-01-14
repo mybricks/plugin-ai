@@ -11,9 +11,10 @@ class Context {
 
   /** 设计器 API（带记录功能） */
   designer?: {
-    createPage: (id: string, title: string, config?: any) => Promise<{ id: string; onProgress: Function; }>;
-    createCanvas: () => Promise<{ id: string; title: string; }>;
-    updatePage: (...params: any[]) => Promise<void>;
+    createPage?: (id: string, title: string, config?: any) => Promise<{ id: string; onProgress: Function; }>;
+    createCanvas?: () => Promise<{ id: string; title: string; }>;
+    updatePage?: (...params: any[]) => Promise<void>;
+    getAllComDefPrompts: () => string;
   };
 
   /** 应用传入的系统提示词 */
@@ -21,6 +22,19 @@ class Context {
 
   /** 是否多画布 */
   isMutiCanvas: boolean = true
+
+  userConfig?: {
+    useCloudComponents: boolean;
+    enabledActionTags: boolean;
+  }
+
+  get useCloudComponents() {
+    return this.userConfig?.useCloudComponents ?? false;
+  }
+
+  get enabledActionTags() {
+    return this.userConfig?.enabledActionTags ?? true;
+  }
 
   deviceType: DeviceType = DeviceType.Mobile
 

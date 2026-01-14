@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { context } from './../src/context';
 import { createActionsParser } from './../src/tools/utils'
+import { APIRecordReplayManager } from './../src/api-record-replay';
 
 window.plugin_ai_context = context
 
@@ -293,3 +294,8 @@ await api.updatePage(pageId, [], "complete");
   
   return fullContent;
 };
+
+// ========== API 收集和回放功能 ==========
+
+// 导出到 window 对象
+window.APIRecordReplay = new APIRecordReplayManager();

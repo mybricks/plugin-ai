@@ -600,11 +600,13 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
             actions.forEach((action: any) => {
               if (action.type === "addChild") {
                 const childComId = action.params.comId;
-                action.params.comId = comIdTransform.getComId(childComId);
+                // 对于 addChild，每次添加都生成新的 UUID 映射
+                action.params.comId = comIdTransform.addComId(childComId);
 
                 const parentComId = action.comId;
 
                 if (parentComId !== "_root_") {
+                  // 父组件 id 使用最近一次的映射
                   action.comId = comIdTransform.getComId(parentComId);
                 }
               }

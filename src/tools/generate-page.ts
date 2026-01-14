@@ -708,12 +708,14 @@ ${config.examples}
           actions.forEach((action) => {
             if (action.type === "addChild") {
               const childComId = action.params.comId;
-              action.params.comId = uiTree.getComId(childComId);
+              // 对于addChild操作，每次添加时都生成新的UUID映射
+              action.params.comId = uiTree.comIdTransform.addComId(childComId);
               uiTree.setNamespace(action.params.comId, action.params.namespace);
 
               const parentComId = action.comId;
 
               if (parentComId !== "_root_") {
+                // 获取父组件时，使用最近添加的comId
                 action.comId = uiTree.getComId(parentComId);
               }
 
@@ -727,6 +729,7 @@ ${config.examples}
             } else if (action.type === "doConfig") {
               const comId = action.comId;
               if (comId !== "_root_") {
+                // 获取组件时，使用最近添加的comId
                 action.comId = uiTree.getComId(comId);
               }
             }

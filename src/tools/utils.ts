@@ -1,6 +1,6 @@
 import { jsonrepair } from 'jsonrepair'
 import { ComponentsManager } from './../agents/workspace/components-manager'
-import { ENABLED_ACTION_TAGS } from '../constants'
+import { context } from '../context'
 
 export function getFiles(files: RxFiles, {
   extName
@@ -177,7 +177,7 @@ const formatAction = (
 
   // 标记使用
   if (newAct.type === 'addChild') {
-    if (ENABLED_ACTION_TAGS) {
+    if (context.enabledActionTags) {
       
       if (newAct.params?.ignore) {
         // TODO：标记的兼容，对于配置了ignore，但是有padding的组件，直接替换成enhance，因为直接去掉，底层的100%组件宽高会失效。
@@ -833,22 +833,34 @@ export const uuid = (len = 5) => {
 }
 
 export class ComIdTransform {
-  comIdMap: Record<string, string> = {};
+  comIdMap: Record<string, string[]> = {};
 
   constructor(comIds: string[]) {
     const { comIdMap } = this;
     comIds.forEach((comId) => {
-      comIdMap[comId] = comId;
+      comIdMap[comId] = [comId];
     })
   }
   
   getComId(comId: string) {
-    if (!this.comIdMap[comId]) {
+    if (!this.comIdMap[comId] || this.comIdMap[comId].length === 0) {
       const newComId = uuid();
-      this.comIdMap[comId] = newComId;
+      this.comIdMap[comId] = [newComId];
+      return newComId;
     }
 
-    return this.comIdMap[comId];
+    // 返回最近添加的comId（数组的最后一个）
+    return this.comIdMap[comId][this.comIdMap[comId].length - 1];
+  }
+
+  // 添加新的comId映射，用于addChild操作
+  addComId(comId: string): string {
+    const newComId = uuid();
+    if (!this.comIdMap[comId]) {
+      this.comIdMap[comId] = [];
+    }
+    this.comIdMap[comId].push(newComId);
+    return newComId;
   }
 }
 

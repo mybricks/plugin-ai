@@ -13,6 +13,7 @@ import { View } from "./view";
 import { context } from './context';
 import { StartView } from "./startView";
 import { DeviceType } from './types';
+import { createGetAllComDefPrompts } from "./api/cloud-components";
 
 export { fileFormat } from '@mybricks/rxai'
 import preset from "./preset"
@@ -29,16 +30,29 @@ const transformParams = (params: any = {}) => {
 }
 
 export default function pluginAI(params?: any): any {
-  const { user, prompts, requestAsStream, mock, key, system, createTemplates, isMutiCanvas, deviceType } = transformParams(params);
+  const {
+    user,
+    prompts,
+    requestAsStream,
+    mock,
+    key,
+    system,
+    createTemplates,
+    isMutiCanvas,
+    deviceType,
+    config,
+  } = transformParams(params);
+
   const copilot = {
     name: "MyBricks.ai",
     avatar: "https://my.mybricks.world/image/icon.png"
   }
 
   context.prompts = prompts
-  context.createTemplates = createTemplates ?? {}
-  context.isMutiCanvas = isMutiCanvas ?? true
-  context.deviceType = deviceType ?? DeviceType.Mobile
+  context.createTemplates = createTemplates ?? {};
+  context.isMutiCanvas = isMutiCanvas ?? true;
+  context.deviceType = deviceType ?? DeviceType.Mobile;
+  context.userConfig = config ?? {}
 
   // window.requestGenerateCanvasAgent = requestGenerateCanvasAgent
 
@@ -56,28 +70,23 @@ export default function pluginAI(params?: any): any {
           context.api = api;
 
           // 在 context.designer 上挂载新的 API（带记录功能）
-          if (api?.page?.api) {
-            const originalCreatePage = api.page.api.createPage;
-            const originalCreateCanvas = api.page.api.createCanvas;
-            const originalUpdatePage = api.page.api.updatePage;
-
-            context.designer = {
-              createPage: async (id: string, title: string, config?: any) => {
-                const params = [id, title, config];
-                apiRecorder.record('createPage', params);
-                return originalCreatePage.call(api.page.api, id, title, config);
-              },
-              createCanvas: async () => {
-                const params: any[] = [];
-                apiRecorder.record('createCanvas', params);
-                return originalCreateCanvas.call(api.page.api);
-              },
-              updatePage: async (...params: any[]) => {
-                apiRecorder.record('updatePage', params);
-                return originalUpdatePage.apply(api.page.api, params);
-              }
-            };
-          }
+          context.designer = {
+            createPage: async (id: string, title: string, config?: any) => {
+              const params = [id, title, config];
+              apiRecorder.record('createPage', params);
+              return api.page.api.createPage(id, title, config);
+            },
+            createCanvas: async () => {
+              const params: any[] = [];
+              apiRecorder.record('createCanvas', params);
+              return api.page.api.createCanvas();
+            },
+            updatePage: async (...params: any[]) => {
+              apiRecorder.record('updatePage', params);
+              return api.page.api.updatePage(...params);
+            },
+            getAllComDefPrompts: createGetAllComDefPrompts(api?.global?.api?.getAllComDefPrompts)
+          };
 
           const useMock = !!mock?.length;
           

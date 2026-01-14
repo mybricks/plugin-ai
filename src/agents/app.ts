@@ -55,7 +55,7 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
     planList: [`${MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName} -mode generate`, MYBRICKS_TOOLS.GeneratePage.toolName, MYBRICKS_TOOLS.BuildProcess.toolName],
     tools: [
       MYBRICKS_TOOLS.GetComponentsDocAndPrd({
-        allowComponents: context.api?.global?.api?.getAllComDefPrompts?.(),
+        allowComponents: context.designer?.getAllComDefPrompts?.() || "",
         examples: prompts.prdExamplesPrompts,
         onComponentDocOpen: (namespace) => {
           workspace.openComponentDoc(namespace)
