@@ -62,8 +62,8 @@ type AiServiceFocusParams = {
   comId: string;
   pageId: string;
   title: string;
-  /** 类型，组件、页面 */
-  type: "page" | "uiCom";
+  /** 类型，组件、页面，或自定义类型 */
+  type: "page" | "uiCom" | "section" | "logicCom" | string;
 }
 
 type AiServiceRequestParams = {

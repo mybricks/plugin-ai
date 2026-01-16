@@ -1,29 +1,113 @@
 import { MyBricksParamsTools, MYBRICKS_TOOLS } from "../../tools";
+import { context } from "../../context";
 
 export { MyBricksParamsTools } from "../../tools";
 
-type AgentType = 'page' | 'uiCom' | 'app' | 'section';
+type SystemAgentType = 'page' | 'uiCom' | 'app' | 'section';
+
+type AgentType = SystemAgentType | string;
+
+// 自定义工具格式（参考 answer.ts）
+type CustomTool = {
+  name: string;
+  displayName?: string;
+  description: string;
+  getPrompts?: (params?: any) => string;
+  execute: (params: { files?: any; content?: any }) => any;
+  aiRole?: string;
+};
 
 export interface AgentConfigParams {
+  /** ui展示名称 */
+  name?: string
+  /** 类型 */
   type?: AgentType
   /** 定义这是一个干什么用的Agent */
   goal?: string
-  // /** 背景知识补充 */
-  // backstory?: string,
+  /** 背景知识补充 */
+  backstory?: string,
   /** 重点关注的内容 */
   attentions?: string,
-  tools?: ReturnType<typeof MyBricksParamsTools[keyof typeof MyBricksParamsTools]>[];
+  /** 工具列表：系统类型使用 MyBricksParamsTools 的返回值，自定义类型使用 CustomTool 格式 */
+  tools?: ReturnType<typeof MyBricksParamsTools[keyof typeof MyBricksParamsTools]>[] | CustomTool[];
+  formatUserMessage?: (text: string, { focusParams }: { focusParams: AiServiceFocusParams }) => string;
 }
 
 export function Agent(config: AgentConfigParams) {
-  const { type = 'page', tools = [], goal, attentions } = config;
-  return {
+  const { name = '智能助手', type = 'page', tools = [], goal, backstory, attentions } = config;
+  
+  // 判断是否为系统类型
+  const systemAgentTypes: SystemAgentType[] = ['page', 'uiCom', 'app', 'section'];
+  const isSystemType = systemAgentTypes.includes(type as SystemAgentType);
+  
+  // 如果是系统类型，返回现有结构
+  if (isSystemType) {
+    return {
+      name,
+      type,
+      goal,
+      attentions,
+      tools,
+    };
+  }
+  
+  // 如果是自定义类型，使用 BaseAgent 创建
+  return BaseAgent({
+    name,
     type,
     goal,
-    attentions,
+    backstory,
     tools,
-  }
-};
+  });
+}
+
+export function BaseAgent(config: AgentConfigParams) {
+  const { name = '智能助手', type, goal, backstory, tools = [], formatUserMessage } = config;
+  
+  return {
+    ...config,
+    request(params: any) {
+      return new Promise((resolve, reject) => {
+        if (!context.rxai) {
+          return reject('Rxai instance not initialized');
+        }
+        
+        // 自定义工具的 tools 已经是工具对象格式，可以直接传给 requestAI
+        const customTools = tools as CustomTool[];
+        
+        // 调用 requestAI
+        // 注意：system prompt 在 createRxai 时已设置，如需自定义 system prompt，
+        // 可以通过创建新的 Rxai 实例或使用 messages 参数传递
+        context.rxai.requestAI({
+          ...params,
+          system: {
+            title: name,
+            prompt: backStoryPrompts({ goal, backstory }),
+          },
+          message: params?.message,
+          formatUserMessage: (text: string) => {
+            return formatUserMessage ? formatUserMessage(text, { focusParams: context.currentFocus as AiServiceFocusParams }) : text;
+          },
+          emits: {
+            write: () => {},
+            complete: () => {
+              resolve('complete');
+              params?.onProgress?.("complete");
+            },
+            error: (error: any) => {
+              reject(error);
+              params?.onProgress?.("error");
+            },
+            cancel: () => {
+              params?.onProgress?.("complete");
+            },
+          },
+          tools: customTools,
+        });
+      });
+    },
+  };
+}
 
 export function getAgentConfigs(agents: AgentConfigParams[], type: AgentType = 'page') {
   if (!Array.isArray(agents)) return null
@@ -37,10 +121,32 @@ export function getAgentConfigs(agents: AgentConfigParams[], type: AgentType = '
   };
 
   return {
-    system: backStoryPrompts({ goal: targetAgent?.goal }),
+    system: backStoryPrompts({ goal: targetAgent?.goal, backstory: targetAgent?.backstory }),
     attentions: targetAgent?.attentions,
     getToolParams,
   };
+}
+
+/**
+ * 根据类型获取 agent 实例
+ * 如果是自定义类型，返回包含 request 方法的 agent 实例
+ * 如果是系统类型，返回 null
+ */
+export function getAgentInstance(agents: AgentConfigParams[] | undefined, type: AgentType): ReturnType<typeof BaseAgent> | null {
+  if (!Array.isArray(agents)) return null;
+  
+  const targetAgent = agents.find(agent => agent.type === type);
+  if (!targetAgent) return null;
+  
+  // 判断是否为系统类型
+  const systemAgentTypes: SystemAgentType[] = ['page', 'uiCom', 'app', 'section'];
+  const isSystemType = systemAgentTypes.includes(type as SystemAgentType);
+  
+  // 如果是系统类型，返回 null（使用默认的 requestCommonAgent）
+  if (isSystemType) return null;
+  
+  // 如果是自定义类型，使用 BaseAgent 创建实例
+  return BaseAgent(targetAgent);
 }
 
 /**
@@ -73,11 +179,11 @@ export function transformLegacyPromptsToAgents(prompts: any): AgentConfigParams[
   }];
 }
 
-export function backStoryPrompts({ goal = '主要处理 MyBricks 低代码搭建页面相关的问题，帮助用户完成搭建需求' }: { goal?: string } = {}): string {
+export function backStoryPrompts({ goal = '主要处理 MyBricks 低代码搭建页面相关的问题，帮助用户完成搭建需求', backstory }: { goal?: string, backstory?: string } = {}): string {
   return `<关于当前所处理的问题领域/>
   ${goal}。
-  你对以下几个领域的知识都十分擅长并且专业，包含但不限于：
-
+  
+  ${backstory ? `\n${backstory}` : `你对以下几个领域的知识都十分擅长并且专业，包含但不限于：
   <设计器领域>
     工具来自与设计器的交互，MyBricks设计器提供多画布的搭建系统用于快速搭建UI和逻辑，提供通过拖拉拽来完成IT需求的系统。
     设计器往往往包含丰富的工具，遵循人类的操作逻辑来完成工具调用，比如要生成一个页面，需要由聚焦到哪个页面来决定，生成的时候添加组件又需要组件的配置文档。
@@ -141,7 +247,7 @@ export function backStoryPrompts({ goal = '主要处理 MyBricks 低代码搭建
   <图片领域>
     我们有大量的图片资源以供搜索，通过修改组件和生成UI可以通过特定的链接使用在线图片搜索服务。
   </图片领域>
-
+  `}
 </关于当前所处理的问题领域/>
 
 <针对当前领域如何规划工具>
@@ -152,7 +258,9 @@ export function backStoryPrompts({ goal = '主要处理 MyBricks 低代码搭建
     工具分类：目前主要有*信息获取类*和*操作执行类*，信息获取类作为最后一个工具被调用时，需要调用回答工具；
   </规则>
 
-  <如何思考>
+  ${
+    // TODO：这里后续需要重新梳理，现在是特殊的hack，有backstory就不要这些信息了
+    backstory ? '' : `<如何思考>
     1. 判断是否遵循规则，对于不遵循规则的不合理需求，给予用户合理的建议；
     2. 判断需求的分类；
     3. 规划工具
@@ -178,7 +286,9 @@ export function backStoryPrompts({ goal = '主要处理 MyBricks 低代码搭建
       - 梳理这个页面的内容变成一个PRD文档：先获取DSL梳理内容，然后使用「分析回答」回答用户的问题；
       - 替换成XX组件：由于替换组件不确定要替换成什么，所以需要先获取DSL，然后调用「组件选型」，最后调用「修改/重构组件」；
       </思考示例>
-  </如何思考>
+  </如何思考>`
+  }
+  
 
   <如何处理用户的负面追问>
     当用户给出负面反馈时（例如“搞错了”、“效果不对”、“不是这样”），你**必须**遵循以下步骤：
@@ -193,4 +303,5 @@ export function backStoryPrompts({ goal = '主要处理 MyBricks 低代码搭建
   2. **引导式提问**：只有在你完全无法做出任何合理假设，导致制定任何有意义的规划都【彻底不可能】时，才能作为最终手段向用户提问。提问时，必须将你的思考和假设作为选项提供给用户，而不是宽泛地要求用户澄清。
   </如何处理用户的模糊提问>
 
-</针对当前领域如何规划工具>` }
+</针对当前领域如何规划工具>
+` }

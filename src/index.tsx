@@ -130,6 +130,7 @@ export default function pluginAI(params?: any): any {
               const currentFocus = !params ? undefined : params;
               context.currentFocus = currentFocus;
               context.events.emit("focus", currentFocus);
+              console.log('focus', currentFocus)
             },
             request(requestParams: AiServiceRequestParams) {
               if (requestParams.attachments?.length) {
@@ -163,7 +164,10 @@ export default function pluginAI(params?: any): any {
                   focus.onProgress = requestParams.onProgress;
                 }
               }
-              context.requestStatusTracker.track(focus ? focus.type === "page" ? focus.pageId : focus.comId : "", Agents.requestCommonAgent({ ...requestParams, extension, agents, guidePrompt }))
+
+              // 使用统一的 requestAgent 方法，自动处理自定义 agent 和默认 agent
+              const focusId = focus ? (focus.type === "page" ? focus.pageId : focus.comId) : "";
+              context.requestStatusTracker.track(focusId, Agents.requestAgent({ ...requestParams, extension, agents, guidePrompt }))
             }
           }
         }

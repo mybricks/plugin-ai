@@ -91,7 +91,7 @@ const View = ({ user, copilot, api }: ViewProps) => {
       return;
     }
 
-    context.requestStatusTracker.track(focusID.current, Agents.requestCommonAgent({
+    context.requestStatusTracker.track(focusID.current, Agents.requestAgent({
       message,
       attachments,
       extension,
@@ -108,7 +108,7 @@ const View = ({ user, copilot, api }: ViewProps) => {
     const { message, attachments, insertAfter,  ...extension } = sendMessage;
     const { mentions } = extension
     const mention = sendMessage.mentions[0];
-    context.requestStatusTracker.track(mention.type === "page" ? mention.pageId : mention.comId, Agents.requestCommonAgent({
+    context.requestStatusTracker.track(mention.type === "page" ? mention.pageId : mention.comId, Agents.requestAgent({
       message,
       attachments,
       insertAfter,
