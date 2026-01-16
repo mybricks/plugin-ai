@@ -27,7 +27,7 @@ export function Agent(config: AgentConfigParams) {
 
 export function getAgentConfigs(agents: AgentConfigParams[], type: AgentType = 'page') {
   if (!Array.isArray(agents)) return null
-  const targetAgent = agents.find(agent => agent.type === 'page');
+  const targetAgent = agents.find(agent => agent.type === type);
 
   // 根据工具名称获取对应工具的完整参数
   const getToolParams = (toolName: string) => {

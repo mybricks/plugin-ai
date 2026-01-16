@@ -38,6 +38,7 @@ export default function pluginAI(params?: any): any {
     mock,
     key,
     agents: rawAgents,
+    guidePrompt,
     createTemplates,
     isMutiCanvas,
     deviceType,
@@ -130,16 +131,16 @@ export default function pluginAI(params?: any): any {
               context.currentFocus = currentFocus;
               context.events.emit("focus", currentFocus);
             },
-            request(params: AiServiceRequestParams) {
-              if (params.attachments?.length) {
+            request(requestParams: AiServiceRequestParams) {
+              if (requestParams.attachments?.length) {
                 // TODO: attachments是Proxy代理，引擎不应该抛出此类代理
-                params.attachments = params.attachments.map((attachment) => {
+                requestParams.attachments = requestParams.attachments.map((attachment) => {
                   return {
                     ...attachment
                   }
                 })
               } else {
-                params.attachments = [];
+                requestParams.attachments = [];
               }
 
               const focus = context.currentFocus;
@@ -157,13 +158,12 @@ export default function pluginAI(params?: any): any {
                 ]
                 // TODO: 兼容引擎的onProgress问题
                 if (focus.onProgress) {
-                  params.onProgress = focus.onProgress;
-                } else if (params.onProgress) {
-                  focus.onProgress = params.onProgress;
+                  requestParams.onProgress = focus.onProgress;
+                } else if (requestParams.onProgress) {
+                  focus.onProgress = requestParams.onProgress;
                 }
               }
-
-              context.requestStatusTracker.track(focus ? focus.type === "page" ? focus.pageId : focus.comId : "", Agents.requestCommonAgent({...params, extension, agents}))
+              context.requestStatusTracker.track(focus ? focus.type === "page" ? focus.pageId : focus.comId : "", Agents.requestCommonAgent({ ...requestParams, extension, agents, guidePrompt }))
             }
           }
         }
