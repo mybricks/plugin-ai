@@ -1,38 +1,36 @@
 import { fileFormat, RxaiError } from '@mybricks/rxai'
 import { getFiles, stripFileBlocks, jsonSafeParse } from './utils'
-import { getDevicePrompt } from '../preset/prompts';
-import { DeviceType } from './../types'
+import { DeviceType } from '../types'
 
-interface GeneratePrdAndRequireComponentToolParams {
+interface AnalyzeRequirementAndComponentsToolParams {
   allowComponents: string;
-  examples: string;
+  fewShots?: string;
   onComponentDocOpen: (ns: string) => void;
   shouldUseExpert?: boolean,
   deviceType: DeviceType
   appendPrompt?: string
 }
 
-const NAME = 'generate-prd-and-require-component'
-generatePrdAndRequireComponent.toolName = NAME
+const NAME = 'analyze-requirement-and-components'
+analyzeRequirementAndComponents.toolName = NAME
 
 // 提取公共的提示词部分
-function getCommonPrompts(config: GeneratePrdAndRequireComponentToolParams) {
+function getCommonPrompts(config: AnalyzeRequirementAndComponentsToolParams) {
   return `<工具总览>
-你是一个获取组件文档和用户需求的工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深页面搭建助手，拥有专业的产品经理能力。
-你的任务是根据「允许使用的组件」+ 「项目环境说明」，整理或扩写用户的需求，并将需求中可能用到的组件列出来整理成「需求文档」和「组件使用文档」。
+你是一个获取组件文档和深度理解用户需求的工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深UI搭建助手，拥有专业的产品经理能力。
+你的任务是根据「允许使用的组件」+ 「项目环境说明」，整理或扩写用户的需求，并将需求中可能用到的组件列出来整理成「需求分析说明书」和「组件使用文档」。
 </工具总览>
 
 ${config.allowComponents}
 
 <对于项目环境的说明>
-${getDevicePrompt(config.deviceType)}
 ${config.appendPrompt ? `${config.appendPrompt}` : ''}
 </对于项目环境的说明>
 `
 }
 
 // generate 模式的工作流程
-function getGenerateWorkflow(config: GeneratePrdAndRequireComponentToolParams) {
+function getGenerateWorkflow(config: AnalyzeRequirementAndComponentsToolParams) {
   return `<你的工作流程>
 根据「允许使用的组件」+ 「项目环境说明」，完成用户需求的分析和生成，按照以下步骤完成prd文件和组件选型：
 
@@ -259,7 +257,7 @@ function getRefactorExamples() {
     *风险提示*
     - 名片的尺寸太大或太小都不合理，建议选用合适的尺寸。
     - 过多的信息可能导致名片显得杂乱，需合理取舍信息内容。`,
-      fileName: 'XX页面需求文档.md'
+      fileName: 'XX需求文档.md'
     })}
 
   推荐采用以下组件进行搭建：
@@ -281,7 +279,7 @@ function getRefactorExamples() {
       "namespace": "mybricks.somelib.image"
     }
   ]`,
-      fileName: 'XX页面所需要的组件信息.json'
+      fileName: 'XX所需要的组件信息.json'
     })}
     </assistant_response>
   </example>
@@ -292,7 +290,7 @@ function getRefactorExamples() {
 // extract 模式的示例
 function getExtractExamples() {
   return `<examples>
-  <user_query>根据图片搭建页面</user_query>
+  <user_query>还原图片的UI效果</user_query>
   <assistant_response>
   好的，经过对图片的全面分析，我提供以下辅助信息：
   ${fileFormat({
@@ -352,7 +350,7 @@ function getExtractExamples() {
     - 积分表格需要在单元格内嵌入组件；
     - 动态数据考虑使用动态数据组件：榜单、列表和网格使用循环列表，其他使用菜单、表格等动态组件，同时注意初始化数据；
     - 表单必须分开使用，不允许使用一个大表单；`,
-      fileName: '还原页面需求文档.md'
+      fileName: '还原需求文档.md'
     })},
   推荐采用以下组件进行搭建：
   ${fileFormat({
@@ -381,14 +379,15 @@ function getExtractExamples() {
 }
 
 // generate 模式的示例
-function getGenerateExamples(config: GeneratePrdAndRequireComponentToolParams) {
+function getGenerateExamples(config: AnalyzeRequirementAndComponentsToolParams) {
+  if (!config.fewShots) return '';
   return `<examples>
-${config.examples}
+${config.fewShots}
 <example>`
 }
 
 // 根据 mode 获取对应的工作流程
-function getWorkflowByMode(mode: string, config: GeneratePrdAndRequireComponentToolParams): string {
+function getWorkflowByMode(mode: string, config: AnalyzeRequirementAndComponentsToolParams): string {
   switch (mode) {
     case 'generate':
       return getGenerateWorkflow(config)
@@ -402,7 +401,7 @@ function getWorkflowByMode(mode: string, config: GeneratePrdAndRequireComponentT
 }
 
 // 根据 mode 获取对应的示例
-function getExamplesByMode(mode: string, config: GeneratePrdAndRequireComponentToolParams): string {
+function getExamplesByMode(mode: string, config: AnalyzeRequirementAndComponentsToolParams): string {
   switch (mode) {
     case 'generate':
       return getGenerateExamples(config)
@@ -415,19 +414,19 @@ function getExamplesByMode(mode: string, config: GeneratePrdAndRequireComponentT
   }
 }
 
-export default function generatePrdAndRequireComponent(config: GeneratePrdAndRequireComponentToolParams,): any {
+export default function analyzeRequirementAndComponents(config: AnalyzeRequirementAndComponentsToolParams,): any {
   let displayContent = "";
   return {
     name: NAME,
     displayName: "分析当前需求",
     description: `分析/扩写需求 + 组件选型，针对用户的搭建需求（可能是文本，一句话、图片附件、文件附件等需求）生成需求文档，并且分析可能使用到的组件。
-参数(mode)：模式，可选择的值有 generate、extract、refactor 两种：
-  - generate模式：表示从无到有生成新的需求，常常用于，后面往往使用「生成页面」工具；
-  - extract模式：表示从图片/设计稿/原型文件中提取和解析技术需求，将视觉设计稿转化为具体的需求和实现方案，后面往往使用「生成页面」工具；
-  - refactor模式：表示分析现有的上下文来对现有内容进行优化、调整，后面往往使用「修改组件」工具；
+参数(mode)：模式，可选择的值有 generate、extract、refactor 三种：
+  - generate模式：表示从无到有生成新的需求，后续往往使用「生成UI」工具；
+  - extract模式：表示从图片/设计稿/原型文件中提取和解析UI内容，将视觉设计稿转化为具体的需求和实现方案，后面往往使用「生成UI」工具；
+  - refactor模式：表示分析现有的上下文来对现有内容进行优化、调整，后面往往使用「修改UI」工具；
 工具分类：信息获取类
 前置要求：用户提出过搭建需求（可能是文本，一句话、图片附件、文件附件等需求）
-返回值：需求分析规格说明书（PRD）文件 + 组件选型；`,
+返回值：详细理解用户需求后的分析说明书文件 + 组件选型；`,
     // aiRole: 'expert',
     // aiRole: 'architect',
     aiRole: ({ params }) => {
@@ -503,7 +502,7 @@ ${prdFile?.content}
 }
 
 const eventPrompts = `*初始化数据*
-    [这里分析页面中需要初始化数据支撑的原子组件和业务组件，并列出需要初始化的数据变量名称和类型]
+    [这里分析需要初始化数据支撑的原子组件和业务组件，并列出需要初始化的数据变量名称和类型]
     <示例>
     - 原子组件【该类组件为数据驱动型，无初始化数据时对应区域将为空】
       - 列表类组件【需列表型数据源】
@@ -518,7 +517,7 @@ const eventPrompts = `*初始化数据*
       - 商品列表内的商品卡片【列表组件的数据源为动态，其内部子组件必然依赖动态数据】
     </示例>
     <注意>
-    - 需初始化的变量**仅用于页面展示**，不包含数据收集类变量。
+    - 需初始化的变量**仅用于展示**，不包含数据收集类变量。
     - 输出结果时，**无需关心原子组件与业务组件**，直接列出需要初始化的数据变量名称和类型。
     - 禁止重复罗列内容。
       - 相同的数据源，仅声明一次，禁止重复。
@@ -526,3 +525,16 @@ const eventPrompts = `*初始化数据*
     - 因无可用的服务接口，**禁止使用任何服务接口类组件**。初始化数据必须**完全通过「变量」的方式进行 Mock 实现**。
     - 忽略弹窗相关的内容。
     </注意>`
+
+/** 生成需求文档和组件选型的简化参数（用于 MyBricksTools） */
+export interface AnalyzeRequirementAndComponentsConfigParams {
+  fewShots: string;
+}
+
+/** 生成需求文档和组件选型的工具配置函数（用于 MyBricksTools） */
+export function AnalyzeRequirementAndComponents(params: AnalyzeRequirementAndComponentsConfigParams) {
+  return {
+    name: NAME,
+    params: params,
+  }
+}

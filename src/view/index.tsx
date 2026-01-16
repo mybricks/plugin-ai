@@ -12,13 +12,16 @@ interface ViewProps {
   user: any;
   copilot: any;
 }
-const PLACEHOLDER_MAP = {
-  normal: "您好，我是智能助手，请详细描述您的需求",
-  disabled: "您好，我是智能助手，请先从画布中选择页面或组件，再开始对话",
-  loading: "处理中，请稍后..."
-}
+
 const View = ({ user, copilot, api }: ViewProps) => {
   const senderRef = useRef<SenderRef>(null);
+
+  const PLACEHOLDER_MAP = {
+    normal: `您好，我是${context.name}，请详细描述您的需求`,
+    disabled: `您好，我是${context.name}，请先从画布中选择场景或组件，再开始对话`,
+    loading: "处理中，请稍后..."
+  }
+
   const [senderStateProps, setSenderStateProps] = useState(() => {
     return {
       loading: false,

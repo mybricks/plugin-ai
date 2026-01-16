@@ -1,8 +1,13 @@
 import { Rxai, Events, IDB } from "@mybricks/rxai"
 import { RequestStatusTracker } from "./RequestStatusTracker";
 import { DeviceType } from './../types';
+import type { AgentConfigParams } from '../agents/utils/config';
 
 class Context {
+
+  /** UI展示名称 */
+  name!: string
+
   rxai!: Rxai
   globalRxai!: Rxai
   currentFocus?: AiServiceFocusParams;
@@ -17,8 +22,8 @@ class Context {
     getAllComDefPrompts: () => string;
   };
 
-  /** 应用传入的系统提示词 */
-  prompts?: any;
+  /** Agent 配置 */
+  agents?: AgentConfigParams[];
 
   /** 是否多画布 */
   isMutiCanvas: boolean = true

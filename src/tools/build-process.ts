@@ -1203,3 +1203,13 @@ function scopeBasedComponentStructure(slot: any, depth = 0) {
 
   return result;
 }
+
+export interface BuildProcessConfigParams {
+}
+
+export function BuildProcess(params?: BuildProcessConfigParams) {
+  return {
+    name: NAME,
+    params: params,
+  }
+}

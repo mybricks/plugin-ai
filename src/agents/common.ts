@@ -4,8 +4,9 @@ import { MYBRICKS_TOOLS } from "./../tools"
 import { WorkSpace } from './workspace/workspace'
 import { FocusOutlineInfoManager, FocusInfo } from './workspace/outline-focus'
 
-import { fileFormat, RxaiError } from '@mybricks/rxai'
+import { fileFormat } from '@mybricks/rxai'
 import { ComponentsManager } from './workspace/components-manager'
+import { getAgentConfigs } from './utils/config'
 
 const getFocusInfo = (focus: any) => {
   const focusInfo: FocusInfo = {
@@ -30,12 +31,14 @@ const getTargetId = (focus: FocusInfo) => {
   }
 
   return focus.pageId;
-} 
+}
 
 export const requestCommonAgent = (params: any) => {
 
   return new Promise((resolve, reject) => {
-    const prompts = context.prompts;
+    // 从 agents 配置中获取提示词配置，优先使用参数传入的，否则使用 context 中的
+    const agents = params.agents || context.agents;
+    const agentConfig = getAgentConfigs(agents, 'page');
 
     const currentFocus = params.focus || context.currentFocus;
     const focusInfo = getFocusInfo(currentFocus);
@@ -138,24 +141,24 @@ export const requestCommonAgent = (params: any) => {
             workspace.openDocument(id)
           },
         }),
-        MYBRICKS_TOOLS.GetComponentsDocAndPrd({
+        MYBRICKS_TOOLS.AnalyzeRequirementAndComponents({
           allowComponents: context.designer?.getAllComDefPrompts?.() || "",
-          examples: prompts.prdExamplesPrompts,
+          ...agentConfig?.getToolParams(MYBRICKS_TOOLS.AnalyzeRequirementAndComponents.toolName),
           onComponentDocOpen: (namespace) => {
             workspace.openComponentDoc(namespace)
           },
-          appendPrompt: prompts.systemAppendPrompts,
+          appendPrompt: agentConfig?.attentions,
           deviceType: context.deviceType,
         }),
-        MYBRICKS_TOOLS.GeneratePage({
+        MYBRICKS_TOOLS.GenerateUiContent({
           getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,
           getTargetId: () => targetPageId as string,
           getRootIdByPageId(pageId: string) {
             return outlineInfoManager.getPageMetaInfo(pageId)?.rootId
           },
           componentIdToTitleMap,
-          appendPrompt: prompts.systemAppendPrompts,
-          examples: prompts.generatePageActionExamplesPrompts,
+          appendPrompt: agentConfig?.attentions,
+          ...agentConfig?.getToolParams(MYBRICKS_TOOLS.GenerateUiContent.toolName),
           onActions: (actions, status) => {
             return context.designer?.updatePage?.(targetPageId, actions, status)
           },
@@ -163,7 +166,7 @@ export const requestCommonAgent = (params: any) => {
             context.api?.page?.api?.clearPageContent?.(targetPageId)
           },
         }),
-//         MYBRICKS_TOOLS.GeneratePage({
+//         MYBRICKS_TOOLS.GenerateUiContent({
 //           getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,
 //           getTargetId: () => targetPageId as string,
 //           getRootIdByPageId(pageId: string) {
@@ -205,7 +208,7 @@ export const requestCommonAgent = (params: any) => {
 //             context.api?.page?.api?.clearPageContent?.(targetPageId)
 //           }
 //         }),
-        MYBRICKS_TOOLS.RefactorComponent({
+        MYBRICKS_TOOLS.RefactorUiContent({
           onActions: (actions, status, type) => {
             if (!status) {
               return 
@@ -228,6 +231,7 @@ export const requestCommonAgent = (params: any) => {
             return context.designer?.updatePage?.(targetPageId, actions, status)
           },
           componentIdToTitleMap,
+          appendPrompt: agentConfig?.attentions,
           getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,
           getTargetId: () => targetPageId as string,
           getFocusElementHasChildren() {
@@ -312,33 +316,26 @@ export const requestCommonAgent = (params: any) => {
         const resultTools = [...tools];
         
         // 规则1: 如果 信息获取类 在最后一个，则添加一个 answer
-        const infoToolNames = [MYBRICKS_TOOLS.OpenDsl.toolName, MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName];
+        const infoToolNames = [MYBRICKS_TOOLS.OpenDsl.toolName, MYBRICKS_TOOLS.AnalyzeRequirementAndComponents.toolName];
         if (toolNames.length > 0 && infoToolNames.includes(toolNames[toolNames.length - 1])) {
           resultTools.push(['node', MYBRICKS_TOOLS.Answer.toolName]);
           return resultTools
         }
         
         // 规则2: 如果 生成页面 前面没有获取需求，则添加一个需求分析
-        const generatePageIndex = toolNames.indexOf(MYBRICKS_TOOLS.GeneratePage.toolName);
+        const generatePageIndex = toolNames.indexOf(MYBRICKS_TOOLS.GenerateUiContent.toolName);
         if (generatePageIndex > -1) {
-          const requirementTools = [MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName, MYBRICKS_TOOLS.OpenDsl.toolName];
+          const requirementTools = [MYBRICKS_TOOLS.AnalyzeRequirementAndComponents.toolName, MYBRICKS_TOOLS.OpenDsl.toolName];
           const hasRequirement = toolNames.slice(0, generatePageIndex).some(name => requirementTools.includes(name));
-
-          // if (prompts.enableDefaultEventFlow) {
-          //   const buildProcessIndex = toolNames.indexOf(MYBRICKS_TOOLS.BuildProcess.toolName);
-          //   if (buildProcessIndex === -1) {
-          //     resultTools.push(['node', MYBRICKS_TOOLS.BuildProcess.toolName])
-          //   }
-          // }
           
           if (!hasRequirement) {
-            resultTools.splice(generatePageIndex, 0, ['node', MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName]);
+            resultTools.splice(generatePageIndex, 0, ['node', MYBRICKS_TOOLS.AnalyzeRequirementAndComponents.toolName]);
             return resultTools
           }
         }
         
         // 规则3: 如果 修改 前面没有 open-dsl-document，则添加一个
-        const refactorIndex = toolNames.indexOf(MYBRICKS_TOOLS.RefactorComponent.toolName);
+        const refactorIndex = toolNames.indexOf(MYBRICKS_TOOLS.RefactorUiContent.toolName);
         if (refactorIndex > -1) {
           const hasOpenDsl = toolNames.slice(0, refactorIndex).includes(MYBRICKS_TOOLS.OpenDsl.toolName);
           
@@ -351,11 +348,11 @@ export const requestCommonAgent = (params: any) => {
         const buildProcessIndex = toolNames.indexOf(MYBRICKS_TOOLS.BuildProcess.toolName);
         if (buildProcessIndex > -1) {
           // 搭建流程前需要需求分析和组件选型
-          const requirementTools = [MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName];
+          const requirementTools = [MYBRICKS_TOOLS.AnalyzeRequirementAndComponents.toolName];
           const hasRequirement = toolNames.slice(0, generatePageIndex).some(name => requirementTools.includes(name));
           
           if (!hasRequirement) {
-            resultTools.splice(generatePageIndex, 0, ['node', MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName, {mode: "refactor"}]);
+            resultTools.splice(generatePageIndex, 0, ['node', MYBRICKS_TOOLS.AnalyzeRequirementAndComponents.toolName, {mode: "refactor"}]);
             return resultTools
           }
         }
@@ -412,7 +409,6 @@ ${text}
           },
         ]
       },
-      guidePrompt: prompts.guidePrompt,
     });
   })
 }
@@ -428,9 +424,9 @@ function generateHistoryFocusDescription(currentFocus: Partial<FocusInfo> = {}) 
   if (type === 'uiCom') {
     focusDesc = `组件(title=${title},组件id=${comId})`;
   } else if (type === 'page') {
-    focusDesc = `页面(title=${title},页面id=${pageId})`;
+    focusDesc = `画布(title=${title},画布id=${pageId})`;
   } else if (type === 'section') {
-    focusDesc = `页面(title=${title},页面id=${pageId})`;
+    focusDesc = `画布(title=${title},画布id=${pageId})`;
   } else if (type === "logicCom") {
     focusDesc = `计算组件(title=${title},组件id=${comId})`;
   }
@@ -448,9 +444,9 @@ function generateFocusTargetDescription(currentFocus: Partial<FocusInfo> = {}) {
   if (type === 'uiCom') {
     focusDesc = `组件(title=${title},组件id=${comId},选中区域=${focusArea ? focusArea.selector : ":root"})`;
   } else if (type === 'page') {
-    focusDesc = `页面(title=${title},页面id=${pageId})`;
+    focusDesc = `画布(title=${title},画布id=${pageId})`;
   } else if (type === 'section') {
-    focusDesc = `页面(title=${title},页面id=${pageId})`;
+    focusDesc = `画布(title=${title},画布id=${pageId})`;
   } else if (type === "logicCom") {
     focusDesc = `计算组件(title=${title},组件id=${comId})`;
   }

@@ -1,5 +1,4 @@
 import React from 'react';
-import { Rxai } from "@mybricks/rxai";
 import data from './data';
 
 import './../test'
@@ -14,6 +13,7 @@ import { context } from './context';
 import { StartView } from "./startView";
 import { DeviceType } from './types';
 import { createGetAllComDefPrompts } from "./api/cloud-components";
+import { AgentConfigParams, getAgentConfigs, backStoryPrompts, transformLegacyPromptsToAgents } from './agents/utils/config';
 
 export { fileFormat } from '@mybricks/rxai'
 import preset from "./preset"
@@ -31,12 +31,13 @@ const transformParams = (params: any = {}) => {
 
 export default function pluginAI(params?: any): any {
   const {
+    name = '智能助手',
     user,
     prompts,
     requestAsStream,
     mock,
     key,
-    system,
+    agents: rawAgents,
     createTemplates,
     isMutiCanvas,
     deviceType,
@@ -48,17 +49,19 @@ export default function pluginAI(params?: any): any {
     avatar: "https://my.mybricks.world/image/icon.png"
   }
 
-  context.prompts = prompts
+  // 兼容历史配置：如果没有 agents 但有 prompts，则将 prompts 转换为 agents
+  const agents = rawAgents || (prompts ? transformLegacyPromptsToAgents(prompts) : undefined);
+
+  context.name = name;
+  context.agents = agents;
   context.createTemplates = createTemplates ?? {};
   context.isMutiCanvas = isMutiCanvas ?? true;
   context.deviceType = deviceType ?? DeviceType.Mobile;
   context.userConfig = config ?? {}
 
-  // window.requestGenerateCanvasAgent = requestGenerateCanvasAgent
-
   return {
     name: '@mybricks/plugins/ai',
-    title: 'MyBricksAI助手',
+    title: name,
     author: 'MyBricks',
     ['author.zh']: 'MyBricks',
     version: '1.0.0',
@@ -108,7 +111,10 @@ export default function pluginAI(params?: any): any {
           }
 
           context.createRxai({
-            system,
+            system: {
+              title: 'MyBricks.ai',
+              prompt: getAgentConfigs(agents, 'page')?.system ?? backStoryPrompts()
+            },
             request: {
               maxRetries: 3,
               requestAsStream: useMock ? mockRequestAsStream() : requestAsStream
@@ -157,7 +163,7 @@ export default function pluginAI(params?: any): any {
                 }
               }
 
-              context.requestStatusTracker.track(focus ? focus.type === "page" ? focus.pageId : focus.comId : "", Agents.requestCommonAgent({...params, extension}))
+              context.requestStatusTracker.track(focus ? focus.type === "page" ? focus.pageId : focus.comId : "", Agents.requestCommonAgent({...params, extension, agents}))
             }
           }
         }
@@ -179,4 +185,14 @@ export default function pluginAI(params?: any): any {
       }
     }
   }
+}
+
+export { MyBricksParamsTools as MyBricksTools, Agent } from './agents/utils/config'; 
+interface AgentPluginProps {
+  agents: AgentConfigParams[];
+  [key: string]: any;
+}
+
+export function agentPlugin(props: AgentPluginProps) {
+  return pluginAI(props)
 }

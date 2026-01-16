@@ -1,19 +1,26 @@
-import GeneratePage from './generate-page';
-import GetComponentsDocAndPrd from './generate-prd-and-require-component';
-import RefactorComponent from './refactor-component'
+import GenerateUiContent, { GenerateUiContent as GenerateUiContentParamsTool } from './generate-ui-content';
+import AnalyzeRequirementAndComponents, { AnalyzeRequirementAndComponents as AnalyzeRequirementAndComponentsParamsTool } from './analyze-requirement-and-components';
+import RefactorUiContent, { RefactorUiContent as RefactorUiContentParamsTool } from './refactor-ui-content'
 import AnalyzeAndExpandPrd from './analyze-and-expand-prd';
 import OpenDsl from './open-dsl';
 import Answer from './answer';
-import BuildProcess from "./build-process";
+import BuildProcess, { BuildProcess as BuildProcessParamsTool } from "./build-process";
 
 export const MYBRICKS_TOOLS = {
-  GeneratePage,
-  GetComponentsDocAndPrd,
-  RefactorComponent,
+  GenerateUiContent,
+  AnalyzeRequirementAndComponents,
+  RefactorUiContent,
   AnalyzeAndExpandPrd,
   OpenDsl,
   Answer,
   BuildProcess
+}
+
+export const MyBricksParamsTools = {
+  GenerateUiContent: GenerateUiContentParamsTool,
+  AnalyzeRequirementAndComponents: AnalyzeRequirementAndComponentsParamsTool,
+  RefactorUiContent: RefactorUiContentParamsTool,
+  BuildProcess: BuildProcessParamsTool,
 }
 
 export * from './utils'

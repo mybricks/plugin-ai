@@ -1,6 +1,5 @@
 import { fileFormat, RxaiError } from '@mybricks/rxai'
 import { getFiles } from './utils'
-import { getDevicePrompt } from './../preset/prompts'
 import { DeviceType } from './../types'
 
 interface AnalyzeAndExpandPrdParams {
@@ -37,8 +36,6 @@ export default function analyzeAndExpandPrd(config: AnalyzeAndExpandPrdParams): 
   - 如果附件中有图片，请在设计开发中作为重要参考，进行详细的需求及设计分析，当作用户的需求。
   - 你的回答面向的是非专业开发人员，请务必使用**简洁、易懂、口语化**的语言。
 </特别注意>
-
-${getDevicePrompt(config.deviceType)}
 
 <遵循原则>
 你要切换不同的角色来完成一个需求的设计和开发，同时特别注意，生成的页面数量不得超过3个。

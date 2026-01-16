@@ -1,7 +1,8 @@
 import { fileFormat, RxaiError } from '@mybricks/rxai'
 import { getFiles, createActionsParser, getComponentOperationSummary, stripFileBlocks, ComIdTransform, PromiseStack } from './utils'
 
-interface ModifyComponentToolParams {
+interface RefactorUiContentToolParams {
+  appendPrompt: any;
   /** 当前根组件信息 */
   getRootComponentDoc: () => string;
   getTargetId: () => string;
@@ -13,10 +14,10 @@ interface ModifyComponentToolParams {
   getComIds: () => any;
 }
 
-const NAME = 'refactor-components-in-page'
-modifyComponentsInPage.toolName = NAME
+const NAME = 'refactor-components-in-canvas'
+refactorUiContent.toolName = NAME;
 
-export default function modifyComponentsInPage(config: ModifyComponentToolParams): any {
+export default function refactorUiContent(config: RefactorUiContentToolParams): any {
   const streamActionsParser = createActionsParser();
   const excuteActionsParser = createActionsParser();
   const hasChildren = config.getFocusElementHasChildren() !== false
@@ -35,7 +36,7 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
   return {
     name: NAME,
     displayName: "局部修改/重构",
-    description: `根据用户需求/附件图片对页面中的内容进行局部修改/重构/移动/删除。
+    description: `根据用户需求/附件图片对画布中的内容进行局部修改/重构/移动/删除。
 参数：无
 工具分类：操作执行类
 作用：
@@ -65,7 +66,7 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
 `,
     getPrompts() {
       return `<工具总览>
-你是一个修改组件搭建效果的工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深页面搭建助手，拥有专业的搭建能力。
+你是一个修改组件搭建效果的工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深搭建助手，拥有专业的搭建能力。
 
 <任务目标>
   你的任务是通过 actions 序列完成用户的目标。
@@ -73,11 +74,11 @@ export default function modifyComponentsInPage(config: ModifyComponentToolParams
 </任务目标>
 </工具总览>
 
-<当前页面根组件信息>
+<当前画布根组件信息>
 ${config.getRootComponentDoc()}
 
-IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
-</当前页面根组件信息>
+IMPORTANT: 如果要修改UI根组件，请使用此文档。
+</当前画布根组件信息>
 
 <如何修改>
   通过一系列的action来分步骤完成对组件的修改，请返回以下格式以驱动MyBricks对组件进行修改：
@@ -331,7 +332,7 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
       })}
         
       **fixed定位**
-        - 组件会相对于整个页面进行定位，且脱离文档流；
+        - 组件会相对于整个画布进行定位，且脱离文档流；
         - 通过尺寸（width、height） + 位置（left、top、right、bottom）来进行定位；
         - fixed定位的组件不允许使用margin；
       
@@ -494,6 +495,10 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
     </最佳实践>
   </UI搭建原则>
 </如何修改>
+
+${config.appendPrompt ? `<对于项目环境的说明>
+${config.appendPrompt}
+</对于项目环境的说明>` : ''}
 
 <examples>
   
@@ -659,45 +664,45 @@ IMPORTANT: 如果要修改页面/页面根组件，请使用此文档。
         displayContent: displayContent
       }
 
-      actions = excuteActionsParser(actionsFile.content ?? "");
+      // actions = excuteActionsParser(actionsFile.content ?? "");
 
-      // console.log('actions', actions)
+      // // console.log('actions', actions)
 
-      // const actionsGroupById = actions.reduce((acc, item) => {
-      //   const id = item.comId;
-      //   if (!acc[id]) {
-      //     acc[id] = [];
+      // // const actionsGroupById = actions.reduce((acc, item) => {
+      // //   const id = item.comId;
+      // //   if (!acc[id]) {
+      // //     acc[id] = [];
+      // //   }
+      // //   acc[id].push(item);
+      // //   return acc;
+      // // }, {});
+
+      // try {
+      //   const llmContent = stripFileBlocks(content);
+      //   const actionsContent = actions?.length ? getComponentOperationSummary(actions, OutlineInfo.getComponentIdToTitleMap(config?.getPageJson(), pageId)) : ""
+      //   const summary = (llmContent ? `${llmContent}\n\n` : "") + (actionsContent ? `修改内容如下\n${actionsContent}` : "当前没有内容修改");
+
+      //   return {
+      //     llmContent: summary,
+      //     displayContent: summary
       //   }
-      //   acc[id].push(item);
-      //   return acc;
-      // }, {});
 
-      try {
-        const llmContent = stripFileBlocks(content);
-        const actionsContent = actions?.length ? getComponentOperationSummary(actions, OutlineInfo.getComponentIdToTitleMap(config?.getPageJson(), pageId)) : ""
-        const summary = (llmContent ? `${llmContent}\n\n` : "") + (actionsContent ? `修改内容如下\n${actionsContent}` : "当前没有内容修改");
+      //   //       const summary = getComponentOperationSummary(actions, OutlineInfo.getComponentIdToTitleMap(config?.getPageJson(), pageId))
 
-        return {
-          llmContent: summary,
-          displayContent: summary
-        }
+      //   //       return {
+      //   //         llmContent: `根据需求，我们进行如下修改
+      //   // ${summary}`,
+      //   //         displayContent: `根据需求，我们进行如下修改
+      //   // ${summary}`
+      //   //       }
+      // } catch (error) {
 
-        //       const summary = getComponentOperationSummary(actions, OutlineInfo.getComponentIdToTitleMap(config?.getPageJson(), pageId))
+      // }
 
-        //       return {
-        //         llmContent: `根据需求，我们进行如下修改
-        // ${summary}`,
-        //         displayContent: `根据需求，我们进行如下修改
-        // ${summary}`
-        //       }
-      } catch (error) {
-
-      }
-
-      return {
-        llmContent: '已执行所有修改操作',
-        displayContent: '已执行所有修改操作'
-      }
+      // return {
+      //   llmContent: '已执行所有修改操作',
+      //   displayContent: '已执行所有修改操作'
+      // }
     },
   }
 }
@@ -713,4 +718,15 @@ function fixActions(actions: any[], {
     }
     return action;
   })
+}
+
+export interface RefactorUiContentConfigParams {
+  fewShots: string;
+}
+
+export function RefactorUiContent(params?: RefactorUiContentConfigParams) {
+  return {
+    name: NAME,
+    params: params,
+  }
 }

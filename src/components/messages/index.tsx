@@ -8,6 +8,7 @@ import { AttachmentsList } from "../attachments";
 import { MentionTag } from "../mention";
 import { Mention } from "../types";
 import { Sender, SenderRef, SenderProps } from "../sender";
+import { context } from "../../context";
 import css from "./index.less"
 
 const md = markdownit()
@@ -198,7 +199,7 @@ const BubbleAction = (props: { plan: Plan, onSend?: SenderProps['onSend']; }) =>
       {showRender && (
         <Sender
           ref={senderRef}
-          placeholder={"您好，我是智能助手，请详细描述您的需求"}
+          placeholder={`您好，我是${context.name}，请详细描述您的需求`}
           onSend={(params) => {
             onSend!({...params, insertAfter: plan});
             setShowRender(false);

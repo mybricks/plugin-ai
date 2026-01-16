@@ -231,15 +231,5 @@ const prompts = {
   generatePageActionExamplesPrompts: generatePageActionExamplesPrompts(),
 }
 
-const getDevicePrompt = (type: DeviceType) => {
-  if (type === DeviceType.Desktop) {
-    return `<搭建环境>当前处于搭建PC端模式，请注意根据PC端的特点来处理任务</搭建环境>`
-  }
-  if (type === DeviceType.Mobile) {
-    return `<搭建环境>当前处于搭建移动端模式，默认为375宽度画布，请注意根据移动端的特点来处理任务，注意间距和字号大小不要太大</搭建环境>`
-  }
-  return ''
-}
-
-export { prompts, getDevicePrompt }
+export { prompts }
 

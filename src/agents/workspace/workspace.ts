@@ -111,7 +111,7 @@ class WorkSpace {
     }
 
     const isPage = this.focusInfo.pageId === id || !!this.findPageById(id);
-    const typeDesc = isPage ? '页面' : '组件'
+    const typeDesc = isPage ? '画布' : '组件'
 
     let outlineInfo: OutlineNode;
     let targetComponentIds: string[] = [];
@@ -202,11 +202,11 @@ class WorkSpace {
     const openedDocumentsList = this.generateOpenedDocumentsList();
 
     return `# 工作空间(Workspace)
-工作空间包含整个项目的「页面索引」「聚焦信息」「已打开的文档」，提供的始终都是最新的项目信息。
+工作空间包含整个项目的「画布索引」「聚焦信息」「已打开的文档」，提供的始终都是最新的项目信息。
 
 WARNING: 如果「历史记录」的信息和工作空间冲突，始终以工作空间的信息为准，因为「历史记录」的操作很有可能没保存，且不是最新的。
 
-## 页面索引
+## 画布索引
 ${pageTree}
 
 ## 聚焦信息

@@ -3,10 +3,13 @@ import { MYBRICKS_TOOLS } from "./../tools"
 
 import { WorkSpace } from './workspace/workspace'
 import { FocusOutlineInfoManager, FocusInfo } from './workspace/outline-focus'
+import { getAgentConfigs } from './utils/config'
 
 export const requestGeneratePageAgent = (pageId: string, pageTitle: string, params: any) => {
 
-  const prompts = context.prompts
+  // 从 agents 配置中获取提示词配置，优先使用参数传入的，否则使用 context 中的
+  const agents = params.agents || context.agents;
+  const agentConfig = getAgentConfigs(agents, 'page');
 
   const focusInfo: FocusInfo = {
     pageId,
@@ -52,27 +55,27 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
         // params?.onProgress?.("complete");
       },
     },
-    planList: [`${MYBRICKS_TOOLS.GetComponentsDocAndPrd.toolName} -mode generate`, MYBRICKS_TOOLS.GeneratePage.toolName, MYBRICKS_TOOLS.BuildProcess.toolName],
+    planList: [`${MYBRICKS_TOOLS.AnalyzeRequirementAndComponents.toolName} -mode generate`, MYBRICKS_TOOLS.GenerateUiContent.toolName, MYBRICKS_TOOLS.BuildProcess.toolName],
     tools: [
-      MYBRICKS_TOOLS.GetComponentsDocAndPrd({
+      MYBRICKS_TOOLS.AnalyzeRequirementAndComponents({
         allowComponents: context.designer?.getAllComDefPrompts?.() || "",
-        examples: prompts.prdExamplesPrompts,
+        ...agentConfig?.getToolParams(MYBRICKS_TOOLS.AnalyzeRequirementAndComponents.toolName),
         onComponentDocOpen: (namespace) => {
           workspace.openComponentDoc(namespace)
         },
-        appendPrompt: prompts.systemAppendPrompts,
+        appendPrompt: agentConfig?.attentions,
         shouldUseExpert: true,
         deviceType: context.deviceType,
       }),
-      MYBRICKS_TOOLS.GeneratePage({
+      MYBRICKS_TOOLS.GenerateUiContent({
         getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(pageId) as string,
         getTargetId: () => pageId as string,
         getRootIdByPageId(pageId: string) {
           return outlineInfoManager.getPageMetaInfo(pageId)?.rootId
         },
         componentIdToTitleMap,
-        appendPrompt: prompts.systemAppendPrompts,
-        examples: prompts.generatePageActionExamplesPrompts,
+        appendPrompt: agentConfig?.attentions,
+        ...agentConfig?.getToolParams(MYBRICKS_TOOLS.GenerateUiContent.toolName),
         onActions: (actions, status) => {
           return context.designer?.updatePage?.(pageId, actions, status)
         },

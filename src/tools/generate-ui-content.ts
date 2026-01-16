@@ -3,24 +3,24 @@ import { getFiles, createActionsParser, getComponentOperationSummary, stripFileB
 import { context } from "../context";
 import { ComponentsManager } from "../agents/workspace/components-manager";
 
-interface GeneratePageToolParams {
+interface GenerateUiContentParams {
   /** 当前根组件信息 */
   getRootComponentDoc: () => string;
   getTargetId: () => string;
   getRootIdByPageId: (id: string) => string | undefined;
   componentIdToTitleMap: Map<string, string>;
   /** 应用特殊上下文信息 */
-  appendPrompt: string;
+  appendPrompt?: string;
   /** 返回示例 */
-  examples: string;
+  fewShots?: string;
   /** 当所有actions返回时 */
   onActions: (actions: any[], status: string) => void
   /** 清空当前画布信息 */
   onClearPage: () => void
 }
 
-const NAME = 'clear-and-generate-page'
-generatePage.toolName = NAME
+const NAME = 'clear-and-generate-canvas'
+generateUiContent.toolName = NAME;
 
 class UITree {
   nodeMap = new Map();
@@ -69,7 +69,7 @@ class UITree {
   }
 }
 
-export default function generatePage(config: GeneratePageToolParams): any {
+export default function generateUiContent(config: GenerateUiContentParams): any {
   const streamActionsParser = createActionsParser();
   const excuteActionsParser = createActionsParser();
 
@@ -87,22 +87,22 @@ export default function generatePage(config: GeneratePageToolParams): any {
 
   return {
     name: NAME,
-    displayName: "生成页面",
-    description: `根据需求/附件图片，一次性搭建并生成符合需求的 MyBricks 页面。
+    displayName: "生成搭建内容",
+    description: `根据需求/附件图片，一次性搭建并生成符合需求的 MyBricks UI内容。
 参数：无
 工具分类：操作执行类；
-作用：生成一个完整的页面；
-要求：需要聚焦到一个页面上，且保证页面为空内容（除了页面和页面容器之外没有内容则为空内容）；
+作用：清空之前的画布内容，在当前画布中生成一个完整的UI内容；
+要求：需要聚焦到一个具体的画布上，且保证为空内容；
 前置依赖：必须确保前一个工具执行过「需求整理和组件选型」，用于获取组件文档，否则无法生成；
 `,
     aiRole: "expert",
     getPrompts(params) {
       return `<工具总览>
-  你是一个生成 MyBricks 页面的工具，你作为MyBricks的资深页面搭建助手及客服专家，经验丰富、实事求是、逻辑严谨。
+  你是一个生成 MyBricks UI区域的工具，你作为MyBricks的资深搭建助手及客服专家，经验丰富、实事求是、逻辑严谨。
   <任务目标>
     你的任务是通过两段 actions 序列完成用户的目标。
-    1. 搭建页面UI的 actions 序列。
-    2. 搭建页面初始化数据的 actions 序列。
+    1. 搭建UI的 actions 序列。
+    2. 搭建初始化数据的 actions 序列。
   </任务目标>
 </工具总览>
 
@@ -110,11 +110,11 @@ export default function generatePage(config: GeneratePageToolParams): any {
   - 如果附件中有图片，需要在搭建过程中作为重要的参考，要注意分辨设计稿（或者截图）或者用户绘制的线框图，对于前者、要求最大程度还原图片中的各项功能要素与视觉设计要素，总体要求考虑到功能一致完整与合理性、注意外观视觉美观大方、富有现代感.
 </特别注意>
 
-<当前页面根组件信息>
+<当前画布根组件信息>
 ${config.getRootComponentDoc()}
 
-IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
-</当前页面根组件信息>
+IMPORTANT: 生成UI的根组件ID必须使用此文档信息。
+</当前画布根组件信息>
 
 <如何搭建UI以及修改>
   通过一系列的action来分步骤实现用户需求。
@@ -357,7 +357,7 @@ IMPORTANT: 生成页面的根组件ID必须使用此文档信息。
       （基本等同于CSS3规范中的flex布局）插槽中的所有子组件通过宽高和margin进行布局。
 
       <辅助标记说明>
-        在 addChild 操作中，可以通过对布局类组件添加辅助标记来指导最终的渲染和布局行为。这些标记是可选的，但合理使用可以极大提升页面的性能和美观度。目前支持以下标记：
+        在 addChild 操作中，可以通过对布局类组件添加辅助标记来指导最终的渲染和布局行为。这些标记是可选的，但合理使用可以极大提升UI的性能和美观度。目前支持以下标记：
         1. ignore（结构优化标记）
           作用：当一个容器（通常是布局组件）只用于排列其内部元素（如分栏、对齐），而本身不需要任何可见样式（无背景、无边框、无圆角）且不响应交互（如点击）时，可以添加 ignore=true 标记。系统在最终渲染时，可以将这个布局容器优化掉，减少不必要的嵌套层级。
           决策流程：（从上往下执行）
@@ -524,7 +524,7 @@ ${fileFormat({
   </关于作用域插槽的说明>
 
   <作用域插槽定位规则>
-  - 页面级作用域：comId为"_root_"，slotId为"_rootSlot_"
+  - 根级作用域：comId为"_root_"，slotId为"_rootSlot_"
   - 组件级作用域：根据具体组件的comId和对应的作用域slotId定位
   </作用域插槽定位规则>
 
@@ -617,9 +617,11 @@ ${fileFormat({
   </最佳实践>
 </如何搭建初始化数据以及修改>
 
+${config.appendPrompt ? `<对于项目环境的说明>
 ${config.appendPrompt}
+</对于项目环境的说明>` : ''}
 
-<生成页面思路>
+<生成UI思路>
 按照以下步骤完成：
   1、总体分析，按照以下步骤进行：
     1）确定总体的功能；
@@ -646,7 +648,7 @@ ${config.appendPrompt}
     - 样式(styleAry):根据组件声明的css给出合理的设计实现；
     - 数据(data):根据【知识库】中该组件的data声明进行实现；
 
-  4、返回页面更新后的搭建页面UI的actions操作步骤文件内容，注意：
+  4、返回搭建UI的actions操作步骤文件内容，注意：
     - 每一个action符合JSON规范，每一行为一个action
     - 禁止包含任何注释（包括单行//和多行/* */）
     - 禁止出现省略号(...)或任何占位符
@@ -654,24 +656,24 @@ ${config.appendPrompt}
     - 禁止使用非法字符或特殊符号
     - 所有内容均为静态数据，禁止解构，禁止使用变量
 
-  5、最后，根据搭建页面UI的actions操作步骤文件内容，返回搭建初始化数据的actions操作步骤文件内容，注意：·
+  5、最后，根据搭建UI的actions操作步骤文件内容，返回搭建初始化数据的actions操作步骤文件内容，注意：·
     - 每一个action符合JSON规范，每一行为一个action
     - 禁止包含任何注释（包括单行//和多行/* */）
     - 禁止出现省略号(...)或任何占位符
     - 确保所有代码都是完整可执行的，不包含示例片段
     - 禁止使用非法字符或特殊符号
     - 所有内容均为静态数据，禁止解构，禁止使用变量
-</生成页面思路>
+</生成UI思路>
 
-<生成页面限制>
-生成页面必须从根组件_root_开始配置，以及从插槽_rootSlot_开始添加组件。
-</生成页面限制>
+<生成UI限制>
+生成UI必须从根组件_root_开始配置，以及从插槽_rootSlot_开始添加组件。
+</生成UI限制>
 
-<examples>
+${config.fewShots ? `<examples>
 
-${config.examples}
-  
-</examples>`
+${config.fewShots}
+
+</examples>` : ''}`
     },
     stream({ files, status, replaceContent }) {
       let actions = [];
@@ -1039,4 +1041,19 @@ function fixActions(actions: any[], {
     }
     return action;
   })
+}
+
+/** 生成UI内容的简化参数（用于 MyBricksTools） */
+export interface GenerateUiContentConfigParams {
+  fewShots: string;
+}
+
+/** 生成UI内容的工具配置函数（用于 MyBricksTools） */
+export function GenerateUiContent(params: GenerateUiContentConfigParams) {
+  return {
+    name: NAME,
+    params: {
+      fewShots: params?.fewShots,
+    },
+  }
 }
