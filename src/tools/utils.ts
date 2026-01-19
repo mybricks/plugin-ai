@@ -770,7 +770,7 @@ const formatVarAction = (
   return action;
 };
 
-export const createVarActionsParser = () => {
+export function createVarActionsParser() {
   const processedLines = new Set<string>();
 
   return function parseActions(text: string) {
