@@ -92,7 +92,7 @@ export default function generateUiContent(config: GenerateUiContentParams): any 
 参数：无
 工具分类：操作执行类；
 作用：清空之前的画布内容，在当前画布中生成一个完整的UI内容；
-要求：需要聚焦到一个具体的画布上，且保证为空内容；
+要求：需要聚焦到一个具体的画布上；
 前置依赖：必须确保前一个工具执行过「需求整理和组件选型」，用于获取组件文档，否则无法生成；
 `,
     aiRole: "expert",

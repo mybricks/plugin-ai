@@ -256,7 +256,8 @@ ${layoutComponentsNs.length ? `在以下所有组件中，特别的，${layoutCo
 ${this.openedComponentDocs.map(namespace => {
   const abbreviationNs = ComponentsManager.getAbbreviation(namespace);
   const componentInfo = ComponentsManager.getAiComponent(namespace)
-  const inputs = componentInfo.all?.inputs?.reduce?.((pre: string, { id, title, schema }: any) => {
+  const componentAll = componentInfo?.all ?? {}
+  const inputs = componentAll?.inputs?.reduce?.((pre: string, { id, title, schema }: any) => {
     let schemaStr = "";
     try {
       schemaStr = `    - schema: ${JSON.stringify(schema)}\n`
@@ -264,8 +265,8 @@ ${this.openedComponentDocs.map(namespace => {
     return pre + `  - ${title}\n` + 
     `    - inputId: ${id}\n` + schemaStr
   }, "")
-  const isUI = !componentInfo.all.rtType;
-  const slots = componentInfo.all?.slots?.reduce?.((pre: string, { id, title, type, description, inputs }: any) => {
+  const isUI = !componentAll.rtType;
+  const slots = componentAll?.slots?.reduce?.((pre: string, { id, title, type, description, inputs }: any) => {
     const isScope = type === "scope" && inputs?.length;
     return pre + `  - ${id}（${title}${description ? ` - ${description}` : ""}）${type === "scope" ? "- 作用域插槽" : ""}\n` + 
     (isScope ? inputs.reduce((pre: string, { id, title, desc }: any) => {

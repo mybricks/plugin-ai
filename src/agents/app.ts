@@ -183,7 +183,7 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
   });
 }
 
-async function createCanvasByAICanvas(canvasId: string, aiCanvas: any) {
+async function createCanvasByAICanvas(canvasId: string, aiCanvas: any, originParams: any[]) {
 
   function sleep(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -231,6 +231,7 @@ return pre + `- ${page.title}（${pageRef.id}）\n`
 1. 除页面跳转外，禁止一切其它形式的事件流程和变量。
 </事件流程>
 `,
+      attachments: originParams?.attachments ?? [],
       onProgress: pageRef.onProgress,
       id: pageRef.id,
     })
@@ -247,6 +248,11 @@ export const requestGenerateCanvasAgent = (params: any) => {
         return { id: '_root_' };
       }
       return await context.designer?.createCanvas?.() || { id: '_root_' };
+    };
+
+    const originParams = {
+      message: params?.message,
+      attachments: params?.attachments ?? [],
     };
 
     (params.rxai || context.rxai).requestAI({
@@ -284,7 +290,7 @@ export const requestGenerateCanvasAgent = (params: any) => {
             resolve('complete')
             if (canvasId) {
               params?.onProgress?.('ing');
-              createCanvasByAICanvas(canvasId, projectJson);
+              createCanvasByAICanvas(canvasId, projectJson, originParams);
             }
           },
           deviceType: context.deviceType

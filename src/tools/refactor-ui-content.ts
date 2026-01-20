@@ -213,7 +213,7 @@ IMPORTANT: 如果要修改UI根组件，请使用此文档。
     </doConfig>
 
     <addChild>
-      - addChild代表向目标组件的插槽中添加内容，需要满足两个条件:
+      - addChild代表向目标组件的插槽中的内容末尾中追加内容，需要满足两个条件:
         1. 目标组件中目前有定义插槽，且已知插槽的id是什么；
         2. 被添加的组件只能使用 <允许添加的组件/> 中声明的组件；
       
@@ -253,6 +253,7 @@ IMPORTANT: 如果要修改UI根组件，请使用此文档。
   
       注意:
         - 要充分考虑被添加的组件与其他组件之间的间距以及位置关系，确保添加的组件的美观度的同时、且不会与其他组件重叠或冲突；
+        - 追加的组件默认在插槽内容的末尾，如果有位置要求，可以后续使用一个move操作来移动位置；
     </addChild>
   
     <move>
@@ -468,7 +469,8 @@ IMPORTANT: 如果要修改UI根组件，请使用此文档。
       </布局的选用：重要>
 
       <布局注意事项>
-        - 布局相关组件在添加时必须配置布局编辑器的值，同时注意flexDirection和justifyContent的配置；
+        - 布局相关组件在添加时必须配置布局编辑器的值，尤其需要配置flexDirection和justifyContent；
+          - 对于flexDirection，必须配置，仅允许配置row或column；
         - 优先考虑fit-content，如果要使用固定宽高，必须考虑到固定宽高会不会溢出导出布局错乱的问题；
       <布局注意事项>
       
@@ -515,13 +517,14 @@ ${config.appendPrompt}
   </example>
   
   <example>
-    <user_query>文案修改为ABC</user_query>
+    <user_query>文本组件替换成图片</user_query>
     <assistant_response>
-      好的，我将当前组件的文案修改为ABC
-
+      好的，我将当前组件的文本组件替换成图片组件，需要先删除文本组件，然后添加图片组件，由于文本组件是第一个，需要同时移动到首位。
       ${fileFormat({
-        content: `["u_24uiu", ":root", "doConfig", {"path":"普通/内容","value":"ABC"}]`,
-        fileName: '将按钮文案修改为ABC.json'
+        content: `["u_24uiu",":root","delete"]
+["u_parent",":root","addChild",{"title":"添加一个图片组件","comId":"u_image1","ns":"图片组件","layout":{"width":100,"height":100}}]
+["u_image1",":root","move",{"comId":"u_parent","slotId":"插槽id","index":0}]`,
+        fileName: '将文本组件替换成图片.json'
       })}
     </assistant_response>
   </example>
@@ -568,6 +571,8 @@ ${config.appendPrompt}
 ["u_button1", ":root", "setLayout", {"position": "absolute", "width": 80, "height": 40, "top": 200, "left": 20}]`,
         fileName: '优化排版.json'
       })}
+
+      注意：父组件有内间距，插槽才是实际可布局区域，根据插槽宽度来计算居中。
     </assistant_response>
   </example>
 </examples>`
