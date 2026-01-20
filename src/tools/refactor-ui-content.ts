@@ -619,6 +619,18 @@ ${config.appendPrompt}
                   // 父组件 id 使用最近一次的映射
                   action.comId = comIdTransform.getComId(parentComId);
                 }
+              } else if (action.type === "move") {
+                const comId = action.comId;
+                if (comId !== "_root_") {
+                  // 获取组件时，使用最近添加的comId
+                  action.comId = comIdTransform.getComId(comId);
+                }
+              } else if (action.type === "doConfig") {
+                const comId = action.comId;
+                if (comId !== "_root_") {
+                  // 获取组件时，使用最近添加的comId
+                  action.comId = comIdTransform.getComId(comId);
+                }
               }
             })
             promiseStack.add(() => config.onActions(actions, currentStatus, actionType))
