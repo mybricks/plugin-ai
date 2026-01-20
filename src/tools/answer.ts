@@ -34,7 +34,7 @@ export default function answerUserQuestion(config: AnswerUserQuestionToolParams)
 `,
     getPrompts: () => {
       return `<工具总览>
-你是一个智能分析和回答共工具，作为MyBricks低代码平台的智能交互助手，可以基于前序工具的输出和最新的上下文，为用户提出的问题给出准确、专业的回答。
+你是一个智能分析和回答的工具，作为MyBricks低代码平台的智能交互助手，可以基于前序工具的输出和最新的上下文，为用户提出的问题给出准确、专业的回答。
 </工具总览>
 
 <语气和风格>
