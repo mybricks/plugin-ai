@@ -1,5 +1,5 @@
 import { fileFormat } from '@mybricks/rxai'
-import { getFiles, createActionsParser, getComponentOperationSummary, stripFileBlocks, createVarActionsParser, PromiseStack, ComIdTransform } from './utils'
+import { getFiles, createActionsParser, getComponentOperationSummary, stripFileBlocks, createVarActionsParser, PromiseStack, ComIdTransform, uuid } from './utils'
 import { context } from "../context";
 import { ComponentsManager } from "../agents/workspace/components-manager";
 
@@ -782,7 +782,7 @@ ${config.fewShots}
               })
               if (target.inputId) {
                 // 创建插槽输入到变量的赋值
-                const varInstanceId = String(Math.random())
+                const varInstanceId = uuid()
                 const newActions = [
                   // 创建变量节点
                   {
@@ -859,8 +859,8 @@ ${config.fewShots}
                 }
               }
 
-              const varInstanceId = String(Math.random())
-              const uiComInstanceId = String(Math.random())
+              const varInstanceId = uuid()
+              const uiComInstanceId = uuid()
               const newActions = varParams.xpath ? [
                 // 创建变量节点
                 {
