@@ -1,5 +1,6 @@
 import { MyBricksParamsTools, MYBRICKS_TOOLS } from "../../tools";
 import { context } from "../../context";
+import { Rxai, IDB } from "@mybricks/rxai";
 
 export { MyBricksParamsTools } from "../../tools";
 
@@ -116,7 +117,7 @@ export function getAgentConfigs(agents: AgentConfigParams[], type: AgentType = '
   // 根据工具名称获取对应工具的完整参数
   const getToolParams = (toolName: string) => {
     const tools = targetAgent?.tools;
-    const tool = tools?.find(t => t.name === toolName);
+    const tool: any = tools?.find(t => t.name === toolName);
     return (tool?.params as any) || {};
   };
 
@@ -305,3 +306,75 @@ export function backStoryPrompts({ goal = '主要处理 MyBricks 低代码搭建
 
 </针对当前领域如何规划工具>
 ` }
+
+interface SingleInstanceAgentOptions {
+  name: string;
+  type: string;
+  goal: string;
+  backstory: string;
+  tools: (params: any) => ReturnType<typeof MyBricksParamsTools[keyof typeof MyBricksParamsTools]>[] | CustomTool[];
+}
+export class SingleInstanceAgent {
+  system: any;
+  tools: any;
+  type: string;
+  constructor(options: SingleInstanceAgentOptions) {
+    this.system = backStoryPrompts({ goal: options.goal, backstory: options.backstory });
+    this.tools = options.tools;
+    this.type = options.type;
+  }
+
+  rxaiMap: Record<string, {
+    rxai: Rxai;
+    tools: ReturnType<typeof MyBricksParamsTools[keyof typeof MyBricksParamsTools]>[] | CustomTool[];
+    focus: any;
+  }> = {};
+
+  getRxai(options: any) {
+    const { key, focus } = options;
+    if (!this.rxaiMap[key]) {
+      this.rxaiMap[key] = {
+        rxai: new Rxai({
+          system: this.system,
+          request: {
+            maxRetries: 3,
+            requestAsStream: context.pluginParams.requestAsStream
+          },
+          idb: new IDB({
+            dbName: "@mybricks/plugin-ai/messages",
+            key
+          })
+        }),
+        tools: this.tools({ focus }),
+        focus,
+      }
+    }
+    return this.rxaiMap[key].rxai;
+  }
+
+  request(key: string, params: any) {
+    return new Promise((resolve, reject) => {
+      const { formatUserMessage } = params;
+      const { rxai, tools, focus } = this.rxaiMap[key];
+      rxai.requestAI({
+        ...params,
+        formatUserMessage: (text: string) => {
+          return formatUserMessage ? formatUserMessage(text, { focusParams: focus as AiServiceFocusParams }) : text;
+        },
+        emits: {
+          write: () => {},
+          complete: () => {
+            resolve('complete');
+            params?.onProgress?.("complete");
+          },
+          error: (error: any) => {
+            reject(error);
+            params?.onProgress?.("error");
+          },
+          cancel: () => {},
+        },
+        tools,
+      });
+    })
+  }
+}

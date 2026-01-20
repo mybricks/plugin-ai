@@ -1,12 +1,17 @@
 import React from "react"
 import classNames from "classnames"
+import { Rxai } from "@mybricks/rxai";
 import { Delete, Export } from "../../../components/icons"
 import { context } from "../../../context";
 import css from "./header.less"
 
-const Header = () => {
+interface HeaderParams {
+  rxai: Rxai;
+}
+
+const Header = (params: HeaderParams) => {
   const clear = () => {
-    context.rxai.clear();
+    params.rxai.clear();
   }
 
   const exportRxai = () => {

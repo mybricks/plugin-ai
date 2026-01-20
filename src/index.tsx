@@ -26,6 +26,14 @@ export { apiRecorder, replay, replayFromJSON };
 export type { RecordedAction, ReplayAPI, ReplayOptions };
 
 const transformParams = (params: any = {}) => {
+  const result: any = {...preset};
+  Object.entries(params).forEach(([key, value]: any) => {
+    if (key === "agents") {
+      result[key] = preset.agents.concat(value);
+    } else {
+      result[key] = value;
+    }
+  })
   return Object.assign({...preset}, params);
 }
 
@@ -59,6 +67,20 @@ export default function pluginAI(params?: any): any {
   context.isMutiCanvas = isMutiCanvas ?? true;
   context.deviceType = deviceType ?? DeviceType.Mobile;
   context.userConfig = config ?? {}
+  context.pluginParams = {
+    name,
+    user,
+    prompts,
+    requestAsStream,
+    mock,
+    key,
+    agents: rawAgents,
+    guidePrompt,
+    createTemplates,
+    isMutiCanvas,
+    deviceType,
+    config,
+  }
 
   return {
     name: '@mybricks/plugins/ai',

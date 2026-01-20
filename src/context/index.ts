@@ -67,6 +67,8 @@ class Context {
   }
 
   requestStatusTracker = new RequestStatusTracker();
+
+  pluginParams: any = {};
 }
 
 const context = new Context();
