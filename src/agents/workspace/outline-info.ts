@@ -199,6 +199,50 @@ export class OutlineInfoManager {
 class OutlineJSXGenerator {
   private static namespacesSet = new Set<string>();
 
+  /**
+   * 遮蔽base64和svg代码，避免DSL过大
+   */
+  private static maskLargeContent(obj: any): any {
+    if (obj === null || obj === undefined) {
+      return obj;
+    }
+
+    // 如果是字符串，检查是否为base64或svg
+    if (typeof obj === 'string') {
+      // 检测base64图片（data:image开头或长base64字符串）
+      if (obj.startsWith('data:image/') || /^[A-Za-z0-9+/=]{100,}$/.test(obj)) {
+        const prefix = obj.substring(0, 22);
+        return `[BASE64_MASKED:${prefix}...length:${obj.length}]`;
+      }
+      // 检测SVG代码
+      if (obj.includes('<svg') || obj.includes('<?xml') && obj.includes('svg')) {
+        const length = obj.length;
+        if (length > 200) {
+          return `[SVG_MASKED:length:${length}]`;
+        }
+      }
+      return obj;
+    }
+
+    // 如果是数组，递归处理每个元素
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.maskLargeContent(item));
+    }
+
+    // 如果是对象，递归处理每个属性
+    if (typeof obj === 'object') {
+      const result: any = {};
+      for (const key in obj) {
+        if (obj.hasOwnProperty(key)) {
+          result[key] = this.maskLargeContent(obj[key]);
+        }
+      }
+      return result;
+    }
+
+    return obj;
+  }
+
   static generate(outlineInfo: OutlineNode, targetComponentIds: string[] = []): ComponentsResult {
     this.namespacesSet.clear();
 
@@ -408,10 +452,13 @@ class OutlineJSXGenerator {
 
     const namespaceTag = ComponentsManager.getAbbreviation(namespace)
 
+    // 遮蔽data中的base64和svg内容
+    const maskedData = node.data ? this.maskLargeContent(node.data) : null;
+
     if (node.asRoot) {
-      jsx = `<${ROOT_NAMESPACE} id="${ROOT_ID}"` + (node.data ? ` data={${JSON.stringify(node.data || {})}}` : '');
+      jsx = `<${ROOT_NAMESPACE} id="${ROOT_ID}"` + (maskedData ? ` data={${JSON.stringify(maskedData)}}` : '');
     } else {
-      jsx = `<${namespaceTag} id="${node.id}"` + (node.data ? ` data={${JSON.stringify(node.data || {})}}` : '');
+      jsx = `<${namespaceTag} id="${node.id}"` + (maskedData ? ` data={${JSON.stringify(maskedData)}}` : '');
     }
 
     if (Object.keys(layout).length > 0) {
@@ -419,7 +466,9 @@ class OutlineJSXGenerator {
     }
 
     if (styleArray.length > 0) {
-      jsx += ` styleAry={[${styleArray.map(style => `"${style}"`).join(', ')}]}`;
+      // 遮蔽styleArray中的base64和svg内容
+      const maskedStyleArray = styleArray.map(style => this.maskLargeContent(style));
+      jsx += ` styleAry={[${maskedStyleArray.map(style => `"${style}"`).join(', ')}]}`;
     }
 
     jsx += ' >';
