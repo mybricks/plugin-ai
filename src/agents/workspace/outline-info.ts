@@ -458,7 +458,7 @@ class OutlineJSXGenerator {
     if (node.asRoot) {
       jsx = `<${ROOT_NAMESPACE} id="${ROOT_ID}"` + (maskedData ? ` data={${JSON.stringify(maskedData)}}` : '');
     } else {
-      jsx = `<${namespaceTag} id="${node.id}"` + (maskedData ? ` data={${JSON.stringify(maskedData)}}` : '');
+      jsx = `<${namespaceTag} id="${node.id}" title="${node.title}"` + (maskedData ? ` data={${JSON.stringify(maskedData)}}` : '');
     }
 
     if (Object.keys(layout).length > 0) {

@@ -656,6 +656,21 @@ export function createActionsParser() {
         const parsedAction = formatAction(trimmedLine, comIdToParamsMap);
         if (parsedAction.comId) {
           newActions.push(parsedAction);
+          // 处理下addChild操作，如果index存在，需要衔接一个一个 move action
+          if (parsedAction.type === 'addChild' && parsedAction.params.index !== undefined) {
+            newActions.push({
+              comId: parsedAction.params.comId,
+              target: ':root',
+              type: 'move',
+              params: {
+                to: {
+                  comId: parsedAction.comId,
+                  slotId: parsedAction.target,
+                  index: parsedAction.params.index,
+                },
+              }
+            });
+          }
           processedLines.add(trimmedLine);
         }
       } catch (error) {
@@ -674,6 +689,21 @@ export function createActionsParser() {
           const parsedAction = formatAction(trimmedLastLine, comIdToParamsMap);
           if (parsedAction.comId) {
             newActions.push(parsedAction);
+            // 处理下addChild操作，如果index存在，需要衔接一个一个 move action
+            if (parsedAction.type === 'addChild' && parsedAction.params.index !== undefined) {
+              newActions.push({
+                comId: parsedAction.params.comId,
+                target: ':root',
+                type: 'move',
+                params: {
+                  to: {
+                    comId: parsedAction.comId,
+                    slotId: parsedAction.target,
+                    index: parsedAction.params.index,
+                  },
+                }
+              });
+            }
             processedLines.add(trimmedLastLine);
           }
         } catch (error) {
@@ -681,8 +711,6 @@ export function createActionsParser() {
         }
       }
     }
-
-    // processedLines.clear();
 
     return newActions;
   };
