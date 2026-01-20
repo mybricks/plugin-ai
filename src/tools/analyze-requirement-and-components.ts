@@ -421,9 +421,9 @@ export default function analyzeRequirementAndComponents(config: AnalyzeRequireme
     displayName: "分析当前需求",
     description: `分析/扩写需求 + 组件选型，针对用户的搭建需求（可能是文本，一句话、图片附件、文件附件等需求）生成需求文档，并且分析可能使用到的组件。
 参数(mode)：模式，可选择的值有 generate、extract、refactor 三种：
-  - generate模式：表示从无到有生成新的需求，后续往往使用「生成UI」工具；
-  - extract模式：表示从图片/设计稿/原型文件中提取和解析UI内容，将视觉设计稿转化为具体的需求和实现方案，后面往往使用「生成UI」工具；
-  - refactor模式：表示分析现有的上下文来对现有内容进行优化、调整，后面往往使用「修改UI」工具；
+  - generate模式：生成UI时使用，对需求内容进行扩写和整理，常用于从无到有生成新的需求，后续往往使用「生成UI」工具；
+  - extract模式：生成UI时使用，从图片/设计稿/原型文件中提取和解析UI内容，常用于生成时严格还原设计稿，后面往往使用「生成UI」工具；
+  - refactor模式：修改UI时使用，表示分析需求和附件来对现有搭建的内容进行优化、调整、重构，后面往往使用「修改UI」工具；
 工具分类：信息获取类
 前置要求：用户提出过搭建需求（可能是文本，一句话、图片附件、文件附件等需求）
 返回值：详细理解用户需求后的分析说明书文件 + 组件选型；`,
@@ -431,7 +431,7 @@ export default function analyzeRequirementAndComponents(config: AnalyzeRequireme
     // aiRole: 'architect',
     aiRole: ({ params }) => {
       const mode = params?.mode ?? 'refactor';
-      return mode === 'extract' ? 'architect' : 'expert'
+      return mode === 'generate' ? 'expert' : 'architect'
     },
     // lastAppendMessage: '需求已分析完成，请继续完成用户需求。',
     getPrompts: ({ params }) => {

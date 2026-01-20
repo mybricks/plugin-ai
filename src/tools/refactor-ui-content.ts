@@ -614,8 +614,8 @@ ${config.appendPrompt}
                 // 对于 addChild，每次添加都生成新的 UUID 映射
                 action.params.comId = comIdTransform.addComId(childComId);
 
+                // 目标组件ID需要映射
                 const parentComId = action.comId;
-
                 if (parentComId !== "_root_") {
                   // 父组件 id 使用最近一次的映射
                   action.comId = comIdTransform.getComId(parentComId);
@@ -625,6 +625,12 @@ ${config.appendPrompt}
                 if (comId !== "_root_") {
                   // 获取组件时，使用最近添加的comId
                   action.comId = comIdTransform.getComId(comId);
+                }
+
+                // 目标组件ID需要映射
+                const targetId = action.params.comId;
+                if (targetId !== "_root_") {
+                  action.params.comId = comIdTransform.getComId(targetId);
                 }
               } else if (action.type === "doConfig") {
                 const comId = action.comId;
