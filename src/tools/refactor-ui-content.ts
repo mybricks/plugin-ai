@@ -227,7 +227,7 @@ IMPORTANT: 如果要修改UI根组件，请使用此文档。
         title:string //被添加组件的标题
         ns:string //在 <允许添加的组件 /> 中声明的UI组件namespace
         comId:string // 新添加的组件5位uuid，禁止重复，在所有UI组件中唯一
-        index?: number // 添加到插槽的位置，index=0表示第一位，index=1表示第二位。不指定时默认添加到末尾
+        index?: number | 'last' = 'last' // 添加到插槽的位置，index=0表示第一位，index=1表示第二位。不指定时默认为last，添加到末尾
         layout?: setLayout_flex_params ｜ setLayout_fixed_params ｜ setLayout_absolute_params //可选，添加组件时可以指定位置和尺寸信息
         configs?: Array<configStyle_params | configProperty_params> // 添加组件可以配置的信息
         // 渲染优化
@@ -539,7 +539,8 @@ ${config.appendPrompt}
   <example>
     <user_query>文本组件替换成图片</user_query>
     <assistant_response>
-      好的，我将当前组件的文本组件替换成图片组件，需要先删除文本组件，然后添加图片组件，由于插槽中还有其他内容，添加时需要指定index。
+      好的，我将文本组件替换成图片组件。当前文本组件在插槽的第一位（index=0），删除后我需要在相同位置添加图片组件，所以指定index=0。
+
       ${fileFormat({
         content: `["u_24uiu",":root","delete"]
 ["u_parent","slotId","addChild",{"title":"添加一个图片组件","comId":"u_image1","index":0,"ns":"图片组件","layout":{"width":100,"height":100}}]`,
@@ -578,8 +579,8 @@ ${config.appendPrompt}
     <assistant_response>
       根据图片效果，主要执行以下修改：
       1. 容器原来是均分布局，为了实现效果图中的效果，需要修改为左右布局，左侧为图标+文本，右侧为箭头；
-      2. 删除容器中原有的按钮，替换成图标+文本，替换可以使用指定位置来完成，先添加左侧容器，再添加图标和文本；
-      3. 中间有一个封条装饰，flex布局下不好实现，用绝对定位实现；
+      2. 删除容器中原有的按钮，替换成图标+文本，替换可以使用指定位置的addChild来完成，先添加左侧容器，再添加图标和文本；
+      3. 中间有一个装饰图片 ，flex布局下不好实现，用绝对定位实现；
       
       ${fileFormat({
         content: `["u_24uiu", ":root", "doConfig", {"path":"样式/布局","style":{"display": "flex", "flexDirection": "row", "justifyContent": "space-between", "alignItems": "center"}}]
@@ -588,7 +589,7 @@ ${config.appendPrompt}
 ["u_sdflex", "addChild", {"title":"图标组件","comId":"u_icon","index":0,"ns":"图标组件","layout":{"width":24,"height":24,"marginLeft":8},"configs":[]}]
 ["u_sdflex", "addChild", {"title":"文本组件","comId":"u_text","index":1,"ns":"文本组件","layout":{"width":"fit-content","height":"fit-content", "marginLeft": 8},"configs":[]}]
 ["u_sdflex", "addChild", {"title":"箭头图标组件","comId":"u_rso0c","index":2,"ns":"图标组件","layout":{"width":24,"height":24},"configs":[]}]
-["u_24uiu", "slotId", "addChild", {"title":"添加一个绝对定位组件","comId":"u_abs1","ns":"布局组件","layout":{"position": "absolute", "width": 100, "height": 30, "bottom": 0, "left": 360},"configs":[]}]
+["u_24uiu", "slotId", "addChild", {"title":"装饰组件","comId":"u_abs1","ns":"布局组件","layout":{"position": "absolute", "width": 100, "height": 30, "bottom": 0, "left": 360},"configs":[]}]
 `,
         fileName: '重构区域.json'
       })}
