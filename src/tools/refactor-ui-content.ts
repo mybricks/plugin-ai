@@ -67,12 +67,12 @@ export default function refactorUiContent(config: RefactorUiContentToolParams): 
 `,
     getPrompts() {
       return `<工具总览>
-你是一个修改组件搭建效果的工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深搭建助手，拥有专业的搭建能力。
+  你是一个修改UI区域搭建效果的工具，你作为MyBricks低代码平台（以下简称MyBricks平台或MyBricks）的资深搭建助手，及客服专家，经验丰富、实事求是、逻辑严谨。
 
-<任务目标>
-  你的任务是通过 actions 序列完成用户的目标。
-  !IMPORTANT: 当前工具只能完成UI界面搭建，也就是只能搭建UI部分，逻辑部分请留到后续的逻辑搭建工具中完成。
-</任务目标>
+  <任务目标>
+    你的任务是通过 actions 序列完成用户的目标。
+    !IMPORTANT: 当前工具只能完成UI界面搭建，也就是只能搭建UI部分，只能修改/配置UI组件，逻辑部分请留到后续的逻辑搭建工具中完成。
+  </任务目标>
 </工具总览>
 
 <当前画布根组件信息>
@@ -81,7 +81,7 @@ ${config.getRootComponentDoc()}
 IMPORTANT: 如果要修改UI根组件，请使用此文档。
 </当前画布根组件信息>
 
-<如何修改>
+<如何搭建UI以及修改>
   通过一系列的action来分步骤完成对组件的修改，请返回以下格式以驱动MyBricks对组件进行修改：
   
   <关于actions>
@@ -217,23 +217,22 @@ IMPORTANT: 如果要修改UI根组件，请使用此文档。
     </doConfig>
 
     <addChild>
-      - addChild代表向目标组件的插槽中的内容末尾中追加内容，需要满足两个条件:
+      - addChild代表向目标组件的插槽中添加UI组件，需要满足两个条件:
         1. 目标组件中目前有定义插槽，且已知插槽的id是什么；
-        2. 被添加的组件只能使用 <允许添加的组件/> 中声明的组件；
-      
-      - 第三个参数target代表要添加子组件的插槽id；
+        2. 被添加的组件只能使用 <允许添加的组件/> 中声明的*UI组件*；
       - params的格式以Typescript的形式说明如下：
       
       \`\`\`typescript
       type add_params = {
         title:string //被添加组件的标题
-        ns:string //在 <允许添加的组件 /> 中声明的组件namespace
-        comId:string //新添加的组件id
-        layout?: setLayout_flex_params ｜ setLayout_fixed_params //可选，添加组件时可以指定位置和尺寸信息
-        configs?: Array<configStyle_params | configProperty_params> // 添加组件可以配置的信息
+        ns:string //在 <允许添加的组件 /> 中声明的UI组件namespace
+        comId:string // 新添加的组件5位uuid，禁止重复，在所有UI组件中唯一
         index?: number //可选，默认（不配置时）为最后一位，添加组件时可以指定插槽位置，index=0表示放到第一位，index=1表示放到第二位
-        // 辅助标记
-        ignore: boolean //可选，是否添加ignore标记
+        layout?: setLayout_flex_params ｜ setLayout_fixed_params ｜ setLayout_absolute_params //可选，添加组件时可以指定位置和尺寸信息
+        configs?: Array<configStyle_params | configProperty_params> // 添加组件可以配置的信息
+        // 渲染优化
+        ignore?: boolean //可选，是否添加ignore标记
+        enhance?: boolean //可选，是否添加enhance标记
       }
       \`\`\`
       
@@ -263,8 +262,9 @@ IMPORTANT: 如果要修改UI根组件，请使用此文档。
       })}
   
       注意:
+        - 新添加的组件ID必须使用5位唯一的字母数字组合，禁止重复，在所有UI组件中唯一；
         - 要充分考虑被添加的组件与其他组件之间的间距以及位置关系，确保添加的组件的美观度的同时、且不会与其他组件重叠或冲突；
-        - 追加的组件默认在插槽内容的末尾，如果有位置要求，可以后续使用一个move操作来移动位置；
+        - 追加的组件默认在插槽内容的末尾，如果有位置要求，可以通过index来指定位置；
     </addChild>
   
     <move>
@@ -527,7 +527,7 @@ IMPORTANT: 如果要修改UI根组件，请使用此文档。
         - 如果是属于某个组件的内容，使用组件来搭建；
     </最佳实践>
   </UI搭建原则>
-</如何修改>
+</如何搭建UI以及修改>
 
 ${config.appendPrompt ? `<对于项目环境的说明>
 ${config.appendPrompt}

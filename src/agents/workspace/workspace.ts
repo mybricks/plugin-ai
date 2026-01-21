@@ -223,22 +223,27 @@ ${openedDocumentsList}
   }
 
   openComponentDoc(namespace: string) {
+    // 校验，保证传入的是完整namespace
+    const fullNamespace = ComponentsManager.getFullNamespace(namespace)
+
     // 检查是否已经打开
-    if (this.openedComponentDocs.some(ns => ns === namespace)) {
+    if (this.openedComponentDocs.some(ns => ns === fullNamespace)) {
       return;
     }
 
-    this.openedComponentDocs.push(namespace)
+    this.openedComponentDocs.push(fullNamespace)
 
     // 加载依赖
-    const requires = ComponentsManager.getRequireComponents(namespace)
+    const requires = ComponentsManager.getRequireComponents(fullNamespace)
     if (Array.isArray(requires) && requires.length) {
       requires.forEach(ns => this.openComponentDoc(ns))
     }
   }
 
   closeComponentDoc(namespace: string) {
-    this.openedComponentDocs = this.openedComponentDocs.filter(ns => ns !== namespace)
+    // 校验，保证传入的是完整namespace
+    const fullNamespace = ComponentsManager.getFullNamespace(namespace)
+    this.openedComponentDocs = this.openedComponentDocs.filter(ns => ns !== fullNamespace)
   }
 
   hasComponentsDocs(): boolean {
@@ -254,8 +259,11 @@ ${openedDocumentsList}
 ${layoutComponentsNs.length ? `在以下所有组件中，特别的，${layoutComponentsNs.map(ns => ns).join('、')} 是用于基础布局的组件，辅助标记也仅可以用于这些组件` : ''}
 
 ${this.openedComponentDocs.map(namespace => {
-  const abbreviationNs = ComponentsManager.getAbbreviation(namespace);
-  const componentInfo = ComponentsManager.getAiComponent(namespace)
+  // 校验，保证传入的是完整namespace
+  const fullNamespace = ComponentsManager.getFullNamespace(namespace)
+
+  const abbreviationNs = ComponentsManager.getAbbreviation(fullNamespace);
+  const componentInfo = ComponentsManager.getAiComponent(fullNamespace)
   const componentAll = componentInfo?.all ?? {}
   const inputs = componentAll?.inputs?.reduce?.((pre: string, { id, title, schema }: any) => {
     let schemaStr = "";
@@ -274,12 +282,12 @@ ${this.openedComponentDocs.map(namespace => {
     }, ""): "")
   }, "")
 
-  return this.api.getComponentDoc(namespace)
+  return this.api.getComponentDoc(fullNamespace)
   .replace("</type>", '</type>' + (isUI ? `\n<slots>
 ${slots || "无\n"}</slots>\n\n` : ""))
   .replace("</type>", '</type>' + (isUI ? `\n<inputs>
 ${inputs || "无\n"}</inputs>\n\n` : ""))
-  .replace('<component>', `<${abbreviationNs}文档>`).replace('</component>', `</${abbreviationNs}文档>`).replace(new RegExp(`${namespace}`, 'g'), abbreviationNs)
+  .replace('<component>', `<${abbreviationNs}文档>`).replace('</component>', `</${abbreviationNs}文档>`).replace(new RegExp(`${fullNamespace}`, 'g'), abbreviationNs)
 }).join('')}
 `
   }
