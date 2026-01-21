@@ -224,7 +224,7 @@ export const requestCommonAgent = (params: any) => {
                 : undefined;
 
               if (parentId && parentId !== targetPageId) {
-                return context.api?.uiCom?.api?.updateCom?.(parentId, actions, status)
+                return context.designer?.updateUiCom?.(parentId, actions, status)
               }
             }
 
@@ -307,7 +307,7 @@ export const requestCommonAgent = (params: any) => {
             return context.designer?.updatePage?.(focusInfo.pageId, ...args)
           },
           updateCom: (...args: any) => {
-            return context.api?.logicCom?.api?.updateCom?.(...args)
+            return context.designer?.updateLogicCom?.(...args)
           },
         }),
       ],

@@ -83,9 +83,11 @@ export class APIRecordReplayManager {
     }
 
     const replayAPI: ReplayAPI = {
-      createPage: api.createPage.bind(api),
-      createCanvas: api.createCanvas.bind(api),
-      updatePage: api.updatePage.bind(api)
+      createPage: api.createPage!.bind(api),
+      createCanvas: api.createCanvas!.bind(api),
+      updatePage: api.updatePage!.bind(api),
+      updateUiCom: api.updateUiCom!.bind(api),
+      updateLogicCom: api.updateLogicCom!.bind(api)
     };
 
     const recordsToReplay = records || apiRecorder.getRecords();
@@ -130,9 +132,11 @@ export class APIRecordReplayManager {
     }
 
     const replayAPI: ReplayAPI = {
-      createPage: api.createPage.bind(api),
-      createCanvas: api.createCanvas.bind(api),
-      updatePage: api.updatePage.bind(api)
+      createPage: api.createPage!.bind(api),
+      createCanvas: api.createCanvas!.bind(api),
+      updatePage: api.updatePage!.bind(api),
+      updateUiCom: api.updateUiCom!.bind(api),
+      updateLogicCom: api.updateLogicCom!.bind(api)
     };
 
     console.log('[APIRecordReplay] 从 JSON 开始回放');

@@ -24,6 +24,8 @@ export interface ReplayAPI {
   createPage: (id: string, title: string, config?: any) => Promise<{ id: string; onProgress: Function; }>;
   createCanvas: () => Promise<{ id: string; title: string; }>;
   updatePage: (...params: any[]) => Promise<void>;
+  updateUiCom: (...params: any[]) => Promise<void>;
+  updateLogicCom: (...params: any[]) => Promise<void>;
 }
 
 /**
@@ -74,6 +76,16 @@ export async function replay(
         case 'updatePage': {
           // updatePage 的参数是展开的，需要展开传递
           result = await api.updatePage(...action.params);
+          break;
+        }
+        case 'updateUiCom': {
+          // updateUiCom 的参数是展开的，需要展开传递
+          result = await api.updateUiCom(...action.params);
+          break;
+        }
+        case 'updateLogicCom': {
+          // updateLogicCom 的参数是展开的，需要展开传递
+          result = await api.updateLogicCom(...action.params);
           break;
         }
         default:

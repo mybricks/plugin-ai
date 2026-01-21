@@ -458,6 +458,18 @@ IMPORTANT: 生成UI的根组件ID必须使用此文档信息。
             - 为了实现均分，保证卡片之间存在间距，配置卡片宽度和高度都为固定值
               - 注意：不允许配置百分比宽度；
             - 判断仅布局，添加ignore标记，优化搭建内容。
+          
+          下面的例子展示flex布局中负margin的妙用，通过负margin实现背景层+内容层重叠的效果：
+          ${fileFormat({
+            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex6","ns":"布局组件","layout":{"width":"100%","height":"fit-content"},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"column"}}]}]
+          ["u_flex6","插槽id占位","addChild",{"title":"背景层","comId":"u_asds6","ns":"组件","layout":{"width":"100%","height":60},"configs":[]}]
+          ["u_flex6","插槽id占位","addChild",{"title":"内容层","comId":"u_csdt6","ns":"组件","layout":{"width":"100%","height":100, "marginTop": -30},"configs":[]}]
+          `,
+            fileName: '负margin实现背景层+内容层重叠.json'
+          })}
+          在上例中:
+            - 声明布局编辑器的值，注意布局编辑器必须声明，其中flexDirection也必须声明；
+            - 通过负margin实现背景层+内容层重叠的效果；
 
           特殊地，在flex布局中的元素还可以配置position=absolute，用于实现绝对定位效果:
           ${fileFormat({
@@ -474,7 +486,8 @@ IMPORTANT: 生成UI的根组件ID必须使用此文档信息。
       </布局使用示例>
 
       <布局注意事项>
-        - 布局相关组件在添加时必须配置布局编辑器的值，同时注意flexDirection和justifyContent的配置；
+        - 布局相关组件在添加时必须配置布局编辑器的值，尤其需要配置flexDirection和justifyContent；
+          - 对于flexDirection，必须配置，仅允许配置row或column；
         - 优先考虑fit-content，如果要使用固定宽高，必须考虑到固定宽高会不会溢出导出布局错乱的问题；
       <布局注意事项>
       
@@ -736,7 +749,9 @@ ${config.fewShots}
               }
             }
           })
-          promiseStack.add(() => config.onActions(actions, currentStatus))
+          actions.forEach((action: any) => {
+            promiseStack.add(() => config.onActions([action], currentStatus))
+          })
         } catch (error) {
           console.error('generate-page onActions error', error);
         }

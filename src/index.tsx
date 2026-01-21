@@ -111,6 +111,14 @@ export default function pluginAI(params?: any): any {
               apiRecorder.record('updatePage', params);
               return api.page.api.updatePage(...params);
             },
+            updateUiCom: async (...params: any[]) => {
+              apiRecorder.record('updateUiCom', params);
+              return api.uiCom.api.updateCom(...params);
+            },
+            updateLogicCom: async (...params: any[]) => {
+              apiRecorder.record('updateLogicCom', params);
+              return api.logicCom.api.updateCom(...params);
+            },
             getAllComDefPrompts: createGetAllComDefPrompts(api?.global?.api?.getAllComDefPrompts)
           };
 

@@ -103,21 +103,22 @@ IMPORTANT: 如果要修改UI根组件，请使用此文档。
     
     <setLayout>
       - 设置组件的布局和尺寸信息，params的格式以Typescript的形式说明如下：
+        
+      \`\`\`typescript
       /**
        * 宽高尺寸
        * number - 具体的px值
        * fit-content - 适应内容
-       * 100% - 填充
+       * 100% - 填充，仅允许100%，不允许其他百分比宽度
+       * auto - 自动填充，等同于flex=1
        * 只能是三者其一，明确不允许使用其他属性，比如calc等方法
        */
-      type Size = number | "fit-content" | "100%"
+      type Size = number | "fit-content" | "100%" | "auto"
     
       /** flex中子组件定位，可配置如下layout */
       type setLayout_flex_params = {
-        /** 宽 */
-        width: Size;
-        /** 高 */
-        height: Size;
+        width?: Size;
+        height?: Size;
         /** 上外边距 */
         marginTop?: number;
         /** 右外边距 */
@@ -127,16 +128,34 @@ IMPORTANT: 如果要修改UI根组件，请使用此文档。
         /** 左外边距 */
         marginLeft?: number;
       }
+      \`\`\`
+  
       注意：
       - 1. 只有在flex布局中的组件，可以在layout中使用margin相关配置；
+
+      \`\`\`typescript
+      /** 对于flex布局的插槽，我们可以添加absolute定位的组件 */
+      type setLayout_absolute_params = {
+        position: 'absolute';
+        width?: Size;
+        height?: Size;
+        /** 距离左侧 */
+        left?: number;
+        /** 距离右侧 */
+        right?: number;
+        /** 距离上方 */
+        top?: number;
+        /** 距离下方 */
+        bottom?: number;
+      }
+      \`\`\`
   
+      \`\`\`typescript
       /** 如果组件本身是fixed类型定位，可配置如下layout */
       type setLayout_fixed_params = {
         position: 'fixed';
-        /** 宽 */
-        width: Size;
-        /** 高 */
-        height: Size;
+        width?: Size;
+        height?: Size;
         /** 距离左侧 */
         left?: number;
         /** 距离右侧 */
@@ -146,23 +165,7 @@ IMPORTANT: 如果要修改UI根组件，请使用此文档。
         /** 距离下方 */
         bottom?: number;
       }
-
-      /** 如果组件本身是绝对定位，可配置如下layout */
-      type setLayout_absolute_params = {
-        position: 'absolute';
-        /** 宽 */
-        width: Size;
-        /** 高 */
-        height: Size;
-        /** 距离左侧 */
-        left?: number;
-        /** 距离右侧 */
-        right?: number;
-        /** 距离上方 */
-        top?: number;
-        /** 距离下方 */
-        bottom?: number;
-      }
+      \`\`\`
       
       例如，当用户要求将当前组件的宽度设置为200px，可以返回以下内容：
       ${fileFormat({
@@ -288,11 +291,12 @@ IMPORTANT: 如果要修改UI根组件，请使用此文档。
     <delete>
       - 删除组件
 
-      例如，当用户要求删除组件u_ou1rs，可以返回以下内容：
+      例如，当用户要求删除组件u_o21rs，可以返回以下内容：
       ${fileFormat({
-        content: `["u_ou1rs",":root","delete"]`,
-        fileName: '删除组件.json'
+        content: `["u_o21rs",":root","delete"]`,
+        fileName: '删除组件整体.json'
       })}
+      注意：删除时，必须删除组件的整体，不能删除组件的某个部分，所以使用:root选择器。
     </delete>
   
     注意：actions文件每一行遵循 JSON 语法，禁止非法代码，禁止出现内容省略提示、单行注释、省略字符。
@@ -303,13 +307,7 @@ IMPORTANT: 如果要修改UI根组件，请使用此文档。
       - 禁止使用{}、{{}}这类变量绑定语法，并不支持此语法
       - 禁止使用非法字符或特殊符号
       - 所有内容均为静态数据，禁止解构，禁止使用变量
-    
-    其中，target选择器的组成可以是组件id + 选择器的形式，例如：
-      - :root - 组件整体；
-      - :btn - 组件的按钮部分；
-      - #u_iiusd7 :root - 组件id为u_iiusd7的组件整体；
-      - #u_iiusd7 :btn - 组件id为u_iiusd7的按钮部分；
-    组件id可以从上下文中获取。
+
    
     注意：
       - 返回actions文件内容时，务必注意操作步骤的先后顺序；
@@ -425,31 +423,58 @@ IMPORTANT: 如果要修改UI根组件，请使用此文档。
       })}
           在上例中:
             - 声明布局编辑器的值，注意布局编辑器必须声明，其中flexDirection声明成column；
-            - 通过alignItems来实现子组件的垂直居中； 
+            - 通过alignItems来实现子组件的垂直居中；  
+          
+          下面的例子使用flex进行横向左右均分布局，实现各占一半的效果:
+          ${fileFormat({
+            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex3","ignore": true,"ns":"布局组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","justifyContent":"space-between","alignItems":"center"}}]}]
+          ["u_flex3","插槽id占位","addChild",{"title":"A组件","comId":"u_a321s","ns":"组件","layout":{"width":"auto","height":40,"marginRight":8},"configs":[]}]
+          ["u_flex3","插槽id占位","addChild",{"title":"B组件","comId":"u_b321s","ns":"组件","layout":{"width":"auto","height":40},"configs":[]}]
+          `,
+            fileName: '左右各占一半布局.json'
+          })}
+          在上例中:
+            - 为了实现各占一半，配置A组件和B组件的宽度都为自适应auto（效果等同于flex=1），实现各占一半的效果；
+              - 注意：不允许配置百分比宽度；
+            - 判断仅布局，添加ignore标记，优化搭建内容。
+            - 通过marginRight配置左侧组件与右侧组件的间距；
 
           下面的例子使用flex进行横向均分或等分布局，实现一行N列的效果:
           ${fileFormat({
-        content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex0","ignore": true,"ns":"布局组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","justifyContent":"space-between","alignItems":"center"}}]}]
-          ["u_flex0","插槽id占位","addChild",{"title":"A组件","comId":"u_a","ns":"组件","layout":{"width":40,"height":40},"configs":[]}]
-          ["u_flex0","插槽id占位","addChild",{"title":"B组件","comId":"u_b","ns":"组件","layout":{"width":40,"height":40},"configs":[]}]
-          ["u_flex0","插槽id占位","addChild",{"title":"C组件","comId":"u_c","ns":"组件","layout":{"width":40,"height":40},"configs":[]}]
+            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex4","ignore": true,"ns":"布局组件","layout":{"width":"100%","height":120},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","justifyContent":"space-between","alignItems":"center"}}]}]
+          ["u_flex4","插槽id占位","addChild",{"title":"A组件","comId":"u_aksi","ns":"组件","layout":{"width":40,"height":40},"configs":[]}]
+          ["u_flex4","插槽id占位","addChild",{"title":"B组件","comId":"u_b293e","ns":"组件","layout":{"width":40,"height":40},"configs":[]}]
+          ["u_flex4","插槽id占位","addChild",{"title":"C组件","comId":"u_csim2","ns":"组件","layout":{"width":40,"height":40},"configs":[]}]
           `,
-        fileName: '一行N列布局.json'
-      })}
+            fileName: '一行N列布局.json'
+          })}
           在上例中:
             - 声明布局编辑器的值，注意布局编辑器必须声明，其中flexDirection也必须声明；
             - 针对内容元素的尺寸，配置合理的高度，防止内容溢出；
-            - 为了实现均分，请对子元素配置宽度和高度的固定值，保证卡片之间存在间距，避免大小不一导致的非均分效果；
+            - 为了实现均分，保证卡片之间存在间距，配置卡片宽度和高度都为固定值
+              - 注意：不允许配置百分比宽度；
             - 判断仅布局，添加ignore标记，优化搭建内容。
+
+          下面的例子展示flex布局中负margin的妙用，通过负margin实现背景层+内容层重叠的效果：
+          ${fileFormat({
+            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex6","ns":"布局组件","layout":{"width":"100%","height":"fit-content"},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"column"}}]}]
+          ["u_flex6","插槽id占位","addChild",{"title":"背景层","comId":"u_asds6","ns":"组件","layout":{"width":"100%","height":60},"configs":[]}]
+          ["u_flex6","插槽id占位","addChild",{"title":"内容层","comId":"u_csdt6","ns":"组件","layout":{"width":"100%","height":100, "marginTop": -30},"configs":[]}]
+          `,
+            fileName: '负margin实现背景层+内容层重叠.json'
+          })}
+          在上例中:
+            - 声明布局编辑器的值，注意布局编辑器必须声明，其中flexDirection也必须声明；
+            - 通过负margin实现背景层+内容层重叠的效果；
 
           特殊地，在flex布局中的元素还可以配置position=absolute，用于实现绝对定位效果:
           ${fileFormat({
-        content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex3","ns":"布局组件","layout":{"width":"100%","height":200},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
-          ["u_flex3","插槽id占位","addChild",{"title":"绝对定位组件","comId":"u_absolute","ns":"组件","layout":{"position":"absolute","width":100,"height":40,"top":20,"left":20},"configs":[]}]
-          ["u_flex3","插槽id占位","addChild",{"title":"普通组件","comId":"u_normal","ns":"组件","layout":{"width":80,"height":80},"configs":[]}]
+            content: `["目标组件id","插槽id占位","addChild",{"title":"添加一个布局组件","comId":"u_flex5","ns":"布局组件","layout":{"width":"100%","height":200},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row","alignItems":"center"}}]}]
+          ["u_flex5","插槽id占位","addChild",{"title":"绝对定位组件","comId":"u_abs12","ns":"组件","layout":{"position":"absolute","width":100,"height":40,"top":20,"left":20},"configs":[]}]
+          ["u_flex5","插槽id占位","addChild",{"title":"普通组件","comId":"u_nor12","ns":"组件","layout":{"width":80,"height":80},"configs":[]}]
           `,
-        fileName: '绝对定位效果.json'
-      })}
+            fileName: '绝对定位效果.json'
+          })}
           在上例中:
             - 声明布局编辑器的值，注意布局编辑器必须声明，其中flexDirection也必须声明；
             - 通过layout中的属性，设置成绝对定位效果，在一些特殊的角标等场景下很有效果；
@@ -495,8 +520,6 @@ IMPORTANT: 如果要修改UI根组件，请使用此文档。
         - 宽度和高度要根据fontSize等样式来计算，预留更多的空间；
         - 尽量配置文本省略参数，防止一行换行后变多行带来的布局变化；
         - 文本最小大小可以配置到fontSize=10，在一些文字内容特别多的场景可以配置小文字；
-      6. 注意参考图片/设计稿里元素是否互相遮挡，避免出现遮挡（注意忽略角标）；
-      7. 配置位置信息时，始终考虑父元素（插槽、父组件或祖先插槽及组件）的高度与宽度信息，防止出现遮挡或重叠；
       8. 子组件计算尺寸（宽度与高度）的时候，需要向上考虑父元素（插槽、父组件或祖先插槽及组件）所有的尺寸与间距等样式，否则容易计算错误；
       9. 对于横向排列或者竖向排列的多个相似元素，考虑如下情况:
         - 如果猜测是动态项，使用列表类组件来搭建；
@@ -553,7 +576,7 @@ ${config.appendPrompt}
     <assistant_response>
       根据图片效果，主要执行以下修改：
       1. 容器原来是均分布局，为了实现效果图中的效果，需要修改为左右布局，左侧为图标+文本，右侧为箭头；
-      2. 删除容器中原有的按钮，替换成图标+文本，替换可以使用指定位置类完成，先添加左侧容器，再添加图标和文本；
+      2. 删除容器中原有的按钮，替换成图标+文本，替换可以使用指定位置来完成，先添加左侧容器，再添加图标和文本；
       3. 中间有一个封条装饰，flex布局下不好实现，用绝对定位实现；
       
       ${fileFormat({
@@ -643,9 +666,10 @@ ${config.appendPrompt}
                 }
 
                 // 目标组件ID需要映射
-                const targetId = action.params.comId;
-                if (targetId !== "_root_") {
-                  action.params.comId = comIdTransform.getComId(targetId);
+                const toParams = action.params?.to ?? {};
+                const targetId = toParams.comId;
+                if (targetId && targetId !== "_root_") {
+                  action.params.to.comId = comIdTransform.getComId(targetId);
                 }
               } else if (action.type === "doConfig") {
                 const comId = action.comId;
@@ -655,7 +679,9 @@ ${config.appendPrompt}
                 }
               }
             })
-            promiseStack.add(() => config.onActions(actions, currentStatus, actionType))
+            actions.forEach((action: any) => {
+              promiseStack.add(() => config.onActions([action], currentStatus, actionType))
+            })
           } catch (error) {
             console.error('refactor-component onActions error', error);
           }

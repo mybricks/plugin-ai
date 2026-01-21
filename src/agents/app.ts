@@ -132,7 +132,7 @@ export const requestGeneratePageAgent = (pageId: string, pageTitle: string, para
         },
         updateCom: (...args: any) => {
           // console.log("[updateCom]", args)
-          return context.api?.logicCom?.api?.updateCom?.(...args)
+          return context.designer?.updateLogicCom?.(...args)
         },
       }),,
     ],

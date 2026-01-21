@@ -19,6 +19,8 @@ class Context {
     createPage?: (id: string, title: string, config?: any) => Promise<{ id: string; onProgress: Function; }>;
     createCanvas?: () => Promise<{ id: string; title: string; }>;
     updatePage?: (...params: any[]) => Promise<void>;
+    updateUiCom?: (...params: any[]) => Promise<void>;
+    updateLogicCom?: (...params: any[]) => Promise<void>;
     getAllComDefPrompts: () => string;
   };
 

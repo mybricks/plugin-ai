@@ -283,6 +283,47 @@ function getRefactorExamples() {
     })}
     </assistant_response>
   </example>
+
+  <example>
+    <user_query>按照这个设计稿还原效果</user_query>
+    <assistant_response>
+    好的，我将按照这个设计稿还原效果，将目前的效果还原成和设计稿一致，以下是需求分析规格说明书和组件选型的内容：
+    ${fileFormat({
+      content: `*概述*
+用户需要按照设计稿还原效果，将目前的效果还原成和设计稿一致，让我看看现在有哪里不一致，然后给出调整方案。
+
+*现状与实现路径*
+  相比设计稿，当前效果有以下不一致：
+    - 商品卡片部分：
+      当前是flex布局，基于flex布局来分析的话
+      设计稿效果：布局为左右两部分，左边是带圆角的图片，右侧是信息区域，信息区域为上下结构，上方换行标题，下方居右的价格和划线价，
+      现状：布局是上下布局，上面一个图片，下面一个价格
+      现状和实现路径：
+        - 优化布局和结构：修改布局为横向布局，同时优化整体结构，添加右侧的信息区域容器用于垂直布局，在信息区域中添加横向容器，用于水平布局价格和划线价；
+        - 移动原有内容：移动原来的标题组件到右侧信息区域容器中，移动原来的价格组件到右侧信息区域的价格横向容器，同时添加一个划线价到价格容器；
+        - 优化样式：图片配置圆角，标题配置换行，价格配置居右，价格配置字体粗细颜色，划线价配置字体大小颜色；
+    - 模块整体部分：
+      设计稿效果：氛围模块和内容模块是一个背景氛围+内容模块的错位布局，内容往上遮盖住背景。
+      现状：是一个上下布局，氛围模块在上方，内容模块在下方。
+      现状和实现路径：
+        - 优化布局和结构：由于是flex布局，内容模块通过负margin往上遮盖住背景。
+      `,
+      fileName: '还原需求文档.md'
+    })}
+    ${fileFormat({
+      content: `
+      [
+        {
+          "namespace": "mybricks.somelib.text"
+        },
+        {
+          "namespace": "mybricks.somelib.container"
+        }
+      ]`,
+      fileName: '需要的组件信息.json'
+    })}
+    </assistant_response>
+  </example>
 </examples>
 `
 }
@@ -420,10 +461,13 @@ export default function analyzeRequirementAndComponents(config: AnalyzeRequireme
     name: NAME,
     displayName: "分析当前需求",
     description: `分析/扩写需求 + 组件选型，针对用户的搭建需求（可能是文本，一句话、图片附件、文件附件等需求）生成需求文档，并且分析可能使用到的组件。
-参数(mode)：模式，可选择的值有 generate、extract、refactor 三种：
-  - generate模式：生成UI时使用，对需求内容进行扩写和整理，常用于从无到有生成新的需求，后续往往使用「生成UI」工具；
-  - extract模式：生成UI时使用，从图片/设计稿/原型文件中提取和解析UI内容，常用于生成时严格还原设计稿，后面往往使用「生成UI」工具；
-  - refactor模式：修改UI时使用，表示分析需求和附件来对现有搭建的内容进行优化、调整、重构，后面往往使用「修改UI」工具；
+参数(mode)：模式，可选择的值有生成和修改两大类，具体是 generate、extract、refactor 三种：
+  其中：
+    - 从0开始生成一张新画布时，可以选择生成UI的两种模式：
+      - generate模式：对需求内容进行扩写和整理，常用于从无到有生成新的需求，后续往往使用「生成UI」工具；
+      - extract模式：从图片/设计稿/原型文件中提取和解析需求，常用于生成时严格还原设计稿，后面往往使用「生成UI」工具；
+    - 在已有UI内容的画布上，可以选择修改UI的一种模式：
+      - refactor模式：分析需求或附件来对现有搭建的内容进行优化、调整、重构、还原效果，后面往往使用「修改UI」工具；
 工具分类：信息获取类
 前置要求：用户提出过搭建需求（可能是文本，一句话、图片附件、文件附件等需求）
 返回值：详细理解用户需求后的分析说明书文件 + 组件选型；`,
@@ -435,7 +479,10 @@ export default function analyzeRequirementAndComponents(config: AnalyzeRequireme
     },
     // lastAppendMessage: '需求已分析完成，请继续完成用户需求。',
     getPrompts: ({ params }) => {
-      const mode = params?.mode ?? 'refactor';
+      let mode = params?.mode ?? 'refactor';
+      if (mode === 'generate-from-design') {
+        mode = 'extract';
+      }
       
       const commonPrompts = getCommonPrompts(config)
       const workflow = getWorkflowByMode(mode, config)

@@ -1,9 +1,9 @@
 /**
  * API 调用收集模块
- * 用于收集 createPage、createCanvas、updatePage 的调用参数和时间戳
+ * 用于收集 createPage、createCanvas、updatePage、updateUiCom、updateLogicCom 的调用参数和时间戳
  */
 
-export type RecordedActionType = 'createPage' | 'createCanvas' | 'updatePage';
+export type RecordedActionType = 'createPage' | 'createCanvas' | 'updatePage' | 'updateUiCom' | 'updateLogicCom';
 
 export interface RecordedAction {
   /** 操作类型 */

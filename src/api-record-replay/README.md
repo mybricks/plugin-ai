@@ -2,7 +2,7 @@
 
 ## 概述
 
-该模块提供了对 `createPage`、`createCanvas`、`updatePage` 这三个 API 的收集和回放功能。
+该模块提供了对 `createPage`、`createCanvas`、`updatePage`、`updateUiCom`、`updateLogicCom` 这些 API 的收集和回放功能。
 
 ## 使用方式
 
@@ -19,7 +19,7 @@ window.APIRecordReplay.start();
 
 #### 2. 执行操作
 
-录制开始后，所有对 `createPage`、`createCanvas`、`updatePage` 的调用都会被自动记录。
+录制开始后，所有对 `createPage`、`createCanvas`、`updatePage`、`updateUiCom`、`updateLogicCom` 的调用都会被自动记录。
 
 #### 3. 停止录制
 
@@ -106,9 +106,11 @@ window.APIRecordReplay.clear();
 window.APIRecordReplay.start();
 
 // 2. 执行一些操作（这些操作会被自动记录）
-// await context.api.page.api.createPage('canvas-id', 'Page Title');
-// await context.api.page.api.createCanvas();
-// await context.api.page.api.updatePage(...args);
+// await context.designer.createPage('canvas-id', 'Page Title');
+// await context.designer.createCanvas();
+// await context.designer.updatePage(...args);
+// await context.designer.updateUiCom(...args);
+// await context.designer.updateLogicCom(...args);
 
 // 3. 停止录制
 window.APIRecordReplay.stop();
@@ -154,11 +156,23 @@ await window.APIRecordReplay.replay({
     "params": [["action1"], "ing"],
     "delay": 50,
     "timestamp": 1234567890273
+  },
+  {
+    "type": "updateUiCom",
+    "params": ["comId", ["action1"], "ing"],
+    "delay": 30,
+    "timestamp": 1234567890303
+  },
+  {
+    "type": "updateLogicCom",
+    "params": ["comId", ["action1"], "ing"],
+    "delay": 30,
+    "timestamp": 1234567890333
   }
 ]
 ```
 
-- `type`: 操作类型（'createPage' | 'createCanvas' | 'updatePage'）
+- `type`: 操作类型（'createPage' | 'createCanvas' | 'updatePage' | 'updateUiCom' | 'updateLogicCom'）
 - `params`: 调用参数数组
 - `delay`: 距离上一次调用的时间间隔（毫秒）
 - `timestamp`: 时间戳（可选，用于调试）
