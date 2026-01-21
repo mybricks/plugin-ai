@@ -227,7 +227,7 @@ IMPORTANT: 如果要修改UI根组件，请使用此文档。
         title:string //被添加组件的标题
         ns:string //在 <允许添加的组件 /> 中声明的UI组件namespace
         comId:string // 新添加的组件5位uuid，禁止重复，在所有UI组件中唯一
-        index?: number //可选，默认（不配置时）为最后一位，添加组件时可以指定插槽位置，index=0表示放到第一位，index=1表示放到第二位
+        index?: number // 添加到插槽的位置，index=0表示第一位，index=1表示第二位。不指定时默认添加到末尾
         layout?: setLayout_flex_params ｜ setLayout_fixed_params ｜ setLayout_absolute_params //可选，添加组件时可以指定位置和尺寸信息
         configs?: Array<configStyle_params | configProperty_params> // 添加组件可以配置的信息
         // 渲染优化
@@ -237,21 +237,21 @@ IMPORTANT: 如果要修改UI根组件，请使用此文档。
       \`\`\`
       
       例如：
-      - 添加文本组件：
+      - 添加文本组件到插槽末尾：
       ${fileFormat({
         content: `["u_ou1rs","content","addChild",{"title":"添加的文本组件","ns":"namespace占位","comId":"u_iiusd7"}]`,
         fileName: '添加文本组件步骤.json'
       })}
 
-      - 添加组件带有配置属性：
+      - 添加组件带有配置属性，同时指定位置：
       ${fileFormat({
-        content: `["u_ou1rs","content","addChild",{"title":"背景图","ns":"namespace占位","comId":"u_iiusd7","layout":{"width":"100%","height":200,"marginTop":8,"marginLeft":12,"marginRight":12},"configs":[{"path":"常规/图片地址","value":"https://ai.mybricks.world/image-search?term=风景"},{"path":"样式/图片","style":{"borderRadius":"8px"}}]}]`,
+        content: `["u_ou1rs","content","addChild",{"title":"背景图","ns":"namespace占位","comId":"u_iiusd7","index":2,"layout":{"width":"100%","height":200,"marginTop":8,"marginLeft":12,"marginRight":12},"configs":[{"path":"常规/图片地址","value":"https://ai.mybricks.world/image-search?term=风景"},{"path":"样式/图片","style":{"borderRadius":"8px"}}]}]`,
         fileName: '添加带配置属性的步骤.json'
       })}
 
       - 添加组件带index指定位置：
       ${fileFormat({
-        content: `["u_ou1rs","content","addChild",{"title":"添加的文本组件","ns":"namespace占位","comId":"u_iiusd7","index":1}]`,
+        content: `["u_ou1rs","content","addChild",{"title":"添加的文本组件","ns":"namespace占位","comId":"u_iiusd7","index":2}]`,
         fileName: '添加带index指定位置的步骤.json'
       })}
   
@@ -263,8 +263,7 @@ IMPORTANT: 如果要修改UI根组件，请使用此文档。
   
       注意:
         - 新添加的组件ID必须使用5位唯一的字母数字组合，禁止重复，在所有UI组件中唯一；
-        - 要充分考虑被添加的组件与其他组件之间的间距以及位置关系，确保添加的组件的美观度的同时、且不会与其他组件重叠或冲突；
-        - 追加的组件默认在插槽内容的末尾，如果有位置要求，可以通过index来指定位置；
+        - index参数控制组件在插槽中的顺序位置。执行addChild前，需明确目标位置；
     </addChild>
   
     <move>
@@ -296,7 +295,10 @@ IMPORTANT: 如果要修改UI根组件，请使用此文档。
         content: `["u_o21rs",":root","delete"]`,
         fileName: '删除组件整体.json'
       })}
-      注意：删除时，必须删除组件的整体，不能删除组件的某个部分，所以使用:root选择器。
+
+      注意：
+      - 删除时，必须删除组件的整体，不能删除组件的某个部分，所以使用:root选择器。
+      - 在规划多个action时，需要考虑delete对后续addChild、move操作中index参数的影响
     </delete>
   
     注意：actions文件每一行遵循 JSON 语法，禁止非法代码，禁止出现内容省略提示、单行注释、省略字符。
@@ -583,9 +585,9 @@ ${config.appendPrompt}
         content: `["u_24uiu", ":root", "doConfig", {"path":"样式/布局","style":{"display": "flex", "flexDirection": "row", "justifyContent": "space-between", "alignItems": "center"}}]
 ["u_iobtn", ":root", "delete"]
 ["u_24uiu", "slotId", "addChild", {"title":"左侧容器","comId":"u_sdflx","index":0,"ns":"布局组件","layout":{"width":"fit-content","height":60, "marginLeft": 12},"configs":[{"path":"常规/布局","value":{"display":"flex","flexDirection":"row"}}]}]
-["u_sdflex", "addChild", {"title":"图标组件","comId":"u_icon","ns":"图标组件","layout":{"width":24,"height":24,"marginLeft":8},"configs":[]}]
-["u_sdflex", "addChild", {"title":"文本组件","comId":"u_text","ns":"文本组件","layout":{"width":"fit-content","height":"fit-content", "marginLeft": 8},"configs":[]}]
-["u_sdflex", "addChild", {"title":"箭头图标组件","comId":"u_rso0c","ns":"图标组件","layout":{"width":24,"height":24},"configs":[]}]
+["u_sdflex", "addChild", {"title":"图标组件","comId":"u_icon","index":0,"ns":"图标组件","layout":{"width":24,"height":24,"marginLeft":8},"configs":[]}]
+["u_sdflex", "addChild", {"title":"文本组件","comId":"u_text","index":1,"ns":"文本组件","layout":{"width":"fit-content","height":"fit-content", "marginLeft": 8},"configs":[]}]
+["u_sdflex", "addChild", {"title":"箭头图标组件","comId":"u_rso0c","index":2,"ns":"图标组件","layout":{"width":24,"height":24},"configs":[]}]
 ["u_24uiu", "slotId", "addChild", {"title":"添加一个绝对定位组件","comId":"u_abs1","ns":"布局组件","layout":{"position": "absolute", "width": 100, "height": 30, "bottom": 0, "left": 360},"configs":[]}]
 `,
         fileName: '重构区域.json'
