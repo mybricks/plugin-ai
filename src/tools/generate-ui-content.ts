@@ -824,12 +824,12 @@ ${config.fewShots}
                       }
                     }
                   },
-                ]
-                promiseStack.add(() => {
-                  const diagramId = context.api?.diagram?.api?.getDiagramInfo(targetComId, target.slotId).id;
-                  diagrams[`${targetComId}_${target.slotId}`] = diagramId;
-                  return context.api?.diagram?.api?.updateDiagram(diagramId, newActions, "start")
-                })
+            ]
+            promiseStack.add(() => {
+              const diagramId = context.designer?.getDiagramInfo?.(targetComId, target.slotId).id;
+              diagrams[`${targetComId}_${target.slotId}`] = diagramId;
+              return context.designer?.updateDiagram?.(diagramId, newActions, "start")
+            })
               }
             } else if (action[0] === "connect") {
               const varParams = action[1];
@@ -858,20 +858,20 @@ ${config.fewShots}
                       varId: varComId
                     }
                   }
-                  promiseStack.add(() => config.onActions([newAction], currentStatus))
-                  promiseStack.add(() => {
-                    diagrams[diagramKey] = context.api?.diagram?.api?.getDiagramInfoByListenerInfo(uiScope.id, uiScope.slotId, varComId).id;
-                    scope.status = "start";
-                  })
+                promiseStack.add(() => config.onActions([newAction], currentStatus))
+                promiseStack.add(() => {
+                  diagrams[diagramKey] = context.designer?.getDiagramInfoByListenerInfo?.(uiScope.id, uiScope.slotId, varComId).id;
+                  scope.status = "start";
+                })
                 }
-              } else {
-                if (!diagrams[diagramKey]) {
-                  promiseStack.add(() => {
-                    diagrams[diagramKey] = context.api?.diagram?.api?.getDiagramInfoByVarId(varComId).id;
-                    scope.status = "start";
-                  })
-                }
+            } else {
+              if (!diagrams[diagramKey]) {
+                promiseStack.add(() => {
+                  diagrams[diagramKey] = context.designer?.getDiagramInfoByVarId?.(varComId).id;
+                  scope.status = "start";
+                })
               }
+            }
 
               const varInstanceId = uuid()
               const uiComInstanceId = uuid()
@@ -956,25 +956,25 @@ ${config.fewShots}
                     }
                   }
                 },
-              ]
-              console.log("[连接ui组件]", newActions)
-              promiseStack.add(() => {
-                return context.api?.diagram?.api?.updateDiagram(diagrams[diagramKey], newActions, scope.status)
-              })
+            ]
+            console.log("[连接ui组件]", newActions)
+            promiseStack.add(() => {
+              return context.designer?.updateDiagram?.(diagrams[diagramKey], newActions, scope.status)
+            })
             }
           })
         } catch (error) {
           console.error('generate-page onVarActions error', error);
         }
         
-        if (status === "complete") {
-          promiseStack.add(() => {
-            config.onActions([], status)
-            Object.entries(diagrams).forEach(([_, id]) => {
-              context.api?.diagram?.api?.updateDiagram(id, [], status)
-            })
+      if (status === "complete") {
+        promiseStack.add(() => {
+          config.onActions([], status)
+          Object.entries(diagrams).forEach(([_, id]) => {
+            context.designer?.updateDiagram?.(id, [], status)
           })
-        }
+        })
+      }
       }
 
       return displayContent = Object.entries(fileNameToContent).reduce((pre, [fileName, content]) => {

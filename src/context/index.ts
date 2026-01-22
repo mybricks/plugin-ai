@@ -21,6 +21,11 @@ class Context {
     updatePage?: (...params: any[]) => Promise<void>;
     updateUiCom?: (...params: any[]) => Promise<void>;
     updateLogicCom?: (...params: any[]) => Promise<void>;
+    createDiagram?: (...params: any[]) => Promise<{ id: string; title: string }>;
+    updateDiagram?: (...params: any[]) => Promise<void>;
+    getDiagramInfo?: (...params: any[]) => any;
+    getDiagramInfoByVarId?: (...params: any[]) => any;
+    getDiagramInfoByListenerInfo?: (...params: any[]) => any;
     getAllComDefPrompts: () => string;
   };
 

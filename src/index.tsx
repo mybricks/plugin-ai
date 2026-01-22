@@ -120,6 +120,23 @@ export default function pluginAI(params?: any): any {
               apiRecorder.record('updateLogicCom', params);
               return api.logicCom.api.updateCom(...params);
             },
+            createDiagram: async (...params: any[]) => {
+              apiRecorder.record('createDiagram', params);
+              return api.diagram.api.createDiagram(...params);
+            },
+            updateDiagram: async (...params: any[]) => {
+              apiRecorder.record('updateDiagram', params);
+              return api.diagram.api.updateDiagram(...params);
+            },
+            getDiagramInfo: (...params: any[]) => {
+              return api.diagram.api.getDiagramInfo(...params);
+            },
+            getDiagramInfoByVarId: (...params: any[]) => {
+              return api.diagram.api.getDiagramInfoByVarId(...params);
+            },
+            getDiagramInfoByListenerInfo: (...params: any[]) => {
+              return api.diagram.api.getDiagramInfoByListenerInfo(...params);
+            },
             getAllComDefPrompts: createGetAllComDefPrompts(api?.global?.api?.getAllComDefPrompts)
           };
 

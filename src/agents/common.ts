@@ -285,11 +285,11 @@ export const requestCommonAgent = (params: any) => {
           },
           createDiagram: (...args: any) => {
             // console.log("[createDiagram - args]", args)
-            return context.api.diagram.api.createDiagram(...args)
+            return context.designer?.createDiagram?.(...args)
           },
           updateDiagram: (...args: any) => {
             // console.log("[updateDiagram - args]", args)
-            return context.api.diagram.api.updateDiagram(...args)
+            return context.designer?.updateDiagram?.(...args)
           },
           getDiagramInfo: (...args: any) => {
             if (!args[0]) {
@@ -301,7 +301,7 @@ export const requestCommonAgent = (params: any) => {
 
               return null
             }
-            return context.api.diagram.api.getDiagramInfo(...args)
+            return context.designer?.getDiagramInfo?.(...args)
           },
           updatePage: (...args: any) => {
             return context.designer?.updatePage?.(focusInfo.pageId, ...args)
