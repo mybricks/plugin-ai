@@ -70,9 +70,9 @@ const View = ({ user, copilot, api }: ViewProps) => {
         focusID.current = id;
         const status = context.requestStatusTracker.getStatus(id);
         statusChange(status.state === "pending" ? "loading" : "normal");
-        setTimeout(() => {
-          senderRef.current!.focus();
-        })
+        // setTimeout(() => {
+        //   senderRef.current!.focus();
+        // })
         if (type === "uiCom") {
           const comInfo = context.api.uiCom.api.getOutlineInfo(focus.comId);
           const agent = context.agents!.find((agent) => agent.type === comInfo.def.namespace);
