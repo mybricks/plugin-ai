@@ -17,6 +17,7 @@ export const requestAgent = (params: any) => {
       return (agent as AbstractAgent).request({
         key: `${context.pluginParams.key}_${context.currentFocus!.pageId}_${context.currentFocus!.comId}`,
         params,
+        focus: { ...context.currentFocus }
       })
     }
   }

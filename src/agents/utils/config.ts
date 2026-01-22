@@ -390,7 +390,6 @@ export abstract class AbstractAgent {
       title: options.name,
       prompt: backStoryPrompts({ goal: options.goal, backstory: options.backstory })
     };
-    console.log("[this.system]", this.system)
     context.agents.push(this);
   }
 
@@ -412,5 +411,5 @@ export abstract class AbstractAgent {
     return this.rxaiMap[key];
   }
 
-  abstract request(params: { key: any, params: any }): Promise<any>;
+  abstract request(params: { key: any; params: any; focus: any; }): Promise<any>;
 }
