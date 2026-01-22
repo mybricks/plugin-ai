@@ -64,6 +64,7 @@ type AiServiceFocusParams = {
   title: string;
   /** 类型，组件、页面，或自定义类型 */
   type: "page" | "uiCom" | "section" | "logicCom" | string;
+  vibeCoding?: boolean;
 }
 
 type AiServiceRequestParams = {
