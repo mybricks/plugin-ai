@@ -25,7 +25,7 @@ class Context {
   };
 
   /** Agent 配置 */
-  agents?: AgentConfigParams[];
+  agents: AgentConfigParams[] = [];
 
   /** 是否多画布 */
   isMutiCanvas: boolean = true

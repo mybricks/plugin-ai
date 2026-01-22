@@ -378,3 +378,39 @@ export class SingleInstanceAgent {
     })
   }
 }
+
+export abstract class AbstractAgent {
+  type: string;
+  system: any;
+  rxaiMap: any = {};
+
+  constructor(options: { type: string; goal: string; backstory: string; name: string }) {
+    this.type = options.type
+    this.system = {
+      title: options.name,
+      prompt: backStoryPrompts({ goal: options.goal, backstory: options.backstory })
+    };
+    console.log("[this.system]", this.system)
+    context.agents.push(this);
+  }
+
+  getRxai(params: { key: any }) {
+    const { key } = params;
+    if (!this.rxaiMap[key]) {
+      this.rxaiMap[key] = new Rxai({
+        system: this.system,
+        request: {
+          maxRetries: 3,
+          requestAsStream: context.pluginParams.requestAsStream
+        },
+        idb: new IDB({
+          dbName: "@mybricks/plugin-ai/messages",
+          key
+        })
+      })
+    }
+    return this.rxaiMap[key];
+  }
+
+  abstract request(params: { key: any, params: any }): Promise<any>;
+}

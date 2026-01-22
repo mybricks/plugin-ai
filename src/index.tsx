@@ -13,7 +13,7 @@ import { context } from './context';
 import { StartView } from "./startView";
 import { DeviceType } from './types';
 import { createGetAllComDefPrompts } from "./api/cloud-components";
-import { AgentConfigParams, getAgentConfigs, backStoryPrompts, transformLegacyPromptsToAgents } from './agents/utils/config';
+import { AgentConfigParams, getAgentConfigs, backStoryPrompts, transformLegacyPromptsToAgents, AbstractAgent } from './agents/utils/config';
 
 export { fileFormat } from '@mybricks/rxai'
 import preset from "./preset"
@@ -230,3 +230,5 @@ interface AgentPluginProps {
 export function agentPlugin(props: AgentPluginProps) {
   return pluginAI(props)
 }
+
+export { AbstractAgent }

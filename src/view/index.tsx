@@ -5,7 +5,7 @@ import { Messages } from "../components/messages";
 import { Sender, SenderRef, SenderProps } from "../components/sender";
 import { context } from "../context";
 import { Agents } from '../agents'
-import { SingleInstanceAgent } from "../agents/utils/config";
+import { AbstractAgent } from "../agents/utils/config";
 import css from "./index.less";
 
 interface ViewProps {
@@ -73,13 +73,11 @@ const View = ({ user, copilot, api }: ViewProps) => {
         // setTimeout(() => {
         //   senderRef.current!.focus();
         // })
-        if (type === "uiCom") {
-          const comInfo = context.api.uiCom.api.getOutlineInfo(focus.comId);
-          const agent = context.agents!.find((agent) => agent.type === comInfo.def.namespace);
-          if (agent && agent instanceof SingleInstanceAgent) {
-            const rxai = agent.getRxai({
+        if (focus.vibeCoding) {
+          const agent = context.agents!.find((agent) => agent instanceof AbstractAgent && agent.type === "vibeCoding");
+          if (agent) {
+            const rxai = (agent as AbstractAgent).getRxai({
               key: `${context.pluginParams.key}_${focus.pageId}_${focus.comId}`,
-              focus: { ...focus },
             })
             setRxai(rxai);
           } else {
@@ -138,7 +136,7 @@ const View = ({ user, copilot, api }: ViewProps) => {
 
   return (
     <div className={classNames(css.view)}>
-      <Header rxai={rxai}/>
+      <Header key={rxai.key} rxai={rxai}/>
       <Messages
         key={rxai.key}
         user={user}

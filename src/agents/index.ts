@@ -2,7 +2,7 @@ import { requestGenerateCanvasAgent } from './app'
 import { requestCommonAgent } from './common'
 import { getAgentInstance } from './utils/config'
 import { context } from '../context'
-import { SingleInstanceAgent } from "./utils/config"
+import { AbstractAgent } from "./utils/config"
 
 /**
  * 统一的 agent 请求入口
@@ -11,11 +11,13 @@ import { SingleInstanceAgent } from "./utils/config"
 export const requestAgent = (params: any) => {
   const type = context.currentFocus?.type;
 
-  if (context.currentFocus && type === "uiCom") {
-    const comInfo = context.api.uiCom.api.getOutlineInfo(context.currentFocus.comId);
-    const agent = context.agents!.find((agent) => agent.type === comInfo.def.namespace);
-    if (agent && agent instanceof SingleInstanceAgent) {
-      return agent.request(`${context.pluginParams.key}_${context.currentFocus!.pageId}_${context.currentFocus!.comId}`, params);
+  if (context.currentFocus?.vibeCoding) {
+    const agent = context.agents!.find((agent) => agent instanceof AbstractAgent && agent.type === "vibeCoding");
+    if (agent) {
+      return (agent as AbstractAgent).request({
+        key: `${context.pluginParams.key}_${context.currentFocus!.pageId}_${context.currentFocus!.comId}`,
+        params,
+      })
     }
   }
 
