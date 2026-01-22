@@ -1,6 +1,7 @@
 import React from 'react';
 import data from './data';
 
+import './agents/workspace-by-knowledges/test';
 import './../test'
 
 import pkg from '../package.json';

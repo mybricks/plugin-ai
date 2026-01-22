@@ -86,3 +86,8 @@ interface T_AppCtx {
 type T_BtnClickType = 'submit' | 'cancel' | 'edit' | 'delete' | 'comment';
 
 type T_EventType = T_BtnClickType | 'add' | 'blurSave';
+
+// 组件库全局变量
+interface Window {
+  __comlibs_edit_?: any[];
+}
