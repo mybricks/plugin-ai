@@ -136,7 +136,7 @@ const View = ({ user, copilot, api }: ViewProps) => {
 
   return (
     <div className={classNames(css.view)}>
-      <Header key={rxai.key} rxai={rxai}/>
+      <Header rxai={rxai}/>
       <Messages
         key={rxai.key}
         user={user}
