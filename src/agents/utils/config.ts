@@ -390,7 +390,6 @@ export abstract class AbstractAgent {
       title: options.name,
       prompt: backStoryPrompts({ goal: options.goal, backstory: options.backstory })
     };
-    context.agents.push(this);
   }
 
   getRxai(params: { key: any }) {
@@ -412,4 +411,17 @@ export abstract class AbstractAgent {
   }
 
   abstract request(params: { key: any; params: any; focus: any; }): Promise<any>;
+}
+
+export class CustomAgent extends AbstractAgent {
+  requestAI: any;
+  constructor(options: any) {
+    super(options);
+    this.requestAI = options.request;
+  }
+
+  request(params: { key: any; params: any; focus: any; }): Promise<any> {
+    const rxai = this.getRxai({ key: params.key });
+    return this.requestAI({ rxai, ...params });
+  }
 }

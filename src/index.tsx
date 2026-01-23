@@ -14,16 +14,16 @@ import { context } from './context';
 import { StartView } from "./startView";
 import { DeviceType } from './types';
 import { createGetAllComDefPrompts } from "./api/cloud-components";
-import { AgentConfigParams, getAgentConfigs, backStoryPrompts, transformLegacyPromptsToAgents, AbstractAgent } from './agents/utils/config';
+import { AgentConfigParams, getAgentConfigs, backStoryPrompts, transformLegacyPromptsToAgents, AbstractAgent, CustomAgent } from './agents/utils/config';
 
-export { fileFormat } from '@mybricks/rxai'
 import preset from "./preset"
 import { apiRecorder } from './api-record-replay';
 import { replay, replayFromJSON, ReplayAPI, ReplayOptions } from './api-record-replay';
 import { RecordedAction } from './api-record-replay';
+import { fileFormat } from '@mybricks/rxai';
 
 // 导出收集和回放相关的接口
-export { apiRecorder, replay, replayFromJSON };
+export { apiRecorder, replay, replayFromJSON, fileFormat };
 export type { RecordedAction, ReplayAPI, ReplayOptions };
 
 const transformParams = (params: any = {}) => {
@@ -216,7 +216,11 @@ export default function pluginAI(params?: any): any {
               // 使用统一的 requestAgent 方法，自动处理自定义 agent 和默认 agent
               const focusId = focus ? (focus.type === "page" ? focus.pageId : focus.comId) : "";
               context.requestStatusTracker.track(focusId, Agents.requestAgent({ ...requestParams, extension, agents, guidePrompt }))
-            }
+            },
+            registerAgent(agentConfig: any) {
+              context.agents.push(new CustomAgent(agentConfig));
+            },
+            fileFormat
           }
         }
       },
