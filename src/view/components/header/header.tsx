@@ -14,12 +14,12 @@ const Header = (params: HeaderParams) => {
     params.rxai.clear();
   }
 
-  const exportRxai = () => {
+  const exportRxai = async () => {
     try {
-      const content = context.rxai.export();
+      const content = await context.rxai.export();
       console.log("[@mybricks/plugin-ai - exportRxai]", content);
       downloadToFile({
-        content: context.rxai.export(),
+        content: content,
         name: `rxai-${new Date().getTime()}.json`
       })
     } catch (e) {
