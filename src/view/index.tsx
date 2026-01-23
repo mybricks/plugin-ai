@@ -74,15 +74,21 @@ const View = ({ user, copilot, api }: ViewProps) => {
         //   senderRef.current!.focus();
         // })
         if (focus.vibeCoding) {
-          const agent = context.agents!.find((agent) => agent instanceof AbstractAgent && agent.type === "vibeCoding");
-          if (agent) {
-            const rxai = (agent as AbstractAgent).getRxai({
-              key: `${context.pluginParams.key}_${focus.pageId}_${focus.comId}`,
-            })
-            setRxai(rxai);
-          } else {
-            setRxai(context.rxai);
-          }
+          setTimeout(() => {
+            // TODO: ai组件库里注册agents的时机不对
+            const agent = context.agents!.find((agent) => {
+              console.log(agent, agent instanceof AbstractAgent, agent.type);
+              return agent instanceof AbstractAgent && agent.type === "vibeCoding"
+            });
+            if (agent) {
+              const rxai = (agent as AbstractAgent).getRxai({
+                key: `${context.pluginParams.key}_${focus.pageId}_${focus.comId}`,
+              })
+              setRxai(rxai);
+            } else {
+              setRxai(context.rxai);
+            }
+          })
         } else {
           setRxai(context.rxai);
         }
