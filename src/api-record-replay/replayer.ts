@@ -26,6 +26,8 @@ export interface ReplayAPI {
   updatePage: (...params: any[]) => Promise<void>;
   updateUiCom: (...params: any[]) => Promise<void>;
   updateLogicCom: (...params: any[]) => Promise<void>;
+  createDiagram: (...params: any[]) => Promise<any>;
+  updateDiagram: (...params: any[]) => Promise<any>;
 }
 
 /**
@@ -86,6 +88,16 @@ export async function replay(
         case 'updateLogicCom': {
           // updateLogicCom 的参数是展开的，需要展开传递
           result = await api.updateLogicCom(...action.params);
+          break;
+        }
+        case 'createDiagram': {
+          // createDiagram 的参数是展开的，需要展开传递
+          result = await api.createDiagram(...action.params);
+          break;
+        }
+        case 'updateDiagram': {
+          // updateDiagram 的参数是展开的，需要展开传递
+          result = await api.updateDiagram(...action.params);
           break;
         }
         default:

@@ -87,7 +87,9 @@ export class APIRecordReplayManager {
       createCanvas: api.createCanvas!.bind(api),
       updatePage: api.updatePage!.bind(api),
       updateUiCom: api.updateUiCom!.bind(api),
-      updateLogicCom: api.updateLogicCom!.bind(api)
+      updateLogicCom: api.updateLogicCom!.bind(api),
+      createDiagram: api.createDiagram!.bind(api),
+      updateDiagram: api.updateDiagram!.bind(api)
     };
 
     const recordsToReplay = records || apiRecorder.getRecords();
@@ -136,7 +138,9 @@ export class APIRecordReplayManager {
       createCanvas: api.createCanvas!.bind(api),
       updatePage: api.updatePage!.bind(api),
       updateUiCom: api.updateUiCom!.bind(api),
-      updateLogicCom: api.updateLogicCom!.bind(api)
+      updateLogicCom: api.updateLogicCom!.bind(api),
+      createDiagram: api.createDiagram!.bind(api),
+      updateDiagram: api.updateDiagram!.bind(api)
     };
 
     console.log('[APIRecordReplay] 从 JSON 开始回放');
