@@ -270,8 +270,8 @@ ${this.openedComponentDocs.map(namespace => {
     try {
       schemaStr = `    - schema: ${JSON.stringify(schema)}\n`
     } catch {}
-    return pre + `  - ${title}\n` + 
-    `    - inputId: ${id}\n` + schemaStr
+    return pre + `  - ${title} → inputId: \`${id}\`\n` + 
+    schemaStr
   }, "")
   const isUI = !componentAll.rtType;
   const slots = componentAll?.slots?.reduce?.((pre: string, { id, title, type, description, inputs }: any) => {
