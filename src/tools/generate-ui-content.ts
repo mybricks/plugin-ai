@@ -26,6 +26,7 @@ class UITree {
   nodeMap = new Map();
   comIdToNamespace = new Map();
   comIdTransform = new ComIdTransform([]);
+  varIdTransform = new ComIdTransform([]);
   
   getComId(comId: string) {
     return this.comIdTransform.getComId(comId);
@@ -770,7 +771,7 @@ ${config.fewShots}
               const { comId, schema, target, title, value } = action[1];
 
               const targetComId = target.comId === "_root_" ? null : uiTree.getComId(target.comId);
-              const varComId = uiTree.getComId(comId);
+              const varComId = uiTree.varIdTransform.getComId(comId);
               uiTree.addNode({
                 id: varComId,
                 parent: {
@@ -834,7 +835,7 @@ ${config.fewShots}
             } else if (action[0] === "connect") {
               const varParams = action[1];
               const uiComParams = action[2]
-              const varComId = uiTree.getComId(varParams.comId);
+              const varComId = uiTree.varIdTransform.getComId(varParams.comId);
               const uiComId = uiTree.getComId(uiComParams.comId);
 
               const scope: any = {
