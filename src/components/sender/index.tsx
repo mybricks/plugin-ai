@@ -38,6 +38,7 @@ interface SenderProps {
   attachmentsPrompt?: string;
   disabled?: boolean;
   onBlur?: () => void;
+  mode?: "mention"
 }
 
 interface SenderRef {
@@ -47,7 +48,7 @@ interface SenderRef {
 }
 
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
-  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt } = props;
+  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode } = props;
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [inputContent, setInputContent] = useState<string | null>(null);
@@ -222,7 +223,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   return (
     <div className={css.container}>
       <div className={classNames(css.editor, {
-        [css.noMentions]: !mentions.length
+        [css.noMentions]: mode === "mention" && !mentions.length
       })}>
         {attachments.length ? (
           <div className={css.topArea}>

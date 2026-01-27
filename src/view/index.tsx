@@ -156,6 +156,7 @@ const View = ({ user, copilot, api }: ViewProps) => {
         loading={senderStateProps.loading}
         placeholder={senderStateProps.placeholder}
         disabled={senderStateProps.disabled}
+        mode="mention"
         onSend={onSend}
         onMentionClick={onMentionClick}
       />
