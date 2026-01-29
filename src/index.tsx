@@ -55,7 +55,8 @@ export default function pluginAI(params?: any): any {
   } = transformParams(params);
 
   const copilot = {
-    name: "MyBricks.ai",
+    // name: "MyBricks.ai",
+    name: "智能助手",
     avatar: "https://my.mybricks.world/image/icon.png"
   }
 
@@ -161,7 +162,8 @@ export default function pluginAI(params?: any): any {
 
           context.createRxai({
             system: {
-              title: 'MyBricks.ai',
+              // title: 'MyBricks.ai',
+              title: '智能助手',
               prompt: getAgentConfigs(agents, 'page')?.system ?? backStoryPrompts()
             },
             request: {

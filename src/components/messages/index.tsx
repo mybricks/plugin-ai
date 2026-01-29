@@ -328,9 +328,9 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
   return (
     <article className={css['chat-bubble']}>
       <header className={css['chat-bubble-header']}>
-        <span className={css['chat-bubble-header-avatar']}>
+        {/* <span className={css['chat-bubble-header-avatar']}>
           <img className={css['copilot-avatar']} src={copilot.avatar} />
-        </span>
+        </span> */}
         <span className={css['chat-bubble-header-name']}>{copilot.name}</span>
       </header>
       <section className={classNames(css['chat-message-container'], css['ai-message'])}>
