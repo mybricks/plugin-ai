@@ -15,6 +15,8 @@ interface Mention {
   title: string;
   /** 类型，组件、页面 */
   type: "page" | "uiCom";
+  /** 是否为 vibeCoding 状态（代码编辑模式） */
+  vibeCoding?: boolean;
 }
 
 interface Extension {

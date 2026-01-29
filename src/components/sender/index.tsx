@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useImperativeHandle, PropsWithoutRef, forwardRef } from "react"
 import classNames from "classnames";
 import { message } from "antd";
-import { Attachment, Loading, Send } from "../icons";
+import { Attachment, Loading, Send, Code } from "../icons";
 import { MentionTag } from "../mention";
 import { AttachmentsList } from "../attachments";
 import { Mention, Attachments } from "../types";
@@ -54,6 +54,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const [inputContent, setInputContent] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Attachments>([]);
   const [mentions, setMentions] = useState<Mention[]>([]);
+  const [vibeCoding, setVibeCoding] = useState(false);
 
   useImperativeHandle(ref, () => {
     return {
@@ -62,6 +63,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       },
       setMentions: (mentions) => {
         setMentions(mentions)
+        setVibeCoding(mentions[0]?.vibeCoding || false);
       },
     };
   }, []);
