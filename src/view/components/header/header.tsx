@@ -30,7 +30,8 @@ const Header = (params: HeaderParams) => {
   return (
     <div className={classNames(css.header)}>
       <span className={classNames(css.title)}>
-        MyBricks.ai
+        {/* MyBricks.ai */}
+        智能助手
       </span>
       <div className={css['actions']}>
         <div className={css['action']} data-mybricks-tip={"清空对话记录"} onClick={clear}>

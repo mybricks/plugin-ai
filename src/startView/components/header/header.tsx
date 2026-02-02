@@ -5,8 +5,9 @@ import css from "./header.less"
 const Header = () => {
   return (
     <div className={classNames(css.header)}>
-      <img src="https://my.mybricks.world/image/icon.png"/>
-      MyBricks.ai
+      欢迎使用
+      {/* <img src="https://my.mybricks.world/image/icon.png"/>
+      MyBricks.ai */}
     </div>
   )
 }

@@ -17,6 +17,7 @@ interface ViewProps {
 const View = ({ user, copilot, api }: ViewProps) => {
   const senderRef = useRef<SenderRef>(null);
   const [rxai, setRxai] = useState(context.rxai);
+  const [vibeCoding, setVibeCoding] = useState(false);
 
   const PLACEHOLDER_MAP = {
     normal: `您好，我是${context.name}，请详细描述您的需求`,
@@ -67,6 +68,7 @@ const View = ({ user, copilot, api }: ViewProps) => {
         const id = ["page", "section"].includes(type) ? focus.pageId : focus.comId;
         const { onProgress, ...other } = focus;
         senderRef.current!.setMentions([other] as any);
+        setVibeCoding(other.vibeCoding || false);
         focusID.current = id;
         const status = context.requestStatusTracker.getStatus(id);
         statusChange(status.state === "pending" ? "loading" : "normal");
@@ -141,7 +143,7 @@ const View = ({ user, copilot, api }: ViewProps) => {
   }
 
   return (
-    <div className={classNames(css.view)}>
+    <div className={classNames(css.view)} style={vibeCoding ? ({ '--mybricks-color-primary': '#16A157' } as React.CSSProperties) : undefined}>
       <Header rxai={rxai}/>
       <Messages
         key={rxai.key}
