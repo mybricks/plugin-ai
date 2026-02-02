@@ -1,6 +1,5 @@
 import { jsonrepair } from 'jsonrepair'
 import { ComponentsManager } from './../agents/workspace/components-manager'
-import { context } from '../context'
 
 export function getFiles(files: RxFiles, {
   extName
@@ -119,8 +118,10 @@ interface Action {
 // 第二个参数用于透传当前解析器实例内的 comId -> params 映射，方便后续 O(1) 快查
 const formatAction = (
   _action: string,
-  comIdToParamsMap?: Map<string, AddChildActionParams>
+  comIdToParamsMap?: Map<string, AddChildActionParams>,
+  options?: { enabledActionTags?: boolean }
 ) => {
+  const { enabledActionTags } = options ?? {};
   let action;
   try {
     // TODO，后面要提示词处理的，这样replace不合理
@@ -177,7 +178,7 @@ const formatAction = (
 
   // 标记使用
   if (newAct.type === 'addChild') {
-    if (context.enabledActionTags) {
+    if (enabledActionTags) {
       
       if (newAct.params?.ignore) {
         // TODO：标记的兼容，对于配置了ignore，但是有padding的组件，直接替换成enhance，因为直接去掉，底层的100%组件宽高会失效。
@@ -630,7 +631,7 @@ function transformToValidMargins(styles: any): void {
  * 创建actions解析器
  * @returns {Function} 解析函数
  */
-export function createActionsParser() {
+export function createActionsParser({ enabledActionTags }: { enabledActionTags?: boolean }) {
   const processedLines = new Set<string>();
   // 针对单个解析器实例的 comId -> params 映射，避免跨会话长期存储
   const comIdToParamsMap = new Map<string, AddChildActionParams>();
@@ -653,7 +654,7 @@ export function createActionsParser() {
       }
 
       try {
-        const parsedAction = formatAction(trimmedLine, comIdToParamsMap);
+        const parsedAction = formatAction(trimmedLine, comIdToParamsMap, { enabledActionTags });
         if (parsedAction.comId) {
           newActions.push(parsedAction);
           // 处理下addChild操作，如果index存在，需要衔接一个一个 move action
@@ -686,7 +687,7 @@ export function createActionsParser() {
       // 如果文本以换行符结尾，说明最后一行是完整的
       if ((text.endsWith("\n")) && !processedLines.has(trimmedLastLine)) {
         try {
-          const parsedAction = formatAction(trimmedLastLine, comIdToParamsMap);
+          const parsedAction = formatAction(trimmedLastLine, comIdToParamsMap, { enabledActionTags });
           if (parsedAction.comId) {
             newActions.push(parsedAction);
             // 处理下addChild操作，如果index存在，需要衔接一个一个 move action

@@ -1,5 +1,6 @@
 import { fileFormat, RxaiError } from '@mybricks/rxai'
 import { getFiles, createActionsParser, getComponentOperationSummary, stripFileBlocks, ComIdTransform, PromiseStack } from './utils'
+import { context } from './../context'
 
 interface RefactorUiContentToolParams {
   appendPrompt: any;
@@ -18,8 +19,8 @@ const NAME = 'refactor-components-in-canvas'
 refactorUiContent.toolName = NAME;
 
 export default function refactorUiContent(config: RefactorUiContentToolParams): any {
-  const streamActionsParser = createActionsParser();
-  const excuteActionsParser = createActionsParser();
+  const streamActionsParser = createActionsParser({ enabledActionTags: context.enabledActionTags });
+  const excuteActionsParser = createActionsParser({ enabledActionTags: context.enabledActionTags });
   const hasChildren = config.getFocusElementHasChildren() !== false
 
   let fileNameToContent: Record<string, string> = {};

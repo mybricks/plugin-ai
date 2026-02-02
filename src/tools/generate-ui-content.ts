@@ -71,8 +71,8 @@ class UITree {
 }
 
 export default function generateUiContent(config: GenerateUiContentParams): any {
-  const streamActionsParser = createActionsParser();
-  const excuteActionsParser = createActionsParser();
+  const streamActionsParser = createActionsParser({ enabledActionTags: context.enabledActionTags });
+  const excuteActionsParser = createActionsParser({ enabledActionTags: context.enabledActionTags });
 
   const streamVarActionsParser = createVarActionsParser();
 
