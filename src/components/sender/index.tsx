@@ -242,6 +242,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
                 {mentions[0].focusArea.title || "区域"}
               </span>
             ) : null}
+            {vibeCoding ? <span className={css.vibeCoding}>(开发中)</span> : null}
             {/* {mentions.map((mention) => {
               return <MentionTag key={mention.id} mention={mention} onClick={onMentionClick} />
             })} */}
