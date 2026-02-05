@@ -14,14 +14,10 @@ export const requestAgent = (params: any) => {
   const type = context.currentFocus?.type;
 
   if (context.currentFocus?.vibeCoding) {
-    debugger
     return requestVibeCodingAgent({
       ...params,
       key: `${context.pluginParams.key}_${context.currentFocus!.pageId}_${context.currentFocus!.comId}`,
-    }, {
-      pageId: context.currentFocus!.pageId,
-      comId: context.currentFocus!.comId
-    });
+    }, {...context.currentFocus});
   }
 
   // 检查是否有匹配的自定义 agent
