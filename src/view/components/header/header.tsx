@@ -16,8 +16,7 @@ const Header = (params: HeaderParams) => {
 
   const exportRxai = async () => {
     try {
-      const content = await context.rxai.export();
-      console.log("[@mybricks/plugin-ai - exportRxai]", content);
+      const content = await params.rxai.export();
       downloadToFile({
         content: content,
         name: `rxai-${new Date().getTime()}.json`

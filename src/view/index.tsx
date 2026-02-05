@@ -79,7 +79,6 @@ const View = ({ user, copilot, api }: ViewProps) => {
           setTimeout(() => {
             // TODO: ai组件库里注册agents的时机不对
             const agent = context.agents!.find((agent) => {
-              console.log(agent, agent instanceof AbstractAgent, agent.type);
               return agent instanceof AbstractAgent && agent.type === "vibeCoding"
             });
             if (agent) {
