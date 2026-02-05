@@ -115,7 +115,7 @@ async function checkFetchTarget(): Promise<FetchTarget> {
   return (fetchTaget = FetchTarget.Center);
 }
 
-const transfromExtendParams = (extendParams: { aiRole?: any }) => {
+const transfromExtendParams = (extendParams: { aiRole?: string }) => {
   const { aiRole } = extendParams;
   let model = "google/gemini-3-flash-preview";
   let role = "default";
@@ -131,6 +131,11 @@ const transfromExtendParams = (extendParams: { aiRole?: any }) => {
     case ["image"].includes(aiRole): {
       model = "anthropic/claude-sonnet-4.5";
       role = "image";
+      break;
+    }
+    case ["junior"].includes(aiRole): {
+      model = "z-ai/glm-4.7";
+      role = "junior";
       break;
     }
     case ["architect"].includes(aiRole): {
