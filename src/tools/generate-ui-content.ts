@@ -15,6 +15,7 @@ interface GenerateUiContentParams {
   fewShots?: string;
   /** 当所有actions返回时 */
   onActions: (actions: any[], status: string) => void
+  onAddCodingBlock: (com: any) => void;
   /** 清空当前画布信息 */
   onClearPage: () => void
 }
@@ -496,7 +497,6 @@ IMPORTANT: 生成UI的根组件ID必须使用此文档信息。
     <最佳实践>
       1.永远保证UI的美观以及和谐统一，在基础组件的使用上遵循美观统一原则；
       2.在搭建开始前，我们建议对每个组件进行全面评估，特别是思考是否需要 <辅助标记 />，这能极大提升后续维护性；
-      3.在选用组件时，文本、图片、图标、按钮等基础组件拥有最高优先级；
 
       <关于美观>
         组件使用：
@@ -513,8 +513,7 @@ IMPORTANT: 生成UI的根组件ID必须使用此文档信息。
       </关于美观>
 
       <选用组件>
-        1.对于文本、图片、图标、按钮等基础组件，任何情况下都可以优先使用；
-        2. 对于重复性元素：当遇到相似元素重复出现时，我们的判断标准是：
+        对于重复性元素：当遇到相似元素重复出现时，我们的判断标准是：
           若内容是动态的（如用户列表），应选用列表类组件。
           若内容是静态的（如功能入口），布局组件（N行M列）是更高效的选择
       </选用组件>
@@ -741,6 +740,17 @@ ${config.fewShots}
                   slotId: action.target,
                 }
               })
+
+              if (action.params.comId && action.params.configs?.[0]?.path === '常规/需求文档') {
+
+                config?.onAddCodingBlock?.({
+                  comId: action.params.comId,
+                  requirement: action.params.configs[0].value.replace(/# /, ''),
+                })
+
+                action.params.configs = [];
+              }
+
             } else if (action.type === "doConfig") {
               const comId = action.comId;
               if (comId !== "_root_") {

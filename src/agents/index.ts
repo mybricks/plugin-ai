@@ -1,8 +1,10 @@
 import { requestGenerateCanvasAgent } from './app'
 import { requestCommonAgent } from './common'
+import { requestVibeCodingAgent } from './custom'
+// import { requestAssistantWithCodingAgent as requestCommonAgent } from './assistant-with-coding'
+// import { requestAssistantWithAiComAgent as requestCommonAgent } from './assistant-with-ai-com'
 import { getAgentInstance } from './utils/config'
 import { context } from '../context'
-import { AbstractAgent } from "./utils/config"
 
 /**
  * 统一的 agent 请求入口
@@ -12,14 +14,14 @@ export const requestAgent = (params: any) => {
   const type = context.currentFocus?.type;
 
   if (context.currentFocus?.vibeCoding) {
-    const agent = context.agents!.find((agent) => agent instanceof AbstractAgent && agent.type === "vibeCoding");
-    if (agent) {
-      return (agent as AbstractAgent).request({
-        key: `${context.pluginParams.key}_${context.currentFocus!.pageId}_${context.currentFocus!.comId}`,
-        params,
-        focus: { ...context.currentFocus }
-      })
-    }
+    debugger
+    return requestVibeCodingAgent({
+      ...params,
+      key: `${context.pluginParams.key}_${context.currentFocus!.pageId}_${context.currentFocus!.comId}`,
+    }, {
+      pageId: context.currentFocus!.pageId,
+      comId: context.currentFocus!.comId
+    });
   }
 
   // 检查是否有匹配的自定义 agent

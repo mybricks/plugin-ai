@@ -626,7 +626,7 @@ ${config.appendPrompt}
       const actionsFile = getFiles(files, { extName: 'json' })
 
       if (actionsFile) {
-        actions = streamActionsParser(actionsFile.content ?? "");
+        actions = streamActionsParser(actionsFile.content ?? "", actionsFile?.isComplete);
         actions = fixActions(actions, {
           pageId
         })

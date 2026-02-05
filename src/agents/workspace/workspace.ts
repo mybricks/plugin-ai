@@ -101,6 +101,15 @@ class WorkSpace {
     return null;
   }
 
+  getJsxById = (id: string): string => {
+    const isPage = this.focusInfo.pageId === id || !!this.findPageById(id);
+    if (isPage) {
+      return this.outlineInfoManager.generateJSXByPageId(id)?.jsx ?? '';
+    } else {
+      return this.outlineInfoManager.generateJSXByOutline(this.focusPageOutlineInfo, [id])?.jsx ?? '';
+    }
+  }
+
   /**
    * 打开文档
    */

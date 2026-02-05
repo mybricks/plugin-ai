@@ -628,88 +628,70 @@ function transformToValidMargins(styles: any): void {
 }
 
 /**
+ * 将解析出的一条 action 推入列表，若为 addChild 且带 index 则追加对应 move
+ */
+function pushParsedAction(
+  newActions: any[],
+  parsedAction: any,
+  processedLines: Set<string>,
+  trimmedLine: string
+) {
+  if (!parsedAction.comId) return;
+  newActions.push(parsedAction);
+  if (parsedAction.type === 'addChild' && parsedAction.params.index !== undefined) {
+    newActions.push({
+      comId: parsedAction.params.comId,
+      target: ':root',
+      type: 'move',
+      params: {
+        to: {
+          comId: parsedAction.comId,
+          slotId: parsedAction.target,
+          index: parsedAction.params.index,
+        },
+      }
+    });
+  }
+  processedLines.add(trimmedLine);
+}
+
+/**
  * 创建actions解析器
- * @returns {Function} 解析函数
+ * @param options.enabledActionTags 是否启用 action tags
+ * @returns 解析函数 parseActions(text, isEnd?)
+ *   - text: 待解析的 actions 文本（可流式追加）
+ *   - isEnd: 是否为结束标记；为 true 时最后一行即使没有回车符也会被当作完整行解析
  */
 export function createActionsParser({ enabledActionTags }: { enabledActionTags?: boolean }) {
   const processedLines = new Set<string>();
-  // 针对单个解析器实例的 comId -> params 映射，避免跨会话长期存储
   const comIdToParamsMap = new Map<string, AddChildActionParams>();
 
-  return function parseActions(text: string) {
-    const newActions = [];
+  return function parseActions(text: string, isEnd?: boolean) {
+    const newActions: any[] = [];
     const lines = text.split("\n").filter(line => line.trim() !== '');
 
-    // 只处理除了最后一行之外的所有行（最后一行可能不完整）
     const linesToProcess = lines.slice(0, -1);
     const lastLine = lines[lines.length - 1];
+    const lastLineComplete = lines.length === 0 || text.endsWith("\n") || isEnd === true;
 
-    // 处理完整的行
     for (const line of linesToProcess) {
       const trimmedLine = line.trim();
-
-      // 跳过空行和已处理的行
-      if (!trimmedLine || processedLines.has(trimmedLine)) {
-        continue;
-      }
-
+      if (!trimmedLine || processedLines.has(trimmedLine)) continue;
       try {
         const parsedAction = formatAction(trimmedLine, comIdToParamsMap, { enabledActionTags });
-        if (parsedAction.comId) {
-          newActions.push(parsedAction);
-          // 处理下addChild操作，如果index存在，需要衔接一个一个 move action
-          if (parsedAction.type === 'addChild' && parsedAction.params.index !== undefined) {
-            newActions.push({
-              comId: parsedAction.params.comId,
-              target: ':root',
-              type: 'move',
-              params: {
-                to: {
-                  comId: parsedAction.comId,
-                  slotId: parsedAction.target,
-                  index: parsedAction.params.index,
-                },
-              }
-            });
-          }
-          processedLines.add(trimmedLine);
-        }
-      } catch (error) {
-        // 这是真正的解析错误（完整的行但格式错误）
-        processedLines.add(trimmedLine); // 标记为已处理，避免重复尝试
+        pushParsedAction(newActions, parsedAction, processedLines, trimmedLine);
+      } catch {
+        processedLines.add(trimmedLine);
       }
     }
 
-    // 处理最后一行
-    if (lastLine && lastLine.trim()) {
+    if (lastLine && lastLine.trim() && lastLineComplete && !processedLines.has(lastLine.trim())) {
       const trimmedLastLine = lastLine.trim();
-
-      // 如果文本以换行符结尾，说明最后一行是完整的
-      if ((text.endsWith("\n")) && !processedLines.has(trimmedLastLine)) {
-        try {
-          const parsedAction = formatAction(trimmedLastLine, comIdToParamsMap, { enabledActionTags });
-          if (parsedAction.comId) {
-            newActions.push(parsedAction);
-            // 处理下addChild操作，如果index存在，需要衔接一个一个 move action
-            if (parsedAction.type === 'addChild' && parsedAction.params.index !== undefined) {
-              newActions.push({
-                comId: parsedAction.params.comId,
-                target: ':root',
-                type: 'move',
-                params: {
-                  to: {
-                    comId: parsedAction.comId,
-                    slotId: parsedAction.target,
-                    index: parsedAction.params.index,
-                  },
-                }
-              });
-            }
-            processedLines.add(trimmedLastLine);
-          }
-        } catch (error) {
-          processedLines.add(trimmedLastLine);
-        }
+      try {
+        const parsedAction = formatAction(trimmedLastLine, comIdToParamsMap, { enabledActionTags });
+        pushParsedAction(newActions, parsedAction, processedLines, trimmedLastLine);
+      } catch {
+        processedLines.add(trimmedLastLine);
       }
     }
 
