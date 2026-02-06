@@ -531,7 +531,8 @@ ${coding.requirement}`).join('\n\n')}
         Object.entries(filesByUuid).forEach(([uuid, componentFiles]) => {
           updateComponent(uuid, componentFiles);
         });
-      }
+      },
+      asTool: true
     }, {
       pageId: this.pageId,
     })
