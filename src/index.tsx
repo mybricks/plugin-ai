@@ -43,7 +43,6 @@ export default function pluginAI(params?: any): any {
     name = '智能助手',
     user,
     prompts,
-    requestAsStream,
     mock,
     key,
     agents: rawAgents,
@@ -53,6 +52,8 @@ export default function pluginAI(params?: any): any {
     deviceType,
     config,
   } = transformParams(params);
+
+  const requestAsStream = preset.requestAsStream;
 
   const copilot = {
     // name: "MyBricks.ai",
