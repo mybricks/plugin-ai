@@ -51,9 +51,10 @@ export default function pluginAI(params?: any): any {
     isMutiCanvas,
     deviceType,
     config,
+    mode = 'development',
   } = transformParams(params);
 
-  const requestAsStream = preset.requestAsStream;
+  const requestAsStream = preset.createRequestAsStream(mode);
 
   const copilot = {
     // name: "MyBricks.ai",
@@ -83,6 +84,7 @@ export default function pluginAI(params?: any): any {
     isMutiCanvas,
     deviceType,
     config,
+    mode,
   }
 
   return {
@@ -176,6 +178,11 @@ export default function pluginAI(params?: any): any {
 
           console.log("[init - API]", api)
 
+          window._registerAgent_ = (agentConfig: any) => {
+            console.log('registerAgent', agentConfig)
+            context.agents.push(new CustomAgent(agentConfig));
+          }
+
           return {
             focus(params: AiServiceFocusParams) {
               const currentFocus = !params ? undefined : params;
@@ -220,9 +227,7 @@ export default function pluginAI(params?: any): any {
               const focusId = focus ? (focus.type === "page" ? focus.pageId : focus.comId) : "";
               context.requestStatusTracker.track(focusId, Agents.requestAgent({ ...requestParams, extension, agents, guidePrompt }))
             },
-            registerAgent(agentConfig: any) {
-              context.agents.push(new CustomAgent(agentConfig));
-            },
+            registerAgent: window._registerAgent_,
             fileFormat
           }
         }

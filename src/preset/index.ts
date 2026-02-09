@@ -1,12 +1,12 @@
 import { user } from "./user"
 import { prompts } from "./prompts"
-import { requestAsStream } from "./requestAsStream"
+import { createRequestAsStream } from "./requestAsStream"
 import { createTemplates } from './createTemplates'
 
 export default {
   name: '智能助手',
   user,
   prompts,
-  requestAsStream,
+  createRequestAsStream,
   createTemplates,
 }

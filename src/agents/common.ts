@@ -4,11 +4,10 @@ import { MYBRICKS_TOOLS } from "./../tools"
 import { WorkSpace } from './workspace/workspace'
 import { FocusOutlineInfoManager, FocusInfo } from './workspace/outline-focus'
 
-import { fileFormat } from '@mybricks/rxai'
 import { ComponentsManager } from './workspace/components-manager'
 import { getAgentConfigs } from './utils/config'
 
-import { requestVibeCodingAgent } from './custom'
+import { CodingManager } from './workspace/coding-manager'
 
 const getFocusInfo = (focus: any) => {
   const focusInfo: FocusInfo = {
@@ -76,8 +75,6 @@ export const requestCommonAgent = (params: any) => {
       attachments: params.attachments,
       getJsxById: (id: string) => workspace.getJsxById(id),
     });
-
-    window.codingManager = codingManager;
 
     let onProgress = params.onProgress;
 
@@ -275,6 +272,9 @@ export const requestCommonAgent = (params: any) => {
           }
         }),
         MYBRICKS_TOOLS.Answer({}),
+        MYBRICKS_TOOLS.CodingSubagentAsTool({
+          codingManager,
+        }),
         MYBRICKS_TOOLS.BuildProcess({
           // getComId: () => focusInfo.comId,
           getPageId: () => focusInfo.pageId,
@@ -344,6 +344,12 @@ export const requestCommonAgent = (params: any) => {
           if (!hasRequirement) {
             resultTools.splice(generatePageIndex, 0, ['node', MYBRICKS_TOOLS.AnalyzeRequirementAndComponents.toolName]);
             return resultTools
+          }
+          // 规则2b: 生成页面后添加「代码开发」步骤（由 planningCheck 注入）
+          const hasCodingSubagent = resultTools.some((t: any) => t[1] === MYBRICKS_TOOLS.CodingSubagentAsTool.toolName);
+          if (!hasCodingSubagent) {
+            const insertIndex = resultTools.findIndex((t: any) => t[1] === MYBRICKS_TOOLS.GenerateUiContent.toolName) + 1;
+            resultTools.splice(insertIndex, 0, ['node', MYBRICKS_TOOLS.CodingSubagentAsTool.toolName]);
           }
         }
         
@@ -451,111 +457,4 @@ function generateFocusTargetDescription(currentFocus: Partial<FocusInfo> = {}) {
   }
   
   return focusDesc;
-}
-
-interface CodingCom {
-  pageId: string;
-  comId: string;
-  title: string;
-  requirement: string,
-}
-
-class CodingManager {
-  attachments: any;
-  getJsxById: (id: string) => string;
-  pageId: string;
-  waitForCoding: CodingCom[] = [];
-
-  constructor(params: {
-    pageId: string;
-    attachments: any[];
-    getJsxById: (id: string) => string;
-  }) {
-    this.pageId = params.pageId;
-    this.attachments = params.attachments;
-    this.getJsxById = params.getJsxById;
-  }
-
-  addCodingCom(com: CodingCom) {
-    if (this.waitForCoding.some(c => c.comId === com.comId)) {
-      return;
-    }
-    this.waitForCoding.push(com);
-  }
-
-  async batchCoding() {
-    let codings = [...this.waitForCoding];
-
-    let message = `# 批量组件代码还原任务
-
-## 当前页面结构
-${this.getJsxById(this.pageId)}
-
-## 任务说明
-需要按顺序还原以下 ${codings.length} 个组件，请根据图片严格还原设计效果。
-
-## 待还原组件
-
-${codings.map((coding, index) => `### 组件 ${index + 1}: ${coding.comId}
-**需求描述：**
-${coding.requirement}`).join('\n\n')}
-`;
-    return await requestVibeCodingAgent({
-      key: `vibe_coding_${this.pageId}_${Math.random().toString(36).substring(2, 15)}`,
-      message,
-      attachments: this.attachments,
-      onDevelopModule: ({ files }, updateComponent) => {
-        // 传递进来的files为 [{ fileName: 'model@uuid.json', content: '' }]
-        console.log('onDevelopModule', files)
-        // 按uuid分组文件
-        const filesByUuid = files.reduce((acc, file) => {
-          // 从fileName中提取uuid，格式为 "fileName@uuid.ext"
-          const match = file.fileName.match(/^(.+)@([^.]+)(\..+)$/);
-          if (match) {
-            const [, name, uuid, ext] = match;
-            if (!acc[uuid]) {
-              acc[uuid] = [];
-            }
-            // 去除uuid，还原原始fileName
-            acc[uuid].push({
-              fileName: `${name}${ext}`,
-              content: file.content
-            });
-          }
-          return acc;
-        }, {} as Record<string, Array<{ fileName: string; content: string }>>);
-        
-        console.log('filesByUuid', filesByUuid)
-
-        // 对每个uuid调用一次updateComponent
-        Object.entries(filesByUuid).forEach(([uuid, componentFiles]) => {
-          updateComponent(uuid, componentFiles);
-        });
-      },
-      asTool: true
-    }, {
-      pageId: this.pageId,
-    })
-  }
-
-  // async batchCoding(limit = 2) {
-  //   let codings = [...this.waitForCoding];
-  //   limit = Math.min(limit, codings.length);  
-  //   const results: string[] = [];
-
-  //   while (codings.length > 0) {
-  //     const batch = codings.slice(0, limit);
-  //     const results = await Promise.all(batch.map(coding => requestVibeCodingAgent({
-  //       message: coding.requirement,
-  //       attachments: this.attachments,
-  //     }, {
-  //       pageId: this.pageId,
-  //       comId: coding.comId
-  //     })));
-  //     results.push(...results);
-  //     codings = codings.slice(limit);
-  //   }
-
-  //   return results;
-  // }
 }

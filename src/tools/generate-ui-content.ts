@@ -695,7 +695,7 @@ ${config.fewShots}
       const varActionsFile = getFiles([files[1] || {}], {extName: 'json' })
 
       if (actionsFile) {
-        actions = streamActionsParser(actionsFile.content ?? "");
+        actions = streamActionsParser(actionsFile.content ?? "", actionsFile?.isComplete);
         if (!fileNameToContent[actionsFile!.fileName]) {
           fileNameToContent[actionsFile!.fileName] = "";
         }
@@ -747,8 +747,7 @@ ${config.fewShots}
                   comId: action.params.comId,
                   requirement: action.params.configs[0].value.replace(/# /, ''),
                 })
-
-                action.params.configs = [];
+                // action.params.configs = [];
               }
 
             } else if (action.type === "doConfig") {

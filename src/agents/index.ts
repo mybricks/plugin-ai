@@ -1,8 +1,6 @@
 import { requestGenerateCanvasAgent } from './app'
 import { requestCommonAgent } from './common'
 import { requestVibeCodingAgent } from './custom'
-// import { requestAssistantWithCodingAgent as requestCommonAgent } from './assistant-with-coding'
-// import { requestAssistantWithAiComAgent as requestCommonAgent } from './assistant-with-ai-com'
 import { getAgentInstance } from './utils/config'
 import { context } from '../context'
 

@@ -5,6 +5,7 @@ import AnalyzeAndExpandPrd from './analyze-and-expand-prd';
 import OpenDsl from './open-dsl';
 import Answer from './answer';
 import BuildProcess, { BuildProcess as BuildProcessParamsTool } from "./build-process";
+import CodingSubagentAsTool from './coding-subagent-as-tool';
 
 export const MYBRICKS_TOOLS = {
   GenerateUiContent,
@@ -13,7 +14,8 @@ export const MYBRICKS_TOOLS = {
   AnalyzeAndExpandPrd,
   OpenDsl,
   Answer,
-  BuildProcess
+  BuildProcess,
+  CodingSubagentAsTool
 }
 
 export const MyBricksParamsTools = {

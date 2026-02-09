@@ -160,86 +160,86 @@ const transfromExtendParams = (extendParams: { aiRole?: string }) => {
   };
 };
 
-const requestAsStream = async (params: {
-  messages: any;
-  emits: any;
-  aiRole?: any;
-}) => {
-  const { messages, emits, aiRole } = params;
-  const { cancel, write, complete, error } = emits;
+export type RequestAsStreamMode = "development" | "production";
 
-  // const mode = (window as any)._rxai_request_mybricks_mode_ || "production";
-  const mode = 'development'
+const createRequestAsStream = (mode: RequestAsStreamMode) =>
+  async (params: {
+    messages: any;
+    emits: any;
+    aiRole?: any;
+  }) => {
+    const { messages, emits, aiRole } = params;
+    const { cancel, write, complete, error } = emits;
 
-  if (mode !== "development") {
-    await checkFetchTarget();
-  }
-
-  const extendParams = transfromExtendParams({ aiRole });
-
-  try {
-    const controller = new AbortController();
-
-    let streamUrl = "//ai.mybricks.world/stream-with-tools";
-    if (fetchTaget === FetchTarget.CustomApp) {
-      streamUrl = "/api/ai-service/stream";
-    } else if (fetchTaget === FetchTarget.Platform) {
-      streamUrl = "/api/assistant/stream";
+    if (mode !== "development") {
+      await checkFetchTarget();
     }
 
-    fetch(
-      mode === "development" ? "//ai.mybricks.world/stream-test" : streamUrl,
-      {
-        signal: controller.signal,
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(extendParams.role
-            ? {
-                "M-Request-Role": extendParams.role,
-              }
-            : {}),
-        },
-        body: JSON.stringify(
-          mode === "development"
-            ? {
-                messages,
-                ...extendParams,
-              }
-            : getAiEncryptData({
-                mode,
-                data: {
-                  messages,
-                  ...extendParams,
-                },
-              }),
-        ),
-      },
-    ).then(async (response) => {
-      cancel(() => {
-        //注册回调
-        controller.abort(); //取消请求
-      });
+    const extendParams = transfromExtendParams({ aiRole });
 
-      const reader = response.body!.getReader();
-      const decoder = new TextDecoder();
+    try {
+      const controller = new AbortController();
 
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) {
-          break;
-        }
-
-        const chunk = decoder.decode(value, { stream: true });
-        write(chunk);
+      let streamUrl = "//ai.mybricks.world/stream-with-tools";
+      if (fetchTaget === FetchTarget.CustomApp) {
+        streamUrl = "/api/ai-service/stream";
+      } else if (fetchTaget === FetchTarget.Platform) {
+        streamUrl = "/api/assistant/stream";
       }
 
-      complete("");
-    });
-  } catch (ex) {
-    error(ex as any);
-  }
-};
+      fetch(
+        mode === "development" ? "//ai.mybricks.world/stream-test" : streamUrl,
+        {
+          signal: controller.signal,
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(extendParams.role
+              ? {
+                  "M-Request-Role": extendParams.role,
+                }
+              : {}),
+          },
+          body: JSON.stringify(
+            mode === "development"
+              ? {
+                  messages,
+                  ...extendParams,
+                }
+              : getAiEncryptData({
+                  mode,
+                  data: {
+                    messages,
+                    ...extendParams,
+                  },
+                }),
+          ),
+        },
+      ).then(async (response) => {
+        cancel(() => {
+          //注册回调
+          controller.abort(); //取消请求
+        });
 
-export { requestAsStream };
+        const reader = response.body!.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            break;
+          }
+
+          const chunk = decoder.decode(value, { stream: true });
+          write(chunk);
+        }
+
+        complete("");
+      });
+    } catch (ex) {
+      error(ex as any);
+    }
+  };
+
+export { createRequestAsStream };
