@@ -192,6 +192,7 @@ const createRequestAsStream = (mode: RequestAsStreamMode) =>
         {
           signal: controller.signal,
           method: "POST",
+          credentials: "include", // 跨域时携带 cookie
           headers: {
             "Content-Type": "application/json",
             ...(extendParams.role
