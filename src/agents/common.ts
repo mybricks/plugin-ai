@@ -66,7 +66,7 @@ export const requestCommonAgent = (params: any) => {
         return (context.api.global.api as any).getAllPageInfo()
       },
       getComponentDoc(namespace: string) {
-        return (context.api?.global?.api?.getComEditorPrompts || context.api?.uiCom?.api?.getComEditorPrompts)?.(namespace)
+        return (context.api?.uiCom?.api?.getComEditorPrompts || context.api?.global?.api?.getComEditorPrompts)?.(namespace)
       }
     } as any, outlineInfoManager)
 
@@ -135,10 +135,12 @@ export const requestCommonAgent = (params: any) => {
         complete: () => {
           resolve('complete')
           onProgress?.("complete");
+          console.log('common complete')
         },
         error: () => {
           reject('error')
           onProgress?.("error");
+          console.log('common error')
         },
         cancel: () => {},
       },
@@ -274,6 +276,15 @@ export const requestCommonAgent = (params: any) => {
         MYBRICKS_TOOLS.Answer({}),
         MYBRICKS_TOOLS.CodingSubagentAsTool({
           codingManager,
+          onStart: () => {
+            context.designer?.updatePage?.(targetPageId, [], 'start')
+          },
+          onComplete: () => {
+            context.designer?.updatePage?.(targetPageId, [], 'complete')
+          },
+          onError: () => {
+            context.designer?.updatePage?.(targetPageId, [], 'complete')
+          },  
         }),
         MYBRICKS_TOOLS.BuildProcess({
           // getComId: () => focusInfo.comId,

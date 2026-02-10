@@ -5,7 +5,10 @@ const NAME = 'coding-subagent-as-tool'
 codingSubagentAsTool.toolName = NAME
 
 interface Config {
-  codingManager: CodingManager
+  codingManager: CodingManager,
+  onStart: () => void,
+  onComplete: () => void,
+  onError: () => void,
 }
 
 function getBatchCodingPayload(codingManager: CodingManager) {
@@ -63,7 +66,7 @@ export default function codingSubagentAsTool(config: Config): any {
   return {
     name: NAME,
     displayName: '代码开发',
-    description: `执行「代码开发」：当生成页面时添加了需要还原代码的组件时，调用智能组件助手批量开发/还原这些组件的代码。无需规划此工具，此工具会自行调用。`,
+    description: `执行「AI区域开发」：当生成页面时添加了需要开发代码的AI组件时，调用智能组件助手批量开发/还原这些组件的代码。无需规划此工具，此工具会自行调用。`,
     async execute() {
       const { codingManager } = config
       if (!codingManager.waitForCoding.length) {
@@ -79,7 +82,7 @@ export default function codingSubagentAsTool(config: Config): any {
             resolve({ llmContent: '代码开发已完成。', displayContent: '代码开发已完成。' })
           }
           if (status === 'error') {
-            reject(new Error('代码开发失败'))
+            reject(new Error('开发出问题了'))
           }
         }
         const promise = requestVibeCodingAgent(
@@ -92,7 +95,7 @@ export default function codingSubagentAsTool(config: Config): any {
           { pageId: payload.pageId }
         )
         if (!promise) {
-          reject(new Error('vibeCoding agent 未注册'))
+          reject(new Error('此工具暂不支持调用'))
           return
         }
         promise.catch(reject)
