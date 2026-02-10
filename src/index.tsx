@@ -46,15 +46,13 @@ export default function pluginAI(params?: any): any {
     mock,
     key,
     agents: rawAgents,
-    // guidePrompt,
+    guidePrompt,
     createTemplates,
     isMutiCanvas,
     deviceType,
     config,
     mode = 'development',
   } = transformParams(params);
-
-  const guidePrompt = `建议用大块的AI区域组件来完成，容器只需要做布局和AI区域间的间距使用，不允许拆分过细的AI区域组件。`
 
   const requestAsStream = preset.createRequestAsStream(mode);
 

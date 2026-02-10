@@ -11,17 +11,24 @@ interface Config {
   onError: () => void,
 }
 
-function getBatchCodingPayload(codingManager: CodingManager) {
+function getBatchCodingPayload(codingManager: CodingManager, getUserMessage: () => string | any) {
   const codings = [...codingManager.waitForCoding]
-  const message = `# 批量组件代码还原任务
+  const userMessageContent = getUserMessage?.()?.content
+
+  const userText = Array.isArray(userMessageContent) ? userMessageContent?.find(m => m.type === 'text')?.text : userMessageContent
+  const message = `
+<用户需求>
+${userText}
+</用户需求>  
+# 批量组件代码开发任务
 
 ## 当前页面结构
 ${codingManager.getJsxById(codingManager.pageId)}
 
 ## 任务说明
-需要按顺序还原以下 ${codings.length} 个组件，请根据图片严格还原设计效果。
+需要按顺序和用户需求开发以下 ${codings.length} 个组件。
 
-## 待还原组件
+## 待开发组件
 
 ${codings
   .map(
@@ -67,7 +74,7 @@ export default function codingSubagentAsTool(config: Config): any {
     name: NAME,
     displayName: '代码开发',
     description: `执行「AI区域开发」：当生成页面时添加了需要开发代码的AI组件时，调用智能组件助手批量开发/还原这些组件的代码。无需规划此工具，此工具会自行调用。`,
-    async execute() {
+    async execute({ getUserMessage }) {
       const { codingManager, onStart, onComplete, onError } = config
       if (!codingManager.waitForCoding.length) {
         return {
@@ -76,7 +83,7 @@ export default function codingSubagentAsTool(config: Config): any {
         }
       }
       onStart?.();
-      const payload = getBatchCodingPayload(codingManager)
+      const payload = getBatchCodingPayload(codingManager, getUserMessage)
       return new Promise<{ llmContent: string; displayContent: string }>((resolve, reject) => {
         const onProgress = (status: string) => {
           if (status === 'complete') {
