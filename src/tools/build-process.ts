@@ -72,16 +72,21 @@ function buildProcess(props: any) {
     name: NAME,
     // displayName: "搭建事件流程",
     displayName: "事件/逻辑配置",
-    description: `根据用户需求搭建各类事件/逻辑，可以通过变量、计算组件进行逻辑和事件编排，实现交互/数据需求。
+    description: `根据用户需求搭建各类事件/逻辑、配置计算组件，可以通过变量、计算组件进行逻辑和事件编排，实现交互/数据需求。
 参数：无
 工具分类：操作执行类
 作用：
     1. 为UI组件搭建逻辑和事件，提供交互能力；
     2. 创建/绑定变量，通过变量 + 数据驱动的方式驱动UI更新；
     3. 完成接口、数据处理等逻辑能力搭建；
+    4. 配置计算组件
 前置依赖：
  - 必须确保之前进行过「获取DSL」；
  - 如果需要添加计算组件，确保之前有进行过「组件选型」，添加计算组件必须通过组件选型来获取组件配置文档；
+
+注意：
+1. 此工具只能对计算组件以及逻辑进行操作。
+2. 当聚焦到计算组件提出需求时，必须调用此工具。
 `,
     getPrompts: () => {
       const pageOutlineInfo = props.getPageOutlineInfo();
@@ -836,7 +841,7 @@ ${allPageInfo}
       const actionsFile = getFiles(files, { extName: 'json' })
 
       if (actionsFile) {
-        actions = streamActionsParser(actionsFile.content ?? "");
+        actions = streamActionsParser(actionsFile.content ?? "", actionsFile?.isComplete);
       }
 
       if (actions.length > 0 || status === "complete") {
@@ -968,50 +973,38 @@ export default buildProcess;
 function createActionsParser() {
   const processedLines = new Set();
 
-  return function parseActions(text: string) {
-    const newActions = [];
+  return function parseActions(text: string, isEnd?: boolean) {
+    const newActions: any[] = [];
     const lines = text.split("\n").filter(line => line.trim() !== '');
 
-    // 只处理除了最后一行之外的所有行（最后一行可能不完整）
     const linesToProcess = lines.slice(0, -1);
     const lastLine = lines[lines.length - 1];
+    const lastLineComplete = lines.length === 0 || text.endsWith("\n") || isEnd === true;
 
-    // 处理完整的行
     for (const line of linesToProcess) {
       const trimmedLine = line.trim();
-
-      // 跳过空行和已处理的行
-      if (!trimmedLine || processedLines.has(trimmedLine)) {
-        continue;
-      }
-
+      if (!trimmedLine || processedLines.has(trimmedLine)) continue;
       try {
         const parsedAction = formatAction(trimmedLine);
         if (parsedAction.comId) {
           newActions.push(parsedAction);
           processedLines.add(trimmedLine);
         }
-      } catch (error) {
-        // 这是真正的解析错误（完整的行但格式错误）
-        processedLines.add(trimmedLine); // 标记为已处理，避免重复尝试
+      } catch {
+        processedLines.add(trimmedLine);
       }
     }
 
-    // 处理最后一行
-    if (lastLine && lastLine.trim()) {
+    if (lastLine && lastLine.trim() && lastLineComplete && !processedLines.has(lastLine.trim())) {
       const trimmedLastLine = lastLine.trim();
-
-      // 如果文本以换行符结尾，说明最后一行是完整的
-      if ((text.endsWith("\n")) && !processedLines.has(trimmedLastLine)) {
-        try {
-          const parsedAction = formatAction(trimmedLastLine);
-          if (parsedAction.comId) {
-            newActions.push(parsedAction);
-            processedLines.add(trimmedLastLine);
-          }
-        } catch (error) {
+      try {
+        const parsedAction = formatAction(trimmedLastLine);
+        if (parsedAction.comId) {
+          newActions.push(parsedAction);
           processedLines.add(trimmedLastLine);
         }
+      } catch {
+        processedLines.add(trimmedLastLine);
       }
     }
 
