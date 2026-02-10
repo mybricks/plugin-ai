@@ -68,20 +68,23 @@ export default function codingSubagentAsTool(config: Config): any {
     displayName: '代码开发',
     description: `执行「AI区域开发」：当生成页面时添加了需要开发代码的AI组件时，调用智能组件助手批量开发/还原这些组件的代码。无需规划此工具，此工具会自行调用。`,
     async execute() {
-      const { codingManager } = config
+      const { codingManager, onStart, onComplete, onError } = config
       if (!codingManager.waitForCoding.length) {
         return {
           llmContent: '当前没有需要开发的组件。',
           displayContent: '当前没有需要开发的组件。',
         }
       }
+      onStart?.();
       const payload = getBatchCodingPayload(codingManager)
       return new Promise<{ llmContent: string; displayContent: string }>((resolve, reject) => {
         const onProgress = (status: string) => {
           if (status === 'complete') {
+            onComplete?.();
             resolve({ llmContent: '代码开发已完成。', displayContent: '代码开发已完成。' })
           }
           if (status === 'error') {
+            onError?.();
             reject(new Error('开发出问题了'))
           }
         }
@@ -95,10 +98,14 @@ export default function codingSubagentAsTool(config: Config): any {
           { pageId: payload.pageId }
         )
         if (!promise) {
+          onError?.();
           reject(new Error('此工具暂不支持调用'))
           return
         }
-        promise.catch(reject)
+        promise.catch((error) => {
+          onError?.();
+          reject(error);
+        })
       })
     },
   }
