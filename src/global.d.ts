@@ -1,3 +1,6 @@
+/** 应用环境：development | production，由构建时 replace 注入；直接引用源码时未定义，用 typeof 兜底 */
+declare const APP_ENV: "development" | "production";
+
 interface AiServiceAPI {
   global: {
     title: string;

@@ -16,7 +16,8 @@ import { DeviceType } from './types';
 import { createGetAllComDefPrompts } from "./api/cloud-components";
 import { AgentConfigParams, getAgentConfigs, backStoryPrompts, transformLegacyPromptsToAgents, AbstractAgent, CustomAgent } from './agents/utils/config';
 
-import preset from "./preset"
+import preset from "./preset";
+import { createRequestAsStream, createMyBricksAIRequest, type RequestAsStreamParams, type RequestAsStreamFn } from "./requestAsStream";
 import { apiRecorder } from './api-record-replay';
 import { replay, replayFromJSON, ReplayAPI, ReplayOptions } from './api-record-replay';
 import { RecordedAction } from './api-record-replay';
@@ -51,10 +52,10 @@ export default function pluginAI(params?: any): any {
     isMutiCanvas,
     deviceType,
     config,
-    mode = 'development',
+    onRequest,
   } = transformParams(params);
 
-  const requestAsStream = preset.createRequestAsStream(mode);
+  const requestAsStream = onRequest ?? createRequestAsStream();
 
   const copilot = {
     // name: "MyBricks.ai",
@@ -84,7 +85,6 @@ export default function pluginAI(params?: any): any {
     isMutiCanvas,
     deviceType,
     config,
-    mode,
   }
 
   return {
@@ -251,7 +251,9 @@ export default function pluginAI(params?: any): any {
   }
 }
 
-export { MyBricksParamsTools as MyBricksTools, Agent } from './agents/utils/config'; 
+export { MyBricksParamsTools as MyBricksTools, Agent } from './agents/utils/config';
+export { createMyBricksAIRequest };
+export type { RequestAsStreamParams, RequestAsStreamFn }; 
 interface AgentPluginProps {
   agents: AgentConfigParams[];
   [key: string]: any;

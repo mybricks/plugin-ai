@@ -6,3 +6,6 @@
  */
 export const ENABLED_ACTION_TAGS = true;
 
+export { appEnv, isProduction, isDevelopment } from "./env";
+export type { AppEnv } from "./env";
+
