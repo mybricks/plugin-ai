@@ -2,6 +2,7 @@ import { Rxai, Events, IDB } from "@mybricks/rxai"
 import { RequestStatusTracker } from "./RequestStatusTracker";
 import { DeviceType } from './../types';
 import type { AgentConfigParams } from '../agents/utils/config';
+import type { ChatModeType } from "../components/chatMode";
 
 class Context {
 
@@ -76,6 +77,8 @@ class Context {
   requestStatusTracker = new RequestStatusTracker();
 
   pluginParams: any = {};
+
+  vibeStatus: Record<string, ChatModeType> = {};
 }
 
 const context = new Context();

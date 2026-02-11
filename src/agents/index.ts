@@ -11,7 +11,7 @@ import { context } from '../context'
 export const requestAgent = (params: any) => {
   const type = context.currentFocus?.type;
 
-  if (context.currentFocus?.vibeCoding) {
+  if (params?.vibeCoding) {
     return requestVibeCodingAgent({
       ...params,
       key: `${context.pluginParams.key}_${context.currentFocus!.pageId}_${context.currentFocus!.comId}`,

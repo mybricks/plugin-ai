@@ -5,6 +5,7 @@ import { Attachment, Loading, Send, Code } from "../icons";
 import { MentionTag } from "../mention";
 import { AttachmentsList } from "../attachments";
 import { Mention, Attachments } from "../types";
+import { ChatMode, type ChatModeType } from "../chatMode";
 import css from "./index.less"
 
 const readFileToBase64 = (file: File): Promise<string> => {
@@ -39,6 +40,8 @@ interface SenderProps {
   disabled?: boolean;
   onBlur?: () => void;
   mode?: "mention"
+  chatMode?: ChatModeType;
+  onChatModeChange?: (chatMode: ChatModeType) => void;
 }
 
 interface SenderRef {
@@ -48,7 +51,7 @@ interface SenderRef {
 }
 
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
-  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode } = props;
+  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange } = props;
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [inputContent, setInputContent] = useState<string | null>(null);
@@ -270,6 +273,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           <div className={classNames(css.leftArea, {
             [css.disabled]: loading || disabled
           })}>
+            {chatMode ? <ChatMode disabled={disabled} chatMode={chatMode} onChange={onChatModeChange} /> : null}
             <div className={css.attachmentButton} onClick={uploadAttachment}>
               <Attachment />
             </div>

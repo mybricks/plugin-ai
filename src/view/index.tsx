@@ -3,6 +3,7 @@ import classNames from "classnames";
 import { Header } from "./components";
 import { Messages } from "../components/messages";
 import { Sender, SenderRef, SenderProps } from "../components/sender";
+import type { ChatModeType } from "../components/chatMode";
 import { context } from "../context";
 import { Agents } from '../agents'
 import { AbstractAgent } from "../agents/utils/config";
@@ -17,7 +18,8 @@ interface ViewProps {
 const View = ({ user, copilot, api }: ViewProps) => {
   const senderRef = useRef<SenderRef>(null);
   const [rxai, setRxai] = useState(context.rxai);
-  const [vibeCoding, setVibeCoding] = useState(false);
+  // const [vibeCoding, setVibeCoding] = useState(false);
+  const [chatMode, setChatMode] = useState<ChatModeType>(null);
 
   const PLACEHOLDER_MAP = {
     normal: `您好，我是${context.name}，请详细描述您的需求`,
@@ -62,37 +64,51 @@ const View = ({ user, copilot, api }: ViewProps) => {
         senderRef.current!.setMentions([]);
         focusID.current = null;
         statusChange("disabled");
-        setRxai(context.rxai);
+        // setRxai(context.rxai);
+        setChatMode(null);
+        changeRxai(null);
       } else {
         const type = focus.type;
         const id = ["page", "section"].includes(type) ? focus.pageId : focus.comId;
         const { onProgress, ...other } = focus;
         senderRef.current!.setMentions([other] as any);
-        setVibeCoding(other.vibeCoding || false);
+        // setVibeCoding(other.vibeCoding || false);
+
+        let chatMode = null;
+        // let hasVibeCofing = false;
+
+        if ('vibeCoding' in other) {
+          // hasVibeCofing = true;
+          chatMode = context.vibeStatus[id] || "agent";
+          setChatMode(chatMode);
+        } else {
+          setChatMode(null);
+        }
         focusID.current = id;
         const status = context.requestStatusTracker.getStatus(id);
         statusChange(status.state === "pending" ? "loading" : "normal");
         // setTimeout(() => {
         //   senderRef.current!.focus();
         // })
-        if (focus.vibeCoding) {
-          setTimeout(() => {
-            // TODO: ai组件库里注册agents的时机不对
-            const agent = context.agents!.find((agent) => {
-              return agent instanceof AbstractAgent && agent.type === "vibeCoding"
-            });
-            if (agent) {
-              const rxai = (agent as AbstractAgent).getRxai({
-                key: `${context.pluginParams.key}_${focus.pageId}_${focus.comId}`,
-              })
-              setRxai(rxai);
-            } else {
-              setRxai(context.rxai);
-            }
-          })
-        } else {
-          setRxai(context.rxai);
-        }
+        changeRxai(chatMode);
+        // if (vibeCoding) {
+        //   setTimeout(() => {
+        //     // TODO: ai组件库里注册agents的时机不对
+        //     const agent = context.agents!.find((agent) => {
+        //       return agent instanceof AbstractAgent && agent.type === "vibeCoding"
+        //     });
+        //     if (agent) {
+        //       const rxai = (agent as AbstractAgent).getRxai({
+        //         key: `${context.pluginParams.key}_${focus.pageId}_${focus.comId}`,
+        //       })
+        //       setRxai(rxai);
+        //     } else {
+        //       setRxai(context.rxai);
+        //     }
+        //   })
+        // } else {
+        //   setRxai(context.rxai);
+        // }
       }
     }, true)
     const disconnectPromiseStatusTracker = context.requestStatusTracker.events.on("promise", (promise) => {
@@ -107,6 +123,27 @@ const View = ({ user, copilot, api }: ViewProps) => {
     }
   }, [])
 
+  const changeRxai = (chatMode: ChatModeType) => {
+    if (chatMode === "vibe") {
+      setTimeout(() => {
+        // TODO: ai组件库里注册agents的时机不对
+        const agent = context.agents!.find((agent) => {
+          return agent instanceof AbstractAgent && agent.type === "vibeCoding"
+        });
+        if (agent) {
+          const rxai = (agent as AbstractAgent).getRxai({
+            key: `${context.pluginParams.key}_${context.currentFocus?.pageId}_${context.currentFocus?.comId}`,
+          })
+          setRxai(rxai);
+        } else {
+          setRxai(context.rxai);
+        }
+      })
+    } else {
+      setRxai(context.rxai);
+    }
+  }
+
   const onSend = (sendMessage: Parameters<SenderProps["onSend"]>[0]) => {
     const { message, attachments, ...extension } = sendMessage;
 
@@ -118,7 +155,8 @@ const View = ({ user, copilot, api }: ViewProps) => {
       message,
       attachments,
       extension,
-      onProgress: context.currentFocus?.onProgress
+      onProgress: context.currentFocus?.onProgress,
+      vibeCoding: context.vibeStatus[focusID.current] === "vibe"
     }));
   }
 
@@ -137,12 +175,22 @@ const View = ({ user, copilot, api }: ViewProps) => {
       insertAfter,
       extension,
       focus: mentions[0],
-      onProgress: context.currentFocus?.onProgress
+      onProgress: context.currentFocus?.onProgress,
+      vibeCoding: context.vibeStatus[focusID.current] === "vibe"
     }));
   }
 
+  const onChatModeChange = (mode: ChatModeType) => {
+    setChatMode(mode);
+    const id = focusID.current;
+    if (id) {
+      context.vibeStatus[id] = mode;
+      changeRxai(mode);
+    }
+  }
+
   return (
-    <div className={classNames(css.view)} style={vibeCoding ? ({ '--mybricks-color-primary': '#16A157' } as React.CSSProperties) : undefined}>
+    <div className={classNames(css.view)} style={chatMode === "vibe" ? ({ '--mybricks-color-primary': '#16A157' } as React.CSSProperties) : undefined}>
       <Header rxai={rxai}/>
       <Messages
         key={rxai.key}
@@ -158,8 +206,10 @@ const View = ({ user, copilot, api }: ViewProps) => {
         placeholder={senderStateProps.placeholder}
         disabled={senderStateProps.disabled}
         mode="mention"
+        chatMode={chatMode}
         onSend={onSend}
         onMentionClick={onMentionClick}
+        onChatModeChange={onChatModeChange}
       />
     </div>
   )
