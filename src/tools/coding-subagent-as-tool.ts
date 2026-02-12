@@ -73,7 +73,7 @@ export default function codingSubagentAsTool(config: Config): any {
   return {
     name: NAME,
     displayName: '代码开发',
-    description: `执行「AI区域开发」：当生成页面时添加了需要开发代码的AI组件时，调用智能组件助手批量开发/还原这些组件的代码。无需规划此工具，此工具会自行调用。`,
+    description: `执行「AI区域开发」：当生成页面时添加了需要开发代码的AI组件时，调用智能组件助手批量开发/还原这些组件的代码`,
     async execute({ getUserMessage }) {
       const { codingManager, onStart, onComplete, onError } = config
       if (!codingManager.waitForCoding.length) {
@@ -92,7 +92,7 @@ export default function codingSubagentAsTool(config: Config): any {
           }
           if (status === 'error') {
             onError?.();
-            reject(new Error('开发出问题了'))
+            reject(new Error('代码出错了，请重新试试'))
           }
         }
         const promise = requestVibeCodingAgent(

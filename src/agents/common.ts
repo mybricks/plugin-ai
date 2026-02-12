@@ -272,18 +272,6 @@ export const requestCommonAgent = (params: any) => {
           }
         }),
         MYBRICKS_TOOLS.Answer({}),
-        MYBRICKS_TOOLS.CodingSubagentAsTool({
-          codingManager,
-          onStart: () => {
-            context.designer?.updatePage?.(targetPageId, [], 'start')
-          },
-          onComplete: () => {
-            context.designer?.updatePage?.(targetPageId, [], 'complete')
-          },
-          onError: () => {
-            context.designer?.updatePage?.(targetPageId, [], 'complete')
-          },  
-        }),
         MYBRICKS_TOOLS.BuildProcess({
           // getComId: () => focusInfo.comId,
           getPageId: () => focusInfo.pageId,

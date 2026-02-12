@@ -9,6 +9,8 @@ import { getAgentConfigs } from './utils/config'
 
 import { CodingManager } from './workspace/coding-manager'
 
+import AnalyzeRequirementAndSplit from '../tools/analyze-requirement-and-split'
+
 const getFocusInfo = (focus: any) => {
   const focusInfo: FocusInfo = {
     pageId: focus?.pageId,
@@ -87,6 +89,9 @@ export const requestCommonByCodingAgent = (params: any) => {
 
     onProgress?.('start')
 
+    workspace.openComponentDoc('mybricks.normal-pc-lite.custom-container');
+    workspace.openComponentDoc('mybricks.basic-comlib.ai-mix');
+
     const hasAttachment = typeof params?.message !== 'string';
 
     context.rxai.requestAI({
@@ -98,12 +103,10 @@ export const requestCommonByCodingAgent = (params: any) => {
         complete: () => {
           resolve('complete')
           onProgress?.("complete");
-          console.log('common-by-coding complete')
         },
         error: () => {
           reject('error')
           onProgress?.("error");
-          console.log('common-by-coding error')
         },
         cancel: () => {},
       },
@@ -113,16 +116,7 @@ export const requestCommonByCodingAgent = (params: any) => {
             workspace.openDocument(id)
           },
         }),
-        MYBRICKS_TOOLS.AnalyzeRequirementAndComponents({
-          allowComponents: context.designer?.getAllComDefPrompts?.() || "",
-          ...agentConfig?.getToolParams(MYBRICKS_TOOLS.AnalyzeRequirementAndComponents.toolName),
-          onComponentDocOpen: (namespace) => {
-            workspace.openComponentDoc(namespace)
-          },
-          appendPrompt: agentConfig?.attentions,
-          deviceType: context.deviceType,
-        }),
-        MYBRICKS_TOOLS.GenerateUiContent({
+        AnalyzeRequirementAndSplit({
           getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,
           getTargetId: () => targetPageId as string,
           getRootIdByPageId(pageId: string) {
@@ -132,6 +126,9 @@ export const requestCommonByCodingAgent = (params: any) => {
           appendPrompt: agentConfig?.attentions,
           ...agentConfig?.getToolParams(MYBRICKS_TOOLS.GenerateUiContent.toolName),
           onActions: (actions, status) => {
+            if (status === 'complete') {
+              return
+            }
             return context.designer?.updatePage?.(targetPageId, actions, status)
           },
           onClearPage: () => {
@@ -140,56 +137,6 @@ export const requestCommonByCodingAgent = (params: any) => {
           onAddCodingBlock(com) {
             codingManager.addCodingCom(com);
           },
-        }),
-        MYBRICKS_TOOLS.RefactorUiContent({
-          onActions: (actions, status, type) => {
-            if (!status) {
-              return 
-            }
-
-            if (targetType === 'uiCom' && targetId && type === 'uiCom') {
-              const parentId = workspace.focusPageOutlineInfo
-                ? outlineInfoManager.findParentNodeByComId(
-                  workspace.focusPageOutlineInfo,
-                  targetId as string
-                )?.id
-                : undefined;
-
-              if (parentId && parentId !== targetPageId) {
-                return context.designer?.updateUiCom?.(parentId, actions, status)
-              }
-            }
-
-            return context.designer?.updatePage?.(targetPageId, actions, status)
-          },
-          componentIdToTitleMap,
-          appendPrompt: agentConfig?.attentions,
-          getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,
-          getTargetId: () => targetPageId as string,
-          getFocusElementHasChildren() {
-            if (!['page', 'logicCom', 'section'].includes(currentFocus?.type) && targetId) {
-              const json = outlineInfoManager.getUiComOutline(targetId)
-              if (!json.slots || (Array.isArray(json.slots) && json.slots.length === 0)) {
-                return false
-              }
-            }
-            return true
-          },
-          getFocusElementAiRole() {
-            if (focusInfo?.type === "uiCom") {
-              const comInfo = context.api.uiCom.api.getOutlineInfo(focusInfo.comId);
-              const aiComponent = ComponentsManager.getAiComponent(comInfo.def.namespace);
-              return aiComponent?.prompts?.aiRole;
-            }
-            return null
-          },
-          getComIds() {
-            const comIds: string[] = [];
-            outlineInfoManager.getComponentIdToTitleMap(targetPageId).forEach((value, key) => {
-              comIds.push(key);
-            })
-            return comIds;
-          }
         }),
         MYBRICKS_TOOLS.Answer({}),
         MYBRICKS_TOOLS.CodingSubagentAsTool({
@@ -203,96 +150,23 @@ export const requestCommonByCodingAgent = (params: any) => {
           onError: () => {
             context.designer?.updatePage?.(targetPageId, [], 'complete')
           },  
-        }),
-        MYBRICKS_TOOLS.BuildProcess({
-          getPageId: () => focusInfo.pageId,
-          getComponentOutlineInfo: () => {
-            const { type, comId } = focusInfo
-            if (type === "uiCom") {
-              return {
-                type,
-                outlineInfo: context.api?.uiCom?.api?.getOutlineInfo(comId)
-              }
-            } else if (type === "logicCom") {
-              return {
-                type,
-                outlineInfo: context.api?.logicCom?.api?.getOutlineInfo(comId)
-              }
-            }
-          },
-          getPageOutlineInfo: () => context.api?.page?.api?.getOutlineInfo(focusInfo.pageId),
-          getAllPageInfo() {
-            return context.api?.global?.api?.getAllPageInfo()
-          },
-          createDiagram: (...args: any) => {
-            return context.designer?.createDiagram?.(...args)
-          },
-          updateDiagram: (...args: any) => {
-            return context.designer?.updateDiagram?.(...args)
-          },
-          getDiagramInfo: (...args: any) => {
-            if (!args[0]) {
-              if (focusInfo.diagramId) {
-                return { id: focusInfo.diagramId }
-              }
-              return null
-            }
-            return context.designer?.getDiagramInfo?.(...args)
-          },
-          updatePage: (...args: any) => {
-            return context.designer?.updatePage?.(focusInfo.pageId, ...args)
-          },
-          updateCom: (...args: any) => {
-            return context.designer?.updateLogicCom?.(...args)
-          },
-        }),
+        })
       ],
       planningCheck: (tools: any[]) => {
         const toolNames = tools.map(tool => tool[1]);
         const resultTools = [...tools];
-        
-        const infoToolNames = [MYBRICKS_TOOLS.OpenDsl.toolName, MYBRICKS_TOOLS.AnalyzeRequirementAndComponents.toolName];
-        if (toolNames.length > 0 && infoToolNames.includes(toolNames[toolNames.length - 1])) {
-          resultTools.push(['node', MYBRICKS_TOOLS.Answer.toolName]);
-          return resultTools
-        }
-        
-        const generatePageIndex = toolNames.indexOf(MYBRICKS_TOOLS.GenerateUiContent.toolName);
-        if (generatePageIndex > -1) {
-          const requirementTools = [MYBRICKS_TOOLS.AnalyzeRequirementAndComponents.toolName, MYBRICKS_TOOLS.OpenDsl.toolName];
-          const hasRequirement = toolNames.slice(0, generatePageIndex).some(name => requirementTools.includes(name));
-          
-          if (!hasRequirement) {
-            resultTools.splice(generatePageIndex, 0, ['node', MYBRICKS_TOOLS.AnalyzeRequirementAndComponents.toolName]);
-            return resultTools
-          }
+
+        // 规则: 若计划中有「分析需求并拆分」，则其后需有「代码开发」步骤
+        const splitIndex = toolNames.indexOf(AnalyzeRequirementAndSplit.toolName);
+        if (splitIndex > -1) {
           const hasCodingSubagent = resultTools.some((t: any) => t[1] === MYBRICKS_TOOLS.CodingSubagentAsTool.toolName);
           if (!hasCodingSubagent) {
-            const insertIndex = resultTools.findIndex((t: any) => t[1] === MYBRICKS_TOOLS.GenerateUiContent.toolName) + 1;
+            const insertIndex = resultTools.findIndex((t: any) => t[1] === AnalyzeRequirementAndSplit.toolName) + 1;
             resultTools.splice(insertIndex, 0, ['node', MYBRICKS_TOOLS.CodingSubagentAsTool.toolName]);
           }
         }
-        
-        const refactorIndex = toolNames.indexOf(MYBRICKS_TOOLS.RefactorUiContent.toolName);
-        if (refactorIndex > -1) {
-          const hasOpenDsl = toolNames.slice(0, refactorIndex).includes(MYBRICKS_TOOLS.OpenDsl.toolName);
-          if (!hasOpenDsl) {
-            resultTools.splice(refactorIndex, 0, ['node', MYBRICKS_TOOLS.OpenDsl.toolName, { ids: targetPageId }]);
-            return resultTools
-          }
-        }
 
-        const buildProcessIndex = toolNames.indexOf(MYBRICKS_TOOLS.BuildProcess.toolName);
-        if (buildProcessIndex > -1) {
-          const requirementTools = [MYBRICKS_TOOLS.AnalyzeRequirementAndComponents.toolName];
-          const hasRequirement = toolNames.slice(0, generatePageIndex).some(name => requirementTools.includes(name));
-          if (!hasRequirement) {
-            resultTools.splice(generatePageIndex, 0, ['node', MYBRICKS_TOOLS.AnalyzeRequirementAndComponents.toolName, {mode: "refactor"}]);
-            return resultTools
-          }
-        }
-
-        return resultTools
+        return resultTools;
       },
       formatUserMessage: (text: string) => {
         return `对于聚焦元素${focusEleDesc}，用户提出的消息为：

@@ -307,4 +307,77 @@ function createMyBricksAIRequest(config: { getToken: () => string | Promise<stri
   }));
 }
 
-export { createRequestAsStream, createMyBricksAIRequest };
+/** Kimi API 默认 base URL（OpenAI 兼容） */
+const KIMI_API_BASE = "https://api.moonshot.cn/v1";
+
+/**
+ * 使用 Kimi 大模型（月之暗面）的流式请求。
+ * 基于 Kimi 官方 OpenAI 兼容接口，不使用三方库。
+ * @see https://platform.moonshot.cn/docs/guide/migrating-from-openai-to-kimi
+ * @param config.apiKey - API Key，或返回 API Key 的函数（支持异步）
+ * @param config.model - 模型名，默认 moonshot-v1-8k；temperature 接近 0 时 n 只能为 1
+ */
+function createKimiAIRequest(config: {
+  apiKey: string | (() => string | Promise<string>);
+  model?: string;
+}): RequestAsStreamFn {
+  const defaultModel = "moonshot-v1-8k";
+
+  return async function (params: RequestAsStreamParams) {
+    const { messages, emits } = params;
+    const { cancel, write, complete, error } = emits;
+
+    const apiKey =
+      typeof config.apiKey === "function"
+        ? await Promise.resolve(config.apiKey())
+        : config.apiKey;
+    const model = config.model ?? defaultModel;
+
+    const body = {
+      messages,
+      model,
+      stream: true,
+      // Kimi：temperature 在 [0,1]，且 temp≈0 时仅支持 n=1
+      temperature: 0.3,
+      n: 1,
+    };
+
+    try {
+      const controller = new AbortController();
+      const response = await fetch(`${KIMI_API_BASE}/chat/completions`, {
+        signal: controller.signal,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+      });
+
+      cancel(() => controller.abort());
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Kimi API ${response.status}: ${text || response.statusText}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("Kimi API: no response body");
+      }
+
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        write(decoder.decode(value, { stream: true }));
+      }
+
+      complete("");
+    } catch (ex) {
+      error(ex as any);
+    }
+  };
+}
+
+export { createRequestAsStream, createMyBricksAIRequest, createKimiAIRequest };
