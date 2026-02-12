@@ -79,7 +79,10 @@ const View = ({ user, copilot, api }: ViewProps) => {
 
         if ('vibeCoding' in other) {
           // hasVibeCofing = true;
-          chatMode = context.vibeStatus[id] || "agent";
+          if (!context.vibeStatus[id]) {
+            context.vibeStatus[id] = 'vibe';
+          }
+          chatMode = context.vibeStatus[id];
           setChatMode(chatMode);
         } else {
           setChatMode(null);
