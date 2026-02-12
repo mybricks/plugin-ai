@@ -34,7 +34,8 @@ const getTargetId = (focus: FocusInfo) => {
   return focus.pageId;
 }
 
-export const requestCommonAgent = (params: any) => {
+/** common 的 fork，后续可在此单独扩展 */
+export const requestCommonByCodingAgent = (params: any) => {
 
   return new Promise((resolve, reject) => {
     const agentConfig = getAgentConfigs(context.agents, 'page');
@@ -88,57 +89,21 @@ export const requestCommonAgent = (params: any) => {
 
     const hasAttachment = typeof params?.message !== 'string';
 
-    // workspace.openDocument('u_qLciw]')
-
-    // workspace.openDocument('u_ADKKC')
-
-    // workspace.openDocument('u_ZJ_bn')
-
-    // workspace.openDocument('u_ADKKC')
-    // workspace.openDocument('u_XZL9q')
-
-    // workspace.openDocument('u_k_1dW')
-    // workspace.openDocument('u_ADKKC')
-
-    // // 页面
-    // workspace.openDocument('u_yjFHf')
-    // workspace.openDocument('u_tycgh')
-
-    // // 页面 + 组件
-    // workspace.openDocument('u_yjFHf')
-    // workspace.openDocument('u_ADKKC')
-
-    // return console.log(workspace.getProjectStruct())
-
-    // try {
-    //   workspace.openDocument(targetPageId)
-
-    //   return console.log(workspace.getProjectStruct())
-
-    //   workspace.openComponentDoc('mybricks.normal-pc.antd5.form-container')
-    //   return console.log(workspace.getComponentsDocs());
-    // } catch (error) {
-    //   console.error(error)
-    // }
-    // return
-
-
     context.rxai.requestAI({
       ...params,
       message: params?.message,
       blockId: targetId,
-      // enableLog: true,
       emits: {
         write: () => { },
         complete: () => {
           resolve('complete')
           onProgress?.("complete");
-          console.log('common complete')
+          console.log('common-by-coding complete')
         },
         error: () => {
           reject('error')
           onProgress?.("error");
-          console.log('common error')
+          console.log('common-by-coding error')
         },
         cancel: () => {},
       },
@@ -176,55 +141,12 @@ export const requestCommonAgent = (params: any) => {
             codingManager.addCodingCom(com);
           },
         }),
-//         MYBRICKS_TOOLS.GenerateUiContent({
-//           getRootComponentDoc: () => context.api?.page?.api?.getPageContainerPrompts?.(targetPageId) as string,
-//           getTargetId: () => targetPageId as string,
-//           getRootIdByPageId(pageId: string) {
-//             return outlineInfoManager.getPageMetaInfo(pageId)?.rootId
-//           },
-//           componentIdToTitleMap,
-//           appendPrompt: `<对于当前搭建有以下特殊上下文>
-//   <搭建画布信息>
-//     当前正在搭建各类智能穿戴设备的表盘，画布的宽度和高度我们限制为466*466，所有内容必须使用*绝对定位*布局绘制到画布上。
-
-//     注意：根组件的布局必须设置position=absolute（绝对定位）和具体的宽高。
-//   </搭建画布信息>
-// </对于当前搭建有以下特殊上下文>`,
-//           examples: `<example>
-//   <user_query>搭建一个科技风表盘</user_query>
-//   <assistant_response>
-//     好的，我们来实现一个科技风的表盘，搭建过程如下：
-//     1. 首先，必须配置合理的表盘宽度和高度、标题、布局以及样式；
-//     2. 其次搭建各类元素，将各类表盘元素放置到合适的位置；
-
-//     ${fileFormat({
-//     content: `["_root_",":root","setLayout",{"height": 466, "width": "466"}]
-//     ["_root_",":root","doConfig",{"path":"root/标题","value":"科技风表盘"}]
-//     ["_root_",":root","doConfig",{"path":"root/布局","value":{"position": "absolute"}}]
-//     ["_root_",":root","doConfig",{"path":"root/样式","value":{"background":"linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 50%, #16213e 100%)"}}]
-//     ["_root_","_rootSlot_","addChild",{"title":"电池图标显示","ns":"somelib.battery","comId":"u_digital_time","layout":{"position":"absolute","top":10,"left":300},"configs":[]}]
-//     `,
-//     fileName: '生成科技风表盘操作步骤.json'
-//   })}
-
-//     注意：
-//     - 表盘所有元素必须由自由布局绘制而成
-//   </assistant_response>
-// </example>`,
-//           onActions: (actions, status) => {
-//             context.api?.page?.api?.updatePage?.(targetPageId, actions, status)
-//           },
-//           onClearPage: () => {
-//             context.api?.page?.api?.clearPageContent?.(targetPageId)
-//           }
-//         }),
         MYBRICKS_TOOLS.RefactorUiContent({
           onActions: (actions, status, type) => {
             if (!status) {
               return 
             }
 
-            // 只有聚焦到组件上，且第一个操作ID是组件ID，且父组件不为页面ID，才会触发组件级更新
             if (targetType === 'uiCom' && targetId && type === 'uiCom') {
               const parentId = workspace.focusPageOutlineInfo
                 ? outlineInfoManager.findParentNodeByComId(
@@ -263,11 +185,9 @@ export const requestCommonAgent = (params: any) => {
           },
           getComIds() {
             const comIds: string[] = [];
-
             outlineInfoManager.getComponentIdToTitleMap(targetPageId).forEach((value, key) => {
               comIds.push(key);
             })
-
             return comIds;
           }
         }),
@@ -285,7 +205,6 @@ export const requestCommonAgent = (params: any) => {
           },  
         }),
         MYBRICKS_TOOLS.BuildProcess({
-          // getComId: () => focusInfo.comId,
           getPageId: () => focusInfo.pageId,
           getComponentOutlineInfo: () => {
             const { type, comId } = focusInfo
@@ -306,21 +225,16 @@ export const requestCommonAgent = (params: any) => {
             return context.api?.global?.api?.getAllPageInfo()
           },
           createDiagram: (...args: any) => {
-            // console.log("[createDiagram - args]", args)
             return context.designer?.createDiagram?.(...args)
           },
           updateDiagram: (...args: any) => {
-            // console.log("[updateDiagram - args]", args)
             return context.designer?.updateDiagram?.(...args)
           },
           getDiagramInfo: (...args: any) => {
             if (!args[0]) {
               if (focusInfo.diagramId) {
-                return {
-                  id: focusInfo.diagramId
-                }
+                return { id: focusInfo.diagramId }
               }
-
               return null
             }
             return context.designer?.getDiagramInfo?.(...args)
@@ -337,14 +251,12 @@ export const requestCommonAgent = (params: any) => {
         const toolNames = tools.map(tool => tool[1]);
         const resultTools = [...tools];
         
-        // 规则1: 如果 信息获取类 在最后一个，则添加一个 answer
         const infoToolNames = [MYBRICKS_TOOLS.OpenDsl.toolName, MYBRICKS_TOOLS.AnalyzeRequirementAndComponents.toolName];
         if (toolNames.length > 0 && infoToolNames.includes(toolNames[toolNames.length - 1])) {
           resultTools.push(['node', MYBRICKS_TOOLS.Answer.toolName]);
           return resultTools
         }
         
-        // 规则2: 如果 生成页面 前面没有获取需求，则添加一个需求分析
         const generatePageIndex = toolNames.indexOf(MYBRICKS_TOOLS.GenerateUiContent.toolName);
         if (generatePageIndex > -1) {
           const requirementTools = [MYBRICKS_TOOLS.AnalyzeRequirementAndComponents.toolName, MYBRICKS_TOOLS.OpenDsl.toolName];
@@ -354,7 +266,6 @@ export const requestCommonAgent = (params: any) => {
             resultTools.splice(generatePageIndex, 0, ['node', MYBRICKS_TOOLS.AnalyzeRequirementAndComponents.toolName]);
             return resultTools
           }
-          // 规则2b: 生成页面后添加「代码开发」步骤（由 planningCheck 注入）
           const hasCodingSubagent = resultTools.some((t: any) => t[1] === MYBRICKS_TOOLS.CodingSubagentAsTool.toolName);
           if (!hasCodingSubagent) {
             const insertIndex = resultTools.findIndex((t: any) => t[1] === MYBRICKS_TOOLS.GenerateUiContent.toolName) + 1;
@@ -362,11 +273,9 @@ export const requestCommonAgent = (params: any) => {
           }
         }
         
-        // 规则3: 如果 修改 前面没有 open-dsl-document，则添加一个
         const refactorIndex = toolNames.indexOf(MYBRICKS_TOOLS.RefactorUiContent.toolName);
         if (refactorIndex > -1) {
           const hasOpenDsl = toolNames.slice(0, refactorIndex).includes(MYBRICKS_TOOLS.OpenDsl.toolName);
-          
           if (!hasOpenDsl) {
             resultTools.splice(refactorIndex, 0, ['node', MYBRICKS_TOOLS.OpenDsl.toolName, { ids: targetPageId }]);
             return resultTools
@@ -375,10 +284,8 @@ export const requestCommonAgent = (params: any) => {
 
         const buildProcessIndex = toolNames.indexOf(MYBRICKS_TOOLS.BuildProcess.toolName);
         if (buildProcessIndex > -1) {
-          // 搭建流程前需要需求分析和组件选型
           const requirementTools = [MYBRICKS_TOOLS.AnalyzeRequirementAndComponents.toolName];
           const hasRequirement = toolNames.slice(0, generatePageIndex).some(name => requirementTools.includes(name));
-          
           if (!hasRequirement) {
             resultTools.splice(generatePageIndex, 0, ['node', MYBRICKS_TOOLS.AnalyzeRequirementAndComponents.toolName, {mode: "refactor"}]);
             return resultTools
@@ -403,13 +310,12 @@ ${text}
         const projectStruct = workspace.getProjectStruct();
         const componentsDocs = workspace.getComponentsDocs();
         const hasComponentsDocs = workspace.hasComponentsDocs();
-        
-        // 合并内容
+
         let projectInfo = projectStruct;
         if (hasComponentsDocs) {
           projectInfo = `${projectStruct}\n\n${componentsDocs}`;
         }
-        
+
         return [
           {
             role: 'user',
@@ -423,6 +329,8 @@ ${text}
           },
         ]
       },
+      guidePrompt: `划分AI区域时以语义化/UI明显区分的模块作为划分，容器只需要做布局和AI区域间的间距使用，最大划分数量不建议超过12个。
+绝对禁止拆分过细的AI区域组件，比如一个文本作为一个AI区域。`,
     });
   })
 }
@@ -430,11 +338,7 @@ ${text}
 
 function generateHistoryFocusDescription(currentFocus: Partial<FocusInfo> = {}) {
   const { pageId, comId, title, type } = currentFocus ?? {}
-  
-  // 定义聚焦元素的描述部分
   let focusDesc = '';
-  
-  // 判断当前聚焦元素类型
   if (type === 'uiCom') {
     focusDesc = `组件(title=${title},组件id=${comId})`;
   } else if (type === 'page') {
@@ -444,17 +348,12 @@ function generateHistoryFocusDescription(currentFocus: Partial<FocusInfo> = {}) 
   } else if (type === "logicCom") {
     focusDesc = `计算组件(title=${title},组件id=${comId})`;
   }
-  
   return `对于${focusDesc}`;
 }
 
 function generateFocusTargetDescription(currentFocus: Partial<FocusInfo> = {}) {
   const { pageId, comId, title, type, focusArea } = currentFocus ?? {}
-  
-  // 定义聚焦元素的描述部分
   let focusDesc = '';
-  
-  // 判断当前聚焦元素类型
   if (type === 'uiCom') {
     focusDesc = `组件(title=${title},组件id=${comId},选中区域=${focusArea ? focusArea.selector : ":root"})`;
   } else if (type === 'page') {
@@ -464,6 +363,5 @@ function generateFocusTargetDescription(currentFocus: Partial<FocusInfo> = {}) {
   } else if (type === "logicCom") {
     focusDesc = `计算组件(title=${title},组件id=${comId})`;
   }
-  
   return focusDesc;
 }

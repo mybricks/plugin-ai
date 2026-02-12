@@ -210,13 +210,22 @@ async function requestAsStreamForDevelopment(params: RequestAsStreamParams) {
   }
 }
 
-/** 线上模式：按 fetchTarget 选 URL，body 加密；可选 extraHeaders（如 createMyBricksAIRequest 注入 Authorization） */
-function requestAsStreamForProduction(extraHeaders?: Record<string, string>): RequestAsStreamFn {
+type ExtraHeadersInput =
+  | Record<string, string>
+  | (() => Record<string, string> | Promise<Record<string, string>>);
+
+/** 线上模式：按 fetchTarget 选 URL，body 加密；可选 extraHeaders（如 createMyBricksAIRequest 注入 Authorization），支持静态对象或动态 getter */
+function requestAsStreamForProduction(extraHeadersInput?: ExtraHeadersInput): RequestAsStreamFn {
   return async function (params: RequestAsStreamParams) {
     const { messages, emits, aiRole } = params;
     const { cancel, write, complete, error } = emits;
 
     await checkFetchTarget();
+
+    const extraHeaders =
+      typeof extraHeadersInput === "function"
+        ? await Promise.resolve(extraHeadersInput())
+        : extraHeadersInput;
 
     const extendParams = transfromExtendParams({ aiRole });
     const payload = { messages, ...extendParams };
@@ -288,13 +297,14 @@ function createRequestAsStream(): RequestAsStreamFn {
 }
 
 /**
- * 仅配置 token 的 preset：返回已注入 Authorization 的 requestAsStreamForProduction。
- * 等价于用 onRequest 完全替代默认实现并自带鉴权。
- * @example import pluginAI, { createMyBricksAIRequest } from '@mybricks/plugin-ai'
- *          pluginAI({ onRequest: createMyBricksAIRequest({ token }) })
+ * 仅配置 getToken 的 preset：返回已注入 Authorization 的 requestAsStreamForProduction。
+ * 等价于用 onRequest 完全替代默认实现并自带鉴权；每次请求前调用 getToken 获取最新 token。
+ * @example pluginAI({ onRequest: createMyBricksAIRequest({ getToken: () => getAccessToken() }) })
  */
-function createMyBricksAIRequest(config: { token: string }): RequestAsStreamFn {
-  return requestAsStreamForProduction({ Authorization: `Bearer ${config.token}` });
+function createMyBricksAIRequest(config: { getToken: () => string | Promise<string> }): RequestAsStreamFn {
+  return requestAsStreamForProduction(async () => ({
+    Authorization: `Bearer ${await Promise.resolve(config.getToken())}`,
+  }));
 }
 
 export { createRequestAsStream, createMyBricksAIRequest };

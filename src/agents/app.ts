@@ -7,9 +7,7 @@ import { getAgentConfigs } from './utils/config'
 
 export const requestGeneratePageAgent = (pageId: string, pageTitle: string, params: any) => {
 
-  // 从 agents 配置中获取提示词配置，优先使用参数传入的，否则使用 context 中的
-  const agents = params.agents || context.agents;
-  const agentConfig = getAgentConfigs(agents, 'page');
+  const agentConfig = getAgentConfigs(context.agents, 'page');
 
   const focusInfo: FocusInfo = {
     pageId,

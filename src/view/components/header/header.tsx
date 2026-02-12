@@ -17,10 +17,8 @@ const Header = (params: HeaderParams) => {
   const exportRxai = async () => {
     try {
       const content = await params.rxai.export();
-      downloadToFile({
-        content: content,
-        name: `rxai-${new Date().getTime()}.json`
-      })
+      const name = `rxai-${new Date().getTime()}.json`;
+      await context.pluginParams.onDownload({ name, content: JSON.stringify(content) });
     } catch (e) {
       console.error("[@mybricks/plugin-ai - exportRxai - error]", e);
     }
@@ -45,16 +43,3 @@ const Header = (params: HeaderParams) => {
 }
 
 export { Header }
-
-function downloadToFile ({ content, name }: { content: any, name: string }) {
-  const eleLink = document.createElement('a')
-  eleLink.download = name
-  eleLink.style.display = 'none'
-
-  const blob = new Blob([JSON.stringify(content)])
-
-  eleLink.href = URL.createObjectURL(blob)
-  document.body.appendChild(eleLink)
-  eleLink.click()
-  document.body.removeChild(eleLink)
-}

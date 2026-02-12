@@ -41,6 +41,9 @@ class Context {
     enabledActionTags: boolean;
   }
 
+  /** 开启后所有common agent 全部走 coding 流程 */
+  codingMode: boolean = false;
+
   get useCloudComponents() {
     return this.userConfig?.useCloudComponents ?? false;
   }

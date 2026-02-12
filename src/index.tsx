@@ -53,6 +53,8 @@ export default function pluginAI(params?: any): any {
     deviceType,
     config,
     onRequest,
+    onDownload,
+    codingMode = false
   } = transformParams(params);
 
   const requestAsStream = onRequest ?? createRequestAsStream();
@@ -72,6 +74,7 @@ export default function pluginAI(params?: any): any {
   context.isMutiCanvas = isMutiCanvas ?? true;
   context.deviceType = deviceType ?? DeviceType.Mobile;
   context.userConfig = config ?? {}
+  context.codingMode = codingMode;
   context.pluginParams = {
     name,
     user,
@@ -85,6 +88,7 @@ export default function pluginAI(params?: any): any {
     isMutiCanvas,
     deviceType,
     config,
+    onDownload,
   }
 
   return {
@@ -179,7 +183,6 @@ export default function pluginAI(params?: any): any {
           console.log("[init - API]", api)
 
           window._registerAgent_ = (agentConfig: any) => {
-            console.log('registerAgent', agentConfig)
             context.agents.push(new CustomAgent(agentConfig));
           }
 
@@ -190,6 +193,7 @@ export default function pluginAI(params?: any): any {
               context.events.emit("focus", currentFocus);
               console.log('focus', currentFocus)
             },
+            // 聚焦到页面或者组件时使用这个方法请求agent
             request(requestParams: AiServiceRequestParams) {
               if (requestParams.attachments?.length) {
                 // TODO: attachments是Proxy代理，引擎不应该抛出此类代理
@@ -225,7 +229,7 @@ export default function pluginAI(params?: any): any {
 
               // 使用统一的 requestAgent 方法，自动处理自定义 agent 和默认 agent
               const focusId = focus ? (focus.type === "page" ? focus.pageId : focus.comId) : "";
-              context.requestStatusTracker.track(focusId, Agents.requestAgent({ ...requestParams, extension, agents, guidePrompt }))
+              context.requestStatusTracker.track(focusId, Agents.requestAgent('common', { ...requestParams, extension }))
             },
             registerAgent: window._registerAgent_,
             fileFormat

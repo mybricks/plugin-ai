@@ -151,12 +151,13 @@ const View = ({ user, copilot, api }: ViewProps) => {
       return;
     }
 
-    context.requestStatusTracker.track(focusID.current, Agents.requestAgent({
+    // 聚焦到页面或者组件时使用这个方法请求agent
+    const agentType = context.vibeStatus[focusID.current] === "vibe" ? 'vibe' : 'common';
+    context.requestStatusTracker.track(focusID.current, Agents.requestAgent(agentType, {
       message,
       attachments,
       extension,
       onProgress: context.currentFocus?.onProgress,
-      vibeCoding: context.vibeStatus[focusID.current] === "vibe"
     }));
   }
 
@@ -169,14 +170,16 @@ const View = ({ user, copilot, api }: ViewProps) => {
     const { message, attachments, insertAfter,  ...extension } = sendMessage;
     const { mentions } = extension
     const mention = sendMessage.mentions[0];
-    context.requestStatusTracker.track(mention.type === "page" ? mention.pageId : mention.comId, Agents.requestAgent({
+
+    // 聚焦到页面或者组件时使用这个方法请求agent
+    const agentType = context.vibeStatus[focusID.current] === "vibe" ? 'vibe' : 'common';
+    context.requestStatusTracker.track(mention.type === "page" ? mention.pageId : mention.comId, Agents.requestAgent(agentType, {
       message,
       attachments,
       insertAfter,
       extension,
       focus: mentions[0],
       onProgress: context.currentFocus?.onProgress,
-      vibeCoding: context.vibeStatus[focusID.current] === "vibe"
     }));
   }
 
