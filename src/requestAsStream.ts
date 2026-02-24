@@ -140,7 +140,7 @@ const transfromExtendParams = (extendParams: { aiRole?: string }) => {
 
   switch (true) {
     case ["image"].includes(aiRole): {
-      model = "anthropic/claude-sonnet-4.5";
+      model = "anthropic/claude-sonnet-4.6";
       role = "image";
       break;
     }
@@ -155,7 +155,7 @@ const transfromExtendParams = (extendParams: { aiRole?: string }) => {
       break;
     }
     case ["expert"].includes(aiRole): {
-      model = "anthropic/claude-sonnet-4.5";
+      model = "anthropic/claude-sonnet-4.6";
       role = "expert";
       break;
     }
