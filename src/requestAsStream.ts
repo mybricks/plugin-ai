@@ -147,7 +147,7 @@ const transfromExtendParams = (extendParams: { aiRole?: string }) => {
       break;
     }
     case ["junior"].includes(aiRole): {
-      model = "z-ai/glm-4.7";
+      model = "moonshotai/kimi-k2.5";
       role = "junior";
       break;
     }
