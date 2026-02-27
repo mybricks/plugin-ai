@@ -208,9 +208,10 @@ const View = ({ user, copilot, api }: ViewProps) => {
       />
       <Sender
         ref={senderRef}
-        loading={senderStateProps.loading}
-        placeholder={senderStateProps.placeholder}
-        disabled={senderStateProps.disabled}
+        // loading={senderStateProps.loading}
+        // placeholder={senderStateProps.placeholder}
+        // disabled={senderStateProps.disabled}
+        placeholder={PLACEHOLDER_MAP['normal']}
         mode="mention"
         chatMode={chatMode}
         onSend={onSend}
