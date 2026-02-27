@@ -394,6 +394,26 @@ export abstract class AbstractAgent {
 
   getRxai(params: { key: any }) {
     const { key } = params;
+
+  const mock = [];
+
+    const mockRequestAsStream = () => {
+      let count = 0;
+      let length = mock.length;
+      return (params: {
+        messages: any;
+        emits: any;
+        aiRole?: any;
+      }) => {
+        params.emits.write("");
+        params.emits.write(mock[count++]);
+        params.emits.complete("");
+        if (count === length) {
+          count = 0;
+        }
+      }
+    }
+    
     if (!this.rxaiMap[key]) {
       this.rxaiMap[key] = new Rxai({
         system: this.system,

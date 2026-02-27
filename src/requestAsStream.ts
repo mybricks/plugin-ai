@@ -128,7 +128,9 @@ async function checkFetchTarget(): Promise<FetchTarget> {
 
 const transfromExtendParams = (extendParams: { aiRole?: string }) => {
   const { aiRole } = extendParams;
-  let model = "google/gemini-3-flash-preview";
+  let model = "moonshotai/kimi-k2.5";
+  // let model = "google/gemini-3-flash-preview";
+  // let model = 'x-ai/grok-4.1-fast'
   let role = "default";
 
   if (!aiRole) {
@@ -291,9 +293,21 @@ async function doStreamFetch(opts: {
 }
 
 
-/** 默认实现：线上用 production，开发用 development。可被 pluginAI 的 onRequest 整体替代。 */
+/** 默认实现：线上用 production；开发时 aiRole='kimi' 走 Kimi，否则走原 stream-test。可被 pluginAI 的 onRequest 整体替代。 */
 function createRequestAsStream(): RequestAsStreamFn {
-  return isProduction() ? requestAsStreamForProduction() : requestAsStreamForDevelopment;
+  return async function (params: RequestAsStreamParams) {
+    if (isProduction()) {
+      return requestAsStreamForProduction()(params);
+    }
+    if (params.aiRole === "kimi") {
+      const kimiRequest = createKimiAIRequest({
+        apiKey: "sk-hqldpxgWjw9fdncNM9zvN1yD7ANGer8TffQ6FgVq4G1JRAmA",
+        model: "kimi-k2.5",
+      });
+      return kimiRequest(params);
+    }
+    return requestAsStreamForDevelopment(params);
+  };
 }
 
 /**
@@ -311,17 +325,42 @@ function createMyBricksAIRequest(config: { getToken: () => string | Promise<stri
 const KIMI_API_BASE = "https://api.moonshot.cn/v1";
 
 /**
+ * Kimi 流式 SSE  chunk 结构（OpenAI 兼容，含 reasoning_content）
+ * data: {"id":"...","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"..."|"reasoning_content":"..."},"finish_reason":null}]}
+ * data: [DONE]
+ */
+function parseKimiSSEChunk(line: string): string {
+  const data = line.replace(/^data:\s*/, "").trim();
+  if (data === "" || data === "[DONE]") return "";
+  try {
+    const json = JSON.parse(data) as {
+      choices?: Array<{
+        delta?: { content?: string; reasoning_content?: string };
+      }>;
+    };
+    const delta = json.choices?.[0]?.delta;
+    if (!delta) return "";
+    const parts: string[] = [];
+    // if (delta.reasoning_content) parts.push(delta.reasoning_content);
+    if (delta.content) parts.push(delta.content);
+    return parts.join("");
+  } catch {
+    return "";
+  }
+}
+
+/**
  * 使用 Kimi 大模型（月之暗面）的流式请求。
- * 基于 Kimi 官方 OpenAI 兼容接口，不使用三方库。
+ * 基于 Kimi 官方 OpenAI 兼容接口，解析 SSE 并提取 content / reasoning_content 后写入 write。
  * @see https://platform.moonshot.cn/docs/guide/migrating-from-openai-to-kimi
  * @param config.apiKey - API Key，或返回 API Key 的函数（支持异步）
- * @param config.model - 模型名，默认 moonshot-v1-8k；temperature 接近 0 时 n 只能为 1
+ * @param config.model - 模型名，默认 moonshot-v1-8k；kimi-k2.5 等支持 reasoning_content
  */
 function createKimiAIRequest(config: {
   apiKey: string | (() => string | Promise<string>);
   model?: string;
 }): RequestAsStreamFn {
-  const defaultModel = "moonshot-v1-8k";
+  const defaultModel = "kimi-k2.5";
 
   return async function (params: RequestAsStreamParams) {
     const { messages, emits } = params;
@@ -337,9 +376,6 @@ function createKimiAIRequest(config: {
       messages,
       model,
       stream: true,
-      // Kimi：temperature 在 [0,1]，且 temp≈0 时仅支持 n=1
-      temperature: 0.3,
-      n: 1,
     };
 
     try {
@@ -367,10 +403,23 @@ function createKimiAIRequest(config: {
       }
 
       const decoder = new TextDecoder();
+      let buffer = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        write(decoder.decode(value, { stream: true }));
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split(/\n/);
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (line.startsWith("data:")) {
+            const text = parseKimiSSEChunk(line);
+            if (text) write(text);
+          }
+        }
+      }
+      if (buffer.trim() && buffer.startsWith("data:")) {
+        const text = parseKimiSSEChunk(buffer);
+        if (text) write(text);
       }
 
       complete("");
