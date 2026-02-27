@@ -435,9 +435,11 @@ export abstract class AbstractAgent {
 
 export class CustomAgent extends AbstractAgent {
   requestAI: any;
+  getFocusArea: any;
   constructor(options: any) {
     super(options);
     this.requestAI = options.request;
+    this.getFocusArea = options.getFocusArea;
   }
 
   request(params: { key: any; params: any; focus: any; }): Promise<any> {
