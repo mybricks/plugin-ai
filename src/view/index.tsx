@@ -76,8 +76,12 @@ const View = ({ user, copilot, api }: ViewProps) => {
 
         let chatMode = null;
         // let hasVibeCofing = false;
+        let focusArea = "";
 
         if ('vibeCoding' in other) {
+          const agent = context.agents!.find((agent) => agent instanceof AbstractAgent && agent.type === "vibeCoding");
+          focusArea = agent?.getFocusArea?.({ focus }) || "";
+
           // hasVibeCofing = true;
           if (!context.vibeStatus[id]) {
             context.vibeStatus[id] = 'vibe';
@@ -88,7 +92,7 @@ const View = ({ user, copilot, api }: ViewProps) => {
           setChatMode(null);
         }
         focusID.current = id;
-        const status = context.requestStatusTracker.getStatus(id);
+        const status = context.requestStatusTracker.getStatus(id + focusArea);
         statusChange(status.state === "pending" ? "loading" : "normal");
         // setTimeout(() => {
         //   senderRef.current!.focus();
@@ -208,10 +212,9 @@ const View = ({ user, copilot, api }: ViewProps) => {
       />
       <Sender
         ref={senderRef}
-        // loading={senderStateProps.loading}
-        // placeholder={senderStateProps.placeholder}
-        // disabled={senderStateProps.disabled}
-        placeholder={PLACEHOLDER_MAP['normal']}
+        loading={senderStateProps.loading}
+        placeholder={senderStateProps.placeholder}
+        disabled={senderStateProps.disabled}
         mode="mention"
         chatMode={chatMode}
         onSend={onSend}

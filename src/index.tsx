@@ -192,7 +192,16 @@ export default function pluginAI(params?: any): any {
               const currentFocus = !params ? undefined : params;
               context.currentFocus = currentFocus;
               context.events.emit("focus", currentFocus);
-              console.log('focus', currentFocus)
+
+              if (currentFocus) {
+                if ('vibeCoding' in currentFocus) {
+                  const { type, pageId, comId } = currentFocus;
+                  const id = ["page", "section"].includes(type) ? pageId : comId;
+                  if (!context.vibeStatus[id]) {
+                    context.vibeStatus[id] = 'vibe';
+                  }
+                }
+              }
             },
             // 聚焦到页面或者组件时使用这个方法请求agent
             request(requestParams: AiServiceRequestParams) {
@@ -230,7 +239,8 @@ export default function pluginAI(params?: any): any {
 
               // 使用统一的 requestAgent 方法，自动处理自定义 agent 和默认 agent
               const focusId = focus ? (focus.type === "page" ? focus.pageId : focus.comId) : "";
-              context.requestStatusTracker.track(focusId, Agents.requestAgent('common', { ...requestParams, extension }))
+              const agentType = context.vibeStatus[focusId] === "vibe" ? 'vibe' : 'common';
+              context.requestStatusTracker.track(focusId, Agents.requestAgent(agentType, { ...requestParams, extension }))
             },
             registerAgent: window._registerAgent_,
             fileFormat
