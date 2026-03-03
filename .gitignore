@@ -9,3 +9,5 @@ tags/*
 .tmp/
 package-lock.json
 yarn.lock
+
+cdzd.ts
