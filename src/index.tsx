@@ -17,7 +17,7 @@ import { createGetAllComDefPrompts } from "./api/cloud-components";
 import { AgentConfigParams, getAgentConfigs, backStoryPrompts, transformLegacyPromptsToAgents, AbstractAgent, CustomAgent } from './agents/utils/config';
 
 import preset from "./preset";
-import { createRequestAsStream, createMyBricksAIRequest, type RequestAsStreamParams, type RequestAsStreamFn } from "./requestAsStream";
+import { createRequestAsSSE, createRequestAsStream, createMyBricksAIRequest, type RequestAsStreamParams, type RequestAsStreamFn, type TokenUsage, type RequestAsStreamEmits } from "./requestAsStream";
 import { apiRecorder } from './api-record-replay';
 import { replay, replayFromJSON, ReplayAPI, ReplayOptions } from './api-record-replay';
 import { RecordedAction } from './api-record-replay';
@@ -57,6 +57,7 @@ export default function pluginAI(params?: any): any {
     codingMode = false
   } = transformParams(params);
 
+  // const requestAsStream = onRequest ?? require('./cdzd').requestAsStream;
   const requestAsStream = onRequest ?? createRequestAsStream();
 
   const copilot = {
@@ -257,7 +258,7 @@ export default function pluginAI(params?: any): any {
 
 export { MyBricksParamsTools as MyBricksTools, Agent } from './agents/utils/config';
 export { createMyBricksAIRequest };
-export type { RequestAsStreamParams, RequestAsStreamFn }; 
+export type { RequestAsStreamParams, RequestAsStreamFn, TokenUsage, RequestAsStreamEmits }; 
 interface AgentPluginProps {
   agents: AgentConfigParams[];
   [key: string]: any;

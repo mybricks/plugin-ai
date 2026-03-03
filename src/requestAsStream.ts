@@ -131,6 +131,7 @@ const transfromExtendParams = (extendParams: { aiRole?: string }) => {
   let model = "moonshotai/kimi-k2.5";
   // let model = "google/gemini-3-flash-preview";
   // let model = 'x-ai/grok-4.1-fast'
+  // let model = 'anthropic/claude-haiku-4.5';
   let role = "default";
 
   if (!aiRole) {
@@ -148,11 +149,12 @@ const transfromExtendParams = (extendParams: { aiRole?: string }) => {
     }
     case ["junior"].includes(aiRole): {
       model = "moonshotai/kimi-k2.5";
+      // model = 'anthropic/claude-haiku-4.5'
       role = "junior";
       break;
     }
     case ["architect"].includes(aiRole): {
-      model = "google/gemini-3.1-pro-preview";
+      model = "google/gemini-3-pro-preview";
       role = "architect";
       break;
     }
@@ -173,9 +175,47 @@ const transfromExtendParams = (extendParams: { aiRole?: string }) => {
   };
 };
 
+/**
+ * Token 用量（兼容多种 SSE usage 格式）
+ * - 格式 A：顶层 usage + prompt_tokens_details / completion_tokens_details / claude_cache_*
+ * - 格式 B：choices[0].usage + cached_tokens / prompt_tokens_details.cached_tokens
+ */
+export type TokenUsage = {
+  /** 输入 token 数（必选，对应 prompt_tokens） */
+  inputTokens: number;
+  /** 输出 token 数（必选，对应 completion_tokens） */
+  outputTokens: number;
+  /** 总 token 数（可选） */
+  totalTokens?: number;
+  /** 缓存命中 token 数（可选，cached_tokens 或 prompt_tokens_details.cached_tokens） */
+  cachedTokens?: number;
+  /** 输入中非缓存文本 token 数（可选，prompt_tokens_details.text_tokens） */
+  textTokens?: number;
+  /** 思考/推理 token 数（可选，completion_tokens_details.reasoning_tokens） */
+  reasoningTokens?: number;
+  /** Claude 5m 缓存创建消耗（可选） */
+  claudeCacheCreation5MTokens?: number;
+  /** Claude 1h 缓存创建消耗（可选） */
+  claudeCacheCreation1HTokens?: number;
+  /** 当前模型上下文最大 token 数（可选，服务端自定义） */
+  modelMaxTokens?: number;
+};
+
+/** 流式请求的 emits：write/complete/error/cancel 为必选，onUsage/onThinking 为可选 */
+export type RequestAsStreamEmits = {
+  write: (chunk: string) => void;
+  complete: (v: string) => void;
+  error: (e: any) => void;
+  cancel: (fn: () => void) => void;
+  /** 收到 usage 时调用（SSE 最后一帧或 choices[0].usage） */
+  onUsage?: (usage: TokenUsage) => void;
+  /** 收到思考内容时调用（如 delta.reasoning_content） */
+  onThinking?: (chunk: string) => void;
+};
+
 export type RequestAsStreamParams = {
   messages: any;
-  emits: any;
+  emits: RequestAsStreamEmits;
   aiRole?: any;
 };
 
@@ -186,6 +226,13 @@ const STREAM_URL_BY_TARGET: Record<FetchTarget, string> = {
   [FetchTarget.CustomApp]: "/api/ai-service/stream",
   [FetchTarget.Platform]: "/api/assistant/stream",
   [FetchTarget.Center]: "//ai.mybricks.world/stream-with-tools",
+};
+
+/** SSE 接口 URL：与 stream 对应，Center 使用 ai.mybricks.world/sse */
+const STREAM_SSE_URL_BY_TARGET: Record<FetchTarget, string> = {
+  [FetchTarget.CustomApp]: "/api/ai-service/sse",
+  [FetchTarget.Platform]: "/api/assistant/sse",
+  [FetchTarget.Center]: "//ai.mybricks.world/sse",
 };
 
 /** 开发模式：请求 stream-test，明文 body，不校验 fetchTarget */
@@ -292,6 +339,265 @@ async function doStreamFetch(opts: {
   complete("");
 }
 
+/**
+ * 从 SSE 原始 usage 对象归一化为 TokenUsage（兼容顶层 usage 与 choices[0].usage 两种格式）
+ */
+function normalizeUsage(
+  raw: Record<string, any> | undefined,
+  modelFromChunk?: string
+): TokenUsage | undefined {
+  if (!raw || typeof raw.prompt_tokens !== "number" || typeof raw.completion_tokens !== "number") {
+    return undefined;
+  }
+  const promptDetails = raw.prompt_tokens_details as Record<string, any> | undefined;
+  const completionDetails = raw.completion_tokens_details as Record<string, any> | undefined;
+  const cachedFromDetails =
+    typeof promptDetails?.cached_tokens === "number"
+      ? promptDetails.cached_tokens
+      : undefined;
+  return {
+    inputTokens: raw.prompt_tokens,
+    outputTokens: raw.completion_tokens,
+    totalTokens: typeof raw.total_tokens === "number" ? raw.total_tokens : undefined,
+    cachedTokens:
+      typeof raw.cached_tokens === "number" ? raw.cached_tokens : cachedFromDetails,
+    textTokens:
+      typeof promptDetails?.text_tokens === "number" ? promptDetails.text_tokens : undefined,
+    reasoningTokens:
+      typeof completionDetails?.reasoning_tokens === "number"
+        ? completionDetails.reasoning_tokens
+        : undefined,
+    claudeCacheCreation5MTokens:
+      typeof raw.claude_cache_creation_5_m_tokens === "number"
+        ? raw.claude_cache_creation_5_m_tokens
+        : undefined,
+    claudeCacheCreation1HTokens:
+      typeof raw.claude_cache_creation_1_h_tokens === "number"
+        ? raw.claude_cache_creation_1_h_tokens
+        : undefined,
+    modelMaxTokens:
+      typeof raw.model_max_tokens === "number" ? raw.model_max_tokens : undefined,
+  };
+}
+
+/** 解析单条 SSE data 行的结果 */
+type ParsedSSEChunk = {
+  content?: string;
+  thinking?: string;
+  usage?: TokenUsage;
+};
+
+/**
+ * 解析 SSE data 行：提取 content、reasoning_content（思考）、usage，兼容两种 usage 位置。
+ * - 格式 A：顶层 usage，含 prompt_tokens_details / completion_tokens_details / claude_cache_*
+ * - 格式 B：choices[0].usage，含 cached_tokens / prompt_tokens_details.cached_tokens
+ */
+function parseSSEChunkWithMeta(line: string): ParsedSSEChunk {
+  const data = line.replace(/^data:\s*/, "").trim();
+  if (data === "" || data === "[DONE]") return {};
+  try {
+    const json = JSON.parse(data) as {
+      model?: string;
+      usage?: Record<string, any>;
+      choices?: Array<{
+        delta?: { content?: string; reasoning_content?: string };
+        usage?: Record<string, any>;
+      }>;
+    };
+    const result: ParsedSSEChunk = {};
+    const choice = json.choices?.[0];
+    const delta = choice?.delta;
+
+    if (delta) {
+      if (delta.content) result.content = delta.content;
+      if (delta.reasoning_content) result.thinking = delta.reasoning_content;
+    }
+
+    const rawUsage = json.usage ?? choice?.usage;
+    if (rawUsage) {
+      const usage = normalizeUsage(rawUsage, json.model);
+      if (usage) result.usage = usage;
+    }
+
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+/** 仅提取 content 的兼容解析（供原 parseSSELine 行为复用） */
+function parseSSELine(line: string): string {
+  return parseSSEChunkWithMeta(line).content ?? "";
+}
+
+/** SSE 流式请求：按 SSE 行解析，写入 write / onThinking，并在有 usage 时调用 onUsage */
+async function doSSEFetch(opts: {
+  url: string;
+  body: unknown;
+  extendParams: { role?: string };
+  controller: AbortController;
+  cancel: (fn: () => void) => void;
+  write: (chunk: string) => void;
+  complete: (v: string) => void;
+  error: (e: any) => void;
+  extraHeaders?: Record<string, string>;
+  onUsage?: (usage: TokenUsage) => void;
+  onThinking?: (chunk: string) => void;
+}) {
+  const {
+    url,
+    body,
+    extendParams,
+    controller,
+    cancel,
+    write,
+    complete,
+    error,
+    extraHeaders,
+    onUsage,
+    onThinking,
+  } = opts;
+
+  const response = await fetch(toAbsoluteHttpsUrl(url), {
+    signal: controller.signal,
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(extendParams.role ? { "M-Request-Role": extendParams.role } : {}),
+      ...(extraHeaders ?? {}),
+    },
+    body: JSON.stringify(body),
+  });
+
+  cancel(() => controller.abort());
+
+  if (!response.ok) {
+    const text = await response.text();
+    error(new Error(`SSE ${response.status}: ${text || response.statusText}`));
+    return;
+  }
+
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split(/\n/);
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (line.startsWith("data:")) {
+        const parsed = parseSSEChunkWithMeta(line);
+        if (parsed.content) write(parsed.content);
+        if (parsed.thinking && onThinking) onThinking(parsed.thinking);
+        if (parsed.usage && onUsage) onUsage(parsed.usage);
+      }
+    }
+  }
+  if (buffer.trim() && buffer.startsWith("data:")) {
+    const parsed = parseSSEChunkWithMeta(buffer);
+    if (parsed.content) write(parsed.content);
+    if (parsed.thinking && onThinking) onThinking(parsed.thinking);
+    if (parsed.usage && onUsage) onUsage(parsed.usage);
+  }
+
+  complete("");
+}
+
+/** 开发模式：请求 sse-test，明文 body，走 SSE 解析 */
+async function requestAsStreamForDevelopmentSSE(params: RequestAsStreamParams) {
+  const { messages, emits, aiRole } = params;
+  const { cancel, write, complete, error, onUsage, onThinking } = emits;
+  const extendParams = transfromExtendParams({ aiRole });
+  const body = { messages, ...extendParams };
+
+  try {
+    const controller = new AbortController();
+    await doSSEFetch({
+      url: "//ai.mybricks.world/sse-test",
+      body,
+      extendParams,
+      controller,
+      cancel,
+      write,
+      complete,
+      error,
+      onUsage,
+      onThinking,
+    });
+  } catch (ex) {
+    error(ex as any);
+  }
+}
+
+/** 线上模式（SSE）：按 fetchTarget 选 SSE URL，body 加密；可选 extraHeaders */
+function requestAsStreamForProductionSSE(extraHeadersInput?: ExtraHeadersInput): RequestAsStreamFn {
+  return async function (params: RequestAsStreamParams) {
+    const { messages, emits, aiRole } = params;
+    const { cancel, write, complete, error, onUsage, onThinking } = emits;
+
+    await checkFetchTarget();
+
+    const extraHeaders =
+      typeof extraHeadersInput === "function"
+        ? await Promise.resolve(extraHeadersInput())
+        : extraHeadersInput;
+
+    const extendParams = transfromExtendParams({ aiRole });
+    const payload = { messages, ...extendParams };
+    const sseUrl = STREAM_SSE_URL_BY_TARGET[fetchTaget] ?? STREAM_SSE_URL_BY_TARGET[FetchTarget.Center];
+    const body = getAiEncryptData(payload);
+
+    try {
+      const controller = new AbortController();
+      await doSSEFetch({
+        url: sseUrl,
+        body,
+        extendParams,
+        controller,
+        cancel,
+        write,
+        complete,
+        error,
+        extraHeaders,
+        onUsage,
+        onThinking,
+      });
+    } catch (ex) {
+      error(ex as any);
+    }
+  };
+}
+
+/** 默认实现（SSE）：线上用 production SSE；开发时 aiRole='kimi' 走 Kimi，否则走 sse-test。对标 createRequestAsStream。 */
+function createRequestAsSSE(): RequestAsStreamFn {
+  return async function (params: RequestAsStreamParams) {
+    if (isProduction()) {
+      return requestAsStreamForProductionSSE()(params);
+    }
+    if (params.aiRole === "kimi") {
+      const kimiRequest = createKimiAIRequest({
+        apiKey: "",
+        model: "kimi-k2.5",
+      });
+      return kimiRequest(params);
+    }
+    return requestAsStreamForDevelopmentSSE(params);
+  };
+}
+
+/**
+ * 仅配置 getToken 的 preset（SSE）：返回已注入 Authorization 的 requestAsStreamForProductionSSE。
+ * @example pluginAI({ onRequest: createMyBricksAIRequestSSE({ getToken: () => getAccessToken() }) })
+ */
+function createMyBricksAIRequestSSE(config: { getToken: () => string | Promise<string> }): RequestAsStreamFn {
+  return requestAsStreamForProductionSSE(async () => ({
+    Authorization: `Bearer ${await Promise.resolve(config.getToken())}`,
+  }));
+}
 
 /** 默认实现：线上用 production；开发时 aiRole='kimi' 走 Kimi，否则走原 stream-test。可被 pluginAI 的 onRequest 整体替代。 */
 function createRequestAsStream(): RequestAsStreamFn {
@@ -301,7 +607,7 @@ function createRequestAsStream(): RequestAsStreamFn {
     }
     if (params.aiRole === "kimi") {
       const kimiRequest = createKimiAIRequest({
-        apiKey: "sk-hqldpxgWjw9fdncNM9zvN1yD7ANGer8TffQ6FgVq4G1JRAmA",
+        apiKey: "",
         model: "kimi-k2.5",
       });
       return kimiRequest(params);
@@ -364,7 +670,7 @@ function createKimiAIRequest(config: {
 
   return async function (params: RequestAsStreamParams) {
     const { messages, emits } = params;
-    const { cancel, write, complete, error } = emits;
+    const { cancel, write, complete, error, onUsage, onThinking } = emits;
 
     const apiKey =
       typeof config.apiKey === "function"
@@ -412,14 +718,18 @@ function createKimiAIRequest(config: {
         buffer = lines.pop() ?? "";
         for (const line of lines) {
           if (line.startsWith("data:")) {
-            const text = parseKimiSSEChunk(line);
-            if (text) write(text);
+            const parsed = parseSSEChunkWithMeta(line);
+            if (parsed.content) write(parsed.content);
+            if (parsed.thinking && onThinking) onThinking(parsed.thinking);
+            if (parsed.usage && onUsage) onUsage(parsed.usage);
           }
         }
       }
       if (buffer.trim() && buffer.startsWith("data:")) {
-        const text = parseKimiSSEChunk(buffer);
-        if (text) write(text);
+        const parsed = parseSSEChunkWithMeta(buffer);
+        if (parsed.content) write(parsed.content);
+        if (parsed.thinking && onThinking) onThinking(parsed.thinking);
+        if (parsed.usage && onUsage) onUsage(parsed.usage);
       }
 
       complete("");
@@ -429,4 +739,10 @@ function createKimiAIRequest(config: {
   };
 }
 
-export { createRequestAsStream, createMyBricksAIRequest, createKimiAIRequest };
+export {
+  createRequestAsStream,
+  createRequestAsSSE,
+  createMyBricksAIRequest,
+  createMyBricksAIRequestSSE,
+  createKimiAIRequest,
+};
