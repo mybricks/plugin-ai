@@ -31,11 +31,11 @@ const Header = (params: HeaderParams) => {
         智能助手
       </span>
       <div className={css['actions']}>
-        <div className={css['action']} data-mybricks-tip={"清空对话记录"} onClick={clear}>
-          <Delete />
-        </div>
         <div className={classNames(css['action'], css['export'])} data-mybricks-tip={"导出对话记录"} onClick={exportRxai}>
           <Export />
+        </div>
+        <div className={css['action']} data-mybricks-tip={"清空对话记录"} onClick={clear}>
+          <Delete />
         </div>
       </div>
     </div>
