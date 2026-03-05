@@ -94,9 +94,9 @@ const View = ({ user, copilot, api }: ViewProps) => {
         focusID.current = id;
         const status = context.requestStatusTracker.getStatus(id + focusArea);
         statusChange(status.state === "pending" ? "loading" : "normal");
-        // setTimeout(() => {
-        //   senderRef.current!.focus();
-        // })
+        setTimeout(() => {
+          senderRef.current!.focus();
+        })
         changeRxai(chatMode);
         // if (vibeCoding) {
         //   setTimeout(() => {
