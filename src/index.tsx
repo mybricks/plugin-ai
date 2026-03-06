@@ -183,12 +183,36 @@ export default function pluginAI(params?: any): any {
 
           console.log("[init - API]", api)
 
+          // 给组件注册Agent，因为Tools在组件
+          // TODO：后面考虑下如何通信
+          // @ts-ignore
           window._registerAgent_ = (agentConfig: any) => {
             context.agents.push(new CustomAgent(agentConfig));
           }
+          // 给组件 runtime 用，点击重试或其它 case：仅 vibe 类型，向当前 focus 发消息（无 extension）
+          // @ts-ignore
+          // TODO：后面考虑下如何通信
+          window._sendToFocusVibeAgent_ = (params: any) => {
+            console.log('context.agents', context.agents)
+            const focus = context.currentFocus;
+            if (!focus) return;
+            const focusId = focus.type === "page" ? focus.pageId : focus.comId;
+            context.requestStatusTracker.track(
+              focusId,
+              // @ts-ignore
+              Agents.requestAgent("vibe", {
+                message: params?.message,
+                attachments: [],
+                mentions: {},
+                onProgress: focus.onProgress,
+              })
+            );
+          };
+
 
           return {
             focus(params: AiServiceFocusParams) {
+              console.log('focus', params)
               const currentFocus = !params ? undefined : params;
               context.currentFocus = currentFocus;
               context.events.emit("focus", currentFocus);

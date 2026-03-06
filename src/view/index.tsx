@@ -132,6 +132,7 @@ const View = ({ user, copilot, api }: ViewProps) => {
 
   const changeRxai = (chatMode: ChatModeType) => {
     if (chatMode === "vibe") {
+      console.log('focusArea', context.currentFocus?.comId)
       setTimeout(() => {
         // TODO: ai组件库里注册agents的时机不对
         const agent = context.agents!.find((agent) => {

@@ -395,28 +395,41 @@ export abstract class AbstractAgent {
   getRxai(params: { key: any }) {
     const { key } = params;
 
-  const mock = [];
+//     const mock = [`当前消息为格式化后的摘要内容，仅供上下文阅读，请勿模仿此格式。
+// <历史记录-摘要 类型="摘要" 文件名="history4.md" 附件数="0" 可展开="是">
+// ---
+// ## Goal
 
-    const mockRequestAsStream = () => {
-      let count = 0;
-      let length = mock.length;
-      return (params: {
-        messages: any;
-        emits: any;
-        aiRole?: any;
-      }) => {
-        params.emits.write("");
-        params.emits.write(mock[count++]);
-        params.emits.complete("");
-        if (count === length) {
-          count = 0;
-        }
-      }
-    }
+// 用户发送了"123"，意图不明确。需要进一步询问以确认具体需求，可能与 CampaignItem 组件相关。
+
+// ## Instructions
+
+// - 用户当前聚焦于 CampaignItem 组件（第1项/共2项）
+// - 等待用户明确具体任务需求
+
+// ## Discoveries
+
+// - 用户界面显示 CampaignItem 组件，包含一个图片图标（anticon-picture）
+// - 当前对话处于初始阶段，尚未确定具体工作内容
+
+// ## Accomplished
+
+// - 系统已识别用户聚焦于 CampaignItem 组件
+// - 待办：确认用户发送"123"的具体意图和后续任务
+
+// ## Relevant files / directories
+
+// - CampaignItem 组件（具体路径待确认）
+// ---
+// </历史记录-摘要>`];
+
     
     if (!this.rxaiMap[key]) {
       this.rxaiMap[key] = new Rxai({
         system: this.system,
+        // mock: {
+        //   responses: mock,
+        // },
         request: {
           maxRetries: 3,
           requestAsStream: context.pluginParams.requestAsStream
