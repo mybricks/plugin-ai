@@ -244,15 +244,8 @@ export default function pluginAI(params?: any): any {
               const extension: any = {};
 
               if (focus) {
-                const type = focus.type;
-                const id = type === "page" ? focus.pageId : focus.comId;
-                extension.mentions = [
-                  {
-                    id,
-                    type,
-                    name: focus.title,
-                  }
-                ]
+                const { onProgress, ...mention } = focus;
+                extension.mentions = [mention]
                 // TODO: 兼容引擎的onProgress问题
                 if (focus.onProgress) {
                   requestParams.onProgress = focus.onProgress;
