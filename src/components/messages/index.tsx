@@ -184,7 +184,7 @@ const BubbleAction = (props: { plan: Plan, onSend?: SenderProps['onSend']; }) =>
     <>
       <div className={css['chat-bubble-action']}>
         {/* TODO 兼容处理，没有pageId，不允许追加 */}
-        {status !== "pending" && onSend && (plan.extension as any).mentions?.[0]?.pageId &&  <div
+        {status !== "pending" && onSend && (plan?.extension as any)?.mentions?.[0]?.pageId &&  <div
           className={classNames(css['chat-bubble-action-chat'], {
             [css['focus']]: showRender
           })}

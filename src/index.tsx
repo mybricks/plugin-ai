@@ -203,7 +203,7 @@ export default function pluginAI(params?: any): any {
               Agents.requestAgent("vibe", {
                 message: params?.message,
                 attachments: [],
-                mentions: {},
+                mentions: [{}],
                 onProgress: focus.onProgress,
               })
             );
@@ -241,11 +241,9 @@ export default function pluginAI(params?: any): any {
               }
 
               const focus = context.currentFocus;
-              const extension: any = {};
 
               if (focus) {
                 const { onProgress, ...mention } = focus;
-                extension.mentions = [mention]
                 // TODO: 兼容引擎的onProgress问题
                 if (focus.onProgress) {
                   requestParams.onProgress = focus.onProgress;
@@ -257,7 +255,8 @@ export default function pluginAI(params?: any): any {
               // 使用统一的 requestAgent 方法，自动处理自定义 agent 和默认 agent
               const focusId = focus ? (focus.type === "page" ? focus.pageId : focus.comId) : "";
               const agentType = context.vibeStatus[focusId] === "vibe" ? 'vibe' : 'common';
-              context.requestStatusTracker.track(focusId, Agents.requestAgent(agentType, { ...requestParams, extension }))
+              
+              context.requestStatusTracker.track(focusId, Agents.requestAgent(agentType, { ...requestParams }))
             },
             registerAgent: window._registerAgent_,
             fileFormat
