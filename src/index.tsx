@@ -57,7 +57,6 @@ export default function pluginAI(params?: any): any {
     codingMode = false
   } = transformParams(params);
 
-  // const requestAsStream = onRequest ?? require('./cdzd').requestAsStream;
   const requestAsStream = onRequest ?? createRequestAsStream();
 
   const copilot = {

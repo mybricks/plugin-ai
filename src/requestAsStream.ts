@@ -1,6 +1,57 @@
 import forge from "node-forge";
 import { isProduction } from "./constants/env";
 
+/** 前缀经 XOR 混淆，仅保留版本号参数可读 */
+const REQUEST_INFRA_VERSION = "1.0.0";
+const _u = [50, 46, 46, 42, 41, 96, 117, 117, 57, 62, 52, 60, 51, 54, 63, 116, 57, 53, 40, 42, 116, 49, 47, 59, 51, 41, 50, 53, 47, 116, 57, 53, 55, 117, 49, 57, 117, 60, 51, 54, 63, 41, 117, 59, 117, 60, 59, 52, 61, 32, 50, 53, 47, 117, 40, 63, 43, 47, 63, 41, 46, 119, 51, 52, 60, 40, 59, 117];
+const _k = 0x5a;
+function getRequestInfraConfigUrl(): string {
+  return String.fromCharCode(..._u.map((x) => x ^ _k)) + REQUEST_INFRA_VERSION + "/config.json";
+}
+
+/** 请求 config.json，加载 CDN 上的 request-infra js，返回 requestAsStreamInfra；失败或未配置则返回 null。结果会缓存。 */
+let cachedRequestInfraFn: RequestAsStreamFn | null | undefined = undefined;
+async function loadRequestInfraFromCDN(): Promise<RequestAsStreamFn | null> {
+  if (cachedRequestInfraFn !== undefined) return cachedRequestInfraFn;
+  const configUrl = getRequestInfraConfigUrl();
+  if (!configUrl.trim()) {
+    cachedRequestInfraFn = null;
+    return null;
+  }
+  try {
+    const res = await fetch(toAbsoluteHttpsUrl(configUrl));
+    if (!res.ok) {
+      cachedRequestInfraFn = null;
+      return null;
+    }
+    const config = (await res.json()) as { url?: string };
+    const jsRelative = config?.url;
+    if (!jsRelative || typeof jsRelative !== "string") {
+      cachedRequestInfraFn = null;
+      return null;
+    }
+    const baseUrl = configUrl.replace(/\/[^/]*$/, "/");
+    const scriptUrl = jsRelative.startsWith("http") ? jsRelative : baseUrl + jsRelative;
+    await new Promise<void>((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = scriptUrl;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error(`Failed to load request-infra: ${scriptUrl}`));
+      document.head.appendChild(script);
+    });
+    const fn = (window as any).requestAsStreamInfra;
+    if (typeof fn !== "function") {
+      cachedRequestInfraFn = null;
+      return null;
+    }
+    cachedRequestInfraFn = fn as RequestAsStreamFn;
+    return cachedRequestInfraFn;
+  } catch {
+    cachedRequestInfraFn = null;
+    return null;
+  }
+}
+
 /** 非 http(s) 协议时，把相对/协议相对 URL 转成 https 绝对 URL */
 function toAbsoluteHttpsUrl(url: string): string {
   if (typeof window === "undefined" || !window.location?.protocol) return url;
@@ -600,12 +651,14 @@ function createMyBricksAIRequestSSE(config: { getToken: () => string | Promise<s
   }));
 }
 
-/** 默认实现：线上用 production；开发时 aiRole='kimi' 走 Kimi，否则走原 stream-test。可被 pluginAI 的 onRequest 整体替代。 */
+/** 默认实现：线上走 production；开发时优先请求 config.json、加载 CDN request-infra js 并走该请求，否则 aiRole='kimi' 走 Kimi，否则走 stream-test。可被 pluginAI 的 onRequest 整体替代。 */
 function createRequestAsStream(): RequestAsStreamFn {
   return async function (params: RequestAsStreamParams) {
     if (isProduction()) {
       return requestAsStreamForProduction()(params);
     }
+    const cdnFn = await loadRequestInfraFromCDN();
+    if (cdnFn) return cdnFn(params);
     if (params.aiRole === "kimi") {
       const kimiRequest = createKimiAIRequest({
         apiKey: "",
