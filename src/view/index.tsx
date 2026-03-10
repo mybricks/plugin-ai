@@ -200,8 +200,10 @@ const View = ({ user, copilot, api }: ViewProps) => {
     }
   }
 
+  // 不同模式不同的主题色
+  // style={chatMode === "vibe" ? ({ '--mybricks-color-primary': '#16A157' } as React.CSSProperties) : undefined}
   return (
-    <div className={classNames(css.view)} style={chatMode === "vibe" ? ({ '--mybricks-color-primary': '#16A157' } as React.CSSProperties) : undefined}>
+    <div className={classNames(css.view)}>
       <Header rxai={rxai}/>
       <Messages
         key={rxai.key}

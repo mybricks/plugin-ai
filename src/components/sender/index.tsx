@@ -273,7 +273,8 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           <div className={classNames(css.leftArea, {
             [css.disabled]: loading || disabled
           })}>
-            {chatMode ? <ChatMode disabled={disabled} chatMode={chatMode} onChange={onChatModeChange} /> : null}
+            {/* 模式切换，暂时去除 */}
+            {/* {chatMode ? <ChatMode disabled={disabled} chatMode={chatMode} onChange={onChatModeChange} /> : null} */}
             <div className={css.attachmentButton} onClick={uploadAttachment}>
               <Attachment />
             </div>
