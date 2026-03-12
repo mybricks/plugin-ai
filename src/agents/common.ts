@@ -342,12 +342,6 @@ export const requestCommonAgent = (params: any) => {
             resultTools.splice(generatePageIndex, 0, ['node', MYBRICKS_TOOLS.AnalyzeRequirementAndComponents.toolName]);
             return resultTools
           }
-          // 规则2b: 生成页面后添加「代码开发」步骤（由 planningCheck 注入）
-          const hasCodingSubagent = resultTools.some((t: any) => t[1] === MYBRICKS_TOOLS.CodingSubagentAsTool.toolName);
-          if (!hasCodingSubagent) {
-            const insertIndex = resultTools.findIndex((t: any) => t[1] === MYBRICKS_TOOLS.GenerateUiContent.toolName) + 1;
-            resultTools.splice(insertIndex, 0, ['node', MYBRICKS_TOOLS.CodingSubagentAsTool.toolName]);
-          }
         }
         
         // 规则3: 如果 修改 前面没有 open-dsl-document，则添加一个

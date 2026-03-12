@@ -289,7 +289,9 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
   const [summary, setSummary] = useState("");
   const [commands, setCommands] = useState<Plan['commands']>([]);
   const [error, setError] = useState("");
-  const [planningMessage, setPlanningMessage] = useState("")
+  const [planningMessage, setPlanningMessage] = useState("");
+  const [continueLoading, setContinueLoading] = useState(false);
+  const [continueMessage, setContinueMessage] = useState("");
 
   useLayoutEffect(() => {
     destroysRef.current.push(
@@ -313,6 +315,14 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
       }),
       plan.events.on('planningMessage', (planningMessage) => {
         setPlanningMessage(planningMessage);
+      }),
+      plan.events.on('continue', ({ message }: { message?: string }) => {
+        setContinueMessage(message ?? "");
+        setContinueLoading(true);
+      }),
+      plan.events.on('continueEnd', () => {
+        setContinueLoading(false);
+        setContinueMessage("");
       })
     )
   }, [])
@@ -345,6 +355,12 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
             }
             return <BubbleCopilotTool key={index + command.status} command={command} last={index === commands.length - 1}/>
           })}
+          {(continueLoading || continueMessage) && (
+            <div className={css['think']}>
+              {continueMessage ? <BubbleMessage message={`${continueMessage}`} /> : (continueLoading ? <span>计划下一步...</span> : null)}
+              {continueLoading && <Loading />}
+            </div>
+          )}
           {error && <BubbleError message={error} plan={plan}/>}
           {summary && <BubbleMessage message={summary} />}
           {/* {streamMessage && <BubbleMessage message={streamMessage} />} */}

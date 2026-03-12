@@ -217,7 +217,7 @@ export default function pluginAI(params?: any): any {
               context.events.emit("focus", currentFocus);
 
               if (currentFocus) {
-                if ('vibeCoding' in currentFocus) {
+                if (currentFocus?.vibeCoding) {
                   const { type, pageId, comId } = currentFocus;
                   const id = ["page", "section"].includes(type) ? pageId : comId;
                   if (!context.vibeStatus[id]) {

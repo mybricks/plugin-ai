@@ -49,7 +49,7 @@ class Context {
   }
 
   get enabledActionTags() {
-    return this.userConfig?.enabledActionTags ?? true;
+    return this.userConfig?.enabledActionTags ?? false;
   }
 
   deviceType: DeviceType = DeviceType.Mobile

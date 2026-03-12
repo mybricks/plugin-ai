@@ -78,7 +78,7 @@ const View = ({ user, copilot, api }: ViewProps) => {
         // let hasVibeCofing = false;
         let focusArea = "";
 
-        if ('vibeCoding' in other) {
+        if (other?.vibeCoding) {
           const agent = context.agents!.find((agent) => agent instanceof AbstractAgent && agent.type === "vibeCoding");
           focusArea = agent?.getFocusArea?.({ focus }) || "";
 

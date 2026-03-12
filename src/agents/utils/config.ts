@@ -395,33 +395,13 @@ export abstract class AbstractAgent {
   getRxai(params: { key: any }) {
     const { key } = params;
 
-//     const mock = [`当前消息为格式化后的摘要内容，仅供上下文阅读，请勿模仿此格式。
-// <历史记录-摘要 类型="摘要" 文件名="history4.md" 附件数="0" 可展开="是">
-// ---
-// ## Goal
+    const mock = [`接口返回结果 我将读取项目代码来了解TopBanner组件的具体内容和作用。
 
-// 用户发送了"123"，意图不明确。需要进一步询问以确认具体需求，可能与 CampaignItem 组件相关。
+\`\`\`bash
+node readRelated -names root
+\`\`\`
 
-// ## Instructions
-
-// - 用户当前聚焦于 CampaignItem 组件（第1项/共2项）
-// - 等待用户明确具体任务需求
-
-// ## Discoveries
-
-// - 用户界面显示 CampaignItem 组件，包含一个图片图标（anticon-picture）
-// - 当前对话处于初始阶段，尚未确定具体工作内容
-
-// ## Accomplished
-
-// - 系统已识别用户聚焦于 CampaignItem 组件
-// - 待办：确认用户发送"123"的具体意图和后续任务
-
-// ## Relevant files / directories
-
-// - CampaignItem 组件（具体路径待确认）
-// ---
-// </历史记录-摘要>`];
+完整性检查：通过读取整个项目的代码结构，可以了解TopBanner组件的定义、样式和功能，从而准确回答用户关于"这是什么"的问题。`];
 
     
     if (!this.rxaiMap[key]) {
