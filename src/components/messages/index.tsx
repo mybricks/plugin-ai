@@ -358,7 +358,6 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
           {(continueLoading || continueMessage) && (
             <div className={css['think']}>
               {continueMessage ? <BubbleMessage message={`${continueMessage}`} /> : (continueLoading ? <span>计划下一步...</span> : null)}
-              {continueLoading && <Loading />}
             </div>
           )}
           {error && <BubbleError message={error} plan={plan}/>}
