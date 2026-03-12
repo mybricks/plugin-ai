@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
-import { createPortal } from "react-dom";
+// import { createPortal } from "react-dom";
 import { Close } from "../icons";
 import css from "./index.less";
 import classNames from "classnames";
+import { Image } from "antd";
 
 interface Attachment {
   type: "image";
@@ -17,76 +18,102 @@ interface AttachmentsProps {
 /** 附件图片 */
 const AttachmentsList = (props: AttachmentsProps) => {
   const { attachments, onDelete, className } = props;
+  const [preiviewVisible, setPreiviewVisible] = useState(false);
+  const [preiviewCurrent, setPreiviewCurrent] = useState(0);
+  
 
   return (
     <div className={classNames(css.attachments, className)}>
       {attachments.map((attachment, index) => {
-        return <Attachment key={index} attachment={attachment} onDelete={onDelete ? () => onDelete(index) : undefined} />
+        return (
+          <Attachment
+            key={index}
+            attachment={attachment}
+            onDelete={onDelete ? () => onDelete(index) : undefined}
+            onPreview={() => {
+              setPreiviewVisible(true);
+              setPreiviewCurrent(index);
+            }}
+          />
+        )
       })}
+      <div style={{ display: 'none' }}>
+        <Image.PreviewGroup 
+          preview={{ 
+            visible: preiviewVisible,
+            onVisibleChange: setPreiviewVisible,
+            current: preiviewCurrent,
+          }}
+        >
+          {attachments.map((attachment, index) => (
+            <Image key={index} src={attachment.content} />
+          ))}
+        </Image.PreviewGroup>
+      </div>
     </div>
   )
 }
 
 export { AttachmentsList };
 
-const Attachment = (props: { attachment: Attachment, onDelete?: () => void; }) => {
+const Attachment = (props: { attachment: Attachment, onDelete?: () => void; onPreview?: () => void; }) => {
   const imgRef = useRef<HTMLImageElement>(null);
-  const previewRef = useRef<HTMLDivElement>(null);
-  const { attachment, onDelete } = props;
-  const [previewBCR, setPreviewBCR] = useState<DOMRect | null>(null);
-  const [visible, setVisible] = useState(false);
+  // const previewRef = useRef<HTMLDivElement>(null);
+  const { attachment, onDelete, onPreview } = props;
+  // const [previewBCR, setPreviewBCR] = useState<DOMRect | null>(null);
+  // const [visible, setVisible] = useState(false);
 
-  const delayedTask = useMemo(() => {
-    return new DelayedTask<[boolean]>((visible) => {
-      setVisible(visible);
-    }, 50)
-  }, [])
+  // const delayedTask = useMemo(() => {
+  //   return new DelayedTask<[boolean]>((visible) => {
+  //     setVisible(visible);
+  //   }, 50)
+  // }, [])
 
-  useEffect(() => {
-    if (visible) {
-      if (previewBCR) {
-        const imgBcr = imgRef.current!.getBoundingClientRect();
+  // useEffect(() => {
+  //   if (visible) {
+  //     if (previewBCR) {
+  //       const imgBcr = imgRef.current!.getBoundingClientRect();
 
-        const topSpace = imgBcr.top - 4 - previewBCR.height;
+  //       const topSpace = imgBcr.top - 4 - previewBCR.height;
 
-        if (topSpace > 0) {
-          previewRef.current!.style.top = `${topSpace}px`;
-        } else {
-          previewRef.current!.style.top = `${imgBcr.top + imgBcr.height}px`;
-        }
+  //       if (topSpace > 0) {
+  //         previewRef.current!.style.top = `${topSpace}px`;
+  //       } else {
+  //         previewRef.current!.style.top = `${imgBcr.top + imgBcr.height}px`;
+  //       }
         
-        if (imgBcr.left + previewBCR.width > document.body.offsetWidth) {
-          previewRef.current!.style.left = `${imgBcr.left + imgBcr.width - previewBCR.width}px`
-        } else {
-          previewRef.current!.style.left = `${imgBcr.left}px`;
-        }
+  //       if (imgBcr.left + previewBCR.width > document.body.offsetWidth) {
+  //         previewRef.current!.style.left = `${imgBcr.left + imgBcr.width - previewBCR.width}px`
+  //       } else {
+  //         previewRef.current!.style.left = `${imgBcr.left}px`;
+  //       }
 
-        previewRef.current!.style.visibility = "visible";
-      }
-    } else {
-      previewRef.current!.style.visibility = "hidden";
-    }
-  }, [previewBCR, visible])
+  //       previewRef.current!.style.visibility = "visible";
+  //     }
+  //   } else {
+  //     previewRef.current!.style.visibility = "hidden";
+  //   }
+  // }, [previewBCR, visible])
 
   return (
     <>
       <div
         className={css.imageThumbnail}
-        onMouseEnter={() => {
-          delayedTask.startNow(true);
-        }}
-        onMouseLeave={() => {
-          delayedTask.start(false);
-        }}
+        // onMouseEnter={() => {
+        //   delayedTask.startNow(true);
+        // }}
+        // onMouseLeave={() => {
+        //   delayedTask.start(false);
+        // }}
       >
-        <img ref={imgRef} src={attachment.content} />
+        <img ref={imgRef} src={attachment.content} onClick={() => onPreview?.()} />
         {onDelete && <div className={css.imageDeleteContainer} onClick={onDelete}>
           <div className={css.imageDeleteIcon}>
             <Close />
           </div>
         </div>}
       </div>
-      {createPortal((
+      {/* {createPortal((
         <div
           ref={previewRef}
           className={css.preview}
@@ -101,7 +128,7 @@ const Attachment = (props: { attachment: Attachment, onDelete?: () => void; }) =
             setPreviewBCR((event.target as HTMLImageElement).parentElement!.getBoundingClientRect())
           }} />
         </div>
-      ), document.body)}
+      ), document.body)} */}
     </>
   )
 }
