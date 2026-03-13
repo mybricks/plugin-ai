@@ -9,6 +9,7 @@ import { MentionTag } from "../mention";
 import { Mention } from "../types";
 import { Sender, SenderRef, SenderProps } from "../sender";
 import { context } from "../../context";
+import { formatTime } from "../../utils";
 import css from "./index.less"
 
 const md = markdownit()
@@ -254,6 +255,7 @@ const BubbleUser = (params: BubbleUserParams) => {
 
   return (
     <article className={css['chat-bubble']}>
+      <div className={css['chat-bubble-time']}>{formatTime(plan.startTime)}</div>
       <header className={css['chat-bubble-header']}>
         <span className={css['chat-bubble-header-avatar']}>
           <img className={css['user-avatar']} src={user.avatar} />
