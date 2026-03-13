@@ -670,6 +670,15 @@ function createRequestAsStream(): RequestAsStreamFn {
   };
 }
 
+/** 仅走 CDN request-infra：优先加载 CDN 上的 request-infra 并执行，未加载到则走 production。无参数。 */
+function createInfraAIRequest(): RequestAsStreamFn {
+  return async function (params: RequestAsStreamParams) {
+    const cdnFn = await loadRequestInfraFromCDN();
+    if (cdnFn) return cdnFn(params);
+    return requestAsStreamForProduction()(params);
+  };
+}
+
 /**
  * 仅配置 getToken 的 preset：返回已注入 Authorization 的 requestAsStreamForProduction。
  * 等价于用 onRequest 完全替代默认实现并自带鉴权；每次请求前调用 getToken 获取最新 token。
@@ -799,4 +808,5 @@ export {
   createMyBricksAIRequest,
   createMyBricksAIRequestSSE,
   createKimiAIRequest,
+  createInfraAIRequest,
 };
