@@ -205,8 +205,8 @@ const transfromExtendParams = (extendParams: { aiRole?: string }) => {
       break;
     }
     case ["architect"].includes(aiRole): {
-      // model = "google/gemini-3.1-pro-preview";
-      model = "anthropic/claude-sonnet-4.6"
+      model = "google/gemini-3.1-pro-preview";
+      // model = "anthropic/claude-sonnet-4.6"
       role = "architect";
       break;
     }
@@ -657,8 +657,8 @@ function createRequestAsStream(): RequestAsStreamFn {
     if (isProduction()) {
       return requestAsStreamForProduction()(params);
     }
-    const cdnFn = await loadRequestInfraFromCDN();
-    if (cdnFn) return cdnFn(params);
+    // const cdnFn = await loadRequestInfraFromCDN();
+    // if (cdnFn) return cdnFn(params);
     if (params.aiRole === "kimi") {
       const kimiRequest = createKimiAIRequest({
         apiKey: "",
