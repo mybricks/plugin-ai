@@ -16,7 +16,7 @@ export type BuiltinAgentType = 'vibe' | 'common' | 'common-by-coding'
 export const requestAgent = (type: BuiltinAgentType | undefined, params: any) => {
   const customType = context.currentFocus?.type
 
-  if (params.extension?.mentions?.length) {
+  if (params.extension?.mentions?.[0]?.focusArea) {
     params.extension = {
       ...params.extension,
       mentions: params.extension.mentions.map((mention: any) => {
