@@ -16,17 +16,19 @@ export type BuiltinAgentType = 'vibe' | 'common' | 'common-by-coding'
 export const requestAgent = (type: BuiltinAgentType | undefined, params: any) => {
   const customType = context.currentFocus?.type
 
-  params.extension = {
-    ...params.extension,
-    mentions: params.extension.mentions.map((mention: any) => {
-      return {
-        ...mention,
-        focusArea: {
-          selector: mention.focusArea.selector,
-          title: mention.focusArea.title,
+  if (params.extension?.mentions?.length) {
+    params.extension = {
+      ...params.extension,
+      mentions: params.extension.mentions.map((mention: any) => {
+        return {
+          ...mention,
+          focusArea: {
+            selector: mention.focusArea.selector,
+            title: mention.focusArea.title,
+          }
         }
-      }
-    })
+      })
+    }
   }
 
   // 1. 内置类型：vibe
