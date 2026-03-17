@@ -11,13 +11,12 @@ import { Rxai } from "@mybricks/rxai";
 interface CompViewProps {
   user?: any;
   copilot?: any;
-  /** 当前聚焦的组件信息，预填到 Sender 的 mentions */
-  mentions?: any[];
-  onProgress?: (status: string) => void;
+  /** 当前聚焦的组件 ID，用于初始化独立 rxai key 以及触发聚焦事件 */
+  comId?: string;
   [key: string]: any;
 }
 
-const CompView = ({ user, copilot, mentions: initialMentions, onProgress }: CompViewProps) => {
+const CompView = ({ user, copilot, comId }: CompViewProps) => {
   const senderRef = useRef<SenderRef>(null);
   const [loading, setLoading] = useState(false);
   const [empty, setEmpty] = useState(true);
@@ -31,7 +30,7 @@ const CompView = ({ user, copilot, mentions: initialMentions, onProgress }: Comp
 
     if (agent) {
       const vibeRxai = agent.getRxai({
-        key: `${context.pluginParams.key}_comp_${context.currentFocus?.comId ?? Date.now()}`,
+        key: `${context.pluginParams.key}_comp_${comId ?? context.currentFocus?.comId ?? Date.now()}`,
       });
       setRxai(vibeRxai);
     }
@@ -41,27 +40,35 @@ const CompView = ({ user, copilot, mentions: initialMentions, onProgress }: Comp
     }
   }, []);
 
-  // 外部传入 mentions 时预填到 Sender
-  useEffect(() => {
-    if (initialMentions?.length) {
-      senderRef.current?.setMentions(initialMentions);
-    }
-  }, [initialMentions]);
-
   const onSend = (params: Parameters<SenderProps['onSend']>[0]) => {
     setEmpty(false);
     if (!loading) {
       setLoading(true);
-      const promise = Agents.requestAgent('vibe', {
-        ...params,
-        onProgress,
-      });
-      promise?.then(() => {
-      }).catch((e) => {
-        console.error("[pluginAI - compView - onSend]", e);
-      }).finally(() => {
-        setLoading(false);
-      });
+
+      // 先触发聚焦元素的事件（让当前聚焦对象感知到对话），500ms 后再真正发送
+      const sendRequest = () => {
+        // 从当前聚焦对象中获取 onProgress
+        const focus = context.currentFocus;
+        const onProgress = focus?.onProgress;
+
+        const promise = Agents.requestAgent('vibe', {
+          ...params,
+          onProgress,
+        });
+        promise?.then(() => {
+        }).catch((e) => {
+          console.error("[pluginAI - compView - onSend]", e);
+        }).finally(() => {
+          setLoading(false);
+        });
+      };
+
+      if (comId) {
+        (window as any)._showAIDialog_?.(comId);
+        setTimeout(sendRequest, 500);
+      } else {
+        sendRequest();
+      }
     }
   };
 
@@ -73,6 +80,7 @@ const CompView = ({ user, copilot, mentions: initialMentions, onProgress }: Comp
       <Sender
         ref={senderRef}
         loading={loading}
+        disabled={loading}
         onSend={onSend}
         placeholder={`您好，我是${context.name}，请描述您的需求`}
         attachmentsPrompt={"根据附件中的图片内容进行设计开发，要求尽可能还原其中的各类设计细节以及功能，在此基础上可做调整优化创新"}

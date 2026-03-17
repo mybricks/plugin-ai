@@ -37,19 +37,25 @@ declare global {
   interface Window {
     /**
      * 返回一个包裹了 Shadow DOM 样式注入逻辑的 React 元素。
-     * 直接放入 JSX 即可渲染：{window._render_comp_start_view_?.({ mentions: [...] })}
+     * 直接放入 JSX 即可渲染：{window._render_comp_start_view_?.({ user, copilot, comId: 'xxx' })}
+     *
+     * @param props.user    用户信息（透传给 Messages）
+     * @param props.copilot Copilot 信息（透传给 Messages）
+     * @param props.comId   当前聚焦的组件 ID，用于触发聚焦事件及初始化独立消息记录
      *
      * @example
      * // 渲染到 Shadow DOM 容器
-     * ReactDOM.createRoot(shadowRoot).render(window._render_comp_start_view_({ mentions: [...] }));
+     * ReactDOM.createRoot(shadowRoot).render(
+     *   window._render_comp_start_view_({ user, copilot, comId: 'xxx' })
+     * );
      *
      * // 或内联使用
-     * return <div>{window._render_comp_start_view_?.({ mentions: [...] })}</div>
+     * return <div>{window._render_comp_start_view_?.({ user, copilot, comId: 'xxx' })}</div>
      */
-    _render_comp_start_view_: (props?: CompViewProps) => React.ReactElement;
+    _render_comp_start_view_: (props?: { user?: any; copilot?: any; comId?: string }) => React.ReactElement;
   }
 }
 
-window._render_comp_start_view_ = (props?: CompViewProps): React.ReactElement => {
+window._render_comp_start_view_ = (props?: { user?: any; copilot?: any; comId?: string }): React.ReactElement => {
   return React.createElement(CompViewWithShadowStyles, props ?? {});
 };

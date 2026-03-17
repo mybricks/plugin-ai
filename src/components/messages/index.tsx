@@ -44,6 +44,17 @@ const Messages = (params: MessagesParams) => {
   const [plans, setPlans] = useState<Plans>([]);
 
   const setLastBubbleMinHeight = (height: number) => {
+    const all = mainRef.current?.querySelectorAll(
+      `.${css['chat-bubble-container']}`
+    ) as NodeListOf<HTMLElement> | undefined;
+    if (all) {
+      all.forEach((el, i) => {
+        if (i < all.length - 1) {
+          el.style.minHeight = '';
+        }
+      });
+    }
+
     const last = mainRef.current?.querySelector(
       `.${css['chat-bubble-container']}:last-child`
     ) as HTMLElement | null;
