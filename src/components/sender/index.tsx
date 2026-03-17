@@ -227,6 +227,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
   return (
     <div className={css.container}>
+      <input type="text" style={{ height: 60 }} />
       <div className={classNames(css.editor, {
         [css.noMentions]: mode === "mention" && !mentions.length
       })}>
@@ -251,7 +252,6 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
             })} */}
           </div>
         ) : null}
-        <input type="text" />
         <div className={css.input}>
           <div className={css.inputEditorContainer}>
             <div
