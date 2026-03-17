@@ -79,7 +79,7 @@ const CompView = ({ user, copilot, comId }: CompViewProps) => {
     })}>
       {empty && (
         <div className={css['welcome-header']}>
-          <div className={css['welcome-title']}>一句话，开始设计新应用</div>
+          <div className={css['welcome-title']}>一句话，开始设计新页面</div>
         </div>
       )}
       <Messages user={user} rxai={rxai} copilot={copilot} />
@@ -89,7 +89,7 @@ const CompView = ({ user, copilot, comId }: CompViewProps) => {
         disabled={loading}
         onSend={onSend}
         variant="loose"
-        placeholder={`从一句话或者一张图片开始，为您生成所需要的应用`}
+        placeholder={`从一句话或者一张图片开始，为您生成所需要的页面`}
         attachmentsPrompt={"根据附件中的图片内容进行设计开发，要求尽可能还原其中的各类设计细节以及功能，在此基础上可做调整优化创新"}
       />
 
