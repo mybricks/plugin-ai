@@ -657,8 +657,8 @@ function createRequestAsStream(): RequestAsStreamFn {
     if (isProduction()) {
       return requestAsStreamForProduction()(params);
     }
-    // const cdnFn = await loadRequestInfraFromCDN();
-    // if (cdnFn) return cdnFn(params);
+    const cdnFn = await loadRequestInfraFromCDN();
+    if (cdnFn) return cdnFn(params);
     if (params.aiRole === "kimi") {
       const kimiRequest = createKimiAIRequest({
         apiKey: "",

@@ -43,28 +43,21 @@ const Messages = (params: MessagesParams) => {
   const destroysRef = useRef<(() => void)[]>([]);
   const [plans, setPlans] = useState<Plans>([]);
 
-  const [styleTag] = useState(() => {
-    const styleTag = document.createElement('style')
-    document.head.appendChild(styleTag)
-    const prefix = `.${css['ai-chat-messages']} .${css['chat-bubble-container']}:nth-last-child(1)`;
-    return {
-      setStyle: (height: number) => {
-        styleTag.innerHTML = `${prefix} {
-          min-height: ${height - 1}px;
-        }`
-      },
-      remove: () => {
-        document.head.removeChild(styleTag);
-      }
-    };
-  })
+  const setLastBubbleMinHeight = (height: number) => {
+    const last = mainRef.current?.querySelector(
+      `.${css['chat-bubble-container']}:last-child`
+    ) as HTMLElement | null;
+    if (last) {
+      last.style.minHeight = `${height - 1}px`;
+    }
+  };
 
   useLayoutEffect(() => {
     destroysRef.current.push(rxai.events.on('plan', (plans) => {
       setPlans([...plans])
     }, true))
 
-    styleTag.setStyle(mainRef.current!.clientHeight);
+    setLastBubbleMinHeight(mainRef.current!.clientHeight);
   }, [])
 
   useEffect(() => {
@@ -72,7 +65,7 @@ const Messages = (params: MessagesParams) => {
       resizeObserverCallback: () => {
         const height = mainRef.current?.clientHeight;
         if (height && height > 0) {
-          styleTag.setStyle(height)
+          setLastBubbleMinHeight(height)
         }
       },
       mutationCallback: (mutations) => {

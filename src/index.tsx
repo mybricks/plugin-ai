@@ -1,5 +1,6 @@
 import React from 'react';
 import data from './data';
+import './compView/register';
 
 import './agents/workspace-by-knowledges/test';
 import './../test'
@@ -294,3 +295,4 @@ export function agentPlugin(props: AgentPluginProps) {
 }
 
 export { AbstractAgent }
+export { CompView } from './compView';

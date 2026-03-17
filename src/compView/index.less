@@ -1,0 +1,26 @@
+/* plugin-ai-comp-view-anchor */
+:root {
+  --plugin-ai-comp-view: 1;
+}
+
+.view {
+  max-width: 800px;
+  width: 100%;
+  background-color: transparent;
+  border: solid 1px rgba(0, 0, 0, .13);
+  border-radius: 20px;
+  box-shadow: 0 5px 16px -4px #00000012;
+  color: rgba(0, 0, 0, .9);
+  cursor: default;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+
+  &.empty {
+    display: flex;
+    flex-direction: column;
+    border: none;
+    height: fit-content;
+    box-shadow: none;
+  }
+}
