@@ -42,6 +42,8 @@ interface SenderProps {
   mode?: "mention"
   chatMode?: ChatModeType;
   onChatModeChange?: (chatMode: ChatModeType) => void;
+  /** 输入框风格：compact（紧凑，默认）| loose（松散，padding 更大）*/
+  variant?: 'compact' | 'loose';
 }
 
 interface SenderRef {
@@ -51,7 +53,7 @@ interface SenderRef {
 }
 
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
-  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange } = props;
+  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact' } = props;
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [inputContent, setInputContent] = useState<string | null>(null);
@@ -226,7 +228,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   }
 
   return (
-    <div className={css.container}>
+    <div className={classNames(css.container, { [css.loose]: variant === 'loose' })}>
       <div className={classNames(css.editor, {
         [css.noMentions]: mode === "mention" && !mentions.length
       })}>
@@ -277,7 +279,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           })}>
             {/* 模式切换，暂时去除 */}
             {/* {chatMode ? <ChatMode disabled={disabled} chatMode={chatMode} onChange={onChatModeChange} /> : null} */}
-            <div className={css.attachmentButton} onClick={uploadAttachment}>
+            <div data-zone-type="ai-request" className={css.attachmentButton} onClick={uploadAttachment}>
               <Attachment />
             </div>
             {/* {attachments.length ? (
@@ -285,10 +287,10 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
             ) : null} */}
           </div>
           <div className={css.rightArea}>
-            <div className={classNames(css.sendButtonContainer, {
+            <div data-zone-type="ai-request" className={classNames(css.sendButtonContainer, {
               [css.disabled]: !inputContent || loading || disabled
             })} onClick={send}>
-              <div className={classNames(css.sendButton, {
+              <div data-zone-type="ai-request" className={classNames(css.sendButton, {
                 [css.loadingButton]: loading
               })}>
                 {loading ? <Loading /> : <Send />}

@@ -8,6 +8,7 @@ import classNames from "classnames";
 import { AbstractAgent } from "../agents/utils/config";
 import { Rxai } from "@mybricks/rxai";
 
+
 interface CompViewProps {
   user?: any;
   copilot?: any;
@@ -76,15 +77,22 @@ const CompView = ({ user, copilot, comId }: CompViewProps) => {
     <div className={classNames(css['view'], {
       [css['empty']]: empty
     })}>
+      {empty && (
+        <div className={css['welcome-header']}>
+          <div className={css['welcome-title']}>一句话，开始设计新应用</div>
+        </div>
+      )}
       <Messages user={user} rxai={rxai} copilot={copilot} />
       <Sender
         ref={senderRef}
         loading={loading}
         disabled={loading}
         onSend={onSend}
-        placeholder={`您好，我是${context.name}，请描述您的需求`}
+        variant="loose"
+        placeholder={`从一句话或者一张图片开始，为您生成所需要的应用`}
         attachmentsPrompt={"根据附件中的图片内容进行设计开发，要求尽可能还原其中的各类设计细节以及功能，在此基础上可做调整优化创新"}
       />
+
     </div>
   );
 };

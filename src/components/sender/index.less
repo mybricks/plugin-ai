@@ -3,6 +3,24 @@
 .container {
   padding: 8px;
 
+  &.loose {
+    padding: 0;
+
+    .editor {
+      // border-radius: 20px;
+
+      .input {
+        padding: 16px 16px 10px;
+        min-height: 100px;
+      }
+
+      .editorAction {
+        padding: 0 12px;
+        margin-bottom: 12px;
+      }
+    }
+  }
+
   .editor {
     z-index: 13;
     position: relative;
@@ -126,12 +144,17 @@
           width: 25px;
           height: 25px;
           border-radius: 50%;
-          cursor: pointer;
+          cursor: pointer !important;
 
           svg {
             width: 18px;
             height: 18px;
             color: rgba(0, 0, 0, .6);
+            cursor: pointer !important;
+
+            * {
+              cursor: pointer !important;
+            }
           }
 
           &:hover {
@@ -145,7 +168,7 @@
 
         &.disabled {
           
-          opacity: 0.5;
+          opacity: 0.3;
           .attachmentButton {
             cursor: default;
             &:hover {
@@ -194,8 +217,8 @@
         }
 
         .disabled {
-          cursor: default;
-          opacity: 0.5;
+          cursor: not-allowed !important;
+          opacity: 0.3;
         }
       }
     }
