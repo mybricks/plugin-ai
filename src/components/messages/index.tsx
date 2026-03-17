@@ -84,6 +84,12 @@ const Messages = (params: MessagesParams) => {
 
         if (mutationRecord.target === mainRef.current && mutationRecord.addedNodes.length) {
           mainRef.current!.scrollTop = mainRef.current!.scrollHeight;
+          // 新的 .chat-bubble-container 刚插入 DOM，此时 last-child 才是正确的新节点
+          // 必须在这里重新计算，避免 ResizeObserver 在新气泡 DOM 出现前就触发导致 last-child 指向错误
+          const height = mainRef.current?.clientHeight;
+          if (height && height > 0) {
+            setLastBubbleMinHeight(height);
+          }
         }
       }
     });
