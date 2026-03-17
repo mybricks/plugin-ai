@@ -260,7 +260,6 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
               ref={inputEditorRef}
               className={css.inputEditor}
               contentEditable={disabled ? false : true}
-              onClick={() => console.log(1232, disabled)}
               onKeyDown={onKeyDown}
               onCompositionStart={onCompositionStart}
               onCompositionEnd={onCompositionEnd}
