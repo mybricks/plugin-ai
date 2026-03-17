@@ -27,7 +27,7 @@ const CompViewWithShadowStyles = (props: WrapperProps) => {
   }, []);
 
   return (
-    <div ref={containerRef} style={{ height: '100%', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+    <div ref={containerRef} data-zone-type="ai-request" style={{ height: '100%', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
       <CompView {...props} />
     </div>
   );

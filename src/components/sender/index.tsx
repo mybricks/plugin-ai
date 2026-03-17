@@ -251,12 +251,15 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
             })} */}
           </div>
         ) : null}
+        <input type="text" />
         <div className={css.input}>
           <div className={css.inputEditorContainer}>
             <div
+              data-zone-type="ai-request"
               ref={inputEditorRef}
               className={css.inputEditor}
               contentEditable={disabled ? false : true}
+              onClick={() => console.log(1232, disabled)}
               onKeyDown={onKeyDown}
               onCompositionStart={onCompositionStart}
               onCompositionEnd={onCompositionEnd}
