@@ -227,7 +227,6 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
   return (
     <div className={css.container}>
-      <input type="text" style={{ height: 60, pointerEvents: 'all' }} />
       <div className={classNames(css.editor, {
         [css.noMentions]: mode === "mention" && !mentions.length
       })}>
