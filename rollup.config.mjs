@@ -45,7 +45,7 @@ export default {
     }),
     json(),
     alias({
-      entries: [{ find: '@mybricks/rxai', replacement: path.resolve('/Users/cocolbell/Desktop/projects/mybricks/rxai/src/index.ts') }],
+      entries: [{ find: '@mybricks/rxai', replacement: path.resolve('../rxai/src/index.ts') }],
     }),
     resolve({ extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'] }),
     commonjs(),
