@@ -308,6 +308,7 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
   useLayoutEffect(() => {
     destroysRef.current.push(
       plan.events.on('loading', (loading) => {
+        console.log(loading);
         setLoading(loading);
       }),
       plan.events.on('streamMessage', (chunk) => {

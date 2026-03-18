@@ -140,7 +140,7 @@ const View = ({ user, copilot, api }: ViewProps) => {
         });
         if (agent) {
           const rxai = (agent as AbstractAgent).getRxai({
-            key: `${context.pluginParams.key}_${context.currentFocus?.pageId}_${context.currentFocus?.comId}`,
+            key: `${context.pluginParams.key}_${context.currentFocus?.comId}`,
           })
           setRxai(rxai);
         } else {

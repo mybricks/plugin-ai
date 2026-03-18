@@ -36,7 +36,7 @@ export const requestAgent = (type: BuiltinAgentType | undefined, params: any) =>
     return requestVibeCodingAgent(
       {
         ...params,
-        key: `${context.pluginParams.key}_${context.currentFocus!.pageId}_${context.currentFocus!.comId}`,
+        key: `${context.pluginParams.key}_${context.currentFocus!.comId}`,
       },
       { ...context.currentFocus }
     )

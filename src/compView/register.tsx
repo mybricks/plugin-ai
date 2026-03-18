@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { CompView, type CompViewProps } from "./index";
 
 // 包裹组件定义提到模块顶层，避免每次调用重新创建组件类型（否则 React 每次都会 unmount/remount）
@@ -7,27 +7,42 @@ interface WrapperProps extends CompViewProps {}
 const CompViewWithShadowStyles = (props: WrapperProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const injectedRef = useRef(false);
+  // 非 Shadow DOM 环境直接可见；Shadow DOM 环境等样式注入完成后再显示
+  const [styled, setStyled] = useState(false);
 
   useEffect(() => {
     if (injectedRef.current) return;
 
     // 检测是否处于 Shadow DOM 内
     const root = containerRef.current?.getRootNode();
-    if (!(root instanceof ShadowRoot)) return;
+    if (!(root instanceof ShadowRoot)) {
+      // 普通 DOM，无需注入样式，直接显示
+      setStyled(true);
+      return;
+    }
 
     injectedRef.current = true;
 
-    // 消费方打包后，plugin-ai 所有样式会合并成一个 <style> 标签注入到 document.head。
-    // 通过 compView/index.less 里埋入的锚点 CSS 变量 "--plugin-ai-comp-view" 精确定位该标签，克隆到 shadowRoot。
-    document.head.querySelectorAll('style').forEach((style) => {
-      if (style.textContent?.includes('--plugin-ai-comp-view')) {
-        root.appendChild(style.cloneNode(true));
-      }
-    });
+    // 同一个 ShadowRoot 只需注入一次，window 上打标记防止多实例重复注入
+    if (!(window as any).__pluginAiStyleInjected__) {
+      document.head.querySelectorAll('style').forEach((style) => {
+        if (style.textContent?.includes('--plugin-ai-comp-view')) {
+          root.appendChild(style.cloneNode(true));
+        }
+      });
+      (window as any).__pluginAiStyleInjected__ = true;
+    }
+
+    // 样式注入完成，显示内容
+    setStyled(true);
   }, []);
 
   return (
-    <div ref={containerRef} data-zone-type="ai-request" style={{ height: '100%', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+    <div
+      ref={containerRef}
+      data-zone-type="ai-request"
+      style={{ height: '100%', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', visibility: styled ? 'visible' : 'hidden' }}
+    >
       <CompView {...props} />
     </div>
   );
