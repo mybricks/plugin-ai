@@ -2,8 +2,8 @@ import React from 'react';
 import data from './data';
 import './compView/register';
 
-import './agents/workspace-by-knowledges/test';
-import './../test'
+// import './agents/workspace-by-knowledges/test';
+// import './../test'
 
 import pkg from '../package.json';
 
