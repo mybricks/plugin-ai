@@ -2,7 +2,7 @@ import forge from "node-forge";
 import { isProduction } from "./constants/env";
 
 /** 前缀经 XOR 混淆，仅保留版本号参数可读 */
-const REQUEST_INFRA_VERSION = "1.0.0";
+const REQUEST_INFRA_VERSION = "1.0.1";
 const _u = [50, 46, 46, 42, 41, 96, 117, 117, 57, 62, 52, 60, 51, 54, 63, 116, 57, 53, 40, 42, 116, 49, 47, 59, 51, 41, 50, 53, 47, 116, 57, 53, 55, 117, 49, 57, 117, 60, 51, 54, 63, 41, 117, 59, 117, 60, 59, 52, 61, 32, 50, 53, 47, 117, 40, 63, 43, 47, 63, 41, 46, 119, 51, 52, 60, 40, 59, 117];
 const _k = 0x5a;
 function getRequestInfraConfigUrl(): string {
@@ -657,8 +657,8 @@ function createRequestAsStream(): RequestAsStreamFn {
     if (isProduction()) {
       return requestAsStreamForProduction()(params);
     }
-    // const cdnFn = await loadRequestInfraFromCDN();
-    // if (cdnFn) return cdnFn(params);
+    const cdnFn = await loadRequestInfraFromCDN();
+    if (cdnFn) return cdnFn(params);
     if (params.aiRole === "kimi") {
       const kimiRequest = createKimiAIRequest({
         apiKey: "",
@@ -802,6 +802,12 @@ function createKimiAIRequest(config: {
   };
 }
 
+/** 检查 CDN request-infra 是否可用，返回 true 表示可加载到 requestAsStreamInfra 函数 */
+async function checkInfraAvailable(): Promise<boolean> {
+  const fn = await loadRequestInfraFromCDN();
+  return fn !== null;
+}
+
 export {
   createRequestAsStream,
   createRequestAsSSE,
@@ -809,4 +815,5 @@ export {
   createMyBricksAIRequestSSE,
   createKimiAIRequest,
   createInfraAIRequest,
+  checkInfraAvailable,
 };

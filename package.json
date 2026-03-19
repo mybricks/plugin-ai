@@ -21,7 +21,8 @@
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && rollup -c",
     "build:cdzd": "rollup -c rollup.cdzd.mjs",
     "watch": "APP_ENV=development rollup -c -w",
-    "publish": "npm run build && npm publish"
+    "publish": "npm run build && npm publish",
+    "build:umd": "rollup -c rollup.umd.config.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",

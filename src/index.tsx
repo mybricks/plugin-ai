@@ -18,7 +18,7 @@ import { createGetAllComDefPrompts } from "./api/cloud-components";
 import { AgentConfigParams, getAgentConfigs, backStoryPrompts, transformLegacyPromptsToAgents, AbstractAgent, CustomAgent } from './agents/utils/config';
 
 import preset from "./preset";
-import { createRequestAsSSE, createRequestAsStream, createMyBricksAIRequest, createInfraAIRequest, type RequestAsStreamParams, type RequestAsStreamFn, type TokenUsage, type RequestAsStreamEmits } from "./requestAsStream";
+import { createRequestAsSSE, createRequestAsStream, createMyBricksAIRequest, createInfraAIRequest, checkInfraAvailable, type RequestAsStreamParams, type RequestAsStreamFn, type TokenUsage, type RequestAsStreamEmits } from "./requestAsStream";
 import { apiRecorder } from './api-record-replay';
 import { replay, replayFromJSON, ReplayAPI, ReplayOptions } from './api-record-replay';
 import { RecordedAction } from './api-record-replay';
@@ -283,7 +283,7 @@ export default function pluginAI(params?: any): any {
 }
 
 export { MyBricksParamsTools as MyBricksTools, Agent } from './agents/utils/config';
-export { createMyBricksAIRequest, createInfraAIRequest };
+export { createMyBricksAIRequest, createInfraAIRequest, checkInfraAvailable };
 export type { RequestAsStreamParams, RequestAsStreamFn, TokenUsage, RequestAsStreamEmits }; 
 interface AgentPluginProps {
   agents: AgentConfigParams[];
