@@ -24,6 +24,8 @@ import { replay, replayFromJSON, ReplayAPI, ReplayOptions } from './api-record-r
 import { RecordedAction } from './api-record-replay';
 import { fileFormat } from '@mybricks/rxai';
 
+// import cdzd from './cdzd'
+
 // 导出收集和回放相关的接口
 export { apiRecorder, replay, replayFromJSON, fileFormat };
 export type { RecordedAction, ReplayAPI, ReplayOptions };
@@ -57,6 +59,8 @@ export default function pluginAI(params?: any): any {
     onDownload,
     codingMode = false
   } = transformParams(params);
+
+  // const requestAsStream = cdzd
 
   const requestAsStream = onRequest ?? createRequestAsStream();
 
