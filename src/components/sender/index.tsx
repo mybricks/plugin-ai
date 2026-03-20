@@ -4,6 +4,7 @@ import { message } from "antd";
 import { Attachment, Loading, Send, Code } from "../icons";
 import { MentionTag } from "../mention";
 import { AttachmentsList } from "../attachments";
+import type { Attachment as AttachmentItem } from "../attachments";
 import { Mention, Attachments } from "../types";
 import { ChatMode, type ChatModeType } from "../chatMode";
 import css from "./index.less"
@@ -44,6 +45,8 @@ interface SenderProps {
   onChatModeChange?: (chatMode: ChatModeType) => void;
   /** 输入框风格：compact（紧凑，默认）| loose（松散，padding 更大）*/
   variant?: 'compact' | 'loose';
+  /** 自定义图片上传函数，返回 CDN URL；不传则使用 base64 */
+  onUpload?: (file: File) => Promise<string>;
 }
 
 interface SenderRef {
@@ -53,13 +56,14 @@ interface SenderRef {
 }
 
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
-  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact' } = props;
+  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact', onUpload } = props;
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [inputContent, setInputContent] = useState<string | null>(null);
-  const [attachments, setAttachments] = useState<Attachments>([]);
+  const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [mentions, setMentions] = useState<Mention[]>([]);
   const [vibeCoding, setVibeCoding] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   useImperativeHandle(ref, () => {
     return {
@@ -75,7 +79,8 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
   const send = () => {
     const inputContent = inputEditorRef.current!.textContent;
-    if (inputContent && !loading && !disabled) {
+    const hasUploadingAttachment = attachments.some((a) => a.uploading);
+    if (inputContent && !loading && !disabled && !uploading && !hasUploadingAttachment) {
       props.onSend({
         message: inputContent,
         attachments,
@@ -129,34 +134,73 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       message.info(`当前文件大小 ${(file.size / 1024).toFixed(2)}K，超过了5000K，建议您截取页面中的某个区域作为附件`)
       return;
     }
-    readFileToBase64(file)
-      .then((base64) => {
-        setAttachments((attachments) => {
-          return [...attachments, { type: "image", content: base64 }]
-        })
-        if (!inputContent && attachmentsPrompt) {
-          setInputContent(attachmentsPrompt);
-          const selection = window.getSelection();
 
-          if (!selection?.rangeCount) {
-            return;
+    if (onUpload) {
+      // 先插入占位，上传完成后替换为真实 URL
+      const localUrl = URL.createObjectURL(file);
+      const placeholder: AttachmentItem = { type: "image", content: localUrl, uploading: true };
+      setAttachments((prev) => [...prev, placeholder]);
+      setUploading(true);
+      onUpload(file)
+        .then((url) => {
+          URL.revokeObjectURL(localUrl);
+          setAttachments((prev) => {
+            const next = [...prev];
+            const idx = next.findIndex((a) => a === placeholder);
+            if (idx !== -1) next[idx] = { type: "image", content: url };
+            return next;
+          });
+          if (!inputContent && attachmentsPrompt) {
+            setInputContent(attachmentsPrompt);
+            const selection = window.getSelection();
+            if (!selection?.rangeCount) return;
+            const range = selection.getRangeAt(0);
+            const textNode = document.createTextNode(attachmentsPrompt);
+            range.insertNode(textNode);
+            range.setStartAfter(textNode);
+            range.setEndAfter(textNode);
           }
+        })
+        .catch((event) => {
+          URL.revokeObjectURL(localUrl);
+          setAttachments((prev) => prev.filter((a) => a !== placeholder));
+          console.error("[@mybricks/plugin-ai - 图片上传CDN失败]", event);
+          message.error("图片上传失败，请重试");
+        })
+        .finally(() => {
+          setUploading(false);
+        });
+    } else {
+      // 无 onUpload，走 base64
+      readFileToBase64(file)
+        .then((base64) => {
+          setAttachments((attachments) => {
+            return [...attachments, { type: "image", content: base64 }]
+          })
+          if (!inputContent && attachmentsPrompt) {
+            setInputContent(attachmentsPrompt);
+            const selection = window.getSelection();
 
-          const range = selection.getRangeAt(0);
-          const textNode = document.createTextNode(attachmentsPrompt);
-          range.insertNode(textNode);
-          range.setStartAfter(textNode);
-          range.setEndAfter(textNode);
-        }
-      })
-      .catch((event) => {
-        console.error("[@mybricks/plugin-ai - 上传附件失败]", event);
-        message.error("[@mybricks/plugin-ai - 上传附件失败]");
-      })
+            if (!selection?.rangeCount) {
+              return;
+            }
+
+            const range = selection.getRangeAt(0);
+            const textNode = document.createTextNode(attachmentsPrompt);
+            range.insertNode(textNode);
+            range.setStartAfter(textNode);
+            range.setEndAfter(textNode);
+          }
+        })
+        .catch((event) => {
+          console.error("[@mybricks/plugin-ai - 上传附件失败]", event);
+          message.error("[@mybricks/plugin-ai - 上传附件失败]");
+        })
+    }
   }
 
   const uploadAttachment = () => {
-    if (loading || disabled) {
+    if (loading || disabled || uploading) {
       return;
     }
     if (checkAttachmentsLimit()) {
@@ -187,7 +231,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
   const onPaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
     event.preventDefault();
-    if (loading || disabled) {
+    if (loading || disabled || uploading) {
       return;
     }
     const file = event.clipboardData.files[0];
@@ -274,25 +318,22 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         </div>
         <div className={css.editorAction}>
           <div className={classNames(css.leftArea, {
-            [css.disabled]: loading || disabled
+            [css.disabled]: loading || disabled || uploading
           })}>
             {/* 模式切换，暂时去除 */}
             {/* {chatMode ? <ChatMode disabled={disabled} chatMode={chatMode} onChange={onChatModeChange} /> : null} */}
             <div data-zone-type="ai-request" className={css.attachmentButton} onClick={uploadAttachment}>
               <Attachment />
             </div>
-            {/* {attachments.length ? (
-              <AttachmentsList attachments={attachments} onDelete={onAttachmentsDelete}/>
-            ) : null} */}
           </div>
           <div className={css.rightArea}>
             <div data-zone-type="ai-request" className={classNames(css.sendButtonContainer, {
-              [css.disabled]: !inputContent || loading || disabled
+              [css.disabled]: !inputContent || loading || disabled || uploading || attachments.some((a) => a.uploading)
             })} onClick={send}>
               <div data-zone-type="ai-request" className={classNames(css.sendButton, {
-                [css.loadingButton]: loading
+                [css.loadingButton]: loading || uploading
               })}>
-                {loading ? <Loading /> : <Send />}
+                {(loading || uploading) ? <Loading /> : <Send />}
               </div>
             </div>
           </div>

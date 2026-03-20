@@ -1,5 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from "react";
-// import { createPortal } from "react-dom";
+import React, { useRef, useState } from "react";
 import { Close } from "../icons";
 import css from "./index.less";
 import classNames from "classnames";
@@ -8,6 +7,8 @@ import { Image } from "antd";
 interface Attachment {
   type: "image";
   content: string;
+  /** 上传中状态，true 时显示灰色占位 */
+  uploading?: boolean;
 }
 
 interface AttachmentsProps {
@@ -20,32 +21,37 @@ const AttachmentsList = (props: AttachmentsProps) => {
   const { attachments, onDelete, className } = props;
   const [preiviewVisible, setPreiviewVisible] = useState(false);
   const [preiviewCurrent, setPreiviewCurrent] = useState(0);
-  
+
+  // 预览时只使用已上传完成的附件
+  const previewableAttachments = attachments.filter((a) => !a.uploading);
 
   return (
     <div className={classNames(css.attachments, className)}>
       {attachments.map((attachment, index) => {
         return (
-          <Attachment
+          <AttachmentItem
             key={index}
             attachment={attachment}
             onDelete={onDelete ? () => onDelete(index) : undefined}
             onPreview={() => {
-              setPreiviewVisible(true);
-              setPreiviewCurrent(index);
+              const previewIndex = previewableAttachments.indexOf(attachment);
+              if (previewIndex !== -1) {
+                setPreiviewVisible(true);
+                setPreiviewCurrent(previewIndex);
+              }
             }}
           />
         )
       })}
       <div style={{ display: 'none' }}>
-        <Image.PreviewGroup 
-          preview={{ 
+        <Image.PreviewGroup
+          preview={{
             visible: preiviewVisible,
             onVisibleChange: setPreiviewVisible,
             current: preiviewCurrent,
           }}
         >
-          {attachments.map((attachment, index) => (
+          {previewableAttachments.map((attachment, index) => (
             <Image key={index} src={attachment.content} />
           ))}
         </Image.PreviewGroup>
@@ -55,109 +61,35 @@ const AttachmentsList = (props: AttachmentsProps) => {
 }
 
 export { AttachmentsList };
+export type { Attachment };
 
-const Attachment = (props: { attachment: Attachment, onDelete?: () => void; onPreview?: () => void; }) => {
+const AttachmentItem = (props: { attachment: Attachment, onDelete?: () => void; onPreview?: () => void; }) => {
   const imgRef = useRef<HTMLImageElement>(null);
-  // const previewRef = useRef<HTMLDivElement>(null);
   const { attachment, onDelete, onPreview } = props;
-  // const [previewBCR, setPreviewBCR] = useState<DOMRect | null>(null);
-  // const [visible, setVisible] = useState(false);
-
-  // const delayedTask = useMemo(() => {
-  //   return new DelayedTask<[boolean]>((visible) => {
-  //     setVisible(visible);
-  //   }, 50)
-  // }, [])
-
-  // useEffect(() => {
-  //   if (visible) {
-  //     if (previewBCR) {
-  //       const imgBcr = imgRef.current!.getBoundingClientRect();
-
-  //       const topSpace = imgBcr.top - 4 - previewBCR.height;
-
-  //       if (topSpace > 0) {
-  //         previewRef.current!.style.top = `${topSpace}px`;
-  //       } else {
-  //         previewRef.current!.style.top = `${imgBcr.top + imgBcr.height}px`;
-  //       }
-        
-  //       if (imgBcr.left + previewBCR.width > document.body.offsetWidth) {
-  //         previewRef.current!.style.left = `${imgBcr.left + imgBcr.width - previewBCR.width}px`
-  //       } else {
-  //         previewRef.current!.style.left = `${imgBcr.left}px`;
-  //       }
-
-  //       previewRef.current!.style.visibility = "visible";
-  //     }
-  //   } else {
-  //     previewRef.current!.style.visibility = "hidden";
-  //   }
-  // }, [previewBCR, visible])
 
   return (
     <>
       <div
-        className={css.imageThumbnail}
-        // onMouseEnter={() => {
-        //   delayedTask.startNow(true);
-        // }}
-        // onMouseLeave={() => {
-        //   delayedTask.start(false);
-        // }}
+        className={classNames(css.imageThumbnail, {
+          [css.uploadingThumbnail]: attachment.uploading,
+        })}
       >
-        <img ref={imgRef} src={attachment.content} onClick={() => onPreview?.()} />
-        {onDelete && <div className={css.imageDeleteContainer} onClick={onDelete}>
-          <div className={css.imageDeleteIcon}>
-            <Close />
+        {attachment.uploading ? (
+          <div className={css.uploadingPlaceholder}>
+            <span className={css.uploadingText}>上传</span>
+            <span className={css.uploadingText}>中...</span>
           </div>
-        </div>}
+        ) : (
+          <img ref={imgRef} src={attachment.content} onClick={() => onPreview?.()} />
+        )}
+        {!attachment.uploading && onDelete && (
+          <div className={css.imageDeleteContainer} onClick={onDelete}>
+            <div className={css.imageDeleteIcon}>
+              <Close />
+            </div>
+          </div>
+        )}
       </div>
-      {/* {createPortal((
-        <div
-          ref={previewRef}
-          className={css.preview}
-          onMouseEnter={() => {
-            delayedTask.startNow(true);
-          }}
-          onMouseLeave={() => {
-            delayedTask.start(false);
-          }}
-        >
-          <img src={attachment.content} onLoad={(event) => {
-            setPreviewBCR((event.target as HTMLImageElement).parentElement!.getBoundingClientRect())
-          }} />
-        </div>
-      ), document.body)} */}
     </>
   )
-}
-
-class DelayedTask<T extends unknown[]> {
-  private timerId: number | null = null;
-  constructor(private callback: (...args: T) => void, private delay: number) {}
-
-  start(...args: T) {
-    this.cancel();
-    this.timerId = setTimeout(() => {
-      this.callback(...args);
-      this.timerId = null;
-    }, this.delay) as unknown as number;
-
-    return this;
-  }
-
-  cancel() {
-    if (this.timerId) {
-      clearTimeout(this.timerId);
-      this.timerId = null;
-    }
-    return this;
-  }
-
-  startNow(...args: T) {
-    this.cancel();
-    this.callback(...args);
-    return this;
-  }
 }

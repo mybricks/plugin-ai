@@ -223,6 +223,7 @@ const View = ({ user, copilot, api }: ViewProps) => {
         onSend={onSend}
         onMentionClick={onMentionClick}
         onChatModeChange={onChatModeChange}
+        onUpload={context.pluginParams.onUpload}
       />
     </div>
   )

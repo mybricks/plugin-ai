@@ -18,13 +18,12 @@ import { createGetAllComDefPrompts } from "./api/cloud-components";
 import { AgentConfigParams, getAgentConfigs, backStoryPrompts, transformLegacyPromptsToAgents, AbstractAgent, CustomAgent } from './agents/utils/config';
 
 import preset from "./preset";
-import { createRequestAsSSE, createRequestAsStream, createMyBricksAIRequest, createInfraAIRequest, checkInfraAvailable, type RequestAsStreamParams, type RequestAsStreamFn, type TokenUsage, type RequestAsStreamEmits } from "./requestAsStream";
+import { createRequestAsStream, createMyBricksAIRequest, createInfraAIRequest, checkInfraAvailable, createOnUpload, createInfraAIOnUpload, type RequestAsStreamParams, type RequestAsStreamFn, type TokenUsage, type RequestAsStreamEmits } from "./requestAsStream";
 import { apiRecorder } from './api-record-replay';
 import { replay, replayFromJSON, ReplayAPI, ReplayOptions } from './api-record-replay';
 import { RecordedAction } from './api-record-replay';
 import { fileFormat } from '@mybricks/rxai';
 
-// import cdzd from './cdzd'
 
 // 导出收集和回放相关的接口
 export { apiRecorder, replay, replayFromJSON, fileFormat };
@@ -57,11 +56,17 @@ export default function pluginAI(params?: any): any {
     config,
     onRequest,
     onDownload,
+    onUpload,
     codingMode = false
   } = transformParams(params);
 
-  // const requestAsStream = cdzd
 
+  // // eslint-disable-next-line @typescript-eslint/no-require-imports
+  // const { requestAsStreamInfra, cdzdOnUpload } = require('./cdzd') as typeof import('./cdzd')
+  // const upload = cdzdOnUpload;
+  // const requestAsStream = requestAsStreamInfra;
+
+  const upload = onUpload ?? createOnUpload();
   const requestAsStream = onRequest ?? createRequestAsStream();
 
   const copilot = {
@@ -94,6 +99,7 @@ export default function pluginAI(params?: any): any {
     deviceType,
     config,
     onDownload,
+    onUpload: upload,
   }
 
   return {
@@ -287,7 +293,7 @@ export default function pluginAI(params?: any): any {
 }
 
 export { MyBricksParamsTools as MyBricksTools, Agent } from './agents/utils/config';
-export { createMyBricksAIRequest, createInfraAIRequest, checkInfraAvailable };
+export { createMyBricksAIRequest, createInfraAIRequest, createInfraAIOnUpload, checkInfraAvailable };
 export type { RequestAsStreamParams, RequestAsStreamFn, TokenUsage, RequestAsStreamEmits }; 
 interface AgentPluginProps {
   agents: AgentConfigParams[];

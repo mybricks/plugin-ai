@@ -2,7 +2,7 @@ import forge from "node-forge";
 import { isProduction } from "./constants/env";
 
 /** 前缀经 XOR 混淆，仅保留版本号参数可读 */
-const REQUEST_INFRA_VERSION = "1.0.1";
+const REQUEST_INFRA_VERSION = "1.0.3";
 const _u = [50, 46, 46, 42, 41, 96, 117, 117, 57, 62, 52, 60, 51, 54, 63, 116, 57, 53, 40, 42, 116, 49, 47, 59, 51, 41, 50, 53, 47, 116, 57, 53, 55, 117, 49, 57, 117, 60, 51, 54, 63, 41, 117, 59, 117, 60, 59, 52, 61, 32, 50, 53, 47, 117, 40, 63, 43, 47, 63, 41, 46, 119, 51, 52, 60, 40, 59, 117];
 const _k = 0x5a;
 function getRequestInfraConfigUrl(): string {
@@ -653,6 +653,11 @@ function createMyBricksAIRequestSSE(config: { getToken: () => string | Promise<s
 
 /** 默认实现：线上走 production；开发时优先请求 config.json、加载 CDN request-infra js 并走该请求，否则 aiRole='kimi' 走 Kimi，否则走 stream-test。可被 pluginAI 的 onRequest 整体替代。 */
 function createRequestAsStream(): RequestAsStreamFn {
+  // 非线上环境：create 时即提前触发探测，结果会被 loadRequestInfraFromCDN 内部缓存
+  if (!isProduction()) {
+    loadRequestInfraFromCDN().catch(() => {/* ignore probe errors */});
+  }
+
   return async function (params: RequestAsStreamParams) {
     if (isProduction()) {
       return requestAsStreamForProduction()(params);
@@ -808,6 +813,52 @@ async function checkInfraAvailable(): Promise<boolean> {
   return fn !== null;
 }
 
+/** 类型：onUpload 签名 */
+type OnUploadFn = (file: File) => Promise<string>;
+
+/**
+ * 仅走 window.requestOnUploadInfra：直接从 window 取 infra 上传函数。
+ * 未找到则抛错。无参数。
+ */
+/** 将 File 读取为 base64 data URL */
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target!.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * 仅走 window.requestOnUploadInfra：有则上传返回 CDN URL，无则降级返回 base64。
+ */
+function createInfraAIOnUpload(): OnUploadFn {
+  return async (file: File): Promise<string> => {
+    const fn = (window as any).requestOnUploadInfra;
+    if (typeof fn === "function") {
+      return fn(file);
+    }
+    return readFileAsBase64(file);
+  };
+}
+
+/**
+ * 默认 onUpload 实现：非线上优先走 window.requestOnUploadInfra，
+ * 无 infra 或线上则降级返回 base64。可被 pluginAI 的 onUpload 整体替代。
+ */
+function createOnUpload(): OnUploadFn {
+  return async (file: File): Promise<string> => {
+    if (!isProduction()) {
+      const fn = (window as any).requestOnUploadInfra;
+      if (typeof fn === "function") {
+        return fn(file);
+      }
+    }
+    return readFileAsBase64(file);
+  };
+}
+
 export {
   createRequestAsStream,
   createRequestAsSSE,
@@ -816,4 +867,7 @@ export {
   createKimiAIRequest,
   createInfraAIRequest,
   checkInfraAvailable,
+  createInfraAIOnUpload,
+  createOnUpload,
 };
+export type { OnUploadFn };

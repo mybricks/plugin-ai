@@ -97,6 +97,7 @@ const CompView = ({ user, copilot, comId }: CompViewProps) => {
           variant="loose"
           placeholder={`从一句话或者一张图片开始，为您生成所需要的页面`}
           attachmentsPrompt={"根据附件中的图片内容进行设计开发，要求尽可能还原其中的各类设计细节以及功能，在此基础上可做调整优化创新"}
+          onUpload={context.pluginParams.onUpload}
         />
       )}
 
