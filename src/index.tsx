@@ -232,6 +232,17 @@ export default function pluginAI(params?: any): any {
             }
           }
 
+          window._getRxaiByAbstractAgentWithVibeCoding_ = (comId: string) => {
+            const agent = context.agents!.find((agent) => {
+              return agent instanceof AbstractAgent && agent.type === "vibeCoding"
+            });
+            if (agent) {
+              const rxai = (agent as AbstractAgent).getRxai({
+                key: `${context.pluginParams.key}_${comId}`,
+              })
+              return rxai;
+            }
+          }
 
           return {
             focus(params: AiServiceFocusParams) {
