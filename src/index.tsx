@@ -227,7 +227,7 @@ export default function pluginAI(params?: any): any {
           // 给组件的agent使用，主要是设计信息以及三方库配置信息
           window._getProjectConfig_ = () => {
             return {
-              avaliableLibraries: (codingConfig as CodingConfig)?.avaliableLibraries ?? [],
+              availableLibraries: (codingConfig as CodingConfig)?.availableLibraries ?? [],
               themes: (codingConfig as CodingConfig)?.themes ?? [],
             }
           }

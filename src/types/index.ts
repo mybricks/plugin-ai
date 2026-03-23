@@ -33,5 +33,5 @@ export interface AvailableLibrary {
 
 export interface CodingConfig {
   themes?: Theme[];
-  avaliableLibraries?: AvailableLibrary[];
+  availableLibraries?: AvailableLibrary[];
 }
