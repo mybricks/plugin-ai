@@ -13,7 +13,7 @@ import { Agents } from './agents'
 import { View } from "./view";
 import { context } from './context';
 import { StartView } from "./startView";
-import { DeviceType } from './types';
+import { DeviceType, CodingConfig } from './types';
 import { createGetAllComDefPrompts } from "./api/cloud-components";
 import { AgentConfigParams, getAgentConfigs, backStoryPrompts, transformLegacyPromptsToAgents, AbstractAgent, CustomAgent } from './agents/utils/config';
 
@@ -57,7 +57,8 @@ export default function pluginAI(params?: any): any {
     onRequest,
     onDownload,
     onUpload,
-    codingMode = false
+    codingMode = false,
+    codingConfig,
   } = transformParams(params);
 
 
@@ -218,6 +219,14 @@ export default function pluginAI(params?: any): any {
               })
             );
           };
+
+          // 给组件的agent使用，主要是设计信息以及三方库配置信息
+          window._getProjectConfig_ = () => {
+            return {
+              avaliableLibraries: (codingConfig as CodingConfig)?.avaliableLibraries ?? [],
+              themes: (codingConfig as CodingConfig)?.themes ?? [],
+            }
+          }
 
 
           return {
