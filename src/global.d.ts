@@ -61,6 +61,7 @@ type AiServiceFocusParams = {
   focusArea?: {
     selector: string;
     title: string;
+    ele: HTMLElement;
   }
   comId: string;
   pageId: string;

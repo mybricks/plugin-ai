@@ -32,6 +32,7 @@ export interface AgentConfigParams {
   /** 工具列表：系统类型使用 MyBricksParamsTools 的返回值，自定义类型使用 CustomTool 格式 */
   tools?: ReturnType<typeof MyBricksParamsTools[keyof typeof MyBricksParamsTools]>[] | CustomTool[];
   formatUserMessage?: (text: string, { focusParams }: { focusParams: AiServiceFocusParams }) => string;
+  getFocusArea?: (params: { focus: any }) => string;
 }
 
 export function Agent(config: AgentConfigParams) {

@@ -34,7 +34,8 @@ const View = ({ user, copilot, api }: ViewProps) => {
       placeholder: PLACEHOLDER_MAP["disabled"]
     }
   })
-  const focusID = useRef<string>(null);
+
+  const currentFocus = useRef<any>(null);
 
   useEffect(() => {
     const statusChange = (state: "loading" | "normal" | "disabled") => {
@@ -62,7 +63,7 @@ const View = ({ user, copilot, api }: ViewProps) => {
     const disconnectFocus = context.events.on("focus", (focus) => {
       if (!focus) {
         senderRef.current!.setMentions([]);
-        focusID.current = null;
+        currentFocus.current = null;
         statusChange("disabled");
         // setRxai(context.rxai);
         setChatMode(null);
@@ -91,8 +92,10 @@ const View = ({ user, copilot, api }: ViewProps) => {
         } else {
           setChatMode(null);
         }
-        focusID.current = id;
-        const status = context.requestStatusTracker.getStatus(id + focusArea);
+        currentFocus.current = focus;
+        const status = context.requestStatusTracker.getStatus(focus.focusArea?.ele);
+        
+        // const status = context.requestStatusTracker.getStatus(id + focusArea);
         statusChange(status.state === "pending" ? "loading" : "normal");
         setTimeout(() => {
           senderRef.current!.focus();
@@ -119,7 +122,7 @@ const View = ({ user, copilot, api }: ViewProps) => {
       }
     }, true)
     const disconnectPromiseStatusTracker = context.requestStatusTracker.events.on("promise", (promise) => {
-      if (promise.id === focusID.current) {
+      if (promise.element === currentFocus.current?.focusArea?.ele) {
         statusChange(promise.status.state === "pending" ? "loading" : "normal");
       }
     })
@@ -132,7 +135,6 @@ const View = ({ user, copilot, api }: ViewProps) => {
 
   const changeRxai = (chatMode: ChatModeType) => {
     if (chatMode === "vibe") {
-      console.log('focusArea', context.currentFocus?.comId)
       setTimeout(() => {
         // TODO: ai组件库里注册agents的时机不对
         const agent = context.agents!.find((agent) => {
@@ -155,18 +157,29 @@ const View = ({ user, copilot, api }: ViewProps) => {
   const onSend = (sendMessage: Parameters<SenderProps["onSend"]>[0]) => {
     const { message, attachments, ...extension } = sendMessage;
 
-    if (!focusID.current) {
+    if (!currentFocus.current) {
       return;
     }
 
+    const type = currentFocus.current.type;
+    const id = ["page", "section"].includes(type) ? currentFocus.current.pageId : currentFocus.current.comId;
     // 聚焦到页面或者组件时使用这个方法请求agent
-    const agentType = context.vibeStatus[focusID.current] === "vibe" ? 'vibe' : 'common';
-    context.requestStatusTracker.track(focusID.current, Agents.requestAgent(agentType, {
+    const agentType = context.vibeStatus[id] === "vibe" ? 'vibe' : 'common';
+    // @ts-ignore
+    context.requestStatusTracker.track(currentFocus.current.focusArea?.ele, Agents.requestAgent(agentType, {
       message,
       attachments,
       extension,
       onProgress: context.currentFocus?.onProgress,
+      onPlan(plan: any) {
+        context.requestStatusTracker.setPlan(currentFocus.current.focusArea?.ele, plan);
+      }
     }));
+  }
+
+  const onStop = () => {
+    const plan = context.requestStatusTracker.getPlan(currentFocus.current.focusArea?.ele);
+    plan?.abort();
   }
 
   const onMentionClick: NonNullable<SenderProps["onMentionClick"]> = (mention) => {
@@ -174,27 +187,29 @@ const View = ({ user, copilot, api }: ViewProps) => {
     api[type === "page" ? "focusPage" : "focusCom"]((type === "page" ? pageId : comId) || id as string);
   }
 
-  const onMessagesSend = (sendMessage: Parameters<SenderProps["onSend"]>[0]) => {
-    const { message, attachments, insertAfter,  ...extension } = sendMessage;
-    const { mentions } = extension
-    const mention = sendMessage.mentions[0];
+  // const onMessagesSend = (sendMessage: Parameters<SenderProps["onSend"]>[0]) => {
+  //   const { message, attachments, insertAfter,  ...extension } = sendMessage;
+  //   const { mentions } = extension
+  //   const mention = sendMessage.mentions[0];
 
-    // 聚焦到页面或者组件时使用这个方法请求agent
-    const agentType = context.vibeStatus[focusID.current] === "vibe" ? 'vibe' : 'common';
-    context.requestStatusTracker.track(mention.type === "page" ? mention.pageId : mention.comId, Agents.requestAgent(agentType, {
-      message,
-      attachments,
-      insertAfter,
-      extension,
-      focus: mentions[0],
-      onProgress: context.currentFocus?.onProgress,
-    }));
-  }
+  //   // 聚焦到页面或者组件时使用这个方法请求agent
+  //   const agentType = context.vibeStatus[focusID.current] === "vibe" ? 'vibe' : 'common';
+  //   context.requestStatusTracker.track(mention.type === "page" ? mention.pageId : mention.comId, Agents.requestAgent(agentType, {
+  //     message,
+  //     attachments,
+  //     insertAfter,
+  //     extension,
+  //     focus: mentions[0],
+  //     onProgress: context.currentFocus?.onProgress,
+  //   }));
+  // }
 
   const onChatModeChange = (mode: ChatModeType) => {
     setChatMode(mode);
-    const id = focusID.current;
-    if (id) {
+    if (currentFocus.current) {
+      const type = currentFocus.current.type;
+      const id = ["page", "section"].includes(type) ? currentFocus.current.pageId : currentFocus.current.comId;
+
       context.vibeStatus[id] = mode;
       changeRxai(mode);
     }
@@ -210,7 +225,7 @@ const View = ({ user, copilot, api }: ViewProps) => {
         user={user}
         copilot={copilot}
         rxai={rxai}
-        onSend={onMessagesSend}
+        // onSend={onMessagesSend}
         onMentionClick={onMentionClick}
       />
       <Sender
@@ -224,6 +239,7 @@ const View = ({ user, copilot, api }: ViewProps) => {
         onMentionClick={onMentionClick}
         onChatModeChange={onChatModeChange}
         onUpload={context.pluginParams.onUpload}
+        onStop={onStop}
       />
     </div>
   )

@@ -47,6 +47,7 @@ interface SenderProps {
   variant?: 'compact' | 'loose';
   /** 自定义图片上传函数，返回 CDN URL；不传则使用 base64 */
   onUpload?: (file: File) => Promise<string>;
+  onStop?: () => void;
 }
 
 interface SenderRef {
@@ -56,7 +57,7 @@ interface SenderRef {
 }
 
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
-  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact', onUpload } = props;
+  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact', onUpload, onStop } = props;
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [inputContent, setInputContent] = useState<string | null>(null);
@@ -328,11 +329,20 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           </div>
           <div className={css.rightArea}>
             <div data-zone-type="ai-request" className={classNames(css.sendButtonContainer, {
-              [css.disabled]: !inputContent || loading || disabled || uploading || attachments.some((a) => a.uploading)
+              [css.disabled]: !loading && (disabled || !inputContent || uploading || attachments.some((a) => a.uploading))
             })} onClick={send}>
-              <div data-zone-type="ai-request" className={classNames(css.sendButton, {
-                [css.loadingButton]: loading || uploading
-              })}>
+              <div
+                data-zone-type="ai-request"
+                className={classNames(css.sendButton, {
+                  [css.loadingButton]: loading || uploading
+                })}
+                data-mybricks-tip={loading ? "停止" : ""}
+                onClick={() => {
+                  if (loading) {
+                    onStop?.();
+                  }
+                }}
+              >
                 {(loading || uploading) ? <Loading /> : <Send />}
               </div>
             </div>

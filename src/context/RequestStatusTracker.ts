@@ -1,24 +1,27 @@
 import { Events } from "@mybricks/rxai"
 
+type Element = HTMLElement | undefined;
+
 interface RequestStatus {
   state: "pending" | "fulfilled" | "rejected";
   result: any;
 }
 class RequestStatusTracker {
-  private requests = new Map<string, RequestStatus>();
+  private requests = new Map<Element | undefined, RequestStatus>();
   events = new Events<{promise: {
-    id: string;
+    element: Element;
     status: RequestStatus
   }}>();
+  private plans = new Map<Element | undefined, any>
   constructor() {}
 
-  track(id: string, promise: Promise<any>) {
+  track(element: Element, promise: Promise<any>) {
     const status: RequestStatus = {
       state: "pending",
       result: null,
     }
     this.events.emit("promise", {
-      id,
+      element,
       status,
     })
 
@@ -31,19 +34,27 @@ class RequestStatusTracker {
       console.error(error);
     }).finally(() => {
       this.events.emit("promise", {
-        id,
+        element,
         status,
       })
     })
 
-    this.requests.set(id, status);
+    this.requests.set(element, status);
   }
 
-  getStatus(id: string) {
-    return this.requests.get(id) || {
+  getStatus(ele?: Element) {
+    return this.requests.get(ele) || {
       state: "fulfilled",
       result: null
     };
+  }
+
+  setPlan(ele: Element, plan: any) {
+    this.plans.set(ele, plan)
+  }
+
+  getPlan(ele: Element) {
+    return this.plans.get(ele)
   }
 }
 
