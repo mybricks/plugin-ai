@@ -7,6 +7,7 @@ import type { ChatModeType } from "../components/chatMode";
 import { context } from "../context";
 import { Agents } from '../agents'
 import { AbstractAgent } from "../agents/utils/config";
+import { getUniqueIdentifier } from "../utils";
 import css from "./index.less";
 
 interface ViewProps {
@@ -93,7 +94,7 @@ const View = ({ user, copilot, api }: ViewProps) => {
           setChatMode(null);
         }
         currentFocus.current = focus;
-        const status = context.requestStatusTracker.getStatus(focus.focusArea?.ele);
+        const status = context.requestStatusTracker.getStatus(getUniqueIdentifier(focus));
         
         // const status = context.requestStatusTracker.getStatus(id + focusArea);
         statusChange(status.state === "pending" ? "loading" : "normal");
@@ -122,7 +123,7 @@ const View = ({ user, copilot, api }: ViewProps) => {
       }
     }, true)
     const disconnectPromiseStatusTracker = context.requestStatusTracker.events.on("promise", (promise) => {
-      if (promise.element === currentFocus.current?.focusArea?.ele) {
+      if (promise.element === getUniqueIdentifier(currentFocus.current)) {
         statusChange(promise.status.state === "pending" ? "loading" : "normal");
       }
     })
@@ -166,19 +167,19 @@ const View = ({ user, copilot, api }: ViewProps) => {
     // 聚焦到页面或者组件时使用这个方法请求agent
     const agentType = context.vibeStatus[id] === "vibe" ? 'vibe' : 'common';
     // @ts-ignore
-    context.requestStatusTracker.track(currentFocus.current.focusArea?.ele, Agents.requestAgent(agentType, {
+    context.requestStatusTracker.track(getUniqueIdentifier(currentFocus.current), Agents.requestAgent(agentType, {
       message,
       attachments,
       extension,
       onProgress: context.currentFocus?.onProgress,
       onPlan(plan: any) {
-        context.requestStatusTracker.setPlan(currentFocus.current.focusArea?.ele, plan);
+        context.requestStatusTracker.setPlan(getUniqueIdentifier(currentFocus.current), plan);
       }
     }));
   }
 
   const onStop = () => {
-    const plan = context.requestStatusTracker.getPlan(currentFocus.current.focusArea?.ele);
+    const plan = context.requestStatusTracker.getPlan(getUniqueIdentifier(currentFocus.current));
     plan?.abort();
   }
 

@@ -23,6 +23,7 @@ import { apiRecorder } from './api-record-replay';
 import { replay, replayFromJSON, ReplayAPI, ReplayOptions } from './api-record-replay';
 import { RecordedAction } from './api-record-replay';
 import { fileFormat } from '@mybricks/rxai';
+import { getUniqueIdentifier } from "./utils";
 
 
 // 导出收集和回放相关的接口
@@ -209,13 +210,16 @@ export default function pluginAI(params?: any): any {
             if (!focus) return;
             const focusId = focus.type === "page" ? focus.pageId : focus.comId;
             context.requestStatusTracker.track(
-              focusId,
+              getUniqueIdentifier(focus),
               // @ts-ignore
               Agents.requestAgent("vibe", {
                 message: params?.message,
                 attachments: [],
                 mentions: [{}],
                 onProgress: focus.onProgress,
+                onPlan(plan: any) {
+                  context.requestStatusTracker.setPlan(getUniqueIdentifier(focus), plan);
+                }
               })
             );
           };
@@ -275,7 +279,17 @@ export default function pluginAI(params?: any): any {
               const focusId = focus ? (focus.type === "page" ? focus.pageId : focus.comId) : "";
               const agentType = context.vibeStatus[focusId] === "vibe" ? 'vibe' : 'common';
               
-              context.requestStatusTracker.track(focusId, Agents.requestAgent(agentType, { ...requestParams }))
+              context.requestStatusTracker.track(
+                getUniqueIdentifier(focus),
+                Agents.requestAgent(
+                  agentType,
+                  {
+                    ...requestParams,
+                    onPlan(plan: any) {
+                      context.requestStatusTracker.setPlan(getUniqueIdentifier(focus), plan);
+                    }
+                  }
+                ))
             },
             registerAgent: window._registerAgent_,
             fileFormat
