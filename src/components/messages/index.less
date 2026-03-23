@@ -61,7 +61,8 @@
   .chat-bubble {
     display: flex;
     flex-direction: column;
-    color: #333;
+    // color: #333;
+    color: var(--mybricks-text-color-main);
     border-radius: 6px;
     border: 1px solid transparent;
     // padding: 16px 16px 0;
@@ -129,7 +130,8 @@
     display: flex;
     justify-content: center;
     font-size: 12px;
-    color: #999
+    // color: #999
+    color: var(--mybricks-text-color-main);
   }
 
   .chat-bubble-header {
@@ -168,7 +170,8 @@
 
     .chat-bubble-header-name {
       font-size: 12px;
-      color: #999
+      // color: #999
+      color: var(--mybricks-text-color-main);
     }
   }
 
@@ -307,7 +310,8 @@
     align-self: flex-end;
     align-items: end;
     // background: #ecf4ff;
-    background: #fff;
+    // background: #fff;
+    background: var(--mybricks-bg-color-main);
     border-radius: 6px;
     padding: 8px;
     border-color: transparent;
@@ -763,7 +767,8 @@
 
 .ai-chat-collapsible-code-block {
   cursor: pointer;
-  background-color: #f3f3f3;
+  // background-color: #f3f3f3;
+  background-color: var(--mybricks-bg-color-main);
   border-radius: 6px;
   margin-bottom: 8px;
   padding: 6px;
@@ -896,7 +901,8 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
   font-size: 12px;
   line-height: 1.6;
-  color: #24292e;
+  // color: #24292e;
+  color: var(--mybricks-text-color-main);
   // background-color: #fff;
   word-wrap: break-word;
 
@@ -964,14 +970,17 @@
   overflow: auto;
   font-size: 12px;
   line-height: 1.45;
-  background-color: #f6f8fa;
+  // background-color: #f6f8fa;
+  background-color: var(--mybricks-bg-color-secondary);
   border-radius: 6px;
 }
 
 .markdown-body blockquote {
   padding: 0 1em;
-  color: #6a737d;
-  border-left: 0.25em solid #dfe2e5;
+  // color: #6a737d;
+  // border-left: 0.25em solid #dfe2e5;
+  color: var(--mybricks-text-color-main);
+  border-left: 0.25em solid var(--mybricks-border-color-main);
   margin: 0 0 16px 0;
 }
 
@@ -985,12 +994,14 @@
 .markdown-body table th,
 .markdown-body table td {
   padding: 6px 13px;
-  border: 1px solid #dfe2e5;
+  // border: 1px solid #dfe2e5;
+  border: 1px solid var(--mybricks-border-color-main);
 }
 
 .markdown-body table th {
   font-weight: 600;
-  background-color: #f6f8fa;
+  // background-color: #f6f8fa;
+  background-color: var(--mybricks-bg-color-main);
 }
 
 .markdown-body ul,

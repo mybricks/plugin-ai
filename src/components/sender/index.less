@@ -29,19 +29,24 @@
   .editor {
     z-index: 13;
     position: relative;
-    background-color: #ffffff;
-    border: solid 1px rgba(0, 0, 0, .13);
+    // background-color: #ffffff;
+    background-color: var(--mybricks-bg-color-secondary);
+    // border: solid 1px rgba(0, 0, 0, .13);
+    border: solid 1px var(--mybricks-border-color-main);
     width: 100%;
     // border-radius: 20px;
     border-radius: 12px;
-    box-shadow: 0 5px 16px -4px #00000012;
+    // box-shadow: 0 5px 16px -4px #00000012;
+    box-shadow: var(--mybricks-shadow-main);
     color: rgba(0, 0, 0, .9);
     cursor: default;
 
     &.noMentions {
-      background-color: #f7f7f7;
+      // background-color: #f7f7f7;
+      background-color: var(--mybricks-bg-color-secondary);
       .inputPlaceholder {
-        color: rgba(0, 0, 0, .4) !important;
+        // color: rgba(0, 0, 0, .4) !important;
+        color: var(--mybricks-text-color-main);
       }
     }
 
@@ -54,6 +59,7 @@
       display: flex;
       align-items: center;
       gap: 4px;
+      color: var(--mybricks-text-color-main);
 
       span {
         font-size: 12px;
@@ -94,6 +100,7 @@
         .scroll-bar();
 
         .inputEditor {
+          color: var(--mybricks-text-color-main);
           user-select: text;
           white-space: pre-wrap;
           word-break: break-word;
@@ -103,6 +110,7 @@
           overflow: hidden;
           outline: none;
           cursor: text;
+          caret-color: var(--mybricks-text-color-main);
 
           &[contentEditable="false"] {
             cursor: default;
@@ -119,7 +127,9 @@
           left: 0;
           user-select: none;
           pointer-events: none;
-          color: rgba(0, 0, 0, .6);
+          // color: rgba(0, 0, 0, .6);
+          color: var(--mybricks-text-color-main);
+          opacity: 0.6;
         }
       }
     }
@@ -150,20 +160,25 @@
           height: 25px;
           border-radius: 50%;
           cursor: pointer !important;
+          background: var(--mybricks-bg-color-main);
+          box-shadow: var(--mybricks-shadow-main);
+          
 
           svg {
             width: 18px;
             height: 18px;
-            color: rgba(0, 0, 0, .6);
-            cursor: pointer !important;
+            // color: rgba(0, 0, 0, .6);
+            color: var(--mybricks-text-color-main);
+            // cursor: pointer !important;
 
-            * {
-              cursor: pointer !important;
-            }
+            // * {
+            //   cursor: pointer !important;
+            // }
           }
 
           &:hover {
-            background-color: rgba(0, 0, 0, .09);
+            // background-color: rgba(0, 0, 0, .09);
+            background: var(--mybricks-bg-color-hover);
           }
 
           input {
@@ -172,13 +187,10 @@
         }
 
         &.disabled {
-          
           opacity: 0.3;
           .attachmentButton {
-            cursor: default;
-            &:hover {
-              background-color: transparent;
-            }
+            cursor: default !important;
+            background: var(--mybricks-bg-color-main) !important;
           }
         }
       }
