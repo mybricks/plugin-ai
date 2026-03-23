@@ -44,11 +44,20 @@ const CompView = ({ user, copilot, comId }: CompViewProps) => {
       // 先触发聚焦元素的事件（让当前聚焦对象感知到对话），500ms 后再真正发送
       const sendRequest = () => {
         // 从当前聚焦对象中获取 onProgress
-        const focus = context.currentFocus;
-        const onProgress = focus?.onProgress;
+        const focus: any = context.currentFocus || {};
+        const { onProgress, focusArea, ...other } = focus;
 
         const promise = Agents.requestAgent('vibe', {
           ...params,
+          extension: {
+            mentions: [{
+              ...other,
+              focusArea: focusArea && {
+                selector: focusArea.selector,
+                title: focusArea.title,
+              }
+            }],
+          },
           onProgress,
         });
         promise?.then(() => {

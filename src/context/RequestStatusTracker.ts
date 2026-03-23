@@ -1,6 +1,6 @@
 import { Events } from "@mybricks/rxai"
 
-type Element = HTMLElement | undefined;
+type Element = HTMLElement | string | undefined;
 
 interface RequestStatus {
   state: "pending" | "fulfilled" | "rejected";
