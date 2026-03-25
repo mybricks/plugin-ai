@@ -515,7 +515,9 @@ const BubbleCopilotTool = (params: BubbleCopilotToolParams) => {
           <span className={classNames(css['code-title'], css['collapsed'])}>{command.tool.displayName || command.tool.name}</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             {retriesCount > 0 && (
-              <span style={{ fontSize: 11, opacity: 0.7 }}>重试{retriesCount}次</span>
+              <span style={{ fontSize: 11, opacity: 0.7 }}>
+                第{retriesCount}次重试
+              </span>
             )}
             {duration && (
               <span style={{ fontSize: 11, opacity: 0.7 }}>{duration}</span>
