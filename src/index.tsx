@@ -204,8 +204,11 @@ export default function pluginAI(params?: any): any {
           // 给组件 runtime 用，点击重试或其它 case：仅 vibe 类型，向当前 focus 发消息（无 extension）
           // @ts-ignore
           // TODO：后面考虑下如何通信
-          window._sendToFocusVibeAgent_ = (params: any) => {
-            console.log('context.agents', context.agents)
+          interface SendToFocusVibeAgentParams {
+            message: string;
+            attachments?: { type: string; content: string; title?: string; size?: number }[];
+          }
+          window._sendToFocusVibeAgent_ = (params: SendToFocusVibeAgentParams) => {
             const focus = context.currentFocus;
             if (!focus) return;
             const focusId = focus.type === "page" ? focus.pageId : focus.comId;
@@ -214,7 +217,7 @@ export default function pluginAI(params?: any): any {
               // @ts-ignore
               Agents.requestAgent("vibe", {
                 message: params?.message,
-                attachments: [],
+                attachments: params?.attachments ?? [],
                 mentions: [{}],
                 onProgress: focus.onProgress,
                 onPlan(plan: any) {

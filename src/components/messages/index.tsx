@@ -302,13 +302,10 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
   const [commands, setCommands] = useState<Plan['commands']>([]);
   const [error, setError] = useState("");
   const [planningMessage, setPlanningMessage] = useState("");
-  const [continueLoading, setContinueLoading] = useState(false);
-  const [continueMessage, setContinueMessage] = useState("");
 
   useLayoutEffect(() => {
     destroysRef.current.push(
       plan.events.on('loading', (loading) => {
-        console.log(loading);
         setLoading(loading);
       }),
       plan.events.on('streamMessage', (chunk) => {
@@ -329,14 +326,6 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
       plan.events.on('planningMessage', (planningMessage) => {
         setPlanningMessage(planningMessage);
       }),
-      plan.events.on('continue', ({ message }: { message?: string }) => {
-        setContinueMessage(message ?? "");
-        setContinueLoading(true);
-      }),
-      plan.events.on('continueEnd', () => {
-        setContinueLoading(false);
-        setContinueMessage("");
-      })
     )
   }, [])
 
@@ -363,16 +352,15 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
             {loading && !planningMessage && <Loading />}
           </div>
           {commands.map((command, index) => {
+            if ((command as any).type === 'continue') {
+              if (!command.status) return null;
+              return <BubbleContinueTool key={`continue-${index}`} command={command as any} />;
+            }
             if (!command.status || command.status === "error") {
               return null;
             }
             return <BubbleCopilotTool key={index + command.status} command={command} last={index === commands.length - 1}/>
           })}
-          {(continueLoading || continueMessage) && (
-            <div className={css['think']}>
-              {continueMessage ? <BubbleMessage message={`${continueMessage}`} /> : (continueLoading ? <span>计划下一步...</span> : null)}
-            </div>
-          )}
           {error && <BubbleError message={error} plan={plan}/>}
           {summary && <BubbleMessage message={summary} />}
           {/* {streamMessage && <BubbleMessage message={streamMessage} />} */}
@@ -388,6 +376,64 @@ const BubbleCopilot = (params: BubbleCopilotParams) => {
   )
 }
 
+type ContinueCommand = {
+  type: 'continue';
+  status: 'pending' | 'success' | 'error' | 'aborted' | null;
+  startTime: number;
+  endTime: number;
+  content: { display: string; llm: string; response: string };
+  tool: { name: string; displayName: string };
+};
+
+const BubbleContinueTool = ({ command }: { command: ContinueCommand }) => {
+  const [elapsed, setElapsed] = useState<number>(0);
+
+  useEffect(() => {
+    if (command.status !== 'pending' || !command.startTime) return;
+    setElapsed(Date.now() - command.startTime);
+    const timer = setInterval(() => {
+      setElapsed(Date.now() - command.startTime);
+    }, 100);
+    return () => clearInterval(timer);
+  }, [command.status, command.startTime]);
+
+  const formatDuration = (ms: number): string => {
+    const s = ms / 1000;
+    return s >= 60 ? (s / 60).toFixed(1) + 'm' : Math.floor(s) + 's';
+  };
+
+  const rawMs = command.endTime > 0 ? command.endTime - command.startTime : elapsed;
+  const duration: string | null =
+    command.startTime > 0 && rawMs > 0 && !isNaN(rawMs)
+      ? formatDuration(rawMs)
+      : null;
+
+  const isPending = command.status === 'pending';
+  const title = command.tool?.displayName || command.tool?.name || '总结';
+  const displayText = command.content?.display;
+
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 22 }}>
+        <span>{title}</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {duration && <span style={{ fontSize: 11, opacity: 0.7 }}>{duration}</span>}
+          {isPending && (
+            <span className={classNames(css['code-title-status'], css['pending'])}>
+              <Loading />
+            </span>
+          )}
+        </span>
+      </div>
+      {displayText && (
+        <div className={css['ai-chat-collapsible-response']}>
+          <BubbleMessage message={displayText} />
+        </div>
+      )}
+    </div>
+  );
+};
+
 interface BubbleCopilotToolParams {
   command: Plan['commands'][number];
   last: boolean;
@@ -396,6 +442,30 @@ const BubbleCopilotTool = (params: BubbleCopilotToolParams) => {
   const { command, last } = params;
   const [message, setMessage] = useState("");
   const [expand, setExpand] = useState(false);
+
+  const retriesCount: number = (command as any).retries?.length ?? 0;
+  const [elapsed, setElapsed] = useState<number>(0);
+
+  useEffect(() => {
+    if (command.status !== 'pending' || !command.startTime) return;
+    setElapsed(Date.now() - command.startTime);
+    const timer = setInterval(() => {
+      setElapsed(Date.now() - command.startTime);
+    }, 100);
+    return () => clearInterval(timer);
+  }, [command.status, command.startTime]);
+
+  const formatDuration = (ms: number): string => {
+    const s = ms / 1000;
+    return s >= 60 ? (s / 60).toFixed(1) + 'm' : Math.floor(s) + 's';
+  };
+
+  const rawMs = command.endTime > 0 && command.startTime > 0
+    ? command.endTime - command.startTime
+    : command.status === 'pending' && command.startTime > 0
+      ? elapsed
+      : -1;
+  const duration: string | null = rawMs > 0 && !isNaN(rawMs) ? formatDuration(rawMs) : null;
 
   useEffect(() => {
     if (command.status === "success") {
@@ -443,16 +513,24 @@ const BubbleCopilotTool = (params: BubbleCopilotToolParams) => {
       >
         <span className={classNames(css['code-header'], css['collapsed'])}>
           <span className={classNames(css['code-title'], css['collapsed'])}>{command.tool.displayName || command.tool.name}</span>
-          {command.status === "pending" && (
-            <span className={classNames(css['code-title-status'], css['collapsed'], css['pending'])}>
-              <Loading />
-            </span>
-          )}
-          {command.status === "success" && (
-            <span className={classNames(css['code-title-status'], css['collapsed'], css['success'])}>
-              <Success />
-            </span>
-          )}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {retriesCount > 0 && (
+              <span style={{ fontSize: 11, opacity: 0.7 }}>重试{retriesCount}次</span>
+            )}
+            {duration && (
+              <span style={{ fontSize: 11, opacity: 0.7 }}>{duration}</span>
+            )}
+            {command.status === "pending" && (
+              <span className={classNames(css['code-title-status'], css['collapsed'], css['pending'])}>
+                <Loading />
+              </span>
+            )}
+            {command.status === "success" && (
+              <span className={classNames(css['code-title-status'], css['collapsed'], css['success'])}>
+                <Success />
+              </span>
+            )}
+          </span>
         </span>
       </div>
       {renderMessage(command.status === "success")}
