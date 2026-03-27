@@ -285,8 +285,8 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         {mentions.length ? (
           <div className={css.mentions}>
             <span>对于</span>
-            <MentionTag mention={mentions[0]} onClick={onMentionClick} />
-            <span>{(mentions[0].type === "page" ? "页面" : "组件") + (mentions[0].focusArea ? "的" : "")}</span>
+            {chatMode === "agent" || chatMode === "vibe" && !mentions[0].focusArea && <MentionTag mention={mentions[0]} onClick={onMentionClick} />}
+            {chatMode === "agent" && <span>{(mentions[0].type === "page" ? "页面" : "组件") + (mentions[0].focusArea ? "的" : "")}</span>}
             {mentions[0].focusArea ? (
               <span className={css.focusarea}>
                 {mentions[0].focusArea.title || "区域"}
