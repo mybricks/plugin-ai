@@ -123,8 +123,8 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
   /** 检查附件数量是否超出限制，超出返回 true */
   const checkAttachmentsLimit = () => {
-    if (attachments.length > 1) {
-      message.info("当前只能上传两张图片");
+    if (attachments.length > 4) {
+      message.info("当前最多只能上传五张图片");
       return true;
     }
     return false;
