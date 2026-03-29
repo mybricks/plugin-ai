@@ -77,6 +77,17 @@ const CompView = ({ user, copilot, comId }: CompViewProps) => {
     }
   };
 
+  useEffect(() => {
+    const pendingMessage = (window as any).__vibePendingMessage__;
+    ;(window as any).__vibePendingMessage__ = null;
+    if (pendingMessage) {
+      setLoading(true);
+      setTimeout(() => {
+        onSend(pendingMessage)
+      }, 300)
+    }
+  }, [])
+
   return (
     <div className={classNames(css['view'], {
       [css['empty']]: empty && !loading
