@@ -11,7 +11,9 @@ const MentionTag = (props: MentionTagProps) => {
   const { mention, focusarea, onClick } = props;
   return (
     <div className={css.mention} onClick={() => onClick?.(mention)}>
-      <div className={css.text}>{`@${mention.title || mention.name}`}{focusarea && mention.focusArea ? `(${mention.focusArea.title || "区域"})` : ""}</div>
+      {/* <div className={css.text}>{`@${mention.title || mention.name}`}{focusarea && mention.focusArea ? `(${mention.focusArea.title || "区域"})` : ""}</div> */}
+
+      <div className={css.text}>@{focusarea && mention.focusArea ? `${mention.focusArea.title || "区域"}` : (mention.title || mention.name)}</div>
     </div>
   );
 };
