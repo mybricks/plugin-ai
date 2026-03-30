@@ -88,7 +88,8 @@ export function BaseAgent(config: AgentConfigParams) {
           },
           message: params?.message,
           formatUserMessage: (text: string) => {
-            return formatUserMessage ? formatUserMessage(text, { focusParams: context.currentFocus as AiServiceFocusParams }) : text;
+            const focusForFormat = (params.focus ?? context.currentFocus) as AiServiceFocusParams;
+            return formatUserMessage ? formatUserMessage(text, { focusParams: focusForFormat }) : text;
           },
           emits: {
             write: () => {},

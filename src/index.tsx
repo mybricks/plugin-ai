@@ -2,7 +2,6 @@ import React from 'react';
 import data from './data';
 import './compView/register';
 
-// import './agents/workspace-by-knowledges/test';
 // import './../test'
 
 import pkg from '../package.json';
@@ -211,19 +210,17 @@ export default function pluginAI(params?: any): any {
           window._sendToFocusVibeAgent_ = (params: SendToFocusVibeAgentParams) => {
             const focus = context.currentFocus;
             if (!focus) return;
-            const focusId = focus.type === "page" ? focus.pageId : focus.comId;
-            context.requestStatusTracker.track(
-              getUniqueIdentifier(focus),
-              // @ts-ignore
-              Agents.requestAgent("vibe", {
+            const vibeKey = `${context.pluginParams.key}_${focus.comId}`;
+            context.aiQueue.send(
+              vibeKey,
+              'vibe',
+              {
                 message: params?.message,
                 attachments: params?.attachments ?? [],
                 mentions: [{}],
+                focus: { ...focus },
                 onProgress: focus.onProgress,
-                onPlan(plan: any) {
-                  context.requestStatusTracker.setPlan(getUniqueIdentifier(focus), plan);
-                }
-              })
+              }
             );
           };
 
@@ -277,33 +274,30 @@ export default function pluginAI(params?: any): any {
                 requestParams.attachments = [];
               }
 
-              const focus = context.currentFocus;
+              const focusSnapshot = context.currentFocus ? { ...context.currentFocus } : undefined;
 
-              if (focus) {
-                const { onProgress, ...mention } = focus;
+              if (focusSnapshot) {
                 // TODO: 兼容引擎的onProgress问题
-                if (focus.onProgress) {
-                  requestParams.onProgress = focus.onProgress;
+                if (focusSnapshot.onProgress) {
+                  requestParams.onProgress = focusSnapshot.onProgress;
                 } else if (requestParams.onProgress) {
-                  focus.onProgress = requestParams.onProgress;
+                  focusSnapshot.onProgress = requestParams.onProgress;
                 }
               }
 
-              // 使用统一的 requestAgent 方法，自动处理自定义 agent 和默认 agent
-              const focusId = focus ? (focus.type === "page" ? focus.pageId : focus.comId) : "";
+              const focusId = focusSnapshot ? (focusSnapshot.type === "page" ? focusSnapshot.pageId : focusSnapshot.comId) : "";
               const agentType = context.vibeStatus[focusId] === "vibe" ? 'vibe' : 'common';
-              
-              context.requestStatusTracker.track(
-                getUniqueIdentifier(focus),
-                Agents.requestAgent(
-                  agentType,
-                  {
-                    ...requestParams,
-                    onPlan(plan: any) {
-                      context.requestStatusTracker.setPlan(getUniqueIdentifier(focus), plan);
-                    }
-                  }
-                ))
+              const focusKey = agentType === 'vibe'
+                ? `${context.pluginParams.key}_${focusSnapshot?.comId}`
+                : getUniqueIdentifier(focusSnapshot);
+              context.aiQueue.send(
+                focusKey,
+                agentType,
+                {
+                  ...requestParams,
+                  focus: focusSnapshot,
+                }
+              )
             },
             registerAgent: window._registerAgent_,
             fileFormat

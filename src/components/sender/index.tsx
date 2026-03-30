@@ -7,6 +7,7 @@ import { AttachmentsList } from "../attachments";
 import type { Attachment as AttachmentItem } from "../attachments";
 import { Mention, Attachments } from "../types";
 import { ChatMode, type ChatModeType } from "../chatMode";
+import type { QueueItem } from "../../context/AIRequestQueue";
 import css from "./index.less"
 
 const readFileToBase64 = (file: File): Promise<string> => {
@@ -26,6 +27,43 @@ const readFileToBase64 = (file: File): Promise<string> => {
     reader.readAsDataURL(file);
   })
 }
+
+const PendingQueue = ({ queue, onRemove }: { queue: QueueItem[]; onRemove?: (id: string) => void }) => {
+  const [expanded, setExpanded] = useState(true);
+  if (!queue.length) return null;
+  return (
+    <div className={css.pendingQueue}>
+      <div className={css.pendingQueueHeader} onClick={() => setExpanded(v => !v)}>
+        <span className={css.pendingQueueArrow}>{expanded ? <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="12" height="12" style={{ transform: 'rotate(0deg)', display: 'block' }}><path d="M512 714.666667c-8.533333 0-17.066667-2.133333-23.466667-8.533334l-341.333333-341.333333c-12.8-12.8-12.8-32 0-44.8 12.8-12.8 32-12.8 44.8 0l320 317.866667 317.866667-320c12.8-12.8 32-12.8 44.8 0 12.8 12.8 12.8 32 0 44.8L533.333333 704c-4.266667 8.533333-12.8 10.666667-21.333333 10.666667z" fill="currentColor"/></svg> : <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="12" height="12" style={{ transform: 'rotate(-90deg)', display: 'block' }}><path d="M512 714.666667c-8.533333 0-17.066667-2.133333-23.466667-8.533334l-341.333333-341.333333c-12.8-12.8-12.8-32 0-44.8 12.8-12.8 32-12.8 44.8 0l320 317.866667 317.866667-320c12.8-12.8 32-12.8 44.8 0 12.8 12.8 12.8 32 0 44.8L533.333333 704c-4.266667 8.533333-12.8 10.666667-21.333333 10.666667z" fill="currentColor"/></svg>}</span>
+        <span>{queue.length} 个待发送问题</span>
+      </div>
+      {expanded && (
+        <div className={css.pendingQueueList}>
+          {queue.map((item, index) => (
+            <div key={item.id} className={css.pendingQueueItem}>
+              <span className={css.pendingQueueDot} />
+              {item.params?.focus && (item.params.focus.focusArea || item.params.focus.title) && (
+                <span className={css.pendingQueueFocus}>
+                  {/* <span>对于</span> */}
+                  <span className={css.pendingQueueFocusArea}>
+                    {item.params.focus.focusArea?.title || item.params.focus.title}
+                  </span>
+                </span>
+              )}
+              <span className={css.pendingQueueMsg}>{item.message || `消息 ${index + 1}`}</span>
+              {item.attachments && item.attachments.length > 0 && (
+                <span className={css.pendingQueueBadge}>{item.attachments.length} 个附件</span>
+              )}
+              <button className={css.pendingQueueDel} onClick={() => onRemove?.(item.id)}>
+                <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" fill="none"><path d="M874.666667 241.066667h-202.666667V170.666667c0-40.533333-34.133333-74.666667-74.666667-74.666667h-170.666666c-40.533333 0-74.666667 34.133333-74.666667 74.666667v70.4H149.333333c-17.066667 0-32 14.933333-32 32s14.933333 32 32 32h53.333334V853.333333c0 40.533333 34.133333 74.666667 74.666666 74.666667h469.333334c40.533333 0 74.666667-34.133333 74.666666-74.666667V305.066667H874.666667c17.066667 0 32-14.933333 32-32s-14.933333-32-32-32zM416 170.666667c0-6.4 4.266667-10.666667 10.666667-10.666667h170.666666c6.4 0 10.666667 4.266667 10.666667 10.666667v70.4h-192V170.666667z m341.333333 682.666666c0 6.4-4.266667 10.666667-10.666666 10.666667H277.333333c-6.4 0-10.666667-4.266667-10.666666-10.666667V309.333333h490.666666V853.333333z" fill="currentColor"/><path d="M426.666667 736c17.066667 0 32-14.933333 32-32V490.666667c0-17.066667-14.933333-32-32-32s-32 14.933333-32 32v213.333333c0 17.066667 14.933333 32 32 32zM597.333333 736c17.066667 0 32-14.933333 32-32V490.666667c0-17.066667-14.933333-32-32-32s-32 14.933333-32 32v213.333333c0 17.066667 14.933333 32 32 32z" fill="currentColor"/></svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface SenderProps {
   onSend: (message: {
@@ -48,6 +86,8 @@ interface SenderProps {
   /** 自定义图片上传函数，返回 CDN URL；不传则使用 base64 */
   onUpload?: (file: File) => Promise<string>;
   onStop?: () => void;
+  pendingQueue?: QueueItem[];
+  onRemoveFromQueue?: (id: string) => void;
 }
 
 interface SenderRef {
@@ -57,7 +97,7 @@ interface SenderRef {
 }
 
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
-  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact', onUpload, onStop } = props;
+  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue } = props;
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [inputContent, setInputContent] = useState<string | null>(null);
@@ -81,7 +121,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const send = () => {
     const inputContent = inputEditorRef.current!.textContent;
     const hasUploadingAttachment = attachments.some((a) => a.uploading);
-    if (inputContent && !loading && !disabled && !uploading && !hasUploadingAttachment) {
+    if (inputContent && !disabled && !uploading && !hasUploadingAttachment) {
       props.onSend({
         message: inputContent,
         attachments,
@@ -201,7 +241,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   }
 
   const uploadAttachment = () => {
-    if (loading || disabled || uploading) {
+    if (disabled || uploading) {
       return;
     }
     if (checkAttachmentsLimit()) {
@@ -232,7 +272,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
   const onPaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
     event.preventDefault();
-    if (loading || disabled || uploading) {
+    if (disabled || uploading) {
       return;
     }
     const file = event.clipboardData.files[0];
@@ -274,6 +314,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
   return (
     <div className={classNames(css.container, { [css.loose]: variant === 'loose' })}>
+      {pendingQueue && pendingQueue.length > 0 && (
+        <PendingQueue queue={pendingQueue} onRemove={onRemoveFromQueue} />
+      )}
       <div className={classNames(css.editor, {
         [css.noMentions]: mode === "mention" && !mentions.length
       })}>
@@ -319,7 +362,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         </div>
         <div className={css.editorAction}>
           <div className={classNames(css.leftArea, {
-            [css.disabled]: loading || disabled || uploading
+            [css.disabled]: disabled || uploading
           })}>
             {/* 模式切换，暂时去除 */}
             {/* {chatMode ? <ChatMode disabled={disabled} chatMode={chatMode} onChange={onChatModeChange} /> : null} */}
@@ -337,8 +380,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
                   [css.loadingButton]: loading || uploading
                 })}
                 data-mybricks-tip={loading ? "停止" : ""}
-                onClick={() => {
+                onClick={(e) => {
                   if (loading) {
+                    e.stopPropagation();
                     onStop?.();
                   }
                 }}

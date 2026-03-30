@@ -1,5 +1,5 @@
 import { Rxai, Events, IDB } from "@mybricks/rxai"
-import { RequestStatusTracker } from "./RequestStatusTracker";
+import { AIRequestQueue } from "./AIRequestQueue";
 import { DeviceType } from './../types';
 import type { AgentConfigParams } from '../agents/utils/config';
 import type { ChatModeType } from "../components/chatMode";
@@ -77,7 +77,7 @@ class Context {
     }
   }
 
-  requestStatusTracker = new RequestStatusTracker();
+  aiQueue = new AIRequestQueue();
 
   pluginParams: any = {};
 

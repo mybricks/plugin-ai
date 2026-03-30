@@ -768,7 +768,6 @@ const formatVarAction = (
     try {
       const repairedAction = jsonrepair(_action)
       action = JSON.parse(repairedAction)
-      console.log("[action]", action)
     } catch (error) {
       console.error("repair action error", error);
     }

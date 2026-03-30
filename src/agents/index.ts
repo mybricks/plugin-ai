@@ -1,6 +1,5 @@
 import { requestGenerateCanvasAgent } from './app'
 import { requestCommonAgent } from './common'
-import { requestCommonByCodingAgent } from './common-by-coding'
 import { requestVibeCodingAgent } from './custom'
 import { getAgentInstance } from './utils/config'
 import { context } from '../context'
@@ -14,7 +13,7 @@ export type BuiltinAgentType = 'vibe' | 'common' | 'common-by-coding'
  * @param params 请求参数
  */
 export const requestAgent = (type: BuiltinAgentType | undefined, params: any) => {
-  const customType = context.currentFocus?.type
+  const customType = (params.focus ?? context.currentFocus)?.type
 
   if (params.extension?.mentions?.[0]?.focusArea) {
     params.extension = {
@@ -33,19 +32,16 @@ export const requestAgent = (type: BuiltinAgentType | undefined, params: any) =>
 
   // 1. 内置类型：vibe
   if (type === 'vibe') {
+    const vibeFocus = params.focus ?? context.currentFocus;
     return requestVibeCodingAgent(
       {
         ...params,
-        key: `${context.pluginParams.key}_${context.currentFocus!.comId}`,
+        key: params.key ?? `${context.pluginParams.key}_${vibeFocus!.comId}`,
       },
-      { ...context.currentFocus }
+      { ...vibeFocus }
     )
   }
 
-  // 2. 内置类型：coding 流程测试版
-  if (context.codingMode) {
-    return requestCommonByCodingAgent(params)
-  }
 
   // 3. 自定义类型命中（非内置时按 focus.type 找自定义 agent）
   const customAgent = customType ? getAgentInstance(context.agents, customType) : null

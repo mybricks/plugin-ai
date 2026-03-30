@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react"
+import React, { useEffect, useRef, useState, useCallback } from "react"
 import classNames from "classnames";
 import { Header } from "./components";
 import { Messages } from "../components/messages";
@@ -8,6 +8,7 @@ import { context } from "../context";
 import { Agents } from '../agents'
 import { AbstractAgent } from "../agents/utils/config";
 import { getUniqueIdentifier } from "../utils";
+import type { QueueItem } from "../context/AIRequestQueue";
 import css from "./index.less";
 
 interface ViewProps {
@@ -16,208 +17,227 @@ interface ViewProps {
   copilot: any;
 }
 
-const View = ({ user, copilot, api }: ViewProps) => {
+interface SenderInstance {
+  instanceKey: string;
+  viewKey: string;
+  trackKey: string;
+  focusSnapshot: any;
+  chatMode: ChatModeType;
+}
+
+interface SenderPanelProps {
+  focusKey: string;
+  focusSnapshot: any;
+  chatMode: ChatModeType;
+  active: boolean;
+  onMentionClick: NonNullable<SenderProps["onMentionClick"]>;
+  onChatModeChange: (mode: ChatModeType) => void;
+}
+
+const SenderPanel = ({ focusKey, focusSnapshot, chatMode, active, onMentionClick, onChatModeChange }: SenderPanelProps) => {
   const senderRef = useRef<SenderRef>(null);
-  const [rxai, setRxai] = useState(context.rxai);
-  // const [vibeCoding, setVibeCoding] = useState(false);
-  const [chatMode, setChatMode] = useState<ChatModeType>(null);
-
-  const PLACEHOLDER_MAP = {
-    normal: `您好，我是${context.name}，请详细描述您的需求`,
-    disabled: `您好，我是${context.name}，请先从画布中选择场景或组件，再开始对话`,
-    loading: "处理中，请稍后..."
-  }
-
-  const [senderStateProps, setSenderStateProps] = useState(() => {
-    return {
-      loading: false,
-      disabled: true,
-      placeholder: PLACEHOLDER_MAP["disabled"]
-    }
-  })
-
-  const currentFocus = useRef<any>(null);
+  const [loading, setLoading] = useState(() => context.aiQueue.isLoading(focusKey));
+  const [pendingQueue, setPendingQueue] = useState<QueueItem[]>(() => context.aiQueue.getQueue(focusKey));
 
   useEffect(() => {
-    const statusChange = (state: "loading" | "normal" | "disabled") => {
-      if (state === "disabled") {
-        setSenderStateProps({
-          disabled: true,
-          loading: false,
-          placeholder: PLACEHOLDER_MAP["disabled"]
-        })
-      } else {
-        const bool = state === "loading";
-        setSenderStateProps({
-          disabled: bool,
-          loading: bool,
-          placeholder: PLACEHOLDER_MAP[state]
-        })
+    const unLoading = context.aiQueue.events.on("loading", (data) => {
+      if (data.key === focusKey) {
+        setLoading(data.loading);
       }
-    }
-
-    const disconnectAiViewDisplay = context.events.on("aiViewDisplay", () => {
-      setTimeout(() => {
-        senderRef.current!.focus();
-      })
-    }, true)
-    const disconnectFocus = context.events.on("focus", (focus) => {
-      if (!focus) {
-        senderRef.current!.setMentions([]);
-        currentFocus.current = null;
-        statusChange("disabled");
-        // setRxai(context.rxai);
-        setChatMode(null);
-        changeRxai(null);
-      } else {
-        const type = focus.type;
-        const id = ["page", "section"].includes(type) ? focus.pageId : focus.comId;
-        const { onProgress, ...other } = focus;
-        senderRef.current!.setMentions([other] as any);
-        // setVibeCoding(other.vibeCoding || false);
-
-        let chatMode = null;
-        // let hasVibeCofing = false;
-        let focusArea = "";
-
-        if (other?.vibeCoding) {
-          const agent = context.agents!.find((agent) => agent instanceof AbstractAgent && agent.type === "vibeCoding");
-          focusArea = agent?.getFocusArea?.({ focus }) || "";
-
-          // hasVibeCofing = true;
-          if (!context.vibeStatus[id]) {
-            context.vibeStatus[id] = 'vibe';
-          }
-          chatMode = context.vibeStatus[id];
-          setChatMode(chatMode);
-        } else {
-          setChatMode(null);
-        }
-        currentFocus.current = focus;
-        const status = context.requestStatusTracker.getStatus(getUniqueIdentifier(focus));
-        
-        // const status = context.requestStatusTracker.getStatus(id + focusArea);
-        statusChange(status.state === "pending" ? "loading" : "normal");
-        setTimeout(() => {
-          senderRef.current!.focus();
-        })
-        changeRxai(chatMode);
-        // if (vibeCoding) {
-        //   setTimeout(() => {
-        //     // TODO: ai组件库里注册agents的时机不对
-        //     const agent = context.agents!.find((agent) => {
-        //       return agent instanceof AbstractAgent && agent.type === "vibeCoding"
-        //     });
-        //     if (agent) {
-        //       const rxai = (agent as AbstractAgent).getRxai({
-        //         key: `${context.pluginParams.key}_${focus.pageId}_${focus.comId}`,
-        //       })
-        //       setRxai(rxai);
-        //     } else {
-        //       setRxai(context.rxai);
-        //     }
-        //   })
-        // } else {
-        //   setRxai(context.rxai);
-        // }
+    });
+    const unQueue = context.aiQueue.events.on("queue", (data) => {
+      if (data.key === focusKey) {
+        setPendingQueue([...data.queue]);
       }
-    }, true)
-    const disconnectPromiseStatusTracker = context.requestStatusTracker.events.on("promise", (promise) => {
-      if (promise.element === getUniqueIdentifier(currentFocus.current)) {
-        statusChange(promise.status.state === "pending" ? "loading" : "normal");
-      }
-    })
+    });
     return () => {
-      disconnectAiViewDisplay()
-      disconnectFocus()
-      disconnectPromiseStatusTracker()
-    }
-  }, [])
+      unLoading();
+      unQueue();
+    };
+  }, [focusKey]);
 
-  const changeRxai = (chatMode: ChatModeType) => {
-    if (chatMode === "vibe") {
+  useEffect(() => {
+    if (active && focusSnapshot) {
+      const { onProgress, ...other } = focusSnapshot;
       setTimeout(() => {
-        // TODO: ai组件库里注册agents的时机不对
-        const agent = context.agents!.find((agent) => {
-          return agent instanceof AbstractAgent && agent.type === "vibeCoding"
-        });
-        if (agent) {
-          const rxai = (agent as AbstractAgent).getRxai({
-            key: `${context.pluginParams.key}_${context.currentFocus?.comId}`,
-          })
-          setRxai(rxai);
-        } else {
-          setRxai(context.rxai);
-        }
-      })
-    } else {
-      setRxai(context.rxai);
+        senderRef.current?.setMentions([other] as any);
+        senderRef.current?.focus();
+      });
     }
-  }
+  }, [active, focusSnapshot]);
 
   const onSend = (sendMessage: Parameters<SenderProps["onSend"]>[0]) => {
     const { message, attachments, ...extension } = sendMessage;
+    const focusAtSendTime = focusSnapshot ? { ...focusSnapshot } : focusSnapshot;
+    const agentTypeAtSendTime = chatMode === 'vibe' ? 'vibe' : 'common';
+    const requestKeyAtSendTime = focusKey;
 
-    if (!currentFocus.current) {
+    if (!focusAtSendTime) {
       return;
     }
 
-    const type = currentFocus.current.type;
-    const id = ["page", "section"].includes(type) ? currentFocus.current.pageId : currentFocus.current.comId;
-    // 聚焦到页面或者组件时使用这个方法请求agent
-    const agentType = context.vibeStatus[id] === "vibe" ? 'vibe' : 'common';
-    // @ts-ignore
-    context.requestStatusTracker.track(getUniqueIdentifier(currentFocus.current), Agents.requestAgent(agentType, {
-      message,
-      attachments,
-      extension,
-      onProgress: context.currentFocus?.onProgress,
-      onPlan(plan: any) {
-        context.requestStatusTracker.setPlan(getUniqueIdentifier(currentFocus.current), plan);
+    context.aiQueue.send(
+      requestKeyAtSendTime,
+      agentTypeAtSendTime,
+      {
+        message,
+        attachments,
+        extension,
+        focus: focusAtSendTime,
+        key: requestKeyAtSendTime,
+        onProgress: focusAtSendTime.onProgress,
       }
-    }));
-  }
+    );
+  };
 
   const onStop = () => {
-    const plan = context.requestStatusTracker.getPlan(getUniqueIdentifier(currentFocus.current));
-    plan?.abort();
+    context.aiQueue.stop(focusKey);
+  };
+
+  const onRemoveFromQueue = (id: string) => {
+    context.aiQueue.removeFromQueue(focusKey, id);
+  };
+
+  return (
+    <div style={{ display: active ? undefined : 'none' }}>
+      <Sender
+        ref={senderRef}
+        loading={loading}
+        placeholder={`您好，我是${context.name}，请详细描述您的需求`}
+        disabled={false}
+        mode="mention"
+        chatMode={chatMode}
+        onSend={onSend}
+        onMentionClick={onMentionClick}
+        onChatModeChange={onChatModeChange}
+        onUpload={context.pluginParams.onUpload}
+        onStop={onStop}
+        pendingQueue={pendingQueue}
+        onRemoveFromQueue={onRemoveFromQueue}
+      />
+    </div>
+  );
+};
+
+const getChatModeByFocus = (focus: any): ChatModeType => {
+  if (!focus) return null;
+  const type = focus.type;
+  const id = ["page", "section"].includes(type) ? focus.pageId : focus.comId;
+  if (focus.vibeCoding) {
+    if (!context.vibeStatus[id]) {
+      context.vibeStatus[id] = 'vibe';
+    }
+    return context.vibeStatus[id];
   }
+  return null;
+};
+
+const getFocusKey = (focus: any, chatMode: ChatModeType): string | undefined => {
+  if (!focus) return undefined;
+  if (chatMode === 'vibe') {
+    return `${context.pluginParams.key}_${focus.comId}`;
+  }
+  return getUniqueIdentifier(focus);
+};
+
+const getViewKey = (focus: any, chatMode: ChatModeType): string => {
+  if (chatMode === 'vibe') {
+    return `${context.pluginParams.key}_${focus.comId}`;
+  }
+  return String(context.rxai?.key ?? 'default');
+};
+
+const View = ({ user, copilot, api }: ViewProps) => {
+  const [rxai, setRxai] = useState(context.rxai);
+  const [currentInstanceKey, setCurrentInstanceKey] = useState<string | undefined>(undefined);
+  const [instances, setInstances] = useState<SenderInstance[]>([]);
+  const disabledSenderRef = useRef<SenderRef>(null);
+
+  const changeRxai = useCallback((mode: ChatModeType, comId?: string) => {
+    if (mode === "vibe") {
+      setTimeout(() => {
+        const agent = context.agents!.find((agent) => agent instanceof AbstractAgent && agent.type === "vibeCoding");
+        if (agent) {
+          setRxai((agent as AbstractAgent).getRxai({ key: `${context.pluginParams.key}_${comId}` }));
+        } else {
+          setRxai(context.rxai);
+        }
+      });
+    } else {
+      setRxai(context.rxai);
+    }
+  }, []);
+
+  useEffect(() => {
+    const disconnectAiViewDisplay = context.events.on("aiViewDisplay", () => {
+      if (!currentInstanceKey) {
+        setTimeout(() => disabledSenderRef.current?.focus());
+      }
+    }, true);
+
+    const disconnectFocus = context.events.on("focus", (focus) => {
+      if (!focus) {
+        setCurrentInstanceKey(undefined);
+        changeRxai(null);
+        return;
+      }
+
+      const chatMode = getChatModeByFocus(focus);
+      const focusKey = getFocusKey(focus, chatMode);
+      const viewKey = getViewKey(focus, chatMode);
+      const instanceKey = `${viewKey}::${focusKey}`;
+
+      setCurrentInstanceKey(instanceKey);
+      changeRxai(chatMode, focus.comId);
+
+      setInstances((prev) => {
+        const existing = prev.find((inst) => inst.instanceKey === instanceKey);
+        if (existing) {
+          return prev.map((inst) => inst.instanceKey === instanceKey ? {
+            ...inst,
+            chatMode,
+            focusSnapshot: { ...focus }
+          } : inst);
+        }
+
+        return prev.concat({
+          instanceKey,
+          viewKey,
+          focusKey: focusKey!,
+          focusSnapshot: { ...focus },
+          chatMode,
+        });
+      });
+    }, true);
+
+    return () => {
+      disconnectAiViewDisplay();
+      disconnectFocus();
+    };
+  }, [changeRxai, currentInstanceKey]);
 
   const onMentionClick: NonNullable<SenderProps["onMentionClick"]> = (mention) => {
     const { id, type, comId, pageId } = mention;
     api[type === "page" ? "focusPage" : "focusCom"]((type === "page" ? pageId : comId) || id as string);
-  }
+  };
 
-  // const onMessagesSend = (sendMessage: Parameters<SenderProps["onSend"]>[0]) => {
-  //   const { message, attachments, insertAfter,  ...extension } = sendMessage;
-  //   const { mentions } = extension
-  //   const mention = sendMessage.mentions[0];
+  const onChatModeChange = useCallback((instanceKey: string) => (mode: ChatModeType) => {
+    setInstances((prev) => {
+      const next = prev.map((inst) => inst.instanceKey === instanceKey ? { ...inst, chatMode: mode } : inst);
+      const current = next.find((inst) => inst.instanceKey === instanceKey);
+      if (current) {
+        const focus = current.focusSnapshot;
+        const type = focus?.type;
+        const id = ["page", "section"].includes(type) ? focus?.pageId : focus?.comId;
+        if (id) {
+          context.vibeStatus[id] = mode;
+        }
+        changeRxai(mode, focus?.comId);
+      }
+      return next;
+    });
+  }, [changeRxai]);
 
-  //   // 聚焦到页面或者组件时使用这个方法请求agent
-  //   const agentType = context.vibeStatus[focusID.current] === "vibe" ? 'vibe' : 'common';
-  //   context.requestStatusTracker.track(mention.type === "page" ? mention.pageId : mention.comId, Agents.requestAgent(agentType, {
-  //     message,
-  //     attachments,
-  //     insertAfter,
-  //     extension,
-  //     focus: mentions[0],
-  //     onProgress: context.currentFocus?.onProgress,
-  //   }));
-  // }
-
-  const onChatModeChange = (mode: ChatModeType) => {
-    setChatMode(mode);
-    if (currentFocus.current) {
-      const type = currentFocus.current.type;
-      const id = ["page", "section"].includes(type) ? currentFocus.current.pageId : currentFocus.current.comId;
-
-      context.vibeStatus[id] = mode;
-      changeRxai(mode);
-    }
-  }
-
-  // 不同模式不同的主题色
-  // style={chatMode === "vibe" ? ({ '--mybricks-color-primary': '#16A157' } as React.CSSProperties) : undefined}
   return (
     <div className={classNames(css.view)}>
       <Header rxai={rxai}/>
@@ -226,22 +246,33 @@ const View = ({ user, copilot, api }: ViewProps) => {
         user={user}
         copilot={copilot}
         rxai={rxai}
-        // onSend={onMessagesSend}
         onMentionClick={onMentionClick}
       />
-      <Sender
-        ref={senderRef}
-        loading={senderStateProps.loading}
-        placeholder={senderStateProps.placeholder}
-        disabled={senderStateProps.disabled}
-        mode="mention"
-        chatMode={chatMode}
-        onSend={onSend}
-        onMentionClick={onMentionClick}
-        onChatModeChange={onChatModeChange}
-        onUpload={context.pluginParams.onUpload}
-        onStop={onStop}
-      />
+      <div style={{ display: currentInstanceKey ? 'none' : undefined }}>
+        <Sender
+          ref={disabledSenderRef}
+          loading={false}
+          placeholder={`您好，我是${context.name}，请先从画布中选择场景或组件，再开始对话`}
+          disabled={true}
+          mode="mention"
+          chatMode={null}
+          onSend={() => {}}
+          onMentionClick={onMentionClick}
+          onChatModeChange={() => {}}
+          onUpload={context.pluginParams.onUpload}
+        />
+      </div>
+      {instances.map((inst) => (
+        <SenderPanel
+          key={inst.instanceKey}
+          focusKey={inst.focusKey}
+          focusSnapshot={inst.focusSnapshot}
+          chatMode={inst.chatMode}
+          active={inst.instanceKey === currentInstanceKey}
+          onMentionClick={onMentionClick}
+          onChatModeChange={onChatModeChange(inst.instanceKey)}
+        />
+      ))}
     </div>
   )
 }
