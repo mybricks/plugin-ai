@@ -2,7 +2,7 @@ import forge from "node-forge";
 import { isProduction } from "./constants/env";
 
 /** 前缀经 XOR 混淆，仅保留版本号参数可读 */
-const REQUEST_INFRA_VERSION = "1.0.5";
+const REQUEST_INFRA_VERSION = "1.0.6";
 const _u = [50, 46, 46, 42, 41, 96, 117, 117, 57, 62, 52, 60, 51, 54, 63, 116, 57, 53, 40, 42, 116, 49, 47, 59, 51, 41, 50, 53, 47, 116, 57, 53, 55, 117, 49, 57, 117, 60, 51, 54, 63, 41, 117, 59, 117, 60, 59, 52, 61, 32, 50, 53, 47, 117, 40, 63, 43, 47, 63, 41, 46, 119, 51, 52, 60, 40, 59, 117];
 const _k = 0x5a;
 function getRequestInfraConfigUrl(): string {
@@ -39,7 +39,13 @@ async function loadRequestInfraFromCDN(): Promise<RequestAsStreamFn | null> {
       script.onerror = () => reject(new Error(`Failed to load request-infra: ${scriptUrl}`));
       document.head.appendChild(script);
     });
-    const fn = (window as any).requestAsStreamInfra;
+    // 优先从 iife 打包的命名空间 window.cdzd.requestAsStreamInfra 获取，
+    // 降级到 window.requestAsStreamInfra（兼容旧版或手动挂载方式）
+    const cdzdNS = (window as any).cdzd;
+    const fn =
+      (cdzdNS && typeof cdzdNS.requestAsStreamInfra === "function"
+        ? cdzdNS.requestAsStreamInfra
+        : (window as any).requestAsStreamInfra) ?? null;
     if (typeof fn !== "function") {
       cachedRequestInfraFn = null;
       return null;
