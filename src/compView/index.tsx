@@ -94,7 +94,7 @@ const CompView = ({ user, copilot, comId }: CompViewProps) => {
     })}>
       {empty && !loading && (
         <div className={css['welcome-header']}>
-          <div className={css['welcome-title']}>一句话，开始设计新页面</div>
+          <div className={css['welcome-title']}>在这里，开始您的需求</div>
         </div>
       )}
       {loading && (
@@ -115,7 +115,7 @@ const CompView = ({ user, copilot, comId }: CompViewProps) => {
           disabled={loading}
           onSend={onSend}
           variant="loose"
-          placeholder={`从一句话或者一张图片开始，为您生成所需要的页面`}
+          placeholder={`请尽量详细描述您的需求，或者上传图片作为补充。完成后您可以导出源码或者Figma设计稿。`}
           attachmentsPrompt={"根据附件中的图片内容进行设计开发，要求尽可能还原其中的各类设计细节以及功能，在此基础上可做调整优化创新"}
           onUpload={context.pluginParams.onUpload}
         />
