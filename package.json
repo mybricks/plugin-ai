@@ -22,7 +22,8 @@
     "build:cdzd": "rollup -c rollup.cdzd.mjs",
     "watch": "APP_ENV=development rollup -c -w",
     "publish": "npm run build && npm publish",
-    "build:umd": "rollup -c rollup.umd.config.mjs"
+    "build:umd": "rollup -c rollup.umd.config.mjs",
+    "watch:umd": "APP_ENV=development rollup -c rollup.umd.config.mjs -w"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",

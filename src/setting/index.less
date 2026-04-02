@@ -1,0 +1,425 @@
+@import url(../components/sender/index.less);
+
+@primary: #f60;
+
+// ── Modal ────────────────────────────────────────────────
+.settingModal {
+  :global {
+    .ant-modal-content {
+      padding: 0;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #fff !important;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    }
+
+    .ant-modal-body {
+      padding: 0;
+      background: #fff !important;
+    }
+  }
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fff;
+}
+
+.modalTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.modalClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  cursor: pointer;
+  color: #999;
+  transition: all 0.15s;
+
+  &:hover {
+    color: #1a1a1a;
+    background: #f5f5f5;
+  }
+
+  svg {
+    display: block;
+  }
+}
+
+.modalContent {
+  display: flex;
+  height: 420px;
+}
+
+// ── Sidebar ──────────────────────────────────────────────
+.sidebar {
+  width: 110px;
+  background: #fafafa;
+  border-right: 1px solid #f0f0f0;
+  padding: 8px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebarItem {
+  padding: 6px 10px;
+  border-radius: 5px;
+  font-size: 12px;
+  color: #999;
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+
+  &:hover {
+    color: #1a1a1a;
+    background: #f0f0f0;
+  }
+
+  &.active {
+    color: @primary;
+    background: rgba(255, 102, 0, 0.08);
+    font-weight: 500;
+  }
+}
+
+.mainContent {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  background: #fff;
+
+  .scroll-bar();
+}
+
+// ── About ────────────────────────────────────────────────
+.about {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.aboutLogo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 0 6px;
+  gap: 6px;
+  position: relative;
+
+  // 背景光晕
+  &::before {
+    content: '';
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 140px;
+    height: 50px;
+    background: radial-gradient(ellipse, rgba(255, 102, 0, 0.1) 0%, transparent 70%);
+    pointer-events: none;
+  }
+}
+
+.aboutLogoText {
+  position: relative;
+  font-size: 34px;
+  font-weight: 900;
+  letter-spacing: 6px;
+  line-height: 1;
+  // 渐变文字
+  background: linear-gradient(135deg, #ff8c00 0%, @primary 45%, #e63900 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  // 底部投影增加厚重感
+  filter: drop-shadow(0 2px 6px rgba(255, 102, 0, 0.25));
+
+  // Vibe 和 UI 分色
+  em {
+    font-style: normal;
+    background: linear-gradient(135deg, #1a1a1a 0%, #555 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}
+
+.aboutLogoVersion {
+  font-size: 11px;
+  color: #ccc;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  position: relative;
+
+  // 两侧装饰线
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 20px;
+    height: 1px;
+    background: #e0e0e0;
+  }
+
+  &::before { right: calc(100% + 8px); }
+  &::after  { left:  calc(100% + 8px); }
+}
+
+// ── 共用 Section ─────────────────────────────────────────
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sectionTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.aboutInfo {
+  display: flex;
+  flex-direction: column;
+}
+
+.aboutItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.aboutLabel {
+  font-size: 13px;
+  color: #999;
+  flex-shrink: 0;
+}
+
+.aboutValue {
+  font-size: 13px;
+  color: #1a1a1a;
+  font-weight: 400;
+  text-align: right;
+  margin-left: 12px;
+
+  &.highlight {
+    color: @primary;
+    font-weight: 500;
+  }
+
+  &.url {
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #999;
+    font-size: 12px;
+    text-decoration: none;
+
+    &:hover {
+      color: @primary;
+      text-decoration: underline;
+    }
+  }
+}
+
+.aboutEmpty {
+  padding: 24px 0;
+  font-size: 13px;
+  color: #bbb;
+  text-align: center;
+}
+
+// 模型渠道区块：紧跟版本区，少留白
+.aboutModelChannelSection {
+  gap: 6px;
+
+  .sectionTitle {
+    padding-bottom: 4px;
+  }
+}
+
+// 关于页：模型渠道入口（高亮 + 跳转模型服务 Tab）
+.modelChannelCard {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid rgba(255, 102, 0, 0.35);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(255, 102, 0, 0.08) 0%, rgba(255, 140, 0, 0.06) 100%);
+  box-shadow: 0 1px 0 rgba(255, 102, 0, 0.06);
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+
+  &:hover {
+    border-color: rgba(255, 102, 0, 0.55);
+    box-shadow: 0 2px 8px rgba(255, 102, 0, 0.12);
+    background: linear-gradient(135deg, rgba(255, 102, 0, 0.12) 0%, rgba(255, 140, 0, 0.08) 100%);
+  }
+
+  &:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(255, 102, 0, 0.25);
+  }
+}
+
+.modelChannelCardMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  line-height: 1.25;
+}
+
+.modelChannelCurrentLabel {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #999;
+}
+
+.modelChannelCurrentValue {
+  font-size: 13px;
+  font-weight: 600;
+  color: @primary;
+}
+
+.modelChannelChevron {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: @primary;
+  opacity: 0.85;
+}
+
+// ── ModelService ─────────────────────────────────────────
+.modelService {
+  max-width: 500px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.formItem {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.formLabel {
+  font-size: 12px;
+  color: #999;
+}
+
+.nativeSelect,
+.nativeInput {
+  width: 100%;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #1a1a1a;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 5px;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+  line-height: 1.5;
+
+  &::placeholder {
+    color: #ccc;
+  }
+
+  &:hover {
+    border-color: #ccc;
+  }
+
+  &:focus {
+    border-color: @primary;
+    box-shadow: 0 0 0 2px rgba(255, 102, 0, 0.1);
+  }
+}
+
+.passwordWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+
+  .nativeInput {
+    padding-right: 30px;
+  }
+}
+
+.eyeButton {
+  position: absolute;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #ccc;
+  transition: color 0.15s;
+
+  &:hover {
+    color: #999;
+  }
+}
+
+.nativeSelect {
+  appearance: none;
+  padding-right: 26px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23bbb' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  cursor: pointer;
+}
+
+.formTip {
+  font-size: 11px;
+  color: #bbb;
+  line-height: 1.5;
+  margin-top: 2px;
+
+  em {
+    font-style: normal;
+    color: @primary;
+  }
+}
+
+.channelDescription {
+  padding: 10px 12px;
+  background: #fffbf7;
+  border: 1px solid rgba(255, 102, 0, 0.15);
+  border-radius: 6px;
+  font-size: 12px;
+  color: #999;
+  line-height: 1.6;
+}

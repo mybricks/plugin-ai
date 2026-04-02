@@ -24,6 +24,9 @@ import { RecordedAction } from './api-record-replay';
 import { fileFormat } from '@mybricks/rxai';
 import { getUniqueIdentifier } from "./utils";
 
+export { openSetting, closeSetting, createCustomRequest, SettingModal } from './setting'
+export type { SettingModalProps } from './setting'
+
 
 // 导出收集和回放相关的接口
 export { apiRecorder, replay, replayFromJSON, fileFormat };
