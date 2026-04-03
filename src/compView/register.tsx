@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { CompView, type CompViewProps } from "./index";
+import { PrdRender, type PrdRenderProps } from "./prdRender";
 
 // 包裹组件定义提到模块顶层，避免每次调用重新创建组件类型（否则 React 每次都会 unmount/remount）
 interface WrapperProps extends CompViewProps {}
@@ -48,6 +49,47 @@ const CompViewWithShadowStyles = (props: WrapperProps) => {
   );
 };
 
+// PrdRender 包裹组件（同样处理 Shadow DOM 样式注入）
+interface PrdRenderWrapperProps extends PrdRenderProps {}
+
+const PrdRenderWithShadowStyles = (props: PrdRenderWrapperProps) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const injectedRef = useRef(false);
+  const [styled, setStyled] = useState(false);
+
+  useEffect(() => {
+    if (injectedRef.current) return;
+
+    const root = containerRef.current?.getRootNode();
+    if (!(root instanceof ShadowRoot)) {
+      setStyled(true);
+      return;
+    }
+
+    injectedRef.current = true;
+
+    if (!(window as any).__pluginAiPrdStyleInjected__) {
+      document.head.querySelectorAll('style').forEach((style) => {
+        if (style.textContent?.includes('--plugin-ai-comp-view')) {
+          root.appendChild(style.cloneNode(true));
+        }
+      });
+      (window as any).__pluginAiPrdStyleInjected__ = true;
+    }
+
+    setStyled(true);
+  }, []);
+
+  return (
+    <div
+      ref={containerRef}
+      style={{ width: '100%', visibility: styled ? 'visible' : 'hidden' }}
+    >
+      <PrdRender {...props} />
+    </div>
+  );
+};
+
 declare global {
   interface Window {
     /**
@@ -68,9 +110,19 @@ declare global {
      * return <div>{window._render_comp_start_view_?.({ user, copilot, comId: 'xxx' })}</div>
      */
     _render_comp_start_view_: (props?: { user?: any; copilot?: any; comId?: string }) => React.ReactElement;
+    /**
+     * 渲染 PrdRender（Markdown 需求文档渲染器）组件。
+     * @example
+     * window._render_comp_prd?.({ content: markdownStr, showTitle: true, title: 'PRD' })
+     */
+    _render_comp_prd: (props?: PrdRenderProps) => React.ReactElement;
   }
 }
 
 window._render_comp_start_view_ = (props?: { user?: any; copilot?: any; comId?: string }): React.ReactElement => {
   return React.createElement(CompViewWithShadowStyles, props ?? {});
+};
+
+window._render_comp_prd = (props?: PrdRenderProps): React.ReactElement => {
+  return React.createElement(PrdRenderWithShadowStyles, props ?? { content: '' });
 };
