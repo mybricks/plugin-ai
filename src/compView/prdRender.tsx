@@ -4,7 +4,7 @@ import css from "./prdRender.less";
 import classNames from "classnames";
 
 const md = markdownit({
-  html: false,
+  html: true,
   linkify: true,
   typographer: true,
 });
