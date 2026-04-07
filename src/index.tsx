@@ -232,6 +232,8 @@ export default function pluginAI(params?: any): any {
             return {
               availableLibraries: (codingConfig as CodingConfig)?.availableLibraries ?? [],
               themes: (codingConfig as CodingConfig)?.themes ?? [],
+              codeRules: (codingConfig as CodingConfig)?.codeRules ?? '',
+              designRules: (codingConfig as CodingConfig)?.designRules ?? '',
             }
           }
 
