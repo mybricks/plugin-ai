@@ -22,6 +22,8 @@ export interface PrdRenderProps {
   showTitle?: boolean;
   /** 标题文字，showTitle 为 true 时生效 */
   title?: string;
+  /** 是否启用暗黑模式 */
+  darkMode?: boolean;
 }
 
 const PrdRender = ({
@@ -31,6 +33,7 @@ const PrdRender = ({
   maxHeight,
   showTitle = false,
   title = "需求文档",
+  darkMode = false,
 }: PrdRenderProps) => {
   const bodyRef = useRef<HTMLDivElement>(null);
 
@@ -44,7 +47,37 @@ const PrdRender = ({
     const codeBlocks = bodyRef.current.querySelectorAll<HTMLElement>("code.language-mermaid");
     if (!codeBlocks.length) return;
 
-    mermaid.initialize({ startOnLoad: false, theme: "default" });
+    mermaid.initialize({ 
+      startOnLoad: false, 
+      theme: "base",
+      themeVariables: darkMode ? {
+        primaryColor: '#1f1f1f',
+        primaryTextColor: '#e0e0e0',
+        primaryBorderColor: '#e0e0e0',
+        lineColor: '#e0e0e0',
+        secondaryColor: '#2a2a2a',
+        tertiaryColor: '#2a2a2a',
+        edgeLabelBackground: '#1f1f1f',
+        textColor: '#e0e0e0',
+        mainBkg: '#1a1a1a',
+        nodeBorder: '#e0e0e0',
+        clusterBkg: '#2a2a2a',
+        clusterBorder: '#e0e0e0',
+      } : {
+        primaryColor: '#f6f8fa',
+        primaryTextColor: '#333',
+        primaryBorderColor: '#333',
+        lineColor: '#333',
+        secondaryColor: '#f6f8fa',
+        tertiaryColor: '#f6f8fa',
+        edgeLabelBackground: '#f6f8fa',
+        textColor: '#333',
+        mainBkg: '#fff',
+        nodeBorder: '#333',
+        clusterBkg: '#f6f8fa',
+        clusterBorder: '#333',
+      }
+    });
 
     codeBlocks.forEach(async (codeEl, index) => {
       const graphDefinition = codeEl.textContent || "";
