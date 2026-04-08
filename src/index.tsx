@@ -251,7 +251,6 @@ export default function pluginAI(params?: any): any {
 
           return {
             focus(params: AiServiceFocusParams) {
-              console.log('focus', params)
               const currentFocus = !params ? undefined : params;
               context.currentFocus = currentFocus;
               context.events.emit("focus", currentFocus);
