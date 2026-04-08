@@ -1,0 +1,355 @@
+@import url(../index.less);
+
+/* plugin-ai-comp-view-anchor */
+:root {
+  --plugin-ai-comp-view: 1;
+}
+
+.container {
+  padding: 8px;
+
+  .pendingQueue {
+    position: relative;
+    background: var(--mybricks-bg-color-secondary);
+    border: 1px solid rgba(0, 0, 0, .08);
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    font-size: 11px;
+    overflow: hidden;
+    width: calc(100% - 14px);
+    margin-left: 7px;
+
+    .pendingQueueHeader {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px 8px;
+      cursor: pointer;
+      color: var(--mybricks-text-color-main);
+      opacity: 0.7;
+      user-select: none;
+
+      &:hover {
+        opacity: 1;
+      }
+
+      .pendingQueueArrow {
+        font-size: 10px;
+        line-height: 1;
+      }
+    }
+
+    .pendingQueueList {
+      padding: 0 6px 5px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .pendingQueueItem {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 4px;
+      border-radius: 4px;
+      background: var(--mybricks-bg-color-main);
+
+      .pendingQueueDot {
+        flex-shrink: 0;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--mybricks-color-primary);
+        opacity: 0.6;
+      }
+
+      .pendingQueueFocus {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        color: var(--mybricks-text-color-main);
+        font-size: 11px;
+        white-space: nowrap;
+
+        .pendingQueueFocusArea {
+          color: var(--mybricks-color-primary);
+        }
+      }
+
+      .pendingQueueMsg {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--mybricks-text-color-main);
+        font-size: 11px;
+      }
+
+      .pendingQueueBadge {
+        flex-shrink: 0;
+        font-size: 10px;
+        color: var(--mybricks-text-color-main);
+        opacity: 0.5;
+      }
+
+      .pendingQueueDel {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 14px;
+        height: 14px;
+        padding: 0;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        opacity: 0.4;
+        color: var(--mybricks-text-color-main);
+
+        &:hover {
+          opacity: 1;
+        }
+
+        svg {
+          width: 14px;
+          height: 14px;
+        }
+      }
+    }
+  }
+
+
+  &.loose {
+    padding: 0;
+
+    .editor {
+      // border-radius: 20px;
+
+      .input {
+        padding: 16px 16px 10px;
+        min-height: 100px;
+      }
+
+      .editorAction {
+        padding: 0 12px;
+        margin-bottom: 12px;
+      }
+    }
+  }
+
+  .editor {
+    z-index: 13;
+    position: relative;
+    // background-color: #ffffff;
+    background-color: var(--mybricks-bg-color-main);
+    // border: solid 1px rgba(0, 0, 0, .13);
+    border: solid 1px transparent;
+    width: 100%;
+    // border-radius: 20px;
+    border-radius: 12px;
+    // box-shadow: 0 5px 16px -4px #00000012;
+    box-shadow: var(--mybricks-shadow-main);
+    color: rgba(0, 0, 0, .9);
+    cursor: default;
+
+    &.noMentions {
+      // background-color: #f7f7f7;
+      background-color: var(--mybricks-bg-color-secondary);
+      .inputPlaceholder {
+        // color: rgba(0, 0, 0, .4) !important;
+        color: var(--mybricks-text-color-main);
+      }
+    }
+
+    &:focus-within {
+      border-color: var(--mybricks-color-primary);
+    }
+
+    .mentions {
+      padding: 8px 8px 0 8px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--mybricks-text-color-main);
+
+      span {
+        font-size: 12px;
+        line-height: 12px;
+        white-space: nowrap;
+      }
+
+      .focusarea {
+        color: var(--mybricks-color-primary);
+      }
+
+      .vibeCoding {
+        color: var(--mybricks-color-primary);
+      }
+    }
+
+    .topArea {
+      padding: 8px;
+      box-shadow: 0 .5px 0 0 rgba(0, 0, 0, .13);
+    }
+
+    .input {
+      // padding: 12px 16px 10px;
+      padding: 8px 8px 10px;
+      // line-height: 20px;
+      line-height: 1.5;
+      min-height: 60px;
+      position: relative;
+
+      .inputEditorContainer {
+        font-size: 12px;
+        max-height: 140px;
+        // scrollbar-width: none;
+        position: relative;
+        min-height: inherit;
+        overflow: auto;
+
+        .scroll-bar();
+
+        .inputEditor {
+          color: var(--mybricks-text-color-main);
+          user-select: text;
+          white-space: pre-wrap;
+          word-break: break-word;
+          width: 100%;
+          max-height: fit-content;
+          min-height: inherit;
+          overflow: hidden;
+          outline: none;
+          cursor: text;
+          caret-color: var(--mybricks-text-color-main);
+
+          &[contentEditable="false"] {
+            cursor: default;
+          }
+        }
+
+        .inputPlaceholder {
+          position: absolute;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          // top: 1px;
+          // left: 1px;
+          top: 0;
+          left: 0;
+          user-select: none;
+          pointer-events: none;
+          // color: rgba(0, 0, 0, .6);
+          color: var(--mybricks-text-color-main);
+          opacity: 0.6;
+        }
+      }
+    }
+
+    .editorAction {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      padding: 0 8px;
+      margin-top: 2px;
+      margin-bottom: 8px;
+      position: relative;
+
+      .leftArea {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+
+        .attachmentButton {
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          // width: 32px;
+          // border-radius: 20px;
+          // height: 32px;
+          width: 25px;
+          height: 25px;
+          border-radius: 50%;
+          cursor: pointer !important;
+          background: var(--mybricks-bg-color-main);
+          box-shadow: var(--mybricks-shadow-main);
+          
+
+          svg {
+            width: 18px;
+            height: 18px;
+            // color: rgba(0, 0, 0, .6);
+            color: var(--mybricks-text-color-main);
+            // cursor: pointer !important;
+
+            // * {
+            //   cursor: pointer !important;
+            // }
+          }
+
+          &:hover {
+            // background-color: rgba(0, 0, 0, .09);
+            background: var(--mybricks-bg-color-hover);
+          }
+
+          input {
+            display: none;
+          }
+        }
+
+        &.disabled {
+          opacity: 0.3;
+          .attachmentButton {
+            cursor: default !important;
+            background: var(--mybricks-bg-color-main) !important;
+          }
+        }
+      }
+
+      .rightArea {
+        display: flex;
+        align-items: center;
+
+        .sendButtonContainer {
+          cursor: pointer;
+          background-color: var(--mybricks-color-primary);
+          // border-radius: 12px;
+          // border-radius: 6px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          color: rgba(255, 255, 255, .9);
+
+          .sendButton {
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            // width: 32px;
+            // height: 32px;
+            width: 25px;
+            height: 25px;
+
+            svg {
+              width: 11px;
+              height: 11px;
+            }
+          }
+
+          .loadingButton {
+            svg {
+              width: 11px;
+              height: 11px;
+            }
+          }
+        }
+
+        .disabled {
+          cursor: not-allowed !important;
+          opacity: 0.3;
+        }
+      }
+    }
+  }
+}

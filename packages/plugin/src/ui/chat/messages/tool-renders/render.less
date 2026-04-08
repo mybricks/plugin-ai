@@ -1,0 +1,154 @@
+// ── 通用工具卡片 ─────────────────────────────────────────────────────────────
+
+.tool-card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: var(--mybricks-bg-color-secondary);
+  padding: 5px 10px;
+  margin: 3px 0;
+  font-size: 12px;
+  color: var(--mybricks-text-color-main);
+  cursor: default;
+  user-select: none;
+  min-height: 28px;
+}
+
+.tool-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: inherit;
+
+  svg { width: 12px; height: 12px; }
+}
+
+// pending 时用空心圆占位图标
+.tool-icon-pending {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.5;
+  color: var(--mybricks-text-color-main);
+}
+
+.tool-label {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--mybricks-text-color-main);
+}
+
+.tool-meta {
+  font-size: 11px;
+  color: var(--mybricks-text-color-main);
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+
+.tool-duration {
+  font-size: 11px;
+  color: var(--mybricks-text-color-main);
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+
+// ── 代码卡片（write / edit 完成后展示）────────────────────────────────────────
+
+.code-card {
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: var(--mybricks-bg-color-secondary);
+  margin: 3px 0;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--mybricks-text-color-main);
+  cursor: default;
+  user-select: none;
+}
+
+.code-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  background: var(--mybricks-bg-color-secondary);
+  min-height: 28px;
+}
+
+.code-card-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: inherit;
+
+  svg { width: 12px; height: 12px; }
+}
+
+.code-card-filename {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  color: var(--mybricks-text-color-main);
+}
+
+.code-card-lines {
+  font-size: 11px;
+  color: var(--mybricks-text-color-main);
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+
+.code-card-body {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  line-height: 1.6;
+  overflow-x: auto;
+  max-height: 240px;
+  color: var(--mybricks-text-color-main);
+  background: transparent;
+  white-space: pre;
+
+  code {
+    background: transparent;
+    padding: 0;
+    font-size: inherit;
+    font-family: inherit;
+  }
+}
+
+// ── read_file 专属 ────────────────────────────────────────────────────────────
+
+.read-path {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--mybricks-text-color-main);
+  font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+// ── write_file / edit_file 专属 ──────────────────────────────────────────────
+
+.write-path {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--mybricks-text-color-main);
+  font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+}
