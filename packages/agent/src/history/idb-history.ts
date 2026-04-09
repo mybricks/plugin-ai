@@ -69,7 +69,15 @@ export class IDBHistory implements History {
 
   async append(key: string, record: TurnRecord): Promise<void> {
     const existing = await this.load(key);
-    const turns = [...existing, record];
+    // 通过 JSON 往返过滤掉 undefined、循环引用、不可序列化对象等非标准数据
+    let safeRecord: TurnRecord;
+    try {
+      safeRecord = JSON.parse(JSON.stringify(record));
+    } catch {
+      console.warn("[IDBHistory] record contains non-serializable data, skipping append");
+      return;
+    }
+    const turns = [...existing, safeRecord];
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(this.storeName, "readwrite");

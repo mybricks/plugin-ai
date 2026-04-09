@@ -1,48 +1,51 @@
 import React from "react";
 import "./ui/renders/register";
 
-import pkg from "../package.json";
+import pkg from "../../../package.json";
 console.log(`%c ${pkg.name} %c@${pkg.version}`, `color:#FFF;background:#fa6400`, ``, ``);
 
-import { CodeAgent, IDBHistory } from "@plugin-ai/agent";
-import type { SandboxAdapter } from "@plugin-ai/agent";
-import { createRequestAsStream, createOnUpload } from "@plugin-ai/request";
-import type { RequestAsStreamFn } from "@plugin-ai/request";
+import { CodeAgent, IDBHistory } from "../../agent/src";
+import type { CodeAgentPromptOptions, SkillFile } from "../../agent/src";
+import { createRequestAsStream, createOnUpload } from "../../request/src";
+import type { RequestAsStreamFn } from "../../request/src";
+import { DEFAULT_PROMPT_SECTIONS } from "./prompts";
 
 import { context } from "./context";
-import { ChatPanel, ChatStartView } from "./ui/chat";
+import { setupRegistSandBox } from "./sandbox";
+import type { Designer, Hooks, RegistSandBoxConfig } from "./sandbox";
+import { ChatPanelList, ChatStartView } from "./ui/chat";
+
 
 // ─── 工具类型重导出 ────────────────────────────────────────────────────────────
 
-export { CodeAgent, IDBHistory } from "@plugin-ai/agent";
-export type { SandboxAdapter, AgentEventMap, SkillFile } from "@plugin-ai/agent";
-export { createRequestAsStream, createOnUpload } from "@plugin-ai/request";
-export type { RequestAsStreamFn } from "@plugin-ai/request";
+export { CodeAgent, IDBHistory } from "../../agent/src";
+export type { AgentEventMap, SkillFile } from "../../agent/src";
+export { createRequestAsStream, createOnUpload } from "../../request/src";
+export type { RequestAsStreamFn } from "../../request/src";
+export { openSetting, closeSetting, SettingModal } from "./ui/setting";
+export type { SettingModalProps } from "./ui/setting";
+export type { Designer, Hooks, RegistSandBoxConfig } from "./sandbox";
+export { ChatPanel, ChatPanelList, ChatStartView } from "./ui/chat";
+export type { ChatPanelProps, ChatPanelListProps, ChatStartViewProps } from "./ui/chat";
 
 // ─── window API 类型声明 ──────────────────────────────────────────────────────
 
 declare global {
   interface Window {
     /**
-     * 注册组件沙箱能力（文件系统适配器 + pluginContext）。
-     * 组件侧在初始化时调用，plugin 会据此创建或更新 CodeAgent。
+     * 注册组件沙箱能力。
+     * 组件侧在初始化时调用，plugin 会据此创建 CodeAgent。
+     *
+     * @param comId   组件唯一 ID
+     * @param config  注册配置：designer（文件系统 + 设计器状态）+ hooks
      *
      * @example
-     * window._configSandBox_(comId, {
-     *   adapter: { getFiles, updateFiles },
-     *   pluginContext: { getFocusArea: () => currentFocusArea },
+     * window._registSandBox_(comId, {
+     *   designer: { getFiles, updateFiles, exportDesignerToMessage, exportLogsToMessage, getRuntimeMode },
+     *   hooks: { beforeRequest: async () => { designer.snapshot() } },
      * });
      */
-    _configSandBox_: (
-      comId: string,
-      config: {
-        adapter: SandboxAdapter;
-        pluginContext?: {
-          onProgress?: (status: any) => void;
-          getFocusArea?: () => any;
-        };
-      }
-    ) => void;
+    _registSandBox_: (comId: string, config: RegistSandBoxConfig) => void;
     /**
      * 组件沙箱可用的渲染工具，由 plugin 注册。
      * （由 register.tsx 写入）
@@ -53,93 +56,46 @@ declare global {
 
 // ─── plugin 主入口 ────────────────────────────────────────────────────────────
 
-export default function pluginAI(params?: any): any {
+export interface PluginAIParams {
+  name?: string;
+  user?: { name?: string; avatar?: string };
+  /** 插件命名空间，用于隔离多实例的 agent 存储和队列，必填 */
+  key: string;
+  onRequest?: RequestAsStreamFn;
+  onUpload?: (file: File) => Promise<string>;
+  /** agents.md 内容，对标 CLAUDE.md，注入到系统 prompt 末尾 */
+  agentsMd?: string;
+  /** 技能文件列表，挂载为虚拟 .skills/ 文件，LLM 按需读取 */
+  skills?: SkillFile[];
+  /** 覆盖内置系统提示词各节，按 key 合并，未提供的 key 保留默认值 */
+  promptSections?: CodeAgentPromptOptions;
+}
+
+export default function pluginAI(params: PluginAIParams): any {
   const {
     name = "智能助手",
     user,
-    key,
+    key: pluginKey,
     onRequest,
     onUpload,
-    /**
-     * agents.md 内容，注入到 CodeAgent 系统 prompt 末尾。
-     *
-     * 对标 claude-code 的 CLAUDE.md 机制：
-     *   - CLAUDE.md 由文件系统发现并注入，供 Claude Code 了解项目规范
-     *   - agentsMd 由 plugin 调用方在初始化时以字符串方式传入
-     *
-     * 典型用途：
-     *   - 声明项目技术栈、编码规范、约束规则
-     *   - 指定组件库版本、禁止使用的 API
-     *   - 描述文件结构或设计原则
-     *
-     * @example
-     * pluginAI({
-     *   agentsMd: `
-     * # 项目规范
-     * - 使用 React 18 + TypeScript
-     * - UI 库：mybricks/comlib-pc-normal
-     * - 禁止使用 jQuery
-     * `,
-     * });
-     */
     agentsMd,
-    /**
-     * 技能文件列表（Skills）。
-     *
-     * 对标 claude-code 的 .claude/skills/ 目录机制：
-     *   - 每个 SkillFile 挂载为虚拟文件（路径前缀 .skills/）
-     *   - system prompt 中列出 skills 目录（name + description + whenToUse）
-     *   - LLM 按需通过 read_file 工具读取完整内容，不全量注入
-     *
-     * @example
-     * pluginAI({
-     *   skills: [
-     *     {
-     *       path: "react/component/SKILL.md",
-     *       content: `---
-     * name: React 组件规范
-     * description: React 组件开发规范
-     * when_to_use: 开发或修改 React 组件时使用
-     * ---
-     * # 规范内容...`,
-     *     },
-     *   ],
-     * });
-     */
     skills,
-  } = params ?? {};
+    promptSections,
+  } = params;
+
+  const mergedPromptSections = { ...DEFAULT_PROMPT_SECTIONS, ...promptSections };
+
 
   const requestAsStream: RequestAsStreamFn = onRequest ?? createRequestAsStream();
   const upload = onUpload ?? createOnUpload();
 
   context.name = name;
-  context.pluginParams = { name, user, key, onUpload: upload };
+  context.setPluginKey(pluginKey);
+  context.pluginParams = { name, user, onUpload: upload };
 
-  // ── window._configSandBox_：组件注册沙箱能力 ──────────────────────────────
+  // ── window._registSandBox_：组件注册沙箱能力 ────────────────────────────────
 
-  window._configSandBox_ = (comId, config) => {
-    // 更新或创建 sandboxEntry
-    context.sandboxMap.set(comId, {
-      adapter: config.adapter,
-      pluginContext: config.pluginContext ?? {},
-    });
-
-    // 创建或更新 CodeAgent
-    if (context.agentMap.has(comId)) {
-      // 更新已有 agent 的沙箱适配器
-      (context.agentMap.get(comId) as CodeAgent).setAdapter(config.adapter);
-    } else {
-      const agent = new CodeAgent({
-        key: key ? `${key}_${comId}` : comId,
-        history: new IDBHistory({ dbName: "@plugin-ai/plugin/messages" }),
-        request: requestAsStream,
-        adapter: config.adapter,
-        agentsMd,
-        skills,
-      });
-      context.agentMap.set(comId, agent);
-    }
-  };
+  setupRegistSandBox({ requestAsStream, agentsMd, skills, promptOptions: mergedPromptSections });
 
   return {
     name: "@mybricks/plugins/ai",
@@ -164,25 +120,21 @@ export default function pluginAI(params?: any): any {
               const comId = focus.comId ?? focus.pageId;
               if (!comId) return;
 
-              const agent = context.agentMap.get(comId);
-              const sandbox = context.sandboxMap.get(comId);
+              const agentKey = context.getAgentKey(comId);
+              const agent = context.agentMap.get(agentKey);
 
               if (!agent) return;
 
-              const focusKey = key ? `${key}_${comId}` : comId;
               const attachments = Array.isArray(requestParams.attachments)
                 ? requestParams.attachments.map((a: any) => ({ ...a }))
                 : [];
 
               context.aiQueue.send(
-                focusKey,
+                agentKey,
                 async () => {
-                  // pluginContext 在此动态取最新值
-                  const contextPrompt = sandbox?.pluginContext?.getFocusArea?.();
                   await agent.requestAI({
                     message: requestParams.message ?? "",
                     attachments,
-                    contextPrompt,
                   });
                 },
                 { message: requestParams.message, attachments, focus }
@@ -193,8 +145,8 @@ export default function pluginAI(params?: any): any {
       },
 
       aiView: {
-        render(api: AiViewApi) {
-          return <ChatPanel user={user} copilot={{ name, avatar: "https://my.mybricks.world/image/icon.png" }} api={api} />;
+        render(_api: AiViewApi) {
+          return <ChatPanelList user={user} copilot={{ name, avatar: "https://my.mybricks.world/image/icon.png" }} />;
         },
         display() {
           context.events.emit("aiViewDisplay", true);

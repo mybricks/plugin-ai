@@ -6,11 +6,11 @@
   gap: 6px;
   border-radius: 6px;
   border: 1px solid rgba(0, 0, 0, 0.08);
-  background: var(--mybricks-bg-color-secondary);
+  background: var(--mybricks-bg-color-secondary, #F5F5F5);
   padding: 5px 10px;
   margin: 3px 0;
   font-size: 12px;
-  color: var(--mybricks-text-color-main);
+  color: var(--mybricks-text-color-main, #333);
   cursor: default;
   user-select: none;
   min-height: 28px;
@@ -33,7 +33,7 @@
   font-size: 12px;
   line-height: 1;
   opacity: 0.5;
-  color: var(--mybricks-text-color-main);
+  color: var(--mybricks-text-color-main, #333);
 }
 
 .tool-label {
@@ -42,20 +42,19 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   font-size: 12px;
-  color: var(--mybricks-text-color-main);
+  color: var(--mybricks-text-color-main, #333);
 }
 
 .tool-meta {
   font-size: 11px;
-  color: var(--mybricks-text-color-main);
+  color: var(--mybricks-text-color-main, #333);
   opacity: 0.45;
   flex-shrink: 0;
 }
 
 .tool-duration {
   font-size: 11px;
-  color: var(--mybricks-text-color-main);
-  opacity: 0.45;
+  color: var(--mybricks-text-color-main, #333);
   flex-shrink: 0;
 }
 
@@ -63,12 +62,12 @@
 
 .code-card {
   border-radius: 6px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  background: var(--mybricks-bg-color-secondary);
+  border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  background: var(--mybricks-bg-color-secondary, #F5F5F5);
   margin: 3px 0;
   overflow: hidden;
   font-size: 12px;
-  color: var(--mybricks-text-color-main);
+  color: var(--mybricks-text-color-main, #333);
   cursor: default;
   user-select: none;
 }
@@ -78,9 +77,11 @@
   align-items: center;
   gap: 6px;
   padding: 5px 10px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-  background: var(--mybricks-bg-color-secondary);
+  border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  background: var(--mybricks-bg-color-secondary, #F5F5F5);
   min-height: 28px;
+  cursor: pointer;
+  user-select: none;
 }
 
 .code-card-icon {
@@ -99,14 +100,22 @@
   text-overflow: ellipsis;
   font-size: 12px;
   font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
-  color: var(--mybricks-text-color-main);
+  color: var(--mybricks-text-color-main, #333);
 }
 
 .code-card-lines {
   font-size: 11px;
-  color: var(--mybricks-text-color-main);
+  color: var(--mybricks-text-color-main, #333);
   opacity: 0.45;
   flex-shrink: 0;
+}
+
+.code-card-toggle {
+  font-size: 9px;
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.45;
+  flex-shrink: 0;
+  line-height: 1;
 }
 
 .code-card-body {
@@ -115,11 +124,14 @@
   font-size: 11px;
   font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
   line-height: 1.6;
-  overflow-x: auto;
-  max-height: 240px;
-  color: var(--mybricks-text-color-main);
+  overflow: auto;
+  max-height: calc(11px * 1.6 * 12 + 16px);
+  color: var(--mybricks-text-color-main, #333);
   background: transparent;
   white-space: pre;
+
+  &::-webkit-scrollbar { display: none; }
+  scrollbar-width: none;
 
   code {
     background: transparent;
@@ -127,6 +139,46 @@
     font-size: inherit;
     font-family: inherit;
   }
+}
+
+// 删除片段：使用红色背景提示
+.code-card-body-delete {
+  background: rgba(255, 68, 68, 0.06);
+  border-top: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  color: #c0392b;
+}
+
+// ── diff 行样式 ────────────────────────────────────────────────────────────────
+
+// 每行：relative 容器，左侧留 14px 给符号占位
+.diff-add,
+.diff-del,
+.diff-ctx {
+  display: block;
+  position: relative;
+  padding-left: 14px;
+}
+
+.diff-add {
+  // background: rgba(40, 167, 69, 0.12);
+  color: #22863a;
+}
+
+.diff-del {
+  // background: rgba(255, 68, 68, 0.10);
+  color: #c0392b;
+}
+
+// +/- 符号 absolute 固定左侧，不影响内容缩进
+.diff-sign {
+  position: absolute;
+  left: 2px;
+  top: 0;
+  width: 10px;
+  text-align: center;
+  font-weight: 600;
+  user-select: none;
+  pointer-events: none;
 }
 
 // ── read_file 专属 ────────────────────────────────────────────────────────────
@@ -137,7 +189,7 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   font-size: 12px;
-  color: var(--mybricks-text-color-main);
+  color: var(--mybricks-text-color-main, #333);
   font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
 }
 
@@ -149,6 +201,6 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   font-size: 12px;
-  color: var(--mybricks-text-color-main);
+  color: var(--mybricks-text-color-main, #333);
   font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
 }

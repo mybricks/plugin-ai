@@ -1,24 +1,36 @@
-import type { CodeAgent } from "@plugin-ai/agent";
-import type { SandboxAdapter } from "@plugin-ai/agent";
+import type { CodeAgent } from "../../agent/src";
+import type { Sandbox } from "../../agent/src";
+import type { Designer, Hooks } from "../sandbox/types";
 import { AIRequestQueue } from "./queue";
-
-/** plugin 提供给沙箱的上下文（设计器能力） */
-export interface PluginContext {
-  /** 通知设计器进度 */
-  onProgress?: (status: any) => void;
-  /** 获取当前聚焦区域信息，调用时机由组件自决 */
-  getFocusArea?: () => any;
-}
 
 /** 沙箱注册信息 */
 export interface SandboxEntry {
-  adapter: SandboxAdapter;
-  pluginContext: PluginContext;
+  sandbox: Sandbox;
+  /** designer ref，供 check-status 工具闭包访问（延迟绑定） */
+  designerRef?: { current: Designer | undefined };
+  /** hooks ref，供 beforeRequest 闭包访问（延迟绑定） */
+  hooksRef?: { current: Hooks | undefined };
 }
 
 class Context {
   /** UI 显示名称 */
   name: string = "智能助手";
+
+  /** 插件命名空间 key，用于 agentKey 拼接 */
+  private _pluginKey: string = "";
+
+  setPluginKey(key: string) {
+    this._pluginKey = key;
+  }
+
+  /**
+   * 根据 comId 生成 agentKey。
+   * 不传 comId 时，从 currentFocus 中自动取。
+   */
+  getAgentKey(comId?: string): string {
+    const id = comId ?? this.currentFocus?.comId ?? this.currentFocus?.pageId ?? "";
+    return this._pluginKey + "_" + id;
+  }
 
   /** 当前聚焦元素 */
   currentFocus?: AiServiceFocusParams;
@@ -48,7 +60,7 @@ class Context {
 
   /**
    * comId → SandboxEntry 映射
-   * 组件通过 window._configSandBox_ 注册沙箱能力
+   * 组件通过 window._registSandBox_ 注册沙箱能力
    */
   sandboxMap = new Map<string, SandboxEntry>();
 

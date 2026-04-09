@@ -5,12 +5,13 @@ import css from "./header.less";
 
 interface HeaderProps {
   onClear?: () => void;
+  title?: string;
 }
 
-const Header = ({ onClear }: HeaderProps) => {
+const Header = ({ onClear, title }: HeaderProps) => {
   return (
     <div className={css.header}>
-      <span className={css.title}>{context.name}</span>
+      <span className={css.title}>{title ?? context.name}</span>
       <div className={css.actions}>
         <div
           className={css.action}

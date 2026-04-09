@@ -1,11 +1,11 @@
 import type { Tool, ToolResult } from "../../../types";
 import { ToolValidationError } from "../../../types";
-import type { SandboxAdapter } from "../../index";
+import type { Sandbox } from "../../index";
 import { READ_TOOL_NAME } from "../read";
 
 export const WRITE_TOOL_NAME = "write_file";
 
-export function createWriteTool(adapter: SandboxAdapter): Tool {
+export function createWriteTool(adapter: Sandbox): Tool {
   return {
     name: WRITE_TOOL_NAME,
     description: `写入文件到项目中。
@@ -38,7 +38,11 @@ export function createWriteTool(adapter: SandboxAdapter): Tool {
       }
     },
     async execute(params: { path: string; content: string }): Promise<ToolResult> {
-      await adapter.updateFiles([{ path: params.path, content: params.content }]);
+      try {
+        await adapter.updateFiles([{ path: params.path, content: params.content }]);
+      } catch (err) {
+        throw new ToolValidationError(`Failed to write ${params.path}: ${err instanceof Error ? err.message : String(err)}`);
+      }
       const lineCount = params.content.split("\n").length;
       return {
         title: params.path,

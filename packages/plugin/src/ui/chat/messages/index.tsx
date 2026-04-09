@@ -5,7 +5,7 @@ import { TextShimmer } from "../../components/text-shimmer";
 import { AttachmentsList } from "../../components/attachments";
 import { ElapsedTime } from "../../components/elapsed-time";
 import type { MessageRecord } from "../use-sessions";
-import type { ToolCallRecord } from "@plugin-ai/agent";
+import type { ToolCallRecord } from "../../../../agent/src";
 import { getToolRenderer } from "./tool-renders/index";
 import { DefaultToolRenderer } from "./tool-renders/renders";
 import css from "./index.less";
@@ -103,11 +103,10 @@ const MessageBubble = ({ record, user, copilot }: { record: MessageRecord; user?
               <React.Fragment key={iterIdx}>
                 {/* 思考内容 */}
                 {iter.thinkingContent && (
-                  <div className={css["think"]}>
-                    <BubbleMessage
-                      message={`${iter.thinkingContent}${llmStreaming ? "..." : ""}`}
-                    />
-                  </div>
+                  <ThinkingCard
+                    thinkingContent={iter.thinkingContent}
+                    llmStreaming={llmStreaming}
+                  />
                 )}
 
                 {/* iter 头部 */}
@@ -117,7 +116,7 @@ const MessageBubble = ({ record, user, copilot }: { record: MessageRecord; user?
                       <BubbleMessage message={iter.content} />
                       {iter.startTime && <ElapsedTime startTime={iter.startTime} endTime={iter.endTime} className={css["planning-elapsed"]} />}
                     </>
-                  ) : iter.toolCalls.length === 0 ? (
+                  ) : iter.toolCalls.length === 0 && isPending ? (
                     <>
                       <TextShimmer className={css["iter-header-placeholder"]}>规划下一步...</TextShimmer>
                       {iter.startTime && <ElapsedTime startTime={iter.startTime} endTime={iter.endTime} className={css["planning-elapsed"]} />}
@@ -138,6 +137,11 @@ const MessageBubble = ({ record, user, copilot }: { record: MessageRecord; user?
               </React.Fragment>
             );
           })}
+
+          {/* 已取消 */}
+          {record.status === "abort" && (
+            <div className={css["ai-chat-abort-tip"]}>已取消</div>
+          )}
 
           {/* 错误 */}
           {record.status === "error" && record.error && (
@@ -161,6 +165,38 @@ const ToolBubble = ({ tool }: { tool: UIToolRecord }) => {
     return <>{renderer(tool as any)}</>;
   }
   return <DefaultToolRenderer tool={tool as any} />;
+};
+
+const ThinkingCard = ({
+  thinkingContent,
+  llmStreaming,
+}: {
+  thinkingContent: string;
+  llmStreaming: boolean;
+}) => {
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const message = `${thinkingContent}${llmStreaming ? "..." : ""}`;
+
+  useEffect(() => {
+    if (bodyRef.current) {
+      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+    }
+  }, [message]);
+
+  return (
+    <div className={css["think-card"]}>
+      <div className={css["think-card-header"]}>
+        {llmStreaming ? (
+          <TextShimmer className={css["think-card-title"]}>思考中</TextShimmer>
+        ) : (
+          <span className={css["think-card-title"]}>思考</span>
+        )}
+      </div>
+      <div ref={bodyRef} className={css["think-card-body"]}>
+        <BubbleMessage message={message} />
+      </div>
+    </div>
+  );
 };
 
 // ─── BubbleMessage ────────────────────────────────────────────────────────────

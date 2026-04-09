@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import classNames from "classnames";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
-import { useSessions } from "../use-sessions";
+import type { CodeAgent } from "../../../../agent/src";
+import { useSession } from "../use-session";
 import { MessageList } from "../messages";
 import css from "./index.less";
 
@@ -14,60 +15,76 @@ interface User {
 export interface ChatStartViewProps {
   user?: User;
   copilot?: User;
-  /** comId，对应 agent.key */
-  comId?: string;
+  /** agent 实例 */
+  agent?: CodeAgent;
+  /** 上传文件回调，不传时回退到 context.pluginParams.onUpload */
+  onUpload?: (file: File) => Promise<string>;
+  /** 占位符文案 */
+  placeholder?: string;
+  /** 欢迎语标题文案 */
+  welcomeTitle?: string;
 }
 
 // ─── ChatStartView ────────────────────────────────────────────────────────────
 
-const ChatStartView = ({ user, copilot, comId }: ChatStartViewProps) => {
+const ChatStartView = ({
+  user,
+  copilot,
+  agent,
+  onUpload,
+  placeholder = "请尽量详细描述您的需求，或者上传图片作为补充。完成后您可以导出源码或者Figma设计稿。",
+  welcomeTitle = "在这里，开始您的需求",
+}: ChatStartViewProps) => {
   const senderRef = useRef<SenderRef>(null);
-  const [loading, setLoading] = useState(false);
+  const agentKey = agent?.key ?? "";
+  const [loading, setLoading] = useState(() => context.aiQueue.isLoading(agentKey));
   const [empty, setEmpty] = useState(true);
 
-  const agent = comId ? context.agentMap.get(comId) : undefined;
-  const sandbox = comId ? context.sandboxMap.get(comId) : undefined;
-
-  const { getMessages, addMessage, syncAgent, subscribeAgent } = useSessions();
+  const { messages, syncAgent, addMessage, subscribeAgent } = useSession(agent);
 
   useEffect(() => {
-    if (!agent) return;
-    syncAgent(agent);
-  }, [comId, agent]);
+    if (agent) syncAgent(agent).catch(console.error);
+  }, [agent]);
 
-  const messages = agent ? getMessages(agent) : [];
+  // 与 ChatPanel 保持同步：通过 aiQueue 事件驱动 loading，而非本地管理
+  useEffect(() => {
+    if (!agentKey) return;
+    const un = context.aiQueue.events.on("loading", (d) => {
+      if (d.key === agentKey) setLoading(d.loading);
+    });
+    return un;
+  }, [agentKey]);
 
   const onSend = (params: Parameters<SenderProps["onSend"]>[0]) => {
     if (loading || !agent) return;
     setEmpty(false);
-    setLoading(true);
 
     const userAttachments = (params.attachments ?? []).map((a: any) => ({
       type: a.type ?? "image",
       content: a.content ?? a.url ?? "",
     }));
 
-    const id = addMessage(agent, params.message ?? "", userAttachments);
+    const id = addMessage(params.message ?? "", userAttachments);
     subscribeAgent(agent, id);
 
-    const doRequest = async () => {
-      const contextPrompt = sandbox?.pluginContext?.getFocusArea?.();
-      await agent.requestAI({ ...params });
-    };
+    const sandbox = context.sandboxMap.get(agentKey);
+    (window as any)._showAIDialog_?.(agentKey);
 
-    if (comId) {
-      (window as any)._showAIDialog_?.(comId);
-      setTimeout(() => doRequest().finally(() => setLoading(false)), 500);
-    } else {
-      doRequest().finally(() => setLoading(false));
-    }
+    context.aiQueue.send(
+      agentKey,
+      async () => {
+        const contextPrompt = (sandbox as any)?.pluginContext?.getFocusArea?.();
+        context.aiQueue.registerAbort(agentKey, () => agent.abort());
+        await agent.requestAI({ ...params, contextPrompt });
+      },
+      { message: params.message, attachments: params.attachments }
+    );
   };
 
   useEffect(() => {
     const pendingMessage = (window as any).__vibePendingMessage__;
     (window as any).__vibePendingMessage__ = null;
     if (pendingMessage) {
-      setLoading(true);
       setTimeout(() => onSend(pendingMessage), 300);
     }
   }, []);
@@ -76,7 +93,7 @@ const ChatStartView = ({ user, copilot, comId }: ChatStartViewProps) => {
     <div className={classNames(css["start-view"], { [css["empty"]]: empty && !loading })}>
       {empty && !loading && (
         <div className={css["welcome-header"]}>
-          <div className={css["welcome-title"]}>在这里，开始您的需求</div>
+          <div className={css["welcome-title"]}>{welcomeTitle}</div>
         </div>
       )}
       {messages.length > 0 && (
@@ -99,9 +116,9 @@ const ChatStartView = ({ user, copilot, comId }: ChatStartViewProps) => {
           disabled={loading}
           onSend={onSend}
           variant="loose"
-          placeholder="请尽量详细描述您的需求，或者上传图片作为补充。完成后您可以导出源码或者Figma设计稿。"
+          placeholder={placeholder}
           attachmentsPrompt="根据附件中的图片内容进行设计开发，要求尽可能还原其中的各类设计细节以及功能，在此基础上可做调整优化创新"
-          onUpload={context.pluginParams.onUpload}
+          onUpload={onUpload ?? context.pluginParams.onUpload}
         />
       )}
     </div>

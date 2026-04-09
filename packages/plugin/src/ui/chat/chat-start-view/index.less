@@ -2,10 +2,10 @@
   max-width: 800px;
   width: 100%;
   background-color: transparent;
-  border: solid 1px var(--mybricks-border-color-main);
+  border: solid 1px var(--mybricks-border-color-main, #E6E6E6);
   border-radius: 20px;
-  box-shadow: var(--mybricks-shadow-main);
-  color: var(--mybricks-text-color-main);
+  box-shadow: var(--mybricks-shadow-main, rgba(0, 0, 0, 0.2) 0 0 5px);
+  color: var(--mybricks-text-color-main, #333);
   cursor: default;
   height: 100%;
   display: flex;
@@ -29,7 +29,7 @@
 .welcome-title {
   font-size: 22px;
   font-weight: 600;
-  color: var(--mybricks-color-primary);
+  color: var(--mybricks-color-primary, #FA6400);
   letter-spacing: 0.5px;
 }
 
@@ -73,6 +73,6 @@
   font-size: 12px;
   font-weight: 400;
   letter-spacing: 0.5px;
-  color: var(--mybricks-text-color-main);
+  color: var(--mybricks-text-color-main, #333);
   opacity: 0.4;
 }

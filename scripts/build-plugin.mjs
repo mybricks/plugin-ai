@@ -8,14 +8,21 @@ import replace from '@rollup/plugin-replace';
 import babel from '@rollup/plugin-babel';
 import postcss from 'rollup-plugin-postcss';
 import terser from '@rollup/plugin-terser';
+import { rollup } from 'rollup';
+import { rmSync } from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(__dirname, '..');
 const APP_ENV = process.env.APP_ENV || 'production';
+const isWatch = process.argv.includes('--watch');
+
+// clean dist
+rmSync(path.resolve(root, 'packages/plugin/dist'), { recursive: true, force: true });
 
 const aliasPlugin = alias({
   entries: [
-    { find: '@plugin-ai/agent', replacement: path.resolve(__dirname, '../agent/src/index.ts') },
-    { find: '@plugin-ai/request', replacement: path.resolve(__dirname, '../request/src/index.ts') },
+    { find: '@plugin-ai/agent', replacement: path.resolve(root, 'packages/agent/src/index.ts') },
+    { find: '@plugin-ai/request', replacement: path.resolve(root, 'packages/request/src/index.ts') },
   ],
 });
 
@@ -46,36 +53,38 @@ const external = [
   'markdown-it',
 ];
 
-export default [
-  // ESM（保留模块结构，供 tree-shaking）
+const sharedPlugins = [
+  replace({ preventAssignment: true, values: { APP_ENV: JSON.stringify(APP_ENV) } }),
+  json(),
+  aliasPlugin,
+  resolve({ extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'] }),
+  commonjs(),
+  babelPlugin,
+  postcssPlugin,
+];
+
+const configs = [
+  // ESM
   {
-    input: 'src/index.tsx',
+    input: path.resolve(root, 'packages/plugin/src/index.tsx'),
     output: {
-      dir: 'dist',
+      dir: path.resolve(root, 'packages/plugin/dist'),
       entryFileNames: '[name].js',
       chunkFileNames: '[name].js',
       assetFileNames: '[name][extname]',
       format: 'es',
       sourcemap: true,
       preserveModules: true,
-      preserveModulesRoot: 'src',
+      preserveModulesRoot: path.resolve(root, 'packages/plugin/src'),
     },
     external,
-    plugins: [
-      replace({ preventAssignment: true, values: { APP_ENV: JSON.stringify(APP_ENV) } }),
-      json(),
-      aliasPlugin,
-      resolve({ extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'] }),
-      commonjs(),
-      babelPlugin,
-      postcssPlugin,
-    ],
+    plugins: sharedPlugins,
   },
-  // UMD（单文件，供 CDN/script 标签直接引用）
+  // UMD
   {
-    input: 'src/index.tsx',
+    input: path.resolve(root, 'packages/plugin/src/index.tsx'),
     output: {
-      file: 'dist/index.umd.js',
+      file: path.resolve(root, 'packages/plugin/dist/index.umd.js'),
       format: 'umd',
       name: 'MyBricksPluginAI',
       sourcemap: true,
@@ -91,15 +100,25 @@ export default [
       },
     },
     external,
-    plugins: [
-      replace({ preventAssignment: true, values: { APP_ENV: JSON.stringify(APP_ENV) } }),
-      json(),
-      aliasPlugin,
-      resolve({ extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'] }),
-      commonjs(),
-      babelPlugin,
-      postcssPlugin,
-      terser(),
-    ],
+    plugins: [...sharedPlugins, terser()],
   },
 ];
+
+if (isWatch) {
+  const { watch } = await import('rollup');
+  const watcher = watch(configs.map(c => ({ ...c, watch: {} })));
+  watcher.on('event', (event) => {
+    if (event.code === 'BUNDLE_END') {
+      console.log(`[build-plugin] rebuilt in ${event.duration}ms`);
+      event.result?.close();
+    }
+    if (event.code === 'ERROR') console.error('[build-plugin] error', event.error);
+  });
+} else {
+  for (const config of configs) {
+    const bundle = await rollup(config);
+    await bundle.write(config.output);
+    await bundle.close();
+  }
+  console.log('[build-plugin] done');
+}

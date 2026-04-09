@@ -1,10 +1,12 @@
-import type { RequestAsStreamFn, ToolDescriptor } from "@plugin-ai/request";
+import type { RequestAsStreamFn, ToolDescriptor } from "../../request/src";
 import { AgentEvents } from "./events";
 import type { Message, History, Tool, TurnRecord, ToolCallRecord } from "./types";
 import { turnsToMessages } from "./types";
+import { maskMessages, type MaskOptions } from "./mask";
 
 export { AgentEvents };
 export type { Message, History, Tool, TurnRecord, ToolCallRecord };
+export type { MaskOptions };
 
 // ─── AgentOptions ─────────────────────────────────────────────────────────────
 
@@ -48,6 +50,23 @@ export interface AgentOptions {
    * 触发后中断循环，以当前状态 complete。
    */
   doomLoopThreshold?: number;
+  /**
+   * 历史消息遮蔽配置。
+   * 满足轮次或时间条件的历史 turn，其工具调用结果消息会被替换为占位符，
+   * 用户附件也会被替换为文字占位符，以减少发给 LLM 的 token 量。
+   * 不传则不遮蔽。
+   */
+  maskOptions?: MaskOptions;
+  /**
+   * 生命周期 hooks。
+   */
+  hooks?: {
+    /**
+     * 大模型发送请求前（用户回车后）的钩子，在 buildMessages 之前调用。
+     * 可用于初始化快照、收集日志等准备工作。
+     */
+    beforeRequest?: (params: { message: string; attachments: any[] }) => Promise<void> | void;
+  };
 }
 
 export interface RequestAIOptions {
@@ -99,7 +118,11 @@ async function buildMessages(
       }
     : null;
 
-  const historyMessages = turnsToMessages(turns);
+  const rawMessages = [
+    ...(systemMessage ? [systemMessage] : []),
+    ...(agentsMdMessage ? [agentsMdMessage] : []),
+    ...turnsToMessages(turns),
+  ];
 
   const contextMessages: Message[] = getContextMessages
     ? await getContextMessages()
@@ -117,13 +140,14 @@ async function buildMessages(
   }
   const userMessage: Message = { role: "user", content: userContent };
 
-  return [
-    ...(systemMessage ? [systemMessage] : []),
-    ...(agentsMdMessage ? [agentsMdMessage] : []),
-    ...historyMessages,
-    ...contextMessages,
-    userMessage,
-  ];
+  const assembled = [...rawMessages, ...contextMessages, userMessage];
+
+  // 应用遮蔽（仅当配置了 maskOptions）
+  if (options.maskOptions) {
+    return maskMessages(assembled, turns, options.maskOptions);
+  }
+
+  return assembled;
 }
 
 // ─── 构建工具描述列表 ──────────────────────────────────────────────────────────
@@ -341,12 +365,15 @@ export class Agent {
     this.events.emit("turn:start", { message, attachments });
     this.events.emit("llm:start", { step: 1, startTime: stepStartTime });
 
+    // ── 执行 beforeRequest hook（在 buildMessages 之前，确保快照时机正确）
+    await this.options.hooks?.beforeRequest?.({ message, attachments: attachments ?? [] });
+
     let messages = await buildMessages(this.options, this.turns, params);
 
-    const persistTurn = () => {
+    const persistTurn = async () => {
       this.turns = [...this.turns, turn];
       if (history && key) {
-        history.append(key, turn).catch(console.error);
+        await history.append(key, turn).catch(console.error);
       }
     };
 
@@ -358,7 +385,7 @@ export class Agent {
         if (signal.aborted) {
           turn.status = "abort";
           turn.endTime = Date.now();
-          persistTurn();
+          await persistTurn();
           this.events.emit("turn:abort", {});
           return;
         }
@@ -390,7 +417,7 @@ export class Agent {
           turn.endTime = Date.now();
           turn.status = "error";
           turn.error = String((e as any)?.message ?? e);
-          persistTurn();
+          await persistTurn();
           this.events.emit("turn:error", { error: e });
           throw e;
         }
@@ -398,7 +425,7 @@ export class Agent {
         if (llmResult.aborted) {
           turn.status = "abort";
           turn.endTime = Date.now();
-          persistTurn();
+          await persistTurn();
           this.events.emit("turn:abort", {});
           return;
         }
@@ -424,7 +451,7 @@ export class Agent {
           turn.content = llmResult.content;
           turn.endTime = iterEndTime;
           turn.status = "success";
-          persistTurn();
+          await persistTurn();
           this.events.emit("llm:complete", { step, finishReason: llmResult.finishReason, usage: llmResult.usage, done: true, endTime: turn.endTime });
           this.events.emit("turn:complete", {});
           return;
@@ -437,7 +464,7 @@ export class Agent {
           turn.content = llmResult.content;
           turn.endTime = iterEndTime;
           turn.status = "success";
-          persistTurn();
+          await persistTurn();
           this.events.emit("llm:complete", { step, finishReason: llmResult.finishReason, usage: llmResult.usage, done: true, endTime: turn.endTime });
           this.events.emit("turn:complete", {});
           return;
@@ -450,6 +477,7 @@ export class Agent {
         const assistantMsg: Message = {
           role: "assistant",
           content: llmResult.content,
+          ...(llmResult.thinkingContent ? { reasoning_content: llmResult.thinkingContent } : {}),
           tool_calls: llmResult.toolCalls.map((tc) => ({
             id: tc.id,
             type: "function" as const,
@@ -538,7 +566,7 @@ export class Agent {
         if (signal.aborted) {
           turn.status = "abort";
           turn.endTime = Date.now();
-          persistTurn();
+          await persistTurn();
           this.events.emit("turn:abort", {});
           return;
         }
@@ -549,7 +577,7 @@ export class Agent {
           turn.content = lastIter?.content ?? "";
           turn.endTime = Date.now();
           turn.status = "success";
-          persistTurn();
+          await persistTurn();
           this.events.emit("llm:complete", { step, finishReason: "stop", usage: turn.usage, done: true, endTime: turn.endTime });
           this.events.emit("turn:complete", {});
           return;
@@ -564,7 +592,7 @@ export class Agent {
       turn.content = lastIter?.content ?? "";
       turn.endTime = Date.now();
       turn.status = "success";
-      persistTurn();
+      await persistTurn();
       this.events.emit("llm:complete", { step: maxSteps, finishReason: "length", usage: turn.usage, done: true, endTime: turn.endTime });
       this.events.emit("turn:complete", {});
     } catch (e) {
@@ -572,7 +600,7 @@ export class Agent {
         turn.endTime = Date.now();
         turn.status = "error";
         turn.error = String((e as any)?.message ?? e);
-        persistTurn();
+        await persistTurn();
         this.events.emit("turn:error", { error: e });
       }
       throw e;

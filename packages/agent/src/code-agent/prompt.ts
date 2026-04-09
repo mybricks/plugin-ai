@@ -5,30 +5,20 @@ import type { SkillFile } from "./skills";
 import { resolveSkillMeta } from "./skills";
 
 /**
- * CodeAgent 内置系统提示词。
- *
- * 结构参考 Claude Code 的 getSystemPrompt：
- *   - 身份定位（角色声明）
- *   - 工作原则（Doing tasks）
- *   - 工具使用规范（Using your tools）
- *   - 可用技能文件（Skills，仅当 skills 非空时）
- *   - 输出风格（Tone and style）
- *
- * 设计原则：
- *   - 不暴露"沙箱"等实现细节，LLM 只感知"项目文件"
- *   - agentsMd 由 plugin 侧追加，不在此处硬编码
- *   - skills 只列目录（name + description），不全量注入内容
+ * 提示词。
  */
 export interface CodeAgentPromptOptions {
   /** 覆盖默认的身份定位描述 */
-  identity?: string;
+  identitySection?: string;
+  /** 覆盖默认的工具使用规范描述 */
+  usingToolsSection?: string;
 }
 
 export function getCodeAgentSystemPrompt(opts?: CodeAgentPromptOptions, skills?: SkillFile[]): string {
   const sections = [
-    getIdentitySection(opts?.identity),
+    getIdentitySection(opts?.identitySection),
     getDoingTasksSection(),
-    getUsingToolsSection(),
+    getUsingToolsSection(opts?.usingToolsSection),
     getSkillsSection(skills),
     getToneAndStyleSection(),
   ].filter(Boolean);
@@ -38,7 +28,7 @@ export function getCodeAgentSystemPrompt(opts?: CodeAgentPromptOptions, skills?:
 
 // ─── 身份定位 ─────────────────────────────────────────────────────────────────
 
-const DEFAULT_IDENTITY = `你是一个专业的前端开发 AI 助手，帮助用户完成软件工程任务。使用下方说明和可用工具来协助用户。
+const DEFAULT_IDENTITY = `你是一个专业的开发 AI 助手，帮助用户完成软件工程任务。使用下方说明和可用工具来协助用户。
 
 你有能力帮用户完成复杂任务，包括修复 bug、开发新功能、重构代码、解释代码等。对于不清楚的指令，请结合当前项目上下文理解用户意图。`;
 
@@ -64,7 +54,8 @@ function getDoingTasksSection(): string {
 
 // ─── 工具使用规范 ─────────────────────────────────────────────────────────────
 
-function getUsingToolsSection(): string {
+function getUsingToolsSection(usingTools?: string): string {
+  if (usingTools !== undefined) return usingTools;
   return `# 工具使用
  > 如果修改了用户的代码，在最后考虑是否需要更新副作用文件、查看各类LSP或者运行状态来做最后的检查确认。
 

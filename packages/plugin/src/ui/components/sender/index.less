@@ -10,7 +10,7 @@
 
   .pendingQueue {
     position: relative;
-    background: var(--mybricks-bg-color-secondary);
+    background: var(--mybricks-bg-color-secondary, #F5F5F5);
     border: 1px solid rgba(0, 0, 0, .08);
     border-top-left-radius: 8px;
     border-top-right-radius: 8px;
@@ -25,7 +25,7 @@
       gap: 4px;
       padding: 5px 8px;
       cursor: pointer;
-      color: var(--mybricks-text-color-main);
+      color: var(--mybricks-text-color-main, #333);
       opacity: 0.7;
       user-select: none;
 
@@ -59,7 +59,7 @@
         width: 5px;
         height: 5px;
         border-radius: 50%;
-        background: var(--mybricks-color-primary);
+        background: var(--mybricks-color-primary, #FA6400);
         opacity: 0.6;
       }
 
@@ -68,12 +68,12 @@
         display: flex;
         align-items: center;
         gap: 2px;
-        color: var(--mybricks-text-color-main);
+        color: var(--mybricks-text-color-main, #333);
         font-size: 11px;
         white-space: nowrap;
 
         .pendingQueueFocusArea {
-          color: var(--mybricks-color-primary);
+          color: var(--mybricks-color-primary, #FA6400);
         }
       }
 
@@ -82,14 +82,14 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        color: var(--mybricks-text-color-main);
+        color: var(--mybricks-text-color-main, #333);
         font-size: 11px;
       }
 
       .pendingQueueBadge {
         flex-shrink: 0;
         font-size: 10px;
-        color: var(--mybricks-text-color-main);
+        color: var(--mybricks-text-color-main, #333);
         opacity: 0.5;
       }
 
@@ -105,7 +105,7 @@
         background: transparent;
         cursor: pointer;
         opacity: 0.4;
-        color: var(--mybricks-text-color-main);
+        color: var(--mybricks-text-color-main, #333);
 
         &:hover {
           opacity: 1;
@@ -142,28 +142,28 @@
     z-index: 13;
     position: relative;
     // background-color: #ffffff;
-    background-color: var(--mybricks-bg-color-main);
+    background-color: var(--mybricks-bg-color-main, #FFF);
     // border: solid 1px rgba(0, 0, 0, .13);
     border: solid 1px transparent;
     width: 100%;
     // border-radius: 20px;
     border-radius: 12px;
     // box-shadow: 0 5px 16px -4px #00000012;
-    box-shadow: var(--mybricks-shadow-main);
+    box-shadow: var(--mybricks-shadow-main, rgba(0, 0, 0, 0.2) 0 0 5px);
     color: rgba(0, 0, 0, .9);
     cursor: default;
 
     &.noMentions {
       // background-color: #f7f7f7;
-      background-color: var(--mybricks-bg-color-secondary);
+      background-color: var(--mybricks-bg-color-secondary, #F5F5F5);
       .inputPlaceholder {
         // color: rgba(0, 0, 0, .4) !important;
-        color: var(--mybricks-text-color-main);
+        color: var(--mybricks-text-color-main, #333);
       }
     }
 
     &:focus-within {
-      border-color: var(--mybricks-color-primary);
+      border-color: var(--mybricks-color-primary, #FA6400);
     }
 
     .mentions {
@@ -171,7 +171,7 @@
       display: flex;
       align-items: center;
       gap: 4px;
-      color: var(--mybricks-text-color-main);
+      color: var(--mybricks-text-color-main, #333);
 
       span {
         font-size: 12px;
@@ -180,11 +180,11 @@
       }
 
       .focusarea {
-        color: var(--mybricks-color-primary);
+        color: var(--mybricks-color-primary, #FA6400);
       }
 
       .vibeCoding {
-        color: var(--mybricks-color-primary);
+        color: var(--mybricks-color-primary, #FA6400);
       }
     }
 
@@ -212,7 +212,7 @@
         .scroll-bar();
 
         .inputEditor {
-          color: var(--mybricks-text-color-main);
+          color: var(--mybricks-text-color-main, #333);
           user-select: text;
           white-space: pre-wrap;
           word-break: break-word;
@@ -222,7 +222,7 @@
           overflow: hidden;
           outline: none;
           cursor: text;
-          caret-color: var(--mybricks-text-color-main);
+          caret-color: var(--mybricks-text-color-main, #333);
 
           &[contentEditable="false"] {
             cursor: default;
@@ -240,7 +240,7 @@
           user-select: none;
           pointer-events: none;
           // color: rgba(0, 0, 0, .6);
-          color: var(--mybricks-text-color-main);
+          color: var(--mybricks-text-color-main, #333);
           opacity: 0.6;
         }
       }
@@ -272,7 +272,7 @@
           height: 25px;
           border-radius: 50%;
           cursor: pointer !important;
-          background: var(--mybricks-bg-color-main);
+          background: var(--mybricks-bg-color-main, #FFF);
           box-shadow: var(--mybricks-shadow-main);
           
 
@@ -280,7 +280,7 @@
             width: 18px;
             height: 18px;
             // color: rgba(0, 0, 0, .6);
-            color: var(--mybricks-text-color-main);
+            color: var(--mybricks-text-color-main, #333);
             // cursor: pointer !important;
 
             // * {
@@ -290,7 +290,7 @@
 
           &:hover {
             // background-color: rgba(0, 0, 0, .09);
-            background: var(--mybricks-bg-color-hover);
+            background: var(--mybricks-bg-color-hover, #FDFDFD);
           }
 
           input {
@@ -302,7 +302,7 @@
           opacity: 0.3;
           .attachmentButton {
             cursor: default !important;
-            background: var(--mybricks-bg-color-main) !important;
+            background: var(--mybricks-bg-color-main, #FFF) !important;
           }
         }
       }
@@ -313,7 +313,7 @@
 
         .sendButtonContainer {
           cursor: pointer;
-          background-color: var(--mybricks-color-primary);
+          background-color: var(--mybricks-color-primary, #FA6400);
           // border-radius: 12px;
           // border-radius: 6px;
           border-radius: 50%;

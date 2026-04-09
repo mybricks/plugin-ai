@@ -1,12 +1,12 @@
 import type { Tool, ToolResult } from "../../../types";
 import { ToolValidationError } from "../../../types";
-import type { SandboxAdapter } from "../../index";
+import type { Sandbox } from "../../index";
 import { READ_TOOL_NAME } from "../read";
 import { replaceInContent } from "./replace";
 
 export const EDIT_TOOL_NAME = "edit_file";
 
-export function createEditTool(adapter: SandboxAdapter): Tool {
+export function createEditTool(adapter: Sandbox): Tool {
   return {
     name: EDIT_TOOL_NAME,
     description: `对文件中的内容进行精确的字符串替换。
@@ -66,7 +66,11 @@ export function createEditTool(adapter: SandboxAdapter): Tool {
         throw new ToolValidationError(result.message ?? "Replace failed");
       }
 
-      await adapter.updateFiles([{ path: params.path, content: result.newContent! }]);
+      try {
+        await adapter.updateFiles([{ path: params.path, content: result.newContent! }]);
+      } catch (err) {
+        throw new ToolValidationError(`Failed to edit ${params.path}: ${err instanceof Error ? err.message : String(err)}`);
+      }
       return {
         title: params.path,
         output: `File edited: ${params.path} (strategy: ${result.strategy})`,

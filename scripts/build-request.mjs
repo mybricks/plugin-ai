@@ -1,21 +1,25 @@
 import path from 'path';
+import { fileURLToPath } from 'url';
 import resolve from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
 import replace from '@rollup/plugin-replace';
 import babel from '@rollup/plugin-babel';
+import { rollup } from 'rollup';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(__dirname, '..');
 const APP_ENV = process.env.APP_ENV || 'production';
 
-export default {
-  input: 'src/index.ts',
+const config = {
+  input: path.resolve(root, 'packages/request/src/index.ts'),
   output: {
-    dir: 'dist',
+    dir: path.resolve(root, 'packages/request/dist'),
     entryFileNames: '[name].js',
     chunkFileNames: '[name].js',
     format: 'es',
     sourcemap: true,
     preserveModules: true,
-    preserveModulesRoot: 'src',
+    preserveModulesRoot: path.resolve(root, 'packages/request/src'),
   },
   external: ['node-forge'],
   plugins: [
@@ -35,3 +39,8 @@ export default {
     }),
   ],
 };
+
+const bundle = await rollup(config);
+await bundle.write(config.output);
+await bundle.close();
+console.log('[build-request] done');

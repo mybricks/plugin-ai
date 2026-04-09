@@ -2,19 +2,10 @@ import type {
   RequestAsStreamFn,
   RequestAsStreamParams,
   TokenUsage,
-} from "../requestAsStream";
-
-type ToolCallSpec = {
-  id: string;
-  name: string;
-  args: Record<string, any>;
-};
-
-type ToolDescriptor = {
-  name: string;
-  description: string;
-  parameters?: Record<string, any>;
-};
+  ToolCallSpec,
+  ToolCallStreamDelta,
+  ToolDescriptor,
+} from "./types";
 
 export interface CustomRequestConfig {
   provider: () => "openai" | Promise<"openai">;
@@ -34,13 +25,13 @@ async function resolveConfig(config: CustomRequestConfig) {
 }
 
 function validateResolved(resolved: Awaited<ReturnType<typeof resolveConfig>>): string | null {
-  if (!resolved.provider) return "缺少 provider 配置";
-  if (!resolved.apiUrl?.trim()) return "缺少 API 地址";
-  if (!resolved.apiKey?.trim()) return "缺少 API 密钥";
+  if (!resolved.provider) return "missing provider";
+  if (!resolved.apiUrl?.trim()) return "missing API url";
+  if (!resolved.apiKey?.trim()) return "missing API key";
   try {
     new URL(resolved.apiUrl);
   } catch {
-    return `API 地址格式不合法: ${resolved.apiUrl}`;
+    return `invalid API url: ${resolved.apiUrl}`;
   }
   return null;
 }
@@ -74,13 +65,12 @@ type ParsedCustomSSEChunk = {
 };
 
 /**
- * 创建自定义渠道的请求函数
- * 当前仅支持 OpenAI 兼容格式的 API
- * config 中所有字段均为函数，每次请求时动态获取，适应配置动态变化的场景
+ * 创建自定义渠道请求函数（当前仅支持 OpenAI 兼容格式）
+ * 配置项均为 getter，便于每次请求动态读取最新配置。
  */
 export function createCustomRequest(config: CustomRequestConfig): RequestAsStreamFn {
   return async function (params: RequestAsStreamParams) {
-    const { messages, emits, tools } = params as RequestAsStreamParams & { tools?: ToolDescriptor[] };
+    const { messages, emits, tools } = params;
     const {
       cancel,
       write,
@@ -91,11 +81,7 @@ export function createCustomRequest(config: CustomRequestConfig): RequestAsStrea
       onToolCalls,
       onToolCallStream,
       onFinishReason,
-    } = emits as RequestAsStreamParams["emits"] & {
-      onToolCalls?: (toolCalls: ToolCallSpec[]) => void;
-      onToolCallStream?: (delta: { index: number; id?: string; name?: string; argsChunk?: string }) => void;
-      onFinishReason?: (reason: string) => void;
-    };
+    } = emits;
 
     const resolved = await resolveConfig(config);
     const configError = validateResolved(resolved);
@@ -106,18 +92,17 @@ export function createCustomRequest(config: CustomRequestConfig): RequestAsStrea
     }
 
     if (!Array.isArray(messages) || messages.length === 0) {
-      const err = new Error("messages 不能为空");
+      const err = new Error("messages cannot be empty");
       error(err);
       throw err;
     }
 
     const controller = new AbortController();
     cancel(() => controller.abort());
-    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
 
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     try {
       const requestBody = formatRequestBody(resolved.provider, messages, resolved.model, tools);
-
       const response = await fetch(resolved.apiUrl, {
         signal: controller.signal,
         method: "POST",
@@ -130,12 +115,9 @@ export function createCustomRequest(config: CustomRequestConfig): RequestAsStrea
 
       if (!response.ok) {
         const text = await readErrorText(response);
-        throw new Error(`API 请求失败 [${response.status}]: ${text}`);
+        throw new Error(`API request failed [${response.status}]: ${text}`);
       }
-
-      if (!response.body) {
-        throw new Error("响应体为空，无法读取流数据");
-      }
+      if (!response.body) throw new Error("empty response body");
 
       reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -179,15 +161,12 @@ export function createCustomRequest(config: CustomRequestConfig): RequestAsStrea
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split(/\n/);
         buffer = lines.pop() ?? "";
-
         for (const line of lines) {
-          if (line.startsWith("data:")) {
-            processParsedChunk(parseSSELine(line, resolved.provider));
-          }
+          if (!line.startsWith("data:")) continue;
+          processParsedChunk(parseSSELine(line, resolved.provider));
         }
       }
 
@@ -292,8 +271,8 @@ function parseSSELine(
   }
   if (json.usage) {
     result.usage = {
-      inputTokens: json.usage.prompt_tokens,
-      outputTokens: json.usage.completion_tokens,
+      inputTokens: json.usage.prompt_tokens ?? 0,
+      outputTokens: json.usage.completion_tokens ?? 0,
       totalTokens: json.usage.total_tokens,
     };
   }

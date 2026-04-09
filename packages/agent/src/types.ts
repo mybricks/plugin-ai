@@ -5,6 +5,8 @@ import type { AgentEvents } from "./events";
 export interface Message {
   role: "user" | "assistant" | "system" | "tool";
   content: string | any[];
+  /** reasoning_content：assistant 消息中的思考内容（供支持 thinking 的模型续传上下文） */
+  reasoning_content?: string;
   /** tool_calls：assistant 消息中 LLM 请求工具调用时携带（OpenAI function calling 格式） */
   tool_calls?: Array<{
     id: string;
@@ -183,6 +185,7 @@ export function turnsToMessages(turns: TurnRecord[]): Message[] {
           const assistantMsg: Message = {
             role: "assistant",
             content: iter.content ?? "",
+            ...(iter.thinkingContent ? { reasoning_content: iter.thinkingContent } : {}),
             tool_calls: iter.toolCalls.map((tc) => ({
               id: tc.callId,
               type: "function" as const,
@@ -207,13 +210,21 @@ export function turnsToMessages(turns: TurnRecord[]): Message[] {
         } else {
           // 纯文本回复（最后一轮或无工具调用的迭代）
           if (iter.content) {
-            messages.push({ role: "assistant", content: iter.content });
+            messages.push({
+              role: "assistant",
+              content: iter.content,
+              ...(iter.thinkingContent ? { reasoning_content: iter.thinkingContent } : {}),
+            });
           }
         }
       }
     } else if (turn.content) {
       // iterations 为空（纯文本回复）
-      messages.push({ role: "assistant", content: turn.content });
+      messages.push({
+        role: "assistant",
+        content: turn.content,
+        ...(turn.thinkingContent ? { reasoning_content: turn.thinkingContent } : {}),
+      });
     }
   }
   return messages;

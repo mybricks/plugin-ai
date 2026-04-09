@@ -1,18 +1,28 @@
 import type { Tool, ToolResult } from "../../../types";
 import { ToolValidationError } from "../../../types";
-import type { SandboxAdapter } from "../../index";
+import type { Sandbox } from "../../index";
 
 export const READ_TOOL_NAME = "read_file";
 
 const DEFAULT_LINE_LIMIT = 2000;
 
-export function createReadTool(adapter: SandboxAdapter): Tool {
+export function createReadTool(adapter: Sandbox): Tool {
   return {
     name: READ_TOOL_NAME,
-    description: `读取项目中的文件内容，或列出所有文件路径。
+//     description: `读取项目中的文件内容，或列出所有文件路径。
+
+// 用法：
+// - 不传 path 则返回项目中所有文件的路径列表（不含内容）
+// - 传 path 则返回该文件的内容（默认最多返回 ${DEFAULT_LINE_LIMIT} 行）
+// - 使用 startLine / endLine 读取指定行范围（1-indexed，含首尾）
+// - 超大文件会被截断，截断时返回提示，需用 startLine 继续读取后续内容
+// - 在编辑或覆写文件之前，必须先调用此工具读取文件内容
+// - 如果读取的文件不存在，会返回错误信息
+// - 可并行调用此工具同时读取多个文件`,
+    description: `读取项目中的文件内容。
+> 注意当前项目代码都是默认全部实时提供的，无需读取代码，但是如果需要读取.skills/ 下的文件时，需要此工具。
 
 用法：
-- 不传 path 则返回项目中所有文件的路径列表（不含内容）
 - 传 path 则返回该文件的内容（默认最多返回 ${DEFAULT_LINE_LIMIT} 行）
 - 使用 startLine / endLine 读取指定行范围（1-indexed，含首尾）
 - 超大文件会被截断，截断时返回提示，需用 startLine 继续读取后续内容
@@ -24,7 +34,7 @@ export function createReadTool(adapter: SandboxAdapter): Tool {
       properties: {
         path: {
           type: "string",
-          description: "文件路径。不传时返回所有文件的路径列表（无内容）",
+          description: "文件路径",
         },
         startLine: {
           type: "number",

@@ -18,8 +18,7 @@
     "jsx": "react",
     "baseUrl": ".",
     "paths": {
-      "@plugin-ai/agent": ["./packages/agent/src/index.ts"],
-      "@plugin-ai/request": ["./packages/request/src/index.ts"]
+      "@mybricks/plugin-ai": ["./index.tsx"]
     }
   },
   "exclude": ["./node_modules", "./packages/*/node_modules"]
