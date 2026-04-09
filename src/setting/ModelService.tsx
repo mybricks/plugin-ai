@@ -132,7 +132,7 @@ export const ModelService: React.FC<ModelServiceProps> = ({ value, onChange, cha
 
           {currentChannel === 'custom' && (
             <>
-              <div className={css.formItem}>
+              <div style={{ display: 'none' }}>
                 <label className={css.formLabel}>服务商格式</label>
                 <select
                   className={css.nativeSelect}
@@ -147,10 +147,11 @@ export const ModelService: React.FC<ModelServiceProps> = ({ value, onChange, cha
                 <input
                   type="text"
                   className={css.nativeInput}
-                  placeholder="请输入 API 地址"
+                  placeholder="如 https://openrouter.ai/api/v1、https://api.moonshot.cn/v1"
                   value={localValue.customApiUrl || ''}
                   onChange={e => handleChange('customApiUrl', e.target.value)}
                 />
+                <div className={css.formTip}>目前仅支持 OpenAI 格式的 API 接口</div>
               </div>
               <div className={css.formItem}>
                 <label className={css.formLabel}>API 密钥</label>
