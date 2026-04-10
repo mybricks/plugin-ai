@@ -39,7 +39,7 @@ export interface Sandbox {
 
 // ─── CodeAgentOptions ────────────────────────────────────────────────────────
 
-export interface CodeAgentOptions extends AgentOptions {
+export interface CodeAgentOptions extends Omit<AgentOptions, 'system'> {
   /**
    * 沙箱，提供文件读写工具的底层实现。
    * 通常由 plugin 侧通过 window._registSandBox_ 注入。
@@ -80,8 +80,8 @@ const SKILLS_PREFIX = ".skills/";
  *   - `tools`     — 额外自定义工具（如 check_design_status）
  *   - `agentsMd`  — agents.md 规则文档，追加到系统 prompt 末尾
  *   - `skills`    — 技能文件列表，挂载为虚拟文件系统，LLM 按需读取
- *   - `system`    — 系统 prompt
  */
+// 注意：system prompt 由 CodeAgent 内部管理，不对外暴露配置入口。
 export class CodeAgent extends Agent {
   constructor(options: CodeAgentOptions) {
     const { sandbox, skills, ...agentOptions } = options;
@@ -112,15 +112,11 @@ export class CodeAgent extends Agent {
       return [{ role: "user", content: ctx }];
     };
 
-    // 将内置系统提示词与外部传入的 system 融合（外部优先追加，不覆盖）
     const builtinSystem = getCodeAgentSystemPrompt(agentOptions.promptOptions, skills);
-    const mergedSystem = agentOptions.system
-      ? `${builtinSystem}\n\n${agentOptions.system}`
-      : builtinSystem;
 
     super({
       ...agentOptions,
-      system: mergedSystem,
+      system: builtinSystem,
       getContextMessages,
       // 内置沙箱工具在前，外部注入工具（如 check_design_status）在后
       tools: [...sandboxTools, ...(agentOptions.tools ?? [])],

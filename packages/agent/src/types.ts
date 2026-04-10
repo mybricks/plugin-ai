@@ -99,6 +99,12 @@ export interface TurnRecord {
   /** 错误信息（status === 'error' 时有值） */
   error?: string;
 
+  /**
+   * 本轮的 AI 生成摘要（由 autoSummary fork 异步写入）。
+   * 用于版本记录场景。
+   */
+  summary?: string;
+
   /** token 用量（turn:complete 时携带） */
   usage?: {
     inputTokens?: number;
@@ -108,6 +114,30 @@ export interface TurnRecord {
   };
 }
 
+// ─── CompactRecord ────────────────────────────────────────────────────────────
+
+/**
+ * Compact 记录，关联到一个 agentKey。
+ * 一个 agent 最多只有一条，单独存储在 History 的独立存储槽中（不混入 TurnRecord[]）。
+ *
+ * 语义：
+ *   upToTurnId  压缩游标：该 turnId（含）及之前的所有 turns 已被压缩
+ *   summary     由 autoCompact fork 生成的完整对话摘要
+ *   createdAt   压缩时间（Unix ms）
+ *
+ * buildMessages 时：
+ *   - 游标之前（含）的 turns → 替换为一条摘要消息对
+ *   - 游标之后的 turns → 正常展开
+ */
+export interface CompactRecord {
+  /** 压缩游标：该 turnId（含）及之前的 turns 在 buildMessages 时替换为摘要 */
+  upToTurnId: string;
+  /** 对话摘要内容 */
+  content: string;
+  /** 压缩时间（Unix ms） */
+  createdAt: number;
+}
+
 // ─── History 接口 ─────────────────────────────────────────────────────────────
 
 export interface History {
@@ -115,8 +145,22 @@ export interface History {
   load(key: string): Promise<TurnRecord[]>;
   /** 追加一轮记录（完成后调用，避免每帧存储） */
   append(key: string, record: TurnRecord): Promise<void>;
-  /** 清空指定 key 的历史 */
+  /**
+   * 更新已有记录的部分字段（如异步写入 summary）。
+   * 实现应以 turnId 定位记录并合并 patch。
+   */
+  update(key: string, turnId: string, patch: Partial<TurnRecord>): Promise<void>;
+  /** 清空指定 key 的历史（同时应清除对应的 compact 记录） */
   clear(key: string): Promise<void>;
+  /**
+   * 加载该 agentKey 的 compact 记录（不存在时返回 null）。
+   */
+  loadCompact(key: string): Promise<CompactRecord | null>;
+  /**
+   * 保存（覆盖写）该 agentKey 的 compact 记录。
+   * 一个 agent 只保留一条最新的 compact 记录。
+   */
+  saveCompact(key: string, record: CompactRecord): Promise<void>;
 }
 
 // ─── Tool ─────────────────────────────────────────────────────────────────────
@@ -159,11 +203,28 @@ export interface Tool {
  *
  * 对于有工具调用的轮次，精确重建 ReAct 消息序列：
  *   user → assistant(tool_calls) → tool(results)… → assistant → …
+ *
+ * compactRecord 参数：
+ *   如果传入，只展开游标（upToTurnId）之后的 turns。
+ *   游标之前的 turns 由 buildMessages 单独构建为摘要消息对，此处跳过。
  */
-export function turnsToMessages(turns: TurnRecord[]): Message[] {
+export function turnsToMessages(turns: TurnRecord[], compactRecord?: CompactRecord | null): Message[] {
   const messages: Message[] = [];
-  for (const turn of turns) {
+
+  // 找到 compact 游标的索引（-1 表示无 compact）
+  let compactBoundaryIdx = -1;
+  if (compactRecord) {
+    compactBoundaryIdx = turns.findIndex((t) => t.id === compactRecord.upToTurnId);
+  }
+
+  for (let i = 0; i < turns.length; i++) {
+    const turn = turns[i];
     if (turn.status !== "success") continue;
+
+    // 游标之前（含游标本身）的 turns 跳过，由 buildMessages 负责输出摘要消息对
+    if (compactBoundaryIdx !== -1 && i <= compactBoundaryIdx) {
+      continue;
+    }
 
     // 用户消息
     const userContent: Message["content"] = turn.userAttachments.length

@@ -33,17 +33,10 @@ export interface Designer {
   exportToMessage(): string;
 }
 
-/**
- * 沙箱 hooks，供组件库在关键时机执行初始化。
- */
-export interface Hooks {
-  /**
-   * 大模型发送请求前（用户回车后）的钩子，在 buildMessages 之前调用。
-   * 组件库可在此时机初始化快照（锁定 runtimeMode、收集日志等），
-   * 确保 exportDesignerToMessage / exportLogsToMessage 读到正确的状态。
-   */
-  beforeRequest?: (params: { message: string; attachments: any[] }) => Promise<void> | void;
-}
+import type { AgentHooks } from "../../../agent/src";
+
+/** 沙箱 hooks，即 AgentHooks */
+export type Hooks = AgentHooks;
 
 /**
  * window._registSandBox_ 的第二个参数。

@@ -69,6 +69,8 @@ export interface PluginAIParams {
   skills?: SkillFile[];
   /** 覆盖内置系统提示词各节，按 key 合并，未提供的 key 保留默认值 */
   promptSections?: CodeAgentPromptOptions;
+  /** 额外自定义工具，追加到内置工具（read_file / write_file 等）之后 */
+  tools?: import("../../agent/src").Tool[];
 }
 
 export default function pluginAI(params: PluginAIParams): any {
@@ -81,6 +83,7 @@ export default function pluginAI(params: PluginAIParams): any {
     agentsMd,
     skills,
     promptSections,
+    tools,
   } = params;
 
   const mergedPromptSections = { ...DEFAULT_PROMPT_SECTIONS, ...promptSections };
@@ -95,7 +98,7 @@ export default function pluginAI(params: PluginAIParams): any {
 
   // ── window._registSandBox_：组件注册沙箱能力 ────────────────────────────────
 
-  setupRegistSandBox({ requestAsStream, agentsMd, skills, promptOptions: mergedPromptSections });
+  setupRegistSandBox({ requestAsStream, agentsMd, skills, promptOptions: mergedPromptSections, tools });
 
   return {
     name: "@mybricks/plugins/ai",

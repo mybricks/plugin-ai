@@ -1,17 +1,19 @@
 import { CodeAgent, IDBHistory } from "../../../agent/src";
-import type { Sandbox, CodeAgentPromptOptions } from "../../../agent/src";
+import type { Tool, Sandbox, CodeAgentPromptOptions, AgentHooks } from "../../../agent/src";
 import type { RequestAsStreamFn } from "../../../request/src";
-import type { Designer, Hooks, RegistSandBoxConfig } from "./types";
+import type { Designer, RegistSandBoxConfig } from "./types";
 import { createCheckStatusTool } from "./tools/check-status";
 import { context } from "../context";
 
-export type { Designer, Hooks, RegistSandBoxConfig };
+export type { Designer, RegistSandBoxConfig };
+export type { AgentHooks as Hooks };
 
 export interface PluginParams {
   requestAsStream: RequestAsStreamFn;
   agentsMd?: string;
   skills?: any[];
   promptOptions?: CodeAgentPromptOptions;
+  tools?: Tool[];
 }
 
 /**
@@ -27,7 +29,7 @@ export function setupRegistSandBox(pluginParams: PluginParams): void {
 function registSandBox(
   comId: string,
   { designer, hooks }: RegistSandBoxConfig,
-  { requestAsStream, agentsMd, skills, promptOptions }: PluginParams
+  { requestAsStream, agentsMd, skills, promptOptions, tools }: PluginParams
 ): void {
   const agentKey = context.getAgentKey(comId);
 
@@ -44,9 +46,8 @@ function registSandBox(
     },
   };
 
-  // designerRef / hooksRef 用 ref 包裹，保证闭包中始终读到最新值
+  // designerRef 用 ref 包裹，供工具闭包访问
   const designerRef: { current: Designer | undefined } = { current: designer };
-  const hooksRef: { current: Hooks | undefined } = { current: hooks };
 
   const checkStatusTool = createCheckStatusTool(designerRef);
 
@@ -55,18 +56,14 @@ function registSandBox(
     history: new IDBHistory({ dbName: "@plugin-ai/plugin/messages" }),
     request: requestAsStream,
     sandbox,
-    tools: [checkStatusTool],
+    tools: [checkStatusTool, ...(tools ?? [])],
     promptOptions,
-    hooks: {
-      beforeRequest: async (params) => {
-        await hooksRef.current?.beforeRequest?.(params);
-      },
-    },
+    hooks,
     agentsMd,
     skills,
   });
 
   // agentMap / sandboxMap 统一用 agentKey 存储，与 agent.key 一致
-  context.sandboxMap.set(agentKey, { sandbox, designerRef, hooksRef });
+  context.sandboxMap.set(agentKey, { sandbox, designerRef });
   context.agentMap.set(agentKey, agent);
 }
