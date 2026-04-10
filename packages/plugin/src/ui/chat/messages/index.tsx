@@ -31,8 +31,6 @@ const MessageList = ({ messages, user, copilot }: MessageListProps) => {
     return () => autoScroller.destroy();
   }, []);
 
-  console.log('messages', messages)
-
   return (
     <main ref={mainRef} className={css["message-list"]}>
       {messages.map((record) => (
@@ -222,20 +220,19 @@ class AutoScroller {
   private isLockedToBottom = true;
   private resizeObserver: ResizeObserver | null = null;
   private mutationObserver: MutationObserver | null = null;
+  private scrollRafId: number | null = null;
 
   constructor(private container: HTMLElement) {
     if (!container) return;
     container.addEventListener("scroll", this.handleScroll.bind(this));
     this.resizeObserver = new ResizeObserver(() => {
-      if (this.isLockedToBottom) this.scrollToBottom();
+      if (this.isLockedToBottom) this.scheduleScrollToBottom();
     });
     this.resizeObserver.observe(container);
-    this.mutationObserver = new MutationObserver((mutations) => {
-      if (mutations[0]?.target === container && mutations[0]?.addedNodes.length) {
-        if (this.isLockedToBottom) Promise.resolve().then(() => this.scrollToBottom());
-      }
+    this.mutationObserver = new MutationObserver(() => {
+      if (this.isLockedToBottom) this.scheduleScrollToBottom();
     });
-    this.mutationObserver.observe(container, { childList: true, subtree: true });
+    this.mutationObserver.observe(container, { childList: true, subtree: true, characterData: true });
   }
 
   handleScroll() {
@@ -243,11 +240,24 @@ class AutoScroller {
     this.isLockedToBottom = Math.abs(scrollHeight - scrollTop - clientHeight) <= 5;
   }
 
+  /** 用 rAF 节流，同一帧内多次触发只滚动一次 */
+  scheduleScrollToBottom() {
+    if (this.scrollRafId !== null) return;
+    this.scrollRafId = requestAnimationFrame(() => {
+      this.scrollRafId = null;
+      this.scrollToBottom();
+    });
+  }
+
   scrollToBottom() {
     this.container.scrollTop = this.container.scrollHeight;
   }
 
   destroy() {
+    if (this.scrollRafId !== null) {
+      cancelAnimationFrame(this.scrollRafId);
+      this.scrollRafId = null;
+    }
     this.mutationObserver?.disconnect();
     this.resizeObserver?.disconnect();
     this.container?.removeEventListener("scroll", this.handleScroll.bind(this));

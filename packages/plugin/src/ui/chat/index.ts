@@ -4,8 +4,8 @@ export type { ChatPanelProps } from "./chat-panel";
 export { ChatPanelList } from "./chat-panel-list";
 export type { ChatPanelListProps } from "./chat-panel-list";
 
-export { ChatStartView } from "./chat-start-view";
-export type { ChatStartViewProps } from "./chat-start-view";
+export { ChatStartView, ComChatStartView } from "./chat-start-view";
+export type { ChatStartViewProps, ComChatStartViewProps } from "./chat-start-view";
 
 export { MessageList } from "./messages";
 export type { MessageListProps } from "./messages";

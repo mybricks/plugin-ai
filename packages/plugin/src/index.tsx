@@ -1,5 +1,4 @@
 import React from "react";
-import "./ui/renders/register";
 
 import pkg from "../../../package.json";
 console.log(`%c ${pkg.name} %c@${pkg.version}`, `color:#FFF;background:#fa6400`, ``, ``);
@@ -11,48 +10,22 @@ import type { RequestAsStreamFn } from "../../request/src";
 import { DEFAULT_PROMPT_SECTIONS } from "./prompts";
 
 import { context } from "./context";
-import { setupRegistSandBox } from "./sandbox";
+import { setupSandbox } from "./sandbox";
 import type { Designer, Hooks, RegistSandBoxConfig } from "./sandbox";
-import { ChatPanelList, ChatStartView } from "./ui/chat";
+import { ChatPanelList, ChatStartView, ComChatStartView } from "./ui/chat";
 
 
 // ─── 工具类型重导出 ────────────────────────────────────────────────────────────
 
 export { CodeAgent, IDBHistory } from "../../agent/src";
 export type { AgentEventMap, SkillFile } from "../../agent/src";
-export { createRequestAsStream, createOnUpload } from "../../request/src";
-export type { RequestAsStreamFn } from "../../request/src";
+export { createRequestAsStream, createOnUpload, createCustomRequest } from "../../request/src";
+export type { RequestAsStreamFn, CustomRequestConfig } from "../../request/src";
 export { openSetting, closeSetting, SettingModal } from "./ui/setting";
 export type { SettingModalProps } from "./ui/setting";
-export type { Designer, Hooks, RegistSandBoxConfig } from "./sandbox";
-export { ChatPanel, ChatPanelList, ChatStartView } from "./ui/chat";
-export type { ChatPanelProps, ChatPanelListProps, ChatStartViewProps } from "./ui/chat";
-
-// ─── window API 类型声明 ──────────────────────────────────────────────────────
-
-declare global {
-  interface Window {
-    /**
-     * 注册组件沙箱能力。
-     * 组件侧在初始化时调用，plugin 会据此创建 CodeAgent。
-     *
-     * @param comId   组件唯一 ID
-     * @param config  注册配置：designer（文件系统 + 设计器状态）+ hooks
-     *
-     * @example
-     * window._registSandBox_(comId, {
-     *   designer: { getFiles, updateFiles, exportDesignerToMessage, exportLogsToMessage, getRuntimeMode },
-     *   hooks: { beforeRequest: async () => { designer.snapshot() } },
-     * });
-     */
-    _registSandBox_: (comId: string, config: RegistSandBoxConfig) => void;
-    /**
-     * 组件沙箱可用的渲染工具，由 plugin 注册。
-     * （由 register.tsx 写入）
-     */
-    _sandbox_renders_: any;
-  }
-}
+export type { Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams } from "./sandbox";
+export { ChatPanel, ChatPanelList, ChatStartView, ComChatStartView } from "./ui/chat";
+export type { ChatPanelProps, ChatPanelListProps, ChatStartViewProps, ComChatStartViewProps } from "./ui/chat";
 
 // ─── plugin 主入口 ────────────────────────────────────────────────────────────
 
@@ -96,9 +69,9 @@ export default function pluginAI(params: PluginAIParams): any {
   context.setPluginKey(pluginKey);
   context.pluginParams = { name, user, onUpload: upload };
 
-  // ── window._registSandBox_：组件注册沙箱能力 ────────────────────────────────
+  // ── window._sandbox_：sandbox 与 Plugin 的统一交互 API ─────────────────────
 
-  setupRegistSandBox({ requestAsStream, agentsMd, skills, promptOptions: mergedPromptSections, tools });
+  setupSandbox({ requestAsStream, agentsMd, skills, promptOptions: mergedPromptSections, tools });
 
   return {
     name: "@mybricks/plugins/ai",

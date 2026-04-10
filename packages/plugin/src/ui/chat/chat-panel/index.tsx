@@ -35,11 +35,13 @@ const ChatPanel = ({ user, copilot, agent, focusSnapshot, onUpload, title }: Cha
   const [loading, setLoading] = useState(() => context.aiQueue.isLoading(agentKey));
   const [pendingQueue, setPendingQueue] = useState<QueueItem[]>(() => context.aiQueue.getQueue(agentKey));
 
-  const { messages, syncAgent, addMessage, subscribeAgent, clearSession } = useSession(agent);
+  const { messages, syncAgent, subscribeSession, clearSession } = useSession(agent);
 
-  // 同步历史
+  // 同步历史 + 订阅事件
   useEffect(() => {
-    if (agent) syncAgent(agent).catch(console.error);
+    if (!agent) return;
+    syncAgent(agent).catch(console.error);
+    subscribeSession(agent);
   }, [agent]);
 
   // 监听 aiQueue loading / queue 状态
@@ -75,13 +77,6 @@ const ChatPanel = ({ user, copilot, agent, focusSnapshot, onUpload, title }: Cha
     if (!agent) return;
 
     const sandbox = context.sandboxMap.get(agentKey);
-    const userAttachments = (attachments ?? []).map((a: any) => ({
-      type: a.type ?? "image",
-      content: a.content ?? a.url ?? "",
-    }));
-
-    const id = addMessage(message ?? "", userAttachments);
-    subscribeAgent(agent, id);
 
     context.aiQueue.send(
       agentKey,

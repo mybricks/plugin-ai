@@ -10,17 +10,6 @@ export interface MessageRecord extends Omit<TurnRecord, "status" | "endTime"> {
   endTime?: number;
 }
 
-export interface ToolRecord {
-  callId: string;
-  name: string;
-  args: Record<string, any>;
-  status: "pending" | "success" | "error";
-  execStartTime: number;
-  execEndTime: number;
-  result?: any;
-  error?: any;
-}
-
 export interface Session {
   messages: MessageRecord[];
 }
@@ -33,13 +22,17 @@ function turnsToMessageRecords(turns: TurnRecord[]): MessageRecord[] {
 
 // ─── useSession ───────────────────────────────────────────────────────────────
 //
-// 单 agent 版本：state 只管一个 agent 的消息列表，不再用 Record<key, ...> map。
-// 每个 ChatPanel 实例持有独立的 useSession，agent 事件 re-render 范围完全隔离。
+// 单 agent 版本：state 只管一个 agent 的消息列表。
+// subscribeSession(agent) 订阅 agent.events，通过 turn:start 自动创建 MessageRecord，
+// 无需外部手动调用 addMessage / subscribeAgent，任何调用 agent.requestAI() 的入口
+// 都能被自动感知，包括 ChatStartView、ChatPanel、外部直接调用等。
 
 export function useSession(agent: Agent | undefined) {
   const [messages, setMessages] = useState<MessageRecord[]>([]);
   const syncedRef = useRef(false);
   const unsubsRef = useRef<(() => void)[]>([]);
+  // 当前正在进行的 turn 的 id（由 turn:start 写入，turn:complete/abort/error 清空）
+  const pendingIdRef = useRef<string | null>(null);
 
   /** 同步历史消息（每个 agent 只执行一次） */
   const syncAgent = useCallback(async (a: Agent) => {
@@ -51,41 +44,35 @@ export function useSession(agent: Agent | undefined) {
   }, []);
 
   /**
-   * 新建一条 pending MessageRecord，返回 recordId。
-   * 在 agent.requestAI 之前调用。
+   * 订阅 agent 事件，全自动管理 MessageRecord 生命周期。
+   *
+   * - turn:start      → 创建新的 pending MessageRecord，记录 pendingId
+   * - llm:start       → push 新 iteration
+   * - llm:content     → 实时写入当前 iteration content/thinkingContent
+   * - llm:complete    → done=true 时更新 record.content；done=false 时记录 iteration endTime
+   * - tool:content    → 预创建 ToolCallRecord（流式展示）
+   * - tool:call       → 更新 ToolCallRecord args/startTime
+   * - tool:result     → 更新工具结果
+   * - tool:error      → 更新工具错误
+   * - turn:abort      → status=abort
+   * - turn:error      → status=error
+   *
+   * 每次调用都会先清除上一次注册的监听器（同一个组件切换 agent 时安全）。
    */
-  const addMessage = useCallback(
-    (userText: string, userAttachments: MessageRecord["userAttachments"] = []): string => {
-      const id = `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const record: MessageRecord = {
-        id,
-        startTime: Date.now(),
-        userText,
-        userAttachments,
-        content: "",
-        thinkingContent: "",
-        status: "pending",
-        iterations: [],
-        usage: undefined,
-      };
-      setMessages((prev) => [...prev, record]);
-      return id;
-    },
-    []
-  );
-
-  /**
-   * 订阅 agent 事件，将 SSE 事件写入 id 对应的 MessageRecord。
-   */
-  const subscribeAgent = useCallback((a: Agent, id: string) => {
+  const subscribeSession = useCallback((a: Agent) => {
     unsubsRef.current.forEach((u) => u());
     unsubsRef.current = [];
+    pendingIdRef.current = null;
 
     let pendingContent = "";
     let pendingThinking = "";
 
-    const update = (updater: (r: MessageRecord) => MessageRecord) =>
+    const update = (updater: (r: MessageRecord) => MessageRecord) => {
+      // 在调用时立刻捕获 id，避免 setMessages updater 异步执行时 ref 已被清空
+      const id = pendingIdRef.current;
+      if (!id) return;
       setMessages((prev) => prev.map((r) => (r.id === id ? updater(r) : r)));
+    };
 
     const updateLastIter = (
       updater: (iter: MessageRecord["iterations"][number]) => MessageRecord["iterations"][number]
@@ -107,6 +94,30 @@ export function useSession(agent: Agent | undefined) {
       }));
 
     unsubsRef.current.push(
+      // turn:start → 自动创建 pending MessageRecord
+      a.events.on("turn:start", ({ message, attachments }) => {
+        pendingContent = "";
+        pendingThinking = "";
+        const id = `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        pendingIdRef.current = id;
+        const userAttachments = (attachments ?? []).map((a: any) => ({
+          type: a.type ?? "image",
+          content: a.content ?? a.url ?? "",
+        }));
+        const record: MessageRecord = {
+          id,
+          startTime: Date.now(),
+          userText: message,
+          userAttachments,
+          content: "",
+          thinkingContent: "",
+          status: "pending",
+          iterations: [],
+          usage: undefined,
+        };
+        setMessages((prev) => [...prev, record]);
+      }),
+
       a.events.on("llm:start", ({ startTime }) => {
         pendingContent = "";
         pendingThinking = "";
@@ -139,6 +150,7 @@ export function useSession(agent: Agent | undefined) {
             }
             return { ...r, status: "success", content: finalContent, iterations: iters };
           });
+          pendingIdRef.current = null;
         } else {
           updateLastIter((iter) => ({ ...iter, endTime }));
           pendingContent = "";
@@ -150,6 +162,7 @@ export function useSession(agent: Agent | undefined) {
         pendingContent = "";
         pendingThinking = "";
         update((r) => ({ ...r, status: "abort" }));
+        pendingIdRef.current = null;
       }),
 
       a.events.on("turn:error", ({ error }) => {
@@ -160,6 +173,7 @@ export function useSession(agent: Agent | undefined) {
           status: "error",
           error: String((error as any)?.message ?? error),
         }));
+        pendingIdRef.current = null;
       }),
 
       a.events.on("tool:content", ({ callId, name, argsDelta }) => {
@@ -221,10 +235,11 @@ export function useSession(agent: Agent | undefined) {
   /** 清空消息列表（配合 agent.clearHistory 使用） */
   const clearSession = useCallback(() => {
     syncedRef.current = false;
+    pendingIdRef.current = null;
     setMessages([]);
   }, []);
 
-  return { messages, syncAgent, addMessage, subscribeAgent, clearSession };
+  return { messages, syncAgent, subscribeSession, clearSession };
 }
 
 // ─── 辅助 ─────────────────────────────────────────────────────────────────────

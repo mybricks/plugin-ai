@@ -1,5 +1,4 @@
-import type { CodeAgent } from "../../agent/src";
-import type { Sandbox } from "../../agent/src";
+import type { CodeAgent, Sandbox } from "../../../agent/src";
 import type { Designer, Hooks } from "../sandbox/types";
 import { AIRequestQueue } from "./queue";
 

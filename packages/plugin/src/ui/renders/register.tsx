@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ChatStartView, type ChatStartViewProps } from "../chat";
+import { ChatStartView, type ChatStartViewProps, ComChatStartView, type ComChatStartViewProps } from "../chat";
 import { PrdRender, type PrdRenderProps } from "./prd-render";
 
 // ─── Shadow DOM 样式注入高阶组件 ───────────────────────────────────────────────
@@ -51,33 +51,19 @@ function withShadowStyles<P extends object>(
   };
 }
 
-const ChatStartViewWithStyles = withShadowStyles<ChatStartViewProps>(
+export const ChatStartViewWithStyles = withShadowStyles<ChatStartViewProps>(
   ChatStartView,
   "__pluginAiStartViewStyleInjected__"
 );
 
-const PrdRenderWithStyles = withShadowStyles<PrdRenderProps>(
+export const ComChatStartViewWithStyles = withShadowStyles<ComChatStartViewProps>(
+  ComChatStartView,
+  "__pluginAiStartViewStyleInjected__"
+);
+
+export const PrdRenderWithStyles = withShadowStyles<PrdRenderProps>(
   PrdRender,
   "__pluginAiPrdStyleInjected__"
 );
 
-// ─── 全局 window API 声明 ─────────────────────────────────────────────────────
-
-declare global {
-  interface Window {
-    _sandbox_renders_: {
-      renderStartView: (props?: ChatStartViewProps) => React.ReactElement;
-      renderPrdView: (props?: PrdRenderProps) => React.ReactElement;
-    };
-  }
-}
-
-// ─── 注册 ─────────────────────────────────────────────────────────────────────
-
-window._sandbox_renders_ = {
-  renderStartView: (props?: ChatStartViewProps): React.ReactElement =>
-    React.createElement(ChatStartViewWithStyles, props ?? {}),
-
-  renderPrdView: (props?: PrdRenderProps): React.ReactElement =>
-    React.createElement(PrdRenderWithStyles, props ?? { content: "" }),
-};
+export type { ChatStartViewProps, ComChatStartViewProps, PrdRenderProps };
