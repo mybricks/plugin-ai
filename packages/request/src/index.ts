@@ -12,8 +12,6 @@ import { createMyBricksAIRequest, createMyBricksAIRequestSSE } from "./mybricks"
 import { checkInfraAvailable, createInfraAIOnUpload, createInfraAIRequest, createOnUpload } from "./infra";
 import type { OnUploadFn, RequestAsStreamFn } from "./types";
 
-import { requestAsStreamInfra } from './cdzd'
-
 export type {
   TokenUsage,
   ToolCallSpec,
@@ -47,23 +45,6 @@ function createRequestAsStream(): RequestAsStreamFn {
   }
 
   return async function (params) {
-
-    return requestAsStreamInfra(params);
-
-    // return createCustomRequest({
-    //   provider: () => "openai",
-    //   apiUrl: () => "https://openrouter.ai/api/v1/chat/completions",
-    //   apiKey: () => "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",
-    //   model: () => 'anthropic/claude-sonnet-4.6'
-    // })(params);
-
-
-    // return createCustomRequest({
-    //   provider: () => "openai",
-    //   apiUrl: () => "https://openrouter.ai/api/v1/chat/completions",
-    //   apiKey: () => "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",
-    //   model: () => 'moonshotai/kimi-k2.5'
-    // })(params);
 
     if (isProduction()) {
       return requestAsStreamForProduction()(params);
