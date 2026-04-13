@@ -74,7 +74,7 @@ export interface TurnRecord {
    * 用户消息的附加元数据（UI 层透传，不参与 LLM 上下文构建）。
    * 可用于存储 focus 快照、mention 信息等，供消息列表渲染使用。
    */
-  userMeta?: Record<string, any>;
+  meta?: Record<string, any>;
 
   /** LLM 最终输出的完整文本（最后一次迭代的文本） */
   content: string;
@@ -125,6 +125,43 @@ export interface TurnRecord {
   };
 }
 
+// ─── VersionRecord ───────────────────────────────────────────────────────────
+
+/**
+ * 单个文件的版本快照。只存 decoded source，不存 compiled（回滚时由 sandbox 重新编译）。
+ */
+export interface VersionFile {
+  path: string;
+  /** decoded source 文本 */
+  content: string;
+}
+
+/**
+ * 版本元数据记录（不含 files，files 单独存储以避免 listVersions 全量读取大对象）。
+ *
+ * type 语义：
+ *   ai        AI 生成触发（afterTurn diff 驱动）
+ *   manual    用户手动保存
+ *   rollback  回滚产生的版本（files 内容来源于某个历史版本）
+ *
+ * turnId 语义：
+ *   ai / manual：本次变更对应的 TurnRecord.id
+ *   rollback：被恢复的原版本的 turnId（保留关联链）
+ */
+export interface VersionRecord {
+  /** 版本唯一 ID（uuid） */
+  id: string;
+  /** 关联的 TurnRecord.id */
+  turnId: string;
+  /** 展示标签，如 "V0" / "V1"，由调用方维护序号 */
+  label: string;
+  type: 'ai' | 'manual' | 'rollback';
+  /** 创建时间（Unix ms） */
+  createdAt: number;
+  /** AI 生成的本轮摘要（由 afterTurnSummary 异步写入） */
+  summary?: string;
+}
+
 // ─── CompactRecord ────────────────────────────────────────────────────────────
 
 /**
@@ -152,6 +189,8 @@ export interface CompactRecord {
 // ─── History 接口 ─────────────────────────────────────────────────────────────
 
 export interface History {
+  // ── 对话记录 ──────────────────────────────────────────────────────────────
+
   /** 加载历史调用记录列表 */
   load(key: string): Promise<TurnRecord[]>;
   /** 追加一轮记录（完成后调用，避免每帧存储） */
@@ -172,6 +211,70 @@ export interface History {
    * 一个 agent 只保留一条最新的 compact 记录。
    */
   saveCompact(key: string, record: CompactRecord): Promise<void>;
+
+  // ── 版本快照 ──────────────────────────────────────────────────────────────
+  //
+  // key 参数（出现时）均为 agentKey，用于在同一 History 实例中隔离不同 agent 的版本数据。
+  // getVersion / getVersionFiles / updateVersion 以 versionId（uuid）精确定位，不需要 key。
+
+  /**
+   * 获取该 agentKey 下所有版本的元数据列表，按 createdAt 升序排列。
+   * 不含 files 内容（files 通过 getVersionFiles 单独读取）。
+   */
+  listVersions(key: string): Promise<VersionRecord[]>;
+
+  /**
+   * 追加一条新版本记录（metadata + files 原子写入）。
+   * metadata 和 files 底层分开存储，调用方无需关心。
+   */
+  addVersion(key: string, record: VersionRecord, files: VersionFile[]): Promise<void>;
+
+  /**
+   * 读取指定版本的文件列表。
+   * 仅在需要展示文件内容或执行回滚时调用，避免 listVersions 全量加载大对象。
+   */
+  getVersionFiles(versionId: string): Promise<VersionFile[]>;
+
+  /**
+   * 读取指定版本的元数据（不含 files）。不存在时返回 null。
+   */
+  getVersion(versionId: string): Promise<VersionRecord | null>;
+
+  /**
+   * 更新版本的部分元数据字段（当前仅支持 summary 的异步写入）。
+   */
+  updateVersion(versionId: string, patch: Partial<Pick<VersionRecord, 'summary'>>): Promise<void>;
+}
+
+// ─── BoundHistory ─────────────────────────────────────────────────────────────
+
+/**
+ * agentKey 已绑定的 History 视图，所有方法不再需要传 key。
+ * 通过 Agent.getHistory() 获取，供 sandbox 等外部调用方使用。
+ *
+ * 底层仍委托给 History 实例，只是把 key 从接口中隐藏掉。
+ */
+export interface BoundHistory {
+  // ── 版本快照 ──────────────────────────────────────────────────────────────
+  listVersions(): Promise<VersionRecord[]>;
+  addVersion(record: VersionRecord, files: VersionFile[]): Promise<void>;
+  getVersionFiles(versionId: string): Promise<VersionFile[]>;
+  getVersion(versionId: string): Promise<VersionRecord | null>;
+  updateVersion(versionId: string, patch: Partial<Pick<VersionRecord, 'summary'>>): Promise<void>;
+}
+
+/**
+ * 将 History 实例与 agentKey 绑定，返回 BoundHistory。
+ * 所有需要 key 的方法自动填入 agentKey，调用方无需关心分区逻辑。
+ */
+export function bindHistory(history: History, agentKey: string): BoundHistory {
+  return {
+    listVersions: () => history.listVersions(agentKey),
+    addVersion: (record, files) => history.addVersion(agentKey, record, files),
+    getVersionFiles: (versionId) => history.getVersionFiles(versionId),
+    getVersion: (versionId) => history.getVersion(versionId),
+    updateVersion: (versionId, patch) => history.updateVersion(versionId, patch),
+  };
 }
 
 // ─── Tool ─────────────────────────────────────────────────────────────────────

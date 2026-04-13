@@ -1,13 +1,13 @@
 import { randomUUID } from "./uuid";
 import type { RequestAsStreamFn, ToolDescriptor } from "../../request/src";
 import { AgentEvents } from "./events";
-import type { CompactRecord, Message, History, Tool, TurnRecord, ToolCallRecord } from "./types";
-import { turnsToMessages } from "./types";
+import type { CompactRecord, Message, History, Tool, TurnRecord, ToolCallRecord, BoundHistory } from "./types";
+import { turnsToMessages, bindHistory } from "./types";
 import { maskMessages, type MaskOptions } from "./mask";
 
 export { AgentEvents };
 export type { Message, History, Tool, TurnRecord, ToolCallRecord };
-export type { CompactRecord, MaskOptions };
+export type { CompactRecord, MaskOptions, BoundHistory };
 
 // ─── AgentHooks ──────────────────────────────────────────────────────────────
 
@@ -108,10 +108,10 @@ export interface AgentOptions {
   };
   /**
    * 用户消息格式化函数（异步）。
-   * 在 turn 开始时、buildBaseMessages 之前调用，对用户输入文本进行处理（如注入上下文前缀等）。
-   * 返回值将作为发送给 LLM 的实际消息文本；TurnRecord.userText 仍保存原始输入。
+   * 在 turn 开始时、buildBaseMessages 之前调用，对用户输入进行处理（如注入上下文前缀等）。
+   * 接收完整的 RequestAIOptions，返回格式化后的消息文本。
    */
-  formatUserMessage?: (message: string, attachments: any[]) => Promise<string> | string;
+  formatUserMessage?: (params: RequestAIOptions) => Promise<string> | string;
 }
 
 // ─── ForkOptions ─────────────────────────────────────────────────────────────
@@ -139,29 +139,29 @@ export interface ForkOptions {
 export interface RequestAIOptions {
   message: string;
   attachments?: any[];
-  /** UI 附加元数据，存入 TurnRecord.userMeta，不参与 LLM 上下文构建 */
-  userMeta?: Record<string, any>;
+  /** UI 附加元数据，存入 TurnRecord.meta，不参与 LLM 上下文构建 */
+  meta?: Record<string, any>;
   [key: string]: any;
 }
 
 // ─── 构建消息列表 ──────────────────────────────────────────────────────────────
 
 /**
- * 构建本轮请求的静态前缀（不含动态上下文和用户消息）：
+ * 构建本轮请求的基础 messages（在 turn 开始时调用一次）：
  *   [0]       system message（仅包含内置系统提示词）
  *   [1]       agentsMd user message（仅当 agentsMd 非空时存在）
- *   [2..3]    compact 摘要消息对（仅当有 compactRecord 时）
- *   [4..N]    历史对话（从 TurnRecord[] 重建，compact 游标后的部分）
+ *   [2]       动态上下文（getContextMessages，仅在 turn 开始时调用一次）
+ *   [3..4]    compact 摘要消息对（仅当有 compactRecord 时）
+ *   [5..N]    历史对话（从 TurnRecord[] 重建，compact 游标后的部分）
  *
- * 动态上下文（getContextMessages）和用户消息在每次 LLM 请求前由 assembleMessages 追加，
- * 这样每个 step 都能获取到最新上下文。
+ * 后续每个 step 会在这些基础上追加用户消息和本轮对话尾部（assistant + tool）。
  */
-function buildBaseMessages(
+async function buildMessages(
   options: AgentOptions,
   turns: TurnRecord[],
   compactRecord?: CompactRecord | null
-): { rawMessages: Message[]; prefixCount: number } {
-  const { system, agentsMd } = options;
+): Promise<{ baseMessages: Message[]; prefixCount: number }> {
+  const { system, agentsMd, getContextMessages } = options;
 
   const systemMessage: Message | null = system
     ? { role: "system", content: system }
@@ -181,6 +181,11 @@ function buildBaseMessages(
       }
     : null;
 
+  // 动态上下文（仅在 turn 开始时调用一次，放在静态前缀之后、历史对话之前）
+  const contextMessages: Message[] = getContextMessages
+    ? await getContextMessages()
+    : [];
+
   // compact 摘要消息对（放在历史对话之前，游标后的 turns 正常展开）
   const compactMessages: Message[] = compactRecord
     ? [
@@ -198,10 +203,11 @@ function buildBaseMessages(
   const historyMessages = turnsToMessages(turns, compactRecord);
 
   // ── 自动打 prompt cache 断点 ──────────────────────────────────────────────
-  // 断点 1：静态前缀中最后一个存在的消息打 cache
+  // 断点 1：静态前缀（system + agentsMd + context + compact）中最后一个存在的消息打 cache
   const staticPrefix: Message[] = [
     ...(systemMessage ? [systemMessage] : []),
     ...(agentsMdMessage ? [agentsMdMessage] : []),
+    ...contextMessages,
     ...compactMessages,
   ];
   if (staticPrefix.length > 0) {
@@ -219,42 +225,37 @@ function buildBaseMessages(
       ]
     : historyMessages;
 
-  const rawMessages = [
+  const baseMessages = [
     ...staticPrefix,
     ...cachedHistoryMessages,
   ];
 
-  // compact 消息的数量（mask 时需要跳过这部分，不对其遮蔽）
-  const prefixCount = (systemMessage ? 1 : 0) + (agentsMdMessage ? 1 : 0) + compactMessages.length;
+  // prefixCount：需要跳过的前缀数量（mask 时不对 system/agentsMd/context/compact 遮蔽）
+  const prefixCount = (systemMessage ? 1 : 0) + (agentsMdMessage ? 1 : 0) + contextMessages.length + compactMessages.length;
 
-  return { rawMessages, prefixCount };
+  return { baseMessages, prefixCount };
 }
 
 /**
  * 每次 LLM 请求前组装完整 messages 列表：
- *   rawMessages（静态前缀 + 历史）+ 动态上下文 + 用户消息 + 本轮已积累的对话尾部
+ *   baseMessages（静态前缀 + 动态上下文 + 历史）+ 用户消息 + 本轮已积累的对话尾部
  *
- * @param rawMessages   buildBaseMessages 返回的静态部分
+ * @param baseMessages  buildMessages 返回的基础部分（包含 context，turn 开始时已固化）
  * @param prefixCount   前缀消息数量（用于 mask 时跳过）
  * @param options       AgentOptions
  * @param turns         当前 turns 快照（用于 mask）
  * @param params        本轮用户请求参数
  * @param tail          本轮已积累的 assistant + tool 消息（step > 1 时非空）
  */
-async function assembleMessages(
-  rawMessages: Message[],
+function assembleMessages(
+  baseMessages: Message[],
   prefixCount: number,
   options: AgentOptions,
   turns: TurnRecord[],
   params: RequestAIOptions,
   tail: Message[]
-): Promise<Message[]> {
-  const { getContextMessages } = options;
+): Message[] {
   const { message, attachments } = params;
-
-  const contextMessages: Message[] = getContextMessages
-    ? await getContextMessages()
-    : [];
 
   let userContent: Message["content"] = message;
   if (attachments?.length) {
@@ -268,10 +269,10 @@ async function assembleMessages(
   }
   const userMessage: Message = { role: "user", content: userContent };
 
-  const assembled = [...rawMessages, ...contextMessages, userMessage, ...tail];
+  const assembled = [...baseMessages, userMessage, ...tail];
 
   // 应用遮蔽（仅当配置了 mask）
-  // 遮蔽时跳过 compact 摘要消息对（它们不在 turns 中，不应被遮蔽）
+  // 遮蔽时跳过前缀（system/agentsMd/context/compact，不在 turns 中，不应被遮蔽）
   if (options.mask) {
     const prefix = assembled.slice(0, prefixCount);
     const rest = assembled.slice(prefixCount);
@@ -473,6 +474,18 @@ export class Agent {
     return this.compactRecord;
   }
 
+  /**
+   * 获取与当前 agentKey 绑定的 History 视图（BoundHistory）。
+   * 所有方法已隐藏 key 参数，供 sandbox 等外部调用方直接使用。
+   * 未配置 history 或未设置 key 时返回 null。
+   */
+  getHistory(): BoundHistory | null {
+    const { history } = this.options;
+    const key = this.key;
+    if (!history || !key) return null;
+    return bindHistory(history, key);
+  }
+
   /** 主动取消当前请求，触发 turn:abort */
   abort() {
     this._abortController?.abort();
@@ -491,7 +504,7 @@ export class Agent {
     this._abortController = new AbortController();
     const signal = this._abortController.signal;
 
-    const { message, attachments, userMeta, ...rest } = params;
+    const { message, attachments, meta, ...rest } = params;
     // 有图片附件时，自动将 aiRole 覆盖为 "image"，使请求层路由到支持视觉的模型
     if (attachments?.length) {
       rest.aiRole = "image";
@@ -512,7 +525,7 @@ export class Agent {
       startTime: Date.now(),
       userText: message,
       userAttachments,
-      ...(userMeta ? { userMeta } : {}),
+      ...(meta ? { meta } : {}),
       content: "",
       thinkingContent: "",
       iterations: [],
@@ -520,7 +533,7 @@ export class Agent {
     };
 
     const stepStartTime = Date.now();
-    this.events.emit("turn:start", { message, attachments, userMeta });
+    this.events.emit("turn:start", { message, attachments, meta });
     this.events.emit("llm:start", { step: 1, startTime: stepStartTime });
 
     // ── 执行 beforeTurn hook（在 buildMessages 之前，确保快照时机正确）
@@ -534,15 +547,15 @@ export class Agent {
     let formattedMessage = message;
     if (this.options.formatUserMessage) {
       try {
-        formattedMessage = await this.options.formatUserMessage(message, attachments ?? []);
+        formattedMessage = await this.options.formatUserMessage(params);
       } catch (e) {
         console.warn("[Agent] options.formatUserMessage failed:", e);
       }
     }
     const formattedParams = formattedMessage !== message ? { ...params, message: formattedMessage } : params;
 
-    // 构建静态前缀（system + agentsMd + compact + history），每轮 turn 只算一次
-    const { rawMessages, prefixCount } = buildBaseMessages(this.options, this.turns, this.compactRecord);
+    // 构建基础 messages（system + agentsMd + context + compact + history），每轮 turn 只算一次
+    const { baseMessages, prefixCount } = await buildMessages(this.options, this.turns, this.compactRecord);
 
     const persistTurn = async () => {
       this.turns = [...this.turns, turn];
@@ -581,8 +594,8 @@ export class Agent {
           console.warn("[Agent] hooks.beforeRequest failed:", e);
         }
 
-        // ── 每次请求前重新组装 messages（刷新动态上下文）
-        const messages = await assembleMessages(rawMessages, prefixCount, this.options, this.turns, formattedParams, tail);
+        // ── 每次请求前组装完整 messages（追加用户消息和本轮对话尾部）
+        const messages = assembleMessages(baseMessages, prefixCount, this.options, this.turns, formattedParams, tail);
 
         // ── 调用 LLM
         let llmResult: LLMCallResult;
@@ -888,14 +901,16 @@ export class Agent {
   private async _runAutoSummary(turn: TurnRecord): Promise<void> {
     const SUMMARY_PROMPT = `IMPORTANT: 不要调用工具！
 用 1-3 句话对本轮对话进行总结，内容用 <summary></summary> 标签包裹。
-关注点：用户问了什么、最终做了什么有效的事情。
+关注点：做了什么有效的事情。
 比如
 <summary>
-将用户卡片的风格改成了卡通风格，涉及对用户卡片的样式代码进行修改，并且优化了展示结构更加卡通。
+修改整体为卡通风格
+1. 将卡片的风格改成了卡通风格，涉及对卡片的样式代码和结构进行修改；
+2. 将字体调整至卡通风格字体；
 </summary>
 IMPORTANT: 不要调用工具！
 `;
-    const fork = this.createFork({ tools: [] });
+    const fork = this.createFork({ tools: [], copyTurns: 1 });
 
     let lastContent = "";
     fork.events.on("llm:content", ({ content }) => {

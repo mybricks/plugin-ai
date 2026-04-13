@@ -16,7 +16,7 @@ export type AgentEventMap = {
   "turn:start": {
     message: string;
     attachments?: any[];
-    userMeta?: Record<string, any>;
+    meta?: Record<string, any>;
   };
 
   /**

@@ -87,13 +87,11 @@ const ChatPanel = ({ user, copilot, agent, focusSnapshot, onUpload, title, rende
     context.aiQueue.send(
       agentKey,
       async () => {
-        const contextPrompt = (sandbox as any)?.pluginContext?.getFocusArea?.();
         context.aiQueue.registerAbort(agentKey, () => agent.abort());
         await agent.requestAI({
           message,
           attachments,
-          contextPrompt,
-          ...(focusSnapshot ? { userMeta: { focus: focusSnapshot } } : {}),
+          ...(focusSnapshot ? { meta: { focus: focusSnapshot } } : {}),
         });
       },
       { message, attachments }

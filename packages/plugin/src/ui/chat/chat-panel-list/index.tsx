@@ -29,7 +29,7 @@ interface ComInstance {
 // 渲染 focus 信息 + 消息文本
 
 const pluginRenderUserMessage = (text: string, record: MessageRecord) => {
-  const focus = record.userMeta?.focus;
+  const focus = record.meta?.focus;
   return (
     <span>
       {focus && (

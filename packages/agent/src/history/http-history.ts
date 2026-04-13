@@ -1,15 +1,21 @@
-import type { CompactRecord, History, TurnRecord } from "../types";
+import type { CompactRecord, History, TurnRecord, VersionFile, VersionRecord } from "../types";
 
 /**
  * 基于 HTTP 接口的调用历史持久化（存储 TurnRecord[]）。
  *
  * 约定的接口规范：
- *   GET    /turns?key=<key>                    → { turns: TurnRecord[] }
- *   POST   /turns                               body: { key, turns: TurnRecord[] }  → 覆盖写
- *   PATCH  /turns?key=<key>&turnId=<id>         body: Partial<TurnRecord>            → 局部更新
- *   DELETE /turns?key=<key>                     → 清空
- *   GET    /compact?key=<key>                   → { record: CompactRecord } | {}
- *   POST   /compact                             body: { key, record: CompactRecord } → 覆盖写
+ *   GET    /turns?key=<key>                           → { turns: TurnRecord[] }
+ *   POST   /turns                                     body: { key, turns: TurnRecord[] }  → 覆盖写
+ *   PATCH  /turns?key=<key>&turnId=<id>               body: Partial<TurnRecord>            → 局部更新
+ *   DELETE /turns?key=<key>                           → 清空
+ *   GET    /compact?key=<key>                         → { record: CompactRecord } | {}
+ *   POST   /compact                                   body: { key, record: CompactRecord } → 覆盖写
+ *
+ *   GET    /versions?key=<key>                        → { versions: VersionRecord[] }      （仅 metadata，不含 files）
+ *   POST   /versions                                  body: { key, record: VersionRecord, files: VersionFile[] }
+ *   GET    /versions/<versionId>?key=<key>            → { record: VersionRecord } | {}
+ *   PATCH  /versions/<versionId>?key=<key>            body: Partial<Pick<VersionRecord,'summary'>>
+ *   GET    /versions/<versionId>/files?key=<key>      → { files: VersionFile[] }
  */
 export class HTTPHistory implements History {
   private baseUrl: string;
@@ -23,6 +29,8 @@ export class HTTPHistory implements History {
   private defaultHeaders() {
     return { "Content-Type": "application/json", ...this.headers };
   }
+
+  // ── 对话记录 ──────────────────────────────────────────────────────────────
 
   async load(key: string): Promise<TurnRecord[]> {
     const res = await fetch(`${this.baseUrl}/turns?key=${encodeURIComponent(key)}`, {
@@ -85,5 +93,58 @@ export class HTTPHistory implements History {
       headers: this.defaultHeaders(),
       body: JSON.stringify({ key, record }),
     });
+  }
+
+  // ── 版本快照 ──────────────────────────────────────────────────────────────
+
+  async listVersions(key: string): Promise<VersionRecord[]> {
+    const res = await fetch(`${this.baseUrl}/versions?key=${encodeURIComponent(key)}`, {
+      headers: this.defaultHeaders(),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.versions ?? [];
+  }
+
+  async addVersion(key: string, record: VersionRecord, files: VersionFile[]): Promise<void> {
+    await fetch(`${this.baseUrl}/versions`, {
+      method: "POST",
+      headers: this.defaultHeaders(),
+      body: JSON.stringify({ key, record, files }),
+    });
+  }
+
+  async getVersion(versionId: string): Promise<VersionRecord | null> {
+    const res = await fetch(
+      `${this.baseUrl}/versions/${encodeURIComponent(versionId)}`,
+      { headers: this.defaultHeaders() }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.record ?? null;
+  }
+
+  async updateVersion(
+    versionId: string,
+    patch: Partial<Pick<VersionRecord, "summary">>
+  ): Promise<void> {
+    await fetch(
+      `${this.baseUrl}/versions/${encodeURIComponent(versionId)}`,
+      {
+        method: "PATCH",
+        headers: this.defaultHeaders(),
+        body: JSON.stringify(patch),
+      }
+    );
+  }
+
+  async getVersionFiles(versionId: string): Promise<VersionFile[]> {
+    const res = await fetch(
+      `${this.baseUrl}/versions/${encodeURIComponent(versionId)}/files`,
+      { headers: this.defaultHeaders() }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.files ?? [];
   }
 }

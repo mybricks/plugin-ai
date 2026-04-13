@@ -1,6 +1,6 @@
 import React from "react";
 import { CodeAgent, IDBHistory } from "../../../agent/src";
-import type { Tool, Sandbox, CodeAgentPromptOptions } from "../../../agent/src";
+import type { Tool, Sandbox, CodeAgentPromptOptions, History, BoundHistory } from "../../../agent/src";
 import type { PromptSections } from "../prompts";
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { Designer, RegistSandBoxConfig } from "./types";
@@ -10,6 +10,7 @@ import type { PrdRenderProps } from "../ui/renders/prd-render";
 import { ComChatStartViewWithStyles, PrdRenderWithStyles } from "../ui/renders/register";
 import { context } from "../context";
 import { ensureAIPanelOpen } from "../utils/ensure-ai-panel-open";
+import { buildFocusInfo } from "../utils/focus-dom-summary";
 
 // ─── 类型定义 ─────────────────────────────────────────────────────────────────
 
@@ -47,12 +48,26 @@ export interface SandboxConfig {
   themes?: any[];
 }
 
+/**
+ * connectToAI 的返回值。
+ * sandbox 可通过此对象访问该 comId 对应的 History 实例，用于版本管理。
+ */
+export interface ConnectToAIResult {
+  /**
+   * 该 comId 对应的 History 实例。
+   * 总是从 agent 实例上取，保证与 Agent 内部共享同一个引用。
+   * 若 Agent 未配置 history 则为 null（正常情况下不会出现）。
+   */
+  history: History | null;
+}
+
 export interface SandboxAPI {
   /**
    * sandbox 调用：向 Plugin 注册自己的能力（文件读写、designer 状态等），
    * Plugin 据此创建对应的 CodeAgent。
+   * 返回 ConnectToAIResult，包含 history 引用供 sandbox 做版本管理。
    */
-  connectToAI: (comId: string, config: RegistSandBoxConfig) => void;
+  connectToAI: (comId: string, config: RegistSandBoxConfig) => ConnectToAIResult;
   /**
    * Plugin 提供给 sandbox 读取的运行时工具和方法。
    */
@@ -101,8 +116,8 @@ export function setupSandbox(params: SetupSandboxParams): void {
 
   window._sandbox_ = {
     // ── sandbox → Plugin ──────────────────────────────────────────────────────
-    connectToAI(comId: string, config: RegistSandBoxConfig) {
-      connectToAI(comId, config, { requestAsStream, agentsMd, skills, promptOptions: promptSections?.agent, tools });
+    connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
+      return connectToAI(comId, config, { requestAsStream, agentsMd, skills, promptOptions: promptSections?.agent, tools });
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
@@ -157,10 +172,14 @@ function connectToAI(
   comId: string,
   { designer, hooks }: RegistSandBoxConfig,
   { requestAsStream, agentsMd, skills, promptOptions, tools }: PluginParams
-): void {
+): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
 
-  if (context.agentMap.has(agentKey)) return;
+  if (context.agentMap.has(agentKey)) {
+    // 已注册：直接从现有 agent 实例上取 history 返回，不重复初始化
+    const existingAgent = context.agentMap.get(agentKey)!;
+    return { history: existingAgent.getHistory() };
+  }
 
   const sandbox: Sandbox = {
     getFiles: designer.getFiles.bind(designer),
@@ -184,8 +203,17 @@ function connectToAI(
     hooks,
     agentsMd,
     skills,
+    formatUserMessage: (params) => {
+      const focus = params.meta?.focus;
+      console.log('params', params)
+      if (!focus?.element) return params.message;
+      const focusInfo = buildFocusInfo(focus.element);
+      return `${focusInfo}\n\n${params.message}`;
+    },
   });
 
   context.sandboxMap.set(agentKey, { sandbox, designerRef });
   context.agentMap.set(agentKey, agent);
+
+  return { history: agent.getHistory() };
 }

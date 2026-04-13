@@ -57,9 +57,8 @@ const ChatStartView = ({
       context.aiQueue.send(
         agentKey,
         async () => {
-          const contextPrompt = (sandbox as any)?.pluginContext?.getFocusArea?.();
           context.aiQueue.registerAbort(agentKey, () => agent.abort());
-          await agent.requestAI({ ...params, contextPrompt });
+          await agent.requestAI(params);
         },
         { message: params.message, attachments: params.attachments }
       );

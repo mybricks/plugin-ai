@@ -1,10 +1,10 @@
 export { Agent, AgentEvents } from "./agent";
-export type { AgentOptions, AgentHooks, RequestAIOptions, MaskOptions, ForkOptions, CompactRecord } from "./agent";
+export type { AgentOptions, AgentHooks, RequestAIOptions, MaskOptions, ForkOptions, CompactRecord, BoundHistory } from "./agent";
 export { maskMessages } from "./mask";
 
 export type { AgentEventMap } from "./events";
-export type { Message, History, Tool, TurnRecord, ToolCallRecord, ToolResult } from "./types";
-export { ToolValidationError } from "./types";
+export type { Message, History, Tool, TurnRecord, ToolCallRecord, ToolResult, VersionFile, VersionRecord, BoundHistory } from "./types";
+export { ToolValidationError, bindHistory } from "./types";
 
 export { CodeAgent } from "./code-agent";
 export type { CodeAgentOptions, CodeAgentPromptOptions, Sandbox, SkillFile } from "./code-agent";

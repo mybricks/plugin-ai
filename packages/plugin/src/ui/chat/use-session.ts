@@ -95,7 +95,7 @@ export function useSession(agent: Agent | undefined) {
 
     unsubsRef.current.push(
       // turn:start → 自动创建 pending MessageRecord
-      a.events.on("turn:start", ({ message, attachments, userMeta }) => {
+      a.events.on("turn:start", ({ message, attachments, meta }) => {
         pendingContent = "";
         pendingThinking = "";
         const id = `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -109,7 +109,7 @@ export function useSession(agent: Agent | undefined) {
           startTime: Date.now(),
           userText: message,
           userAttachments,
-          ...(userMeta ? { userMeta } : {}),
+          ...(meta ? { meta } : {}),
           content: "",
           thinkingContent: "",
           status: "pending",
