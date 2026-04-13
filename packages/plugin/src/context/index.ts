@@ -7,7 +7,7 @@ export interface SandboxEntry {
   sandbox: Sandbox;
   /** designer ref，供 check-status 工具闭包访问（延迟绑定） */
   designerRef?: { current: Designer | undefined };
-  /** hooks ref，供 beforeRequest 闭包访问（延迟绑定） */
+  /** hooks ref，供 beforeTurn / beforeRequest 闭包访问（延迟绑定） */
   hooksRef?: { current: Hooks | undefined };
 }
 

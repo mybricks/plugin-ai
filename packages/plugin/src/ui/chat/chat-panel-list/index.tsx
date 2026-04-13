@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Sender, SenderRef } from "../../components/sender";
+import { MentionTag } from "../../components/mention";
 import { context } from "../../../context";
 import { ChatPanel } from "../chat-panel";
+import type { MessageRecord } from "../use-session";
 import css from "../chat-panel/index.less";
 
 interface User {
@@ -22,6 +24,29 @@ interface ComInstance {
   comId: string;
   focusSnapshot: any;
 }
+
+// ─── 默认 renderUserMessage ────────────────────────────────────────────────────
+// 渲染 focus 信息 + 消息文本
+
+const pluginRenderUserMessage = (text: string, record: MessageRecord) => {
+  const focus = record.userMeta?.focus;
+  return (
+    <span>
+      {focus && (
+        <span className={css["user-message-focus"]}>
+          <span>对于</span>
+          {focus.focusArea ? (
+            <span className={css["user-message-focus-area"]}>{focus.focusArea.title || "区域"}</span>
+          ) : (
+            <MentionTag mention={focus} />
+          )}
+          {" "}
+        </span>
+      )}
+      {text}
+    </span>
+  );
+};
 
 // ─── ChatPanelList ────────────────────────────────────────────────────────────
 //
@@ -106,6 +131,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
               copilot={copilot}
               onUpload={onUpload}
               title={title}
+              renderUserMessage={pluginRenderUserMessage}
             />
           </div>
         );

@@ -8,13 +8,11 @@ export const WRITE_TOOL_NAME = "write_file";
 export function createWriteTool(adapter: Sandbox): Tool {
   return {
     name: WRITE_TOOL_NAME,
-    description: `写入文件到项目中。
-
+    description: `写入单个文件到项目中。建议并行多次调用，同时写入多个文件以节省时间。
 用法：
-- 此工具会覆盖已有文件中的内容。如果是已有文件，必须先用 \`${READ_TOOL_NAME}\` 读取文件内容，再调用此工具。
 - 对已有文件优先使用 \`edit_file\` 进行局部修改——它只发送差异部分。只有新建文件或需要完整重写时才使用此工具。
-- 除了需求文档和README，不要创建文档文件（*.md），除非用户明确要求。
-- 只有在用户明确要求时才使用 emoji，避免在文件中写入 emoji。`,
+- 只有在用户明确要求时才使用 emoji，避免在文件中写入 emoji。
+- 可并行调用此工具同时创建多个文件`,
     parameters: {
       type: "object",
       properties: {

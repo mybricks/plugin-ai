@@ -1,16 +1,74 @@
 import type { CodeAgentPromptOptions } from "../../../agent/src";
-import { READ_TOOL_NAME, EDIT_TOOL_NAME, WRITE_TOOL_NAME } from "../../../agent/src";
+import { MYBRICKS_PROMPT_SECTIONS } from "./mybricks";
 
-export const DEFAULT_PROMPT_SECTIONS: CodeAgentPromptOptions = {
-  identitySection: `你是一个专业的 MyBricks AI 助手，帮助用户完成前端开发任务。使用下方说明和可用工具来协助用户。
+export type { MybricksPromptSections } from "./mybricks";
 
-你有能力帮用户完成复杂任务，包括修复 bug、开发新功能、重构代码、解释代码等。对于不清楚的指令，请结合当前项目上下文理解用户意图。`,
-  usingToolsSection: `# 工具使用
-   > 当前项目会提供实时的所有代码，所以项目代码不需要读取，如果遇到skills文件需要读取，可以使用 \`${READ_TOOL_NAME}\` 。
-   
-   常用工作流：修改代码 -> 查看状态（检查渲染情况、是否有报错）-> 在结束前检查是否要修改文档（特别是README.md 和 requirement.md）
-  
-   - 使用 \`${EDIT_TOOL_NAME}\` 修改已有文件。这是修改文件的首选工具，因为它只发送差异部分。
-   - 使用 \`${WRITE_TOOL_NAME}\` 新建文件，或在需要完整重写文件时使用。对已有文件优先使用 \`${EDIT_TOOL_NAME}\`。
-   - 在一次响应中可以调用多个工具。如果多个工具之间没有依赖关系，并行调用它们以提高效率。如果某些工具调用依赖于前一个调用的结果，则按顺序调用。`,
-};
+/**
+ * Agent 身份与工具使用相关提示词节，对应 CodeAgentPromptOptions。
+ */
+export interface PromptSectionsAgent {
+  /** Agent 身份定位描述，说明助手的角色与能力范围 */
+  identitySection?: string;
+  /** 工具使用规范，描述何时、如何调用各类工具 */
+  usingToolsSection?: string;
+}
+
+/**
+ * 开发规范相关提示词节。
+ */
+export interface PromptSectionsDevelopeGuide {
+  /** 总体开发规则、画布宽度、页面/弹窗拆分等基础规范 */
+  firstOfAll?: string;
+  /** 图标与图片资源的使用规范 */
+  assetsUsageSection?: string;
+  /** 项目目录结构、jsx/less/store 等文件编写规范 */
+  architectureSection?: string;
+  /** 额外补充的开发规范，追加到本节末尾 */
+  extraSection?: string;
+}
+
+/**
+ * 设计风格相关提示词节。
+ */
+export interface PromptSectionsDesignGuide {
+  /** 视觉美学指南，描述主题、配色、布局等设计原则 */
+  firstOfAll?: string;
+}
+
+/**
+ * 系统提示词各节的完整定义。
+ *
+ * 每个字段均为可选，未提供时使用内置默认实现（`MYBRICKS_PROMPT_SECTIONS`）中对应的值。
+ * 支持按 key 深度 assign：仅覆盖提供的字段，其余保留默认。
+ *
+ * `agent` 部分最终映射为 `CodeAgentPromptOptions`，传给底层 `CodeAgent`。
+ */
+export interface PromptSections {
+  /** Agent 身份与工具使用相关提示词 */
+  agent?: PromptSectionsAgent;
+  /** 开发规范提示词 */
+  developeGuide?: PromptSectionsDevelopeGuide;
+  /** 设计风格提示词 */
+  designGuide?: PromptSectionsDesignGuide;
+}
+
+/**
+ * 将用户传入的 promptSections 与 MYBRICKS_PROMPT_SECTIONS 按 key 深度 assign：
+ * 每个子 key 优先使用用户传入值，否则 fallback 到默认值。
+ * 返回完整的 PromptSections，未传的字段均有默认值填充。
+ */
+export function resolveDefaultPromptSections(input?: PromptSections): Required<PromptSections> {
+  const D = MYBRICKS_PROMPT_SECTIONS;
+  const result: any = {};
+  for (const key of Object.keys(D) as (keyof typeof D)[]) {
+    result[key] = { ...D[key], ...input?.[key as keyof PromptSections] };
+  }
+  return result;
+}
+
+/**
+ * 返回供 CodeAgent 使用的 CodeAgentPromptOptions（取合并结果的 agent 部分）。
+ */
+export function resolvePromptOptions(input?: PromptSections): PromptSections {
+  return resolveDefaultPromptSections(input);
+}

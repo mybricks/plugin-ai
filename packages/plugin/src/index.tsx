@@ -4,10 +4,10 @@ import pkg from "../../../package.json";
 console.log(`%c ${pkg.name} %c@${pkg.version}`, `color:#FFF;background:#fa6400`, ``, ``);
 
 import { CodeAgent, IDBHistory } from "../../agent/src";
-import type { CodeAgentPromptOptions, SkillFile } from "../../agent/src";
+import type { SkillFile } from "../../agent/src";
 import { createRequestAsStream, createOnUpload } from "../../request/src";
 import type { RequestAsStreamFn } from "../../request/src";
-import { DEFAULT_PROMPT_SECTIONS } from "./prompts";
+import { resolvePromptOptions, type PromptSections } from "./prompts";
 
 import { context } from "./context";
 import { setupSandbox } from "./sandbox";
@@ -40,8 +40,8 @@ export interface PluginAIParams {
   agentsMd?: string;
   /** 技能文件列表，挂载为虚拟 .skills/ 文件，LLM 按需读取 */
   skills?: SkillFile[];
-  /** 覆盖内置系统提示词各节，按 key 合并，未提供的 key 保留默认值 */
-  promptSections?: CodeAgentPromptOptions;
+  /** 覆盖内置系统提示词各节，按 key 深度合并，未提供的 key 保留 MYBRICKS_PROMPT_SECTIONS 默认值 */
+  promptSections?: PromptSections;
   /** 额外自定义工具，追加到内置工具（read_file / write_file 等）之后 */
   tools?: import("../../agent/src").Tool[];
 }
@@ -59,8 +59,7 @@ export default function pluginAI(params: PluginAIParams): any {
     tools,
   } = params;
 
-  const mergedPromptSections = { ...DEFAULT_PROMPT_SECTIONS, ...promptSections };
-
+  const mergedPromptSections = resolvePromptOptions(promptSections);
 
   const requestAsStream: RequestAsStreamFn = onRequest ?? createRequestAsStream();
   const upload = onUpload ?? createOnUpload();
@@ -71,7 +70,7 @@ export default function pluginAI(params: PluginAIParams): any {
 
   // ── window._sandbox_：sandbox 与 Plugin 的统一交互 API ─────────────────────
 
-  setupSandbox({ requestAsStream, agentsMd, skills, promptOptions: mergedPromptSections, tools });
+  setupSandbox({ requestAsStream, agentsMd, skills, promptSections: mergedPromptSections, tools });
 
   return {
     name: "@mybricks/plugins/ai",

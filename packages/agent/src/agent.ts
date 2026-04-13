@@ -13,10 +13,15 @@ export type { CompactRecord, MaskOptions };
 
 export interface AgentHooks {
   /**
-   * 大模型发送请求前（用户回车后）的钩子，在 buildMessages 之前调用。
+   * 用户发送消息后、一轮 turn 开始时的钩子，在 buildMessages 之前调用。
    * 可用于初始化快照、收集日志等准备工作。
    */
-  beforeRequest?: (params: { message: string; attachments: any[] }) => Promise<void> | void;
+  beforeTurn?: (params: { message: string; attachments: any[] }) => Promise<void> | void;
+  /**
+   * 每次 LLM 请求前触发（每个 step 都会调用）。
+   * 可用于动态修改请求参数、注入上下文等。
+   */
+  beforeRequest?: (params: { message: string; attachments: any[]; step: number }) => Promise<void> | void;
   /**
    * 每轮 turn 结束后的钩子（无论成功、取消还是错误）。
    * 在 turn:complete / turn:abort / turn:error 事件触发后同步调用。
@@ -101,6 +106,12 @@ export interface AgentOptions {
     /** 超过多少轮成功 turn 时触发 compact，默认 30 */
     maxTurns?: number;
   };
+  /**
+   * 用户消息格式化函数（异步）。
+   * 在 turn 开始时、buildBaseMessages 之前调用，对用户输入文本进行处理（如注入上下文前缀等）。
+   * 返回值将作为发送给 LLM 的实际消息文本；TurnRecord.userText 仍保存原始输入。
+   */
+  formatUserMessage?: (message: string, attachments: any[]) => Promise<string> | string;
 }
 
 // ─── ForkOptions ─────────────────────────────────────────────────────────────
@@ -128,33 +139,29 @@ export interface ForkOptions {
 export interface RequestAIOptions {
   message: string;
   attachments?: any[];
+  /** UI 附加元数据，存入 TurnRecord.userMeta，不参与 LLM 上下文构建 */
+  userMeta?: Record<string, any>;
   [key: string]: any;
 }
 
 // ─── 构建消息列表 ──────────────────────────────────────────────────────────────
 
 /**
- * 构建本轮请求的完整 messages 列表：
- *   agentsMd 不注入到 system prompt，而是作为第一条 user 消息，
- *   包裹在 <system-reminder> 标签中，提示 LLM "此上下文可能与任务有关或无关"。
- *   这样 agentsMd 始终位于消息列表最前，且与 system prompt 独立，
- *   便于 prompt cache 复用（system prompt 不因 agentsMd 变化而失效）。
- *
+ * 构建本轮请求的静态前缀（不含动态上下文和用户消息）：
  *   [0]       system message（仅包含内置系统提示词）
  *   [1]       agentsMd user message（仅当 agentsMd 非空时存在）
  *   [2..3]    compact 摘要消息对（仅当有 compactRecord 时）
  *   [4..N]    历史对话（从 TurnRecord[] 重建，compact 游标后的部分）
- *   [N+1..M]  动态上下文消息（每轮异步获取）
- *   [last]    本轮用户消息
+ *
+ * 动态上下文（getContextMessages）和用户消息在每次 LLM 请求前由 assembleMessages 追加，
+ * 这样每个 step 都能获取到最新上下文。
  */
-async function buildMessages(
+function buildBaseMessages(
   options: AgentOptions,
   turns: TurnRecord[],
-  params: RequestAIOptions,
   compactRecord?: CompactRecord | null
-): Promise<Message[]> {
-  const { system, agentsMd, getContextMessages } = options;
-  const { message, attachments } = params;
+): { rawMessages: Message[]; prefixCount: number } {
+  const { system, agentsMd } = options;
 
   const systemMessage: Message | null = system
     ? { role: "system", content: system }
@@ -190,15 +197,60 @@ async function buildMessages(
 
   const historyMessages = turnsToMessages(turns, compactRecord);
 
-  const rawMessages = [
+  // ── 自动打 prompt cache 断点 ──────────────────────────────────────────────
+  // 断点 1：静态前缀中最后一个存在的消息打 cache
+  const staticPrefix: Message[] = [
     ...(systemMessage ? [systemMessage] : []),
     ...(agentsMdMessage ? [agentsMdMessage] : []),
     ...compactMessages,
-    ...historyMessages,
+  ];
+  if (staticPrefix.length > 0) {
+    staticPrefix[staticPrefix.length - 1] = {
+      ...staticPrefix[staticPrefix.length - 1],
+      cache: true,
+    };
+  }
+
+  // 断点 2：历史对话最后一条消息打 cache（只有历史存在时才打）
+  const cachedHistoryMessages = historyMessages.length > 0
+    ? [
+        ...historyMessages.slice(0, -1),
+        { ...historyMessages[historyMessages.length - 1], cache: true },
+      ]
+    : historyMessages;
+
+  const rawMessages = [
+    ...staticPrefix,
+    ...cachedHistoryMessages,
   ];
 
   // compact 消息的数量（mask 时需要跳过这部分，不对其遮蔽）
-  const compactMessageCount = compactMessages.length;
+  const prefixCount = (systemMessage ? 1 : 0) + (agentsMdMessage ? 1 : 0) + compactMessages.length;
+
+  return { rawMessages, prefixCount };
+}
+
+/**
+ * 每次 LLM 请求前组装完整 messages 列表：
+ *   rawMessages（静态前缀 + 历史）+ 动态上下文 + 用户消息 + 本轮已积累的对话尾部
+ *
+ * @param rawMessages   buildBaseMessages 返回的静态部分
+ * @param prefixCount   前缀消息数量（用于 mask 时跳过）
+ * @param options       AgentOptions
+ * @param turns         当前 turns 快照（用于 mask）
+ * @param params        本轮用户请求参数
+ * @param tail          本轮已积累的 assistant + tool 消息（step > 1 时非空）
+ */
+async function assembleMessages(
+  rawMessages: Message[],
+  prefixCount: number,
+  options: AgentOptions,
+  turns: TurnRecord[],
+  params: RequestAIOptions,
+  tail: Message[]
+): Promise<Message[]> {
+  const { getContextMessages } = options;
+  const { message, attachments } = params;
 
   const contextMessages: Message[] = getContextMessages
     ? await getContextMessages()
@@ -216,13 +268,11 @@ async function buildMessages(
   }
   const userMessage: Message = { role: "user", content: userContent };
 
-  const assembled = [...rawMessages, ...contextMessages, userMessage];
+  const assembled = [...rawMessages, ...contextMessages, userMessage, ...tail];
 
   // 应用遮蔽（仅当配置了 mask）
   // 遮蔽时跳过 compact 摘要消息对（它们不在 turns 中，不应被遮蔽）
   if (options.mask) {
-    // 计算前缀长度（system + agentsMd + compact），遮蔽只作用于 historyMessages 及之后部分
-    const prefixCount = (systemMessage ? 1 : 0) + (agentsMdMessage ? 1 : 0) + compactMessageCount;
     const prefix = assembled.slice(0, prefixCount);
     const rest = assembled.slice(prefixCount);
     const maskedRest = maskMessages(rest, turns, options.mask);
@@ -441,7 +491,7 @@ export class Agent {
     this._abortController = new AbortController();
     const signal = this._abortController.signal;
 
-    const { message, attachments, ...rest } = params;
+    const { message, attachments, userMeta, ...rest } = params;
     // 有图片附件时，自动将 aiRole 覆盖为 "image"，使请求层路由到支持视觉的模型
     if (attachments?.length) {
       rest.aiRole = "image";
@@ -462,6 +512,7 @@ export class Agent {
       startTime: Date.now(),
       userText: message,
       userAttachments,
+      ...(userMeta ? { userMeta } : {}),
       content: "",
       thinkingContent: "",
       iterations: [],
@@ -469,17 +520,29 @@ export class Agent {
     };
 
     const stepStartTime = Date.now();
-    this.events.emit("turn:start", { message, attachments });
+    this.events.emit("turn:start", { message, attachments, userMeta });
     this.events.emit("llm:start", { step: 1, startTime: stepStartTime });
 
-    // ── 执行 beforeRequest hook（在 buildMessages 之前，确保快照时机正确）
+    // ── 执行 beforeTurn hook（在 buildMessages 之前，确保快照时机正确）
     try {
-      await this.options.hooks?.beforeRequest?.({ message, attachments: attachments ?? [] });
+      await this.options.hooks?.beforeTurn?.({ message, attachments: attachments ?? [] });
     } catch (e) {
-      console.warn("[Agent] hooks.beforeRequest failed:", e);
+      console.warn("[Agent] hooks.beforeTurn failed:", e);
     }
 
-    let messages = await buildMessages(this.options, this.turns, params, this.compactRecord);
+    // ── 格式化用户消息（原始文本保存在 turn.userText，格式化后的发给 LLM）
+    let formattedMessage = message;
+    if (this.options.formatUserMessage) {
+      try {
+        formattedMessage = await this.options.formatUserMessage(message, attachments ?? []);
+      } catch (e) {
+        console.warn("[Agent] options.formatUserMessage failed:", e);
+      }
+    }
+    const formattedParams = formattedMessage !== message ? { ...params, message: formattedMessage } : params;
+
+    // 构建静态前缀（system + agentsMd + compact + history），每轮 turn 只算一次
+    const { rawMessages, prefixCount } = buildBaseMessages(this.options, this.turns, this.compactRecord);
 
     const persistTurn = async () => {
       this.turns = [...this.turns, turn];
@@ -490,6 +553,8 @@ export class Agent {
 
     // doom loop 用：扁平化的工具调用序列（跨 step）
     const toolCallHistory: Array<{ name: string; argsKey: string }> = [];
+    // 本轮已积累的 assistant + tool 消息尾部（每个 step 后追加，下一个 step 带入）
+    const tail: Message[] = [];
 
     try {
       for (let step = 1; step <= maxSteps; step++) {
@@ -508,6 +573,16 @@ export class Agent {
           stepLLMStartTime = Date.now();
           this.events.emit("llm:start", { step, startTime: stepLLMStartTime });
         }
+
+        // ── 执行 beforeRequest hook（每次 LLM 请求前）
+        try {
+          await this.options.hooks?.beforeRequest?.({ message, attachments: attachments ?? [], step });
+        } catch (e) {
+          console.warn("[Agent] hooks.beforeRequest failed:", e);
+        }
+
+        // ── 每次请求前重新组装 messages（刷新动态上下文）
+        const messages = await assembleMessages(rawMessages, prefixCount, this.options, this.turns, formattedParams, tail);
 
         // ── 调用 LLM
         let llmResult: LLMCallResult;
@@ -589,7 +664,7 @@ export class Agent {
         // 本 step 有工具调用，通知 llm:complete（done: false，还有后续 step）
         this.events.emit("llm:complete", { step, finishReason: llmResult.finishReason, usage: llmResult.usage, done: false, endTime: iterEndTime });
 
-        // 将 assistant 消息（带 tool_calls）追加到 messages
+        // 将 assistant 消息（带 tool_calls）追加到 tail
         const assistantMsg: Message = {
           role: "assistant",
           content: llmResult.content,
@@ -603,7 +678,7 @@ export class Agent {
             },
           })),
         };
-        messages = [...messages, assistantMsg];
+        tail.push(assistantMsg);
 
         // 逐个执行工具
         const toolResultMessages: Message[] = [];
@@ -701,8 +776,8 @@ export class Agent {
           return;
         }
 
-        // 将工具结果追加到 messages，进入下一轮迭代
-        messages = [...messages, ...toolResultMessages];
+        // 将工具结果追加到 tail，下一个 step 的 assembleMessages 会带入
+        tail.push(...toolResultMessages);
       }
 
       // 超出 maxSteps
@@ -758,7 +833,7 @@ export class Agent {
       // fork 强制关闭 summary/compact，防止递归 fork
       summary: { enabled: false },
       compact: { enabled: false },
-      // fork 不继承 beforeRequest hook（快照启动，无需初始化）
+      // fork 不继承 beforeTurn / beforeRequest hook（快照启动，无需初始化）
       hooks: undefined,
     };
 

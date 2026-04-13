@@ -21,9 +21,10 @@ export interface MessageListProps {
   messages: MessageRecord[];
   user?: User;
   copilot?: User;
+  renderUserMessage?: (text: string, record: MessageRecord) => React.ReactNode;
 }
 
-const MessageList = ({ messages, user, copilot }: MessageListProps) => {
+const MessageList = ({ messages, user, copilot, renderUserMessage }: MessageListProps) => {
   const mainRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -34,7 +35,7 @@ const MessageList = ({ messages, user, copilot }: MessageListProps) => {
   return (
     <main ref={mainRef} className={css["message-list"]}>
       {messages.map((record) => (
-        <MessageBubble key={record.id} record={record} user={user} copilot={copilot} />
+        <MessageBubble key={record.id} record={record} user={user} copilot={copilot} renderUserMessage={renderUserMessage} />
       ))}
     </main>
   );
@@ -42,7 +43,12 @@ const MessageList = ({ messages, user, copilot }: MessageListProps) => {
 
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
-const MessageBubble = ({ record, user, copilot }: { record: MessageRecord; user?: User; copilot?: User }) => (
+const MessageBubble = ({ record, user, copilot, renderUserMessage }: {
+  record: MessageRecord;
+  user?: User;
+  copilot?: User;
+  renderUserMessage?: (text: string, record: MessageRecord) => React.ReactNode;
+}) => (
   <div className={css["chat-bubble-container"]}>
     {/* 时间戳居中 */}
     <div className={css["chat-bubble-time"]}>{formatTime(record.startTime)}</div>
@@ -58,7 +64,7 @@ const MessageBubble = ({ record, user, copilot }: { record: MessageRecord; user?
         )}
       </header>
       <section className={classNames(css["chat-message-container"], css["user-message"])}>
-        <span>{record.userText}</span>
+        {renderUserMessage ? renderUserMessage(record.userText, record) : <span>{record.userText}</span>}
         {record.userAttachments.length > 0 && (
           <AttachmentsList
             className={css["attachments-list"]}

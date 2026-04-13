@@ -1,6 +1,7 @@
 import React from "react";
 import { CodeAgent, IDBHistory } from "../../../agent/src";
 import type { Tool, Sandbox, CodeAgentPromptOptions } from "../../../agent/src";
+import type { PromptSections } from "../prompts";
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { Designer, RegistSandBoxConfig } from "./types";
 import { createCheckStatusTool } from "./tools/check-status";
@@ -32,6 +33,10 @@ export interface SandboxHelpers {
 }
 
 export interface SandboxConfig {
+  /**
+   * 系统提示词各节配置，由 Plugin 合并后下发给 sandbox。
+   */
+  promptSections?: PromptSections;
   /**
    * 运行时三方库列表（由宿主应用注入）。
    */
@@ -79,7 +84,7 @@ export interface SetupSandboxParams {
   requestAsStream: RequestAsStreamFn;
   agentsMd?: string;
   skills?: any[];
-  promptOptions?: CodeAgentPromptOptions;
+  promptSections?: PromptSections;
   tools?: Tool[];
   availableLibraries?: any[];
   themes?: any[];
@@ -92,12 +97,12 @@ export interface SetupSandboxParams {
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
 export function setupSandbox(params: SetupSandboxParams): void {
-  const { requestAsStream, agentsMd, skills, promptOptions, tools, availableLibraries, themes } = params;
+  const { requestAsStream, agentsMd, skills, promptSections, tools, availableLibraries, themes } = params;
 
   window._sandbox_ = {
     // ── sandbox → Plugin ──────────────────────────────────────────────────────
     connectToAI(comId: string, config: RegistSandBoxConfig) {
-      connectToAI(comId, config, { requestAsStream, agentsMd, skills, promptOptions, tools });
+      connectToAI(comId, config, { requestAsStream, agentsMd, skills, promptOptions: promptSections?.agent, tools });
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
@@ -131,6 +136,7 @@ export function setupSandbox(params: SetupSandboxParams): void {
 
     // ── Plugin → sandbox（静态配置）──────────────────────────────────────────
     config: {
+      promptSections,
       availableLibraries: availableLibraries ?? [],
       themes: themes ?? [],
     },

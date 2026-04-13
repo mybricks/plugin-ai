@@ -15,6 +15,12 @@ export interface Message {
   }>;
   /** tool_call_id：tool 角色消息关联的调用 ID */
   tool_call_id?: string;
+  /**
+   * 是否需要缓存该消息。
+   * 在调用 LLM 时，会根据目标模型转换为对应格式：
+   *   - Claude: cache_control: { type: 'ephemeral' }
+   */
+  cache?: boolean;
 }
 
 // ─── TurnRecord（SSE 事件粒度的完整调用记录） ─────────────────────────────────
@@ -64,6 +70,11 @@ export interface TurnRecord {
   userText: string;
   /** 用户附件（图片等） */
   userAttachments: Array<{ type: string; content: string }>;
+  /**
+   * 用户消息的附加元数据（UI 层透传，不参与 LLM 上下文构建）。
+   * 可用于存储 focus 快照、mention 信息等，供消息列表渲染使用。
+   */
+  userMeta?: Record<string, any>;
 
   /** LLM 最终输出的完整文本（最后一次迭代的文本） */
   content: string;

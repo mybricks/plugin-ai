@@ -88,6 +88,8 @@ interface SenderProps {
   onStop?: () => void;
   pendingQueue?: QueueItem[];
   onRemoveFromQueue?: (id: string) => void;
+  /** 输入框上方的 focus 信息渲染（mention 区域展示） */
+  renderFocus?: () => React.ReactNode;
 }
 
 interface SenderRef {
@@ -97,7 +99,7 @@ interface SenderRef {
 }
 
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
-  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue } = props;
+  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue, renderFocus } = props;
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [inputContent, setInputContent] = useState<string | null>(null);
@@ -325,20 +327,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
             <AttachmentsList attachments={attachments} onDelete={onAttachmentsDelete}/>
           </div>
         ) : null}
-        {mentions.length ? (
+        {renderFocus ? (
           <div className={css.mentions}>
-            <span>对于</span>
-            {chatMode === "agent" || chatMode === "vibe" && !mentions[0].focusArea && <MentionTag mention={mentions[0]} onClick={onMentionClick} />}
-            {chatMode === "agent" && <span>{(mentions[0].type === "page" ? "页面" : "组件") + (mentions[0].focusArea ? "的" : "")}</span>}
-            {mentions[0].focusArea ? (
-              <span className={css.focusarea}>
-                {mentions[0].focusArea.title || "区域"}
-              </span>
-            ) : null}
-            {/* {vibeCoding ? <span className={css.vibeCoding}>(开发中)</span> : null} */}
-            {/* {mentions.map((mention) => {
-              return <MentionTag key={mention.id} mention={mention} onClick={onMentionClick} />
-            })} */}
+            {renderFocus()}
           </div>
         ) : null}
         <div className={css.input}>
