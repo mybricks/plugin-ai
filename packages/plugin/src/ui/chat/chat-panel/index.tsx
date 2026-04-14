@@ -105,8 +105,6 @@ const ChatPanel = ({
     context.aiQueue.send(
       agentKey,
       async () => {
-        debugger
-        console.log('send message', message, attachments)
         context.aiQueue.registerAbort(agentKey, () => agent.abort());
         await agent.requestAI({ message, attachments });
       },
