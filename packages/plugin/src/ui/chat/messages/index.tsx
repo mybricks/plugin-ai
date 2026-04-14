@@ -22,9 +22,10 @@ export interface MessageListProps {
   user?: User;
   copilot?: User;
   renderUserMessage?: (record: MessageRecord) => React.ReactNode;
+  onRetry?: (turnId: string) => void;
 }
 
-const MessageList = ({ messages, user, copilot, renderUserMessage }: MessageListProps) => {
+const MessageList = ({ messages, user, copilot, renderUserMessage, onRetry }: MessageListProps) => {
   const mainRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -34,8 +35,8 @@ const MessageList = ({ messages, user, copilot, renderUserMessage }: MessageList
 
   return (
     <main ref={mainRef} className={css["message-list"]}>
-      {messages.map((record) => (
-        <MessageBubble key={record.id} record={record} user={user} copilot={copilot} renderUserMessage={renderUserMessage} />
+      {messages.map((record, index) => (
+        <MessageBubble key={record.id} record={record} user={user} copilot={copilot} renderUserMessage={renderUserMessage} onRetry={index === messages.length - 1 ? onRetry : undefined} />
       ))}
     </main>
   );
@@ -43,11 +44,12 @@ const MessageList = ({ messages, user, copilot, renderUserMessage }: MessageList
 
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
-const MessageBubble = ({ record, user, copilot, renderUserMessage }: {
+const MessageBubble = ({ record, user, copilot, renderUserMessage, onRetry }: {
   record: MessageRecord;
   user?: User;
   copilot?: User;
   renderUserMessage?: (record: MessageRecord) => React.ReactNode;
+  onRetry?: (turnId: string) => void;
 }) => (
   <div className={css["chat-bubble-container"]}>
     {/* 时间戳居中 */}
@@ -151,6 +153,16 @@ const MessageBubble = ({ record, user, copilot, renderUserMessage }: {
           {record.status === "error" && record.error && (
             <div className={css["ai-chat-error-code-block"]}>
               <span>{record.error}</span>
+              {onRetry && (
+                <button
+                  className={css["retry-button"]}
+                  onClick={() => {
+                    onRetry(record.id)
+                  }}
+                >
+                  重试
+                </button>
+              )}
             </div>
           )}
         </div>

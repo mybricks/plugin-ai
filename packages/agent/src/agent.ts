@@ -168,7 +168,7 @@ async function buildMessages(
   options: AgentOptions,
   turns: TurnRecord[],
   compactRecord?: CompactRecord | null
-): Promise<{ baseMessages: Message[]; prefixCount: number }> {
+): Promise<{ baseMessages: Message[]; historyStartIndex: number }> {
   const { system, agentsMd, getContextMessages } = options;
 
   const systemMessage: Message | null = system
@@ -238,10 +238,11 @@ async function buildMessages(
     ...cachedHistoryMessages,
   ];
 
-  // prefixCount：需要跳过的前缀数量（mask 时不对 system/agentsMd/context/compact 遮蔽）
-  const prefixCount = (systemMessage ? 1 : 0) + (agentsMdMessage ? 1 : 0) + contextMessages.length + compactMessages.length;
+  // historyStartIndex：assembled 数组中，静态前缀（system/agentsMd/context/compact）之后的起始索引
+  // mask 时只对 index >= historyStartIndex 的消息做遮蔽，前缀不受影响
+  const historyStartIndex = (systemMessage ? 1 : 0) + (agentsMdMessage ? 1 : 0) + contextMessages.length + compactMessages.length;
 
-  return { baseMessages, prefixCount };
+  return { baseMessages, historyStartIndex };
 }
 
 /**
@@ -249,7 +250,7 @@ async function buildMessages(
  *   baseMessages（静态前缀 + 动态上下文 + 历史）+ 用户消息 + 本轮已积累的对话尾部
  *
  * @param baseMessages  buildMessages 返回的基础部分（包含 context，turn 开始时已固化）
- * @param prefixCount   前缀消息数量（用于 mask 时跳过）
+ * @param historyStartIndex  assembled 数组中历史消息的起始索引（mask 时跳过静态前缀）
  * @param options       AgentOptions
  * @param turns         当前 turns 快照（用于 mask）
  * @param params        本轮用户请求参数
@@ -257,7 +258,7 @@ async function buildMessages(
  */
 function assembleMessages(
   baseMessages: Message[],
-  prefixCount: number,
+  historyStartIndex: number,
   options: AgentOptions,
   turns: TurnRecord[],
   params: RequestAIOptions,
@@ -282,8 +283,8 @@ function assembleMessages(
   // 应用遮蔽（仅当配置了 mask）
   // 遮蔽时跳过前缀（system/agentsMd/context/compact，不在 turns 中，不应被遮蔽）
   if (options.mask) {
-    const prefix = assembled.slice(0, prefixCount);
-    const rest = assembled.slice(prefixCount);
+    const prefix = assembled.slice(0, historyStartIndex);
+    const rest = assembled.slice(historyStartIndex);
     const maskedRest = maskMessages(rest, turns, options.mask);
     return [...prefix, ...maskedRest];
   }
@@ -500,6 +501,377 @@ export class Agent {
   }
 
   /**
+   * 重试失败的 turn。
+   * 
+   * - 第一步失败（iterations 为空）：清除历史，重新 requestAI
+   * - 中途失败（有 iterations）：从失败点继续执行
+   */
+  async retry(turnId: string): Promise<void> {
+    const turn = this.turns.find(t => t.id === turnId);
+    if (!turn || turn.status !== "error") {
+      return;
+    }
+
+    // 第一步失败：打 retried 标记，不再参与消息构建，重新发起请求
+    if (turn.iterations.length === 0) {
+      turn.retried = true;
+      await this._persistTurn(turn);
+      await this.requestAI({
+        message: turn.userText,
+        attachments: turn.userAttachments,
+        meta: turn.meta,
+      });
+      return;
+    }
+
+    // 中途失败：从失败点继续执行
+    await this._continueFromError(turn);
+  }
+
+  /** 从失败的 turn 继续执行 */
+  private async _continueFromError(turn: TurnRecord): Promise<void> {
+    // retry 续跑：把当前失败 turn 从历史中排除（它将被续跑替代，不能带入上下文）
+    const turnsWithoutRetried = this.turns.filter(t => t.id !== turn.id);
+    const context = await buildMessages(this.options, turnsWithoutRetried, this.compactRecord);
+
+    // 从 iterations 重建 tail
+    const initialTail: Message[] = [];
+    for (const iter of turn.iterations) {
+      const assistantMsg: Message = {
+        role: "assistant",
+        content: iter.content,
+        ...(iter.thinkingContent ? { reasoning_content: iter.thinkingContent } : {}),
+        tool_calls: iter.toolCalls.map(tc => ({
+          id: tc.callId,
+          type: "function" as const,
+          function: { name: tc.name, arguments: JSON.stringify(tc.args) },
+        })),
+      };
+      initialTail.push(assistantMsg);
+
+      for (const tc of iter.toolCalls) {
+        initialTail.push({
+          role: "tool",
+          tool_call_id: tc.callId,
+          content: tc.status === "error" ? `Error: ${tc.error}` : JSON.stringify(tc.result ?? {}),
+        });
+      }
+    }
+
+    // 重置状态
+    turn.status = "success";
+    turn.error = undefined;
+
+    // 从失败点继续执行
+    await this._runReActLoop({
+      context,
+      initialTail,
+      startStep: turn.iterations.length + 1,
+      turn,
+      userParams: { message: turn.userText, attachments: turn.userAttachments, meta: turn.meta },
+    });
+  }
+
+  /** ReAct 循环核心逻辑（requestAI 和 retry 共用） */
+  private async _runReActLoop(opts: {
+    /** buildMessages 的返回值，包含基础消息和前缀数量 */
+    context: { baseMessages: Message[]; historyStartIndex: number };
+    /** 初始 tail：从已有 iterations 重建的 assistant+tool 消息序列（全新请求传 []） */
+    initialTail: Message[];
+    /** 本次循环从第几步开始（全新请求传 1，retry 续传则传失败前的步数 + 1） */
+    startStep: number;
+    /** 当前 turn 记录（用于写入迭代结果、持久化） */
+    turn: TurnRecord;
+    /** 用户侧消息参数（message、attachments、meta），用于组装消息和 turn:start 事件 */
+    userParams: { message: string; attachments?: any[]; meta?: any };
+    /** 透传给 callLLM 的其余参数（aiRole 等） */
+    llmRest?: Record<string, any>;
+  }): Promise<void> {
+    const { context: { baseMessages, historyStartIndex }, initialTail, startStep, turn, userParams, llmRest = {} } = opts;
+    this._abortController = new AbortController();
+    const signal = this._abortController.signal;
+
+    const { key, history } = this.options;
+    const maxSteps = this.options.maxSteps ?? Infinity;
+    const doomLoopThreshold = this.options.doomLoopThreshold ?? 3;
+
+    // 获取 formattedParams（如果需要）
+    const formattedParams = turn.userFormattedText
+      ? { ...userParams, message: turn.userFormattedText }
+      : userParams;
+
+    const tail = [...initialTail];
+    const toolCallHistory: Array<{ name: string; argsKey: string }> = [];
+
+    // 收集已有工具调用历史（用于 doom loop 检测）
+    for (const iter of turn.iterations) {
+      for (const tc of iter.toolCalls) {
+        toolCallHistory.push({ name: tc.name, argsKey: JSON.stringify(tc.args) });
+      }
+    }
+
+    try {
+      for (let step = startStep; step <= maxSteps; step++) {
+        if (signal.aborted) {
+          turn.status = "abort";
+          turn.endTime = Date.now();
+          await this._persistTurn(turn);
+          this.events.emit("turn:abort", {});
+          this._onTurnEnd(turn);
+          return;
+        }
+
+        const stepLLMStartTime = step === startStep && turn.iterations.length === 0
+          ? turn.startTime
+          : Date.now();
+
+        if (step > startStep || turn.iterations.length === 0) {
+          this.events.emit("llm:start", { step, startTime: stepLLMStartTime });
+        }
+
+        // 执行 beforeRequest hook
+        try {
+          await this.options.hooks?.beforeRequest?.({
+            message: userParams.message,
+            attachments: userParams.attachments ?? [],
+            step,
+          });
+        } catch (e) {
+          console.warn("[Agent] hooks.beforeRequest failed:", e);
+        }
+
+        // 组装 messages
+        const messages = assembleMessages(
+          baseMessages,
+          historyStartIndex,
+          this.options,
+          this.turns,
+          formattedParams,
+          tail
+        );
+
+        // 调用 LLM
+        let llmResult: LLMCallResult;
+        try {
+          llmResult = await callLLM(
+            this.options,
+            messages,
+            signal,
+            llmRest,
+            step,
+            (delta, content, thinkingDelta, thinkingContent) => {
+              this.events.emit("llm:content", { delta, content, thinkingDelta, thinkingContent, step });
+            },
+            (callId, name, argsDelta) => {
+              this.events.emit("tool:content", { callId, name, argsDelta, step });
+            }
+          );
+        } catch (e) {
+          turn.endTime = Date.now();
+          turn.status = "error";
+          turn.error = String((e as any)?.message ?? e);
+          await this._persistTurn(turn);
+          this.events.emit("turn:error", { error: e });
+          this._onTurnEnd(turn);
+          throw e;
+        }
+
+        if (llmResult.aborted) {
+          turn.status = "abort";
+          turn.endTime = Date.now();
+          await this._persistTurn(turn);
+          this.events.emit("turn:abort", {});
+          this._onTurnEnd(turn);
+          return;
+        }
+
+        // 记录本次迭代
+        const iterToolCallRecords: ToolCallRecord[] = [];
+        const iterEndTime = Date.now();
+        const currentIter: TurnRecord["iterations"][number] = {
+          content: llmResult.content,
+          toolCalls: iterToolCallRecords,
+          startTime: stepLLMStartTime,
+          endTime: iterEndTime,
+          ...(llmResult.thinkingContent ? { thinkingContent: llmResult.thinkingContent } : {}),
+        };
+        turn.iterations.push(currentIter);
+        turn.thinkingContent += llmResult.thinkingContent;
+        if (llmResult.usage) turn.usage = llmResult.usage;
+
+        // 判断是否终止
+        const modelFinished = !["tool_calls", "unknown"].includes(llmResult.finishReason);
+        if (modelFinished) {
+          turn.content = llmResult.content;
+          turn.endTime = iterEndTime;
+          turn.status = "success";
+          await this._persistTurn(turn);
+          this.events.emit("llm:complete", { step, finishReason: llmResult.finishReason, usage: turn.usage, done: true, endTime: turn.endTime });
+          this.events.emit("turn:complete", {});
+          this._onTurnEnd(turn);
+          return;
+        }
+
+        // 有工具调用
+        this.events.emit("llm:complete", { step, finishReason: llmResult.finishReason, usage: llmResult.usage, done: false, endTime: iterEndTime });
+
+        // 追加 assistant message 到 tail
+        const assistantMsg: Message = {
+          role: "assistant",
+          content: llmResult.content,
+          ...(llmResult.thinkingContent ? { reasoning_content: llmResult.thinkingContent } : {}),
+          tool_calls: llmResult.toolCalls.map(tc => ({
+            id: tc.id,
+            type: "function" as const,
+            function: { name: tc.name, arguments: JSON.stringify(tc.args) },
+          })),
+        };
+        tail.push(assistantMsg);
+
+        // 执行工具
+        const toolResultMessages: Message[] = [];
+        let doomLoopTriggered = false;
+
+        for (let tcIdx = 0; tcIdx < llmResult.toolCalls.length; tcIdx++) {
+          const tc = llmResult.toolCalls[tcIdx];
+          if (signal.aborted) break;
+
+          // Doom loop 检测
+          const argsKey = JSON.stringify(tc.args);
+          toolCallHistory.push({ name: tc.name, argsKey });
+          const doomCount = getDoomLoopCount(toolCallHistory, tc.name, argsKey);
+          if (doomCount >= doomLoopThreshold) {
+            this.events.emit("turn:doom", { toolName: tc.name, args: tc.args, count: doomCount });
+            doomLoopTriggered = true;
+            break;
+          }
+
+          const execStartTime = Date.now();
+          const toolRecord: ToolCallRecord = {
+            callId: tc.id,
+            name: tc.name,
+            args: tc.args,
+            status: "success",
+            execStartTime,
+            execEndTime: 0,
+          };
+          iterToolCallRecords.push(toolRecord);
+
+          this.events.emit("tool:call", { callId: tc.id, name: tc.name, args: tc.args, step, startTime: execStartTime });
+
+          const tool = this.options.tools?.find(t => t.name === tc.name);
+          let toolResultContent: string;
+
+          if (!tool) {
+            const err = new Error(`Tool not found: ${tc.name}`);
+            toolRecord.status = "error";
+            toolRecord.error = err.message;
+            toolRecord.execEndTime = Date.now();
+            toolResultContent = `Error: ${err.message}`;
+            this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: err, step, endTime: toolRecord.execEndTime });
+          } else {
+            try {
+              tool.validate?.(tc.args);
+              const result = await tool.execute(tc.args);
+              if (signal.aborted) {
+                toolRecord.status = "error";
+                toolRecord.error = "用户已取消";
+                toolRecord.execEndTime = Date.now();
+                toolResultContent = `Error: 用户已取消`;
+                this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: "用户已取消", step, endTime: toolRecord.execEndTime });
+              } else {
+                toolRecord.result = result.metadata ?? {};
+                toolRecord.execEndTime = Date.now();
+                toolResultContent = result.output;
+                this.events.emit("tool:result", { callId: tc.id, name: tc.name, result: toolRecord.result, step, endTime: toolRecord.execEndTime });
+              }
+            } catch (e) {
+              toolRecord.status = "error";
+              toolRecord.error = signal.aborted ? "用户已取消" : String((e as any)?.message ?? e);
+              toolRecord.execEndTime = Date.now();
+              toolResultContent = `Error: ${toolRecord.error}`;
+              this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: e, step, endTime: toolRecord.execEndTime });
+            }
+          }
+
+          toolResultMessages.push({
+            role: "tool",
+            tool_call_id: tc.id,
+            content: toolResultContent,
+          });
+        }
+
+        if (signal.aborted) {
+          turn.status = "abort";
+          turn.endTime = Date.now();
+          await this._persistTurn(turn);
+          this.events.emit("turn:abort", {});
+          this._onTurnEnd(turn);
+          return;
+        }
+
+        if (doomLoopTriggered) {
+          const lastIter = turn.iterations[turn.iterations.length - 1];
+          turn.content = lastIter?.content ?? "";
+          turn.endTime = Date.now();
+          turn.status = "success";
+          await this._persistTurn(turn);
+          this.events.emit("llm:complete", { step, finishReason: "stop", usage: turn.usage, done: true, endTime: turn.endTime });
+          this.events.emit("turn:complete", {});
+          this._onTurnEnd(turn);
+          return;
+        }
+
+        tail.push(...toolResultMessages);
+      }
+
+      // 超出 maxSteps
+      const lastIter = turn.iterations[turn.iterations.length - 1];
+      turn.content = lastIter?.content ?? "";
+      turn.endTime = Date.now();
+      turn.status = "success";
+      await this._persistTurn(turn);
+      this.events.emit("llm:complete", { step: maxSteps, finishReason: "length", usage: turn.usage, done: true, endTime: turn.endTime });
+      this.events.emit("turn:complete", {});
+      this._onTurnEnd(turn);
+    } catch (e) {
+      if (turn.status === "success") {
+        // 未被内层 catch 处理（如 buildMessages、hook 等抛出的异常）
+        turn.endTime = Date.now();
+        turn.status = "error";
+        turn.error = String((e as any)?.message ?? e);
+        await this._persistTurn(turn);
+        this.events.emit("turn:error", { error: e });
+        this._onTurnEnd(turn);
+      }
+      throw e;
+    }
+  }
+
+  /** 持久化单个 turn */
+  private async _persistTurn(turn: TurnRecord): Promise<void> {
+    const { history, key } = this.options;
+    if (history && key) {
+      // 更新 turns 数组中的 turn
+      const idx = this.turns.findIndex(t => t.id === turn.id);
+      if (idx >= 0) {
+        this.turns[idx] = turn;
+      } else {
+        this.turns.push(turn);
+      }
+      await history.append(key, turn).catch(console.error);
+    } else {
+      // 没有 history 时也要更新内存
+      const idx = this.turns.findIndex(t => t.id === turn.id);
+      if (idx >= 0) {
+        this.turns[idx] = turn;
+      } else {
+        this.turns.push(turn);
+      }
+    }
+  }
+
+  /**
    * 发起 AI 请求（ReAct 循环）。
    *
    * 循环终止条件（对标 opencode prompt.ts）：
@@ -509,18 +881,11 @@ export class Agent {
    *   4. 用户 abort()
    */
   async requestAI(params: RequestAIOptions): Promise<void> {
-    this._abortController = new AbortController();
-    const signal = this._abortController.signal;
-
-    const { message, attachments, meta, ...rest } = params;
+    const { message, attachments, ...rest } = params;
     // 有图片附件时，自动将 aiRole 覆盖为 "image"，使请求层路由到支持视觉的模型
     if (attachments?.length) {
       rest.aiRole = "image";
     }
-    const { key, history } = this.options;
-    const maxSteps = this.options.maxSteps ?? Infinity;
-    const doomLoopThreshold = this.options.doomLoopThreshold ?? 3;
-
     // ── 格式化用户消息（在构建 TurnRecord 之前执行，格式化结果写入 turn）
     // formatUserMessage 返回 { message, attachments?, meta? }，可覆盖原始参数
     // 注意：turn.userText 保留原始 message（UI 展示用），LLM 收到的是 formattedParams.message
@@ -561,14 +926,13 @@ export class Agent {
       status: "success",
     };
 
-    const stepStartTime = Date.now();
     this.events.emit("turn:start", {
+      turnId,
       message,
       attachments: formattedParams.attachments ?? attachments,
       meta: formattedMeta,
       ...(formattedParams.message !== message ? { userFormattedText: formattedParams.message } : {}),
     });
-    this.events.emit("llm:start", { step: 1, startTime: stepStartTime });
 
     // ── 执行 beforeTurn hook（在 buildMessages 之前，确保快照时机正确）
     try {
@@ -578,264 +942,29 @@ export class Agent {
     }
 
     // 构建基础 messages（system + agentsMd + context + compact + history），每轮 turn 只算一次
-    const { baseMessages, prefixCount } = await buildMessages(this.options, this.turns, this.compactRecord);
-
-    const persistTurn = async () => {
-      this.turns = [...this.turns, turn];
-      if (history && key) {
-        await history.append(key, turn).catch(console.error);
-      }
-    };
-
-    // doom loop 用：扁平化的工具调用序列（跨 step）
-    const toolCallHistory: Array<{ name: string; argsKey: string }> = [];
-    // 本轮已积累的 assistant + tool 消息尾部（每个 step 后追加，下一个 step 带入）
-    const tail: Message[] = [];
-
+    let context: { baseMessages: Message[]; historyStartIndex: number };
     try {
-      for (let step = 1; step <= maxSteps; step++) {
-        if (signal.aborted) {
-          turn.status = "abort";
-          turn.endTime = Date.now();
-          await persistTurn();
-          this.events.emit("turn:abort", {});
-          this._onTurnEnd(turn);
-          return;
-        }
-
-        // step > 1 时通知新的一次 LLM 调用开始
-        let stepLLMStartTime = step === 1 ? stepStartTime : Date.now();
-        if (step > 1) {
-          stepLLMStartTime = Date.now();
-          this.events.emit("llm:start", { step, startTime: stepLLMStartTime });
-        }
-
-        // ── 执行 beforeRequest hook（每次 LLM 请求前）
-        try {
-          await this.options.hooks?.beforeRequest?.({ message, attachments: attachments ?? [], step });
-        } catch (e) {
-          console.warn("[Agent] hooks.beforeRequest failed:", e);
-        }
-
-        // ── 每次请求前组装完整 messages（追加用户消息和本轮对话尾部）
-        const messages = assembleMessages(baseMessages, prefixCount, this.options, this.turns, formattedParams, tail);
-
-        // ── 调用 LLM
-        let llmResult: LLMCallResult;
-        try {
-          llmResult = await callLLM(
-            this.options,
-            messages,
-            signal,
-            rest,
-            step,
-            (delta, content, thinkingDelta, thinkingContent) => {
-              this.events.emit("llm:content", { delta, content, thinkingDelta, thinkingContent, step });
-            },
-            (callId, name, argsDelta) => {
-              this.events.emit("tool:content", { callId, name, argsDelta, step });
-            }
-          );
-        } catch (e) {
-          turn.endTime = Date.now();
-          turn.status = "error";
-          turn.error = String((e as any)?.message ?? e);
-          await persistTurn();
-          this.events.emit("turn:error", { error: e });
-          this._onTurnEnd(turn);
-          throw e;
-        }
-
-        if (llmResult.aborted) {
-          turn.status = "abort";
-          turn.endTime = Date.now();
-          await persistTurn();
-          this.events.emit("turn:abort", {});
-          this._onTurnEnd(turn);
-          return;
-        }
-
-        // ── 记录本次迭代
-        const iterToolCallRecords: ToolCallRecord[] = [];
-        const iterEndTime = Date.now();
-        const currentIter: TurnRecord["iterations"][number] = {
-          content: llmResult.content,
-          toolCalls: iterToolCallRecords,
-          startTime: stepLLMStartTime,
-          endTime: iterEndTime,
-          ...(llmResult.thinkingContent ? { thinkingContent: llmResult.thinkingContent } : {}),
-        };
-        turn.iterations.push(currentIter);
-        turn.thinkingContent += llmResult.thinkingContent;
-        if (llmResult.usage) turn.usage = llmResult.usage;
-
-        // ── 判断是否终止（对标 opencode 的 modelFinished 判断）
-        // finishReason 不是 "tool_calls" 也不是 "unknown" → 模型主动结束
-        const modelFinished = !["tool_calls", "unknown"].includes(llmResult.finishReason);
-        if (modelFinished) {
-          turn.content = llmResult.content;
-          turn.endTime = iterEndTime;
-          turn.status = "success";
-          await persistTurn();
-          this.events.emit("llm:complete", { step, finishReason: llmResult.finishReason, usage: llmResult.usage, done: true, endTime: turn.endTime });
-          this.events.emit("turn:complete", {});
-          this._onTurnEnd(turn);
-          return;
-        }
-
-        // ── 有工具调用 → 执行工具
-        if (llmResult.toolCalls.length === 0) {
-          // finishReason 是 tool_calls 但实际没有解析到工具调用（异常情况）
-          // 同样视为结束
-          turn.content = llmResult.content;
-          turn.endTime = iterEndTime;
-          turn.status = "success";
-          await persistTurn();
-          this.events.emit("llm:complete", { step, finishReason: llmResult.finishReason, usage: llmResult.usage, done: true, endTime: turn.endTime });
-          this.events.emit("turn:complete", {});
-          this._onTurnEnd(turn);
-          return;
-        }
-
-        // 本 step 有工具调用，通知 llm:complete（done: false，还有后续 step）
-        this.events.emit("llm:complete", { step, finishReason: llmResult.finishReason, usage: llmResult.usage, done: false, endTime: iterEndTime });
-
-        // 将 assistant 消息（带 tool_calls）追加到 tail
-        const assistantMsg: Message = {
-          role: "assistant",
-          content: llmResult.content,
-          ...(llmResult.thinkingContent ? { reasoning_content: llmResult.thinkingContent } : {}),
-          tool_calls: llmResult.toolCalls.map((tc) => ({
-            id: tc.id,
-            type: "function" as const,
-            function: {
-              name: tc.name,
-              arguments: JSON.stringify(tc.args),
-            },
-          })),
-        };
-        tail.push(assistantMsg);
-
-        // 逐个执行工具
-        const toolResultMessages: Message[] = [];
-        let doomLoopTriggered = false;
-
-        for (let tcIdx = 0; tcIdx < llmResult.toolCalls.length; tcIdx++) {
-          const tc = llmResult.toolCalls[tcIdx];
-          if (signal.aborted) break;
-
-          // ── Doom loop 检测
-          const argsKey = JSON.stringify(tc.args);
-          toolCallHistory.push({ name: tc.name, argsKey });
-          const doomCount = getDoomLoopCount(toolCallHistory, tc.name, argsKey);
-          if (doomCount >= doomLoopThreshold) {
-            this.events.emit("turn:doom", { toolName: tc.name, args: tc.args, count: doomCount });
-            doomLoopTriggered = true;
-            break;
-          }
-
-          const execStartTime = Date.now();
-          const toolRecord: ToolCallRecord = {
-            callId: tc.id,
-            name: tc.name,
-            args: tc.args,
-            status: "success",
-            execStartTime,
-            execEndTime: 0,
-          };
-          iterToolCallRecords.push(toolRecord);
-
-          this.events.emit("tool:call", { callId: tc.id, name: tc.name, args: tc.args, step, startTime: execStartTime });
-
-          const tool = this.options.tools?.find((t) => t.name === tc.name);
-          let toolResultContent: string;
-
-          if (!tool) {
-            const err = new Error(`Tool not found: ${tc.name}`);
-            toolRecord.status = "error";
-            toolRecord.error = err.message;
-            toolRecord.execEndTime = Date.now();
-            toolResultContent = `Error: ${err.message}`;
-            this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: err, step, endTime: toolRecord.execEndTime });
-          } else {
-            try {
-              // 参数校验
-              tool.validate?.(tc.args);
-              const result = await tool.execute(tc.args);
-              if (signal.aborted) {
-                toolRecord.status = "error";
-                toolRecord.error = "用户已取消";
-                toolRecord.execEndTime = Date.now();
-                toolResultContent = `Error: 用户已取消`;
-                this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: "用户已取消", step, endTime: toolRecord.execEndTime });
-              } else {
-                toolRecord.result = result.metadata ?? {};
-                toolRecord.execEndTime = Date.now();
-                toolResultContent = result.output;
-                this.events.emit("tool:result", { callId: tc.id, name: tc.name, result: toolRecord.result, step, endTime: toolRecord.execEndTime });
-              }
-            } catch (e) {
-              toolRecord.status = "error";
-              toolRecord.error = signal.aborted ? "用户已取消" : String((e as any)?.message ?? e);
-              toolRecord.execEndTime = Date.now();
-              toolResultContent = `Error: ${toolRecord.error}`;
-              this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: e, step, endTime: toolRecord.execEndTime });
-            }
-          }
-
-          toolResultMessages.push({
-            role: "tool",
-            content: toolResultContent,
-            tool_call_id: tc.id,
-          });
-        }
-
-        if (signal.aborted) {
-          turn.status = "abort";
-          turn.endTime = Date.now();
-          await persistTurn();
-          this.events.emit("turn:abort", {});
-          this._onTurnEnd(turn);
-          return;
-        }
-
-        // doom loop 触发 → 停止
-        if (doomLoopTriggered) {
-          const lastIter = turn.iterations[turn.iterations.length - 1];
-          turn.content = lastIter?.content ?? "";
-          turn.endTime = Date.now();
-          turn.status = "success";
-          await persistTurn();
-          this.events.emit("llm:complete", { step, finishReason: "stop", usage: turn.usage, done: true, endTime: turn.endTime });
-          this.events.emit("turn:complete", {});
-          this._onTurnEnd(turn);
-          return;
-        }
-
-        // 将工具结果追加到 tail，下一个 step 的 assembleMessages 会带入
-        tail.push(...toolResultMessages);
-      }
-
-      // 超出 maxSteps
-      const lastIter = turn.iterations[turn.iterations.length - 1];
-      turn.content = lastIter?.content ?? "";
-      turn.endTime = Date.now();
-      turn.status = "success";
-      await persistTurn();
-      this.events.emit("llm:complete", { step: maxSteps, finishReason: "length", usage: turn.usage, done: true, endTime: turn.endTime });
-      this.events.emit("turn:complete", {});
-      this._onTurnEnd(turn);
+      context = await buildMessages(this.options, this.turns, this.compactRecord);
     } catch (e) {
-      if (turn.status !== "abort") {
-        turn.endTime = Date.now();
-        turn.status = "error";
-        turn.error = String((e as any)?.message ?? e);
-        await persistTurn();
-        this.events.emit("turn:error", { error: e });
-        this._onTurnEnd(turn);
-      }
+      // buildMessages 失败时也要持久化 turn
+      turn.endTime = Date.now();
+      turn.status = "error";
+      turn.error = String((e as any)?.message ?? e);
+      await this._persistTurn(turn);
+      this.events.emit("turn:error", { error: e });
+      this._onTurnEnd(turn);
       throw e;
     }
+
+    // 调用共用的 ReAct 循环逻辑
+    await this._runReActLoop({
+      context,
+      initialTail: [],
+      startStep: 1,
+      turn,
+      userParams: { message, attachments: formattedParams.attachments ?? attachments, meta: formattedMeta },
+      llmRest: rest,
+    });
   }
 
   // ─── Fork / subAgent 基础设施 ─────────────────────────────────────────────

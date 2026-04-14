@@ -4,7 +4,7 @@ import { TextShimmer } from "../../../components/text-shimmer";
 import { ElapsedTime } from "../../../components/elapsed-time";
 import { registerToolRenderer } from "./index";
 import type { ToolCallRecord } from "../../../../../../agent/src";
-import { READ_TOOL_NAME, WRITE_TOOL_NAME, EDIT_TOOL_NAME, DELETE_TOOL_NAME } from "../../../../../../agent/src";
+import { READ_TOOL_NAME, WRITE_TOOL_NAME, MULTI_WRITE_TOOL_NAME, EDIT_TOOL_NAME, MULTI_EDIT_TOOL_NAME, DELETE_TOOL_NAME } from "../../../../../../agent/src";
 import { CHECK_STATUS_TOOL_NAME } from "../../../../sandbox/tools/check-status";
 
 /** UI 层用，在 ToolCallRecord 基础上扩展 pending 状态 */
@@ -199,22 +199,24 @@ const CodeCard = ({ tool, icon, title, content, isDelete, lineMeta, diffMode }: 
   const lang = detectLang(tool.args?.path ?? "");
   const lineCount = content ? content.split("\n").length : 0;
 
-  const isCollapsed = collapsed || diffBroken;
-  const canToggle = !diffBroken;
+  // error 状态：强制折叠且禁止展开
+  const isError = tool.status === "error";
+  const isCollapsed = collapsed || diffBroken || isError;
+  const canToggle = !diffBroken && !isError;
 
   return (
-    <div className={css["code-card"]}>
+    <div className={`${css["code-card"]}${isError ? ` ${css["code-card-error"]}` : ""}`}>
       <div
         className={css["code-card-header"]}
         onClick={() => canToggle && setCollapsed((c) => !c)}
         style={canToggle ? undefined : { cursor: "default" }}
       >
         <span className={css["code-card-icon"]}>
-          {tool.status === "error" ? <ErrorIcon /> : icon}
+          {isError ? <ErrorIcon /> : icon}
         </span>
         <span className={css["code-card-filename"]}>{title}</span>
         {lineMeta && <span className={css["code-card-lines"]}>{lineMeta}</span>}
-        {!lineMeta && lineCount > 0 && (
+        {!lineMeta && lineCount > 0 && !isError && (
           <span className={css["code-card-lines"]}>{lineCount} 行</span>
         )}
         <Duration tool={tool} />
@@ -307,6 +309,133 @@ const WriteFileRenderer = ({ tool }: { tool: ToolRecord }) => {
       title={title}
       content={content}
     />
+  );
+};
+
+// ─── multi_write 渲染 ───────────────────────────────────────────────────────
+
+/** 为单个文件创建虚拟 ToolRecord，复用 CodeCard 渲染逻辑 */
+const createFileToolRecord = (
+  file: { path: string; content?: string },
+  baseTool: ToolRecord
+): ToolRecord => ({
+  ...baseTool,
+  args: { path: file.path, content: file.content },
+  result: undefined,
+});
+
+const MultiWriteRenderer = ({ tool }: { tool: ToolRecord }) => {
+  const files: Array<{ path: string; content?: string }> = Array.isArray(tool.args?.files) ? tool.args.files : [];
+
+  if (files.length === 0) {
+    return (
+      <div className={css["tool-card"]}>
+        <StatusIcon tool={tool} icon={<FileWrite />} />
+        <Label tool={tool} text="写文件" />
+        <Duration tool={tool} />
+      </div>
+    );
+  }
+
+  return (
+    <div className={css["multi-write-container"]}>
+      {files.map((file, idx) => {
+        const fileTool = createFileToolRecord(file, tool);
+        const name = basename(file.path);
+        const title = name ? `写文件 ${name}` : file.path;
+
+        // pending 状态：每个文件单独展示 pending 卡片
+        if (tool.status === "pending") {
+          return (
+            <PendingCodeCard
+              key={file.path || idx}
+              tool={fileTool}
+              icon={<FileWrite />}
+              title={`${title}...`}
+            />
+          );
+        }
+
+        // success/error：展示可展开的代码卡片
+        const content = file.content ?? "";
+        const lineCount = content.split("\n").length;
+
+        return (
+          <CodeCard
+            key={file.path || idx}
+            tool={fileTool}
+            icon={<FileWrite />}
+            title={title}
+            content={content}
+            lineMeta={lineCount > 0 ? `${lineCount} 行` : undefined}
+          />
+        );
+      })}
+    </div>
+  );
+};
+
+// ─── multi_edit 渲染 ───────────────────────────────────────────────────────
+
+type EditItem = { path: string; old_str?: string; new_str?: string; replace_all?: boolean };
+
+/** 为单个编辑操作创建虚拟 ToolRecord */
+const createEditToolRecord = (edit: EditItem, baseTool: ToolRecord): ToolRecord => ({
+  ...baseTool,
+  args: { path: edit.path, old_str: edit.old_str, new_str: edit.new_str, replace_all: edit.replace_all },
+  result: undefined,
+});
+
+const MultiEditRenderer = ({ tool }: { tool: ToolRecord }) => {
+  const edits: EditItem[] = Array.isArray(tool.args?.edits) ? tool.args.edits : [];
+
+  if (edits.length === 0) {
+    return (
+      <div className={css["tool-card"]}>
+        <StatusIcon tool={tool} icon={<Pencil />} />
+        <Label tool={tool} text="编辑文件" />
+        <Duration tool={tool} />
+      </div>
+    );
+  }
+
+  return (
+    <div className={css["multi-write-container"]}>
+      {edits.map((edit, idx) => {
+        const editTool = createEditToolRecord(edit, tool);
+        const name = basename(edit.path);
+        const title = name ? `修改文件 ${name}` : edit.path;
+
+        // pending 状态：每个编辑单独展示 pending 卡片
+        if (tool.status === "pending") {
+          return (
+            <PendingCodeCard
+              key={edit.path || idx}
+              tool={editTool}
+              icon={<Pencil />}
+              title={`${title}...`}
+            />
+          );
+        }
+
+        // success/error：展示可展开的代码卡片（diff 模式）
+        const oldStr: string = edit.old_str ?? "";
+        const newStr: string = edit.new_str ?? "";
+        const isDelete = newStr === "" && oldStr !== "";
+
+        return (
+          <CodeCard
+            key={edit.path || idx}
+            tool={editTool}
+            icon={<Pencil />}
+            title={title}
+            content={isDelete ? oldStr : newStr}
+            isDelete={isDelete}
+            diffMode={isDelete ? undefined : { oldStr, newStr }}
+          />
+        );
+      })}
+    </div>
   );
 };
 
@@ -425,6 +554,8 @@ const CheckStatusRenderer = ({ tool }: { tool: ToolRecord }) => {
 
 registerToolRenderer(READ_TOOL_NAME, (tool) => <ReadFileRenderer tool={tool} />);
 registerToolRenderer(WRITE_TOOL_NAME, (tool) => <WriteFileRenderer tool={tool} />);
+registerToolRenderer(MULTI_WRITE_TOOL_NAME, (tool) => <MultiWriteRenderer tool={tool} />);
 registerToolRenderer(EDIT_TOOL_NAME, (tool) => <EditFileRenderer tool={tool} />);
+registerToolRenderer(MULTI_EDIT_TOOL_NAME, (tool) => <MultiEditRenderer tool={tool} />);
 registerToolRenderer(DELETE_TOOL_NAME, (tool) => <DeleteFileRenderer tool={tool} />);
 registerToolRenderer(CHECK_STATUS_TOOL_NAME, (tool) => <CheckStatusRenderer tool={tool} />);

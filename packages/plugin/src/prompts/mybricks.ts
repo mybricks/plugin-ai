@@ -1,4 +1,4 @@
-import { READ_TOOL_NAME, EDIT_TOOL_NAME, WRITE_TOOL_NAME, DELETE_TOOL_NAME } from "../../../agent/src";
+import { READ_TOOL_NAME, EDIT_TOOL_NAME, WRITE_TOOL_NAME, DELETE_TOOL_NAME, MULTI_EDIT_TOOL_NAME, MULTI_WRITE_TOOL_NAME } from "../../../agent/src";
 
 export const MYBRICKS_PROMPT_SECTIONS = {
   agent: {
@@ -14,8 +14,8 @@ export const MYBRICKS_PROMPT_SECTIONS = {
 常用工作流：生成/修改代码 -> 查看状态（检查渲染情况、是否有报错）-> 在完成任务前检查是否要修改md文件（特别是README.md 和 requirement.md），如果要修改，则进行同步修改
 1. 意图识别 / 需求分析：尽量收集信息以确定用户的意图；
 2. 代码开发：生成/修改代码；
-- 使用 \`${EDIT_TOOL_NAME}\` 修改已有文件。这是修改文件的首选工具，因为它只发送差异部分。
-- 使用 \`${WRITE_TOOL_NAME}\` 新建文件，或在需要完整重写文件时使用。对已有文件优先使用 \`${EDIT_TOOL_NAME}\`。
+- 使用 \`${EDIT_TOOL_NAME}\` 或 \`${MULTI_EDIT_TOOL_NAME}\` 修改已有文件。这是修改文件的首选工具，因为它只发送差异部分。
+- 使用 \`${WRITE_TOOL_NAME}\` 或 \`${MULTI_WRITE_TOOL_NAME}\` 新建文件，或在需要完整重写文件时使用。对已有文件优先使用编辑操作。
 - 使用 \`${DELETE_TOOL_NAME}\` 删除文件
 3. 检查渲染状态：检查渲染情况、渲染日志、以及是否有报错，如果有报错或者渲染问题，需要再次回到流程2；
 4. 最后检查文档的状态，是否需要更新，特别是README.md 和 requirement.md），如果要修改，则进行修改。文档的修改决策基于后续提供的「文档更新」提示词。
@@ -70,9 +70,6 @@ CRITICAL: You can call multiple tools in a single response. make all independent
 |     ├── index.jsx
 |     ├── index.less
 |     ├── store.js     # 页面级 store（可选）
-|     └── SubComponent
-|        ├── index.jsx
-|        └── index.less
 └─ components
    └── SharedComponent
       ├── index.jsx
@@ -82,9 +79,7 @@ CRITICAL: You can call multiple tools in a single response. make all independent
 #### 页面与组件的文件拆分
 - index.jsx：模块入口，有且仅有一个，且必须写在根路径的 \`index.jsx\` 中；
 - pages/xxx：页面，每个页面必须单独拆到**文件夹**中，例如 \`pages/HomePage/index.jsx\`、\`pages/UserPage/index.jsx\`；
-- 组件：每个组件可以是单独的一个文件或目录，文件位置按是否有复用价值决定：
-  - 有复用价值（可以被多个页面或组件复用）：放在 \`components/组件名/\` 下（如 \`components/Header/index.jsx\`）；
-  - 无复用价值（仅当前页面使用）：可放在**当前页面目录下**（如 \`pages/HomePage/Title.jsx\`、\`pages/UserPage/FilterBar/index.jsx\`），不必强行放在 components 下；
+- 组件：可以被复用的组件可以放到公共\`components/\` 目录下；
 
 > 拆分仅作为结构处理，建议的开发顺序是完成基础架构的代码、然后按页面维度一个一个完成需求。
 
@@ -181,27 +176,6 @@ PopupVisible 装饰器说明：
 - 示例：\`logger.info('[UserList/fetchUsers] 开始请求用户列表', { page: 1 })\`；
 - 错误日志必须携带 error 对象：\`logger.error('[Store/loadData] 数据加载失败', error)\`；
 
-#### 区块拆分原则与规范
-区块拆分的核心目标是：代码清晰可维护、逻辑内聚、减少不必要的文件碎片。必须同时兼顾「编程视角」（复用性、状态独立性、逻辑复杂度）和「视觉模块」（视觉上可独立识别的功能区域），二者缺一不可。
-
-何时必须拆分为独立 comRef（满足以下任一条件时必须拆出）：
-1. 【复用性】该区块会被多个父组件引用，或预期将被复用；
-2. 【状态独立性】该区块有自己独立的状态逻辑，与父组件状态解耦，或需要独立订阅 store；
-3. 【逻辑复杂度】该区块包含较多交互逻辑、副作用或条件分支，放在父组件内会使父组件臃肿难以维护；
-4. 【视觉模块边界】该区块是视觉上清晰可识别的独立功能模块（如筛选栏、数据表格、详情面板、图表区、分页器等），且其内部有一定的 JSX 结构（子节点 ≥ 3 个或存在可命名子结构）；
-5. 【列表单项】列表/网格中结构复杂的单项（多于 2 个字段或有交互）；
-
-何时不应拆分（满足以下情况时，无需强行拆分，可在父组件中内联）：
-1. 结构极简：仅包含标题文字、单行描述、单个图标等少量元素（子节点 ≤ 2 个），且无独立状态或交互；
-2. 无复用价值：仅在当前组件使用一次，且内容简单（如 header 中只有一个标题 \`<h2>标题</h2>\`）；
-3. 强依赖上下文：该部分与父组件逻辑深度耦合，拆出后必须靠大量 props 传递才能工作，反而增加复杂度；
-- 反例（不应拆分）：页面顶部仅有标题的 header，如 \`<div className={css.header}><h2>用户管理</h2></div>\`，无需拆为独立 Header 组件；
-
-文件位置决策：
-- 跨页面复用 → 放入 \`components/组件名/\`；
-- 仅当前页面使用 → 放入当前页面目录下（如 \`pages/UserPage/FilterBar/\` 或 \`pages/UserPage/FilterBar.jsx\`）；
-- 禁止将只在单一页面使用的简单组件提升到顶层 \`components/\` 目录；
-
 重复结构处理：当一个区块内存在多个「结构相同、仅数据不同」的重复单元时，必须拆成「容器 + 单项」两层：
 - 容器（comRef）：负责布局与数据遍历，用 map 渲染单项；
 - 单项（comRef）：描述单条数据的 UI，通过 props 接收单条数据；
@@ -227,7 +201,7 @@ PopupVisible 装饰器说明：
   <assistant_response>
   好的，我将为您开发两个页面，包含主页面和查看详情页。我会先创建基础结构，然后创建页面。
   
-  首先创建基础框架，同时创建index.jsx、store.js、dataSource.js、 setup.js等文件
+  首先创建基础框架，使用批量创建工具批量创建index.jsx、store.js、dataSource.js、 setup.js等文件，完成基础架构。
   \`\`\`jsx
   import { appRef, Routes, Route } from "mybricks";
   import MainPage from "./pages/MainPage";
@@ -259,9 +233,10 @@ PopupVisible 装饰器说明：
   export default new Store();
   \`\`\`
   
-  然后，同时创建页面内的所有文件
+  然后，使用批量创建工具创建单个页面内的所有文件
 
   \`\`\`jsx
+  import { useEffect } from 'react';
   import { comRef } from "mybricks";
   import ToolBar from "./ToolBar";
   import css from "./index.less";
@@ -287,6 +262,7 @@ PopupVisible 装饰器说明：
   \`\`\`
   
   \`\`\`jsx
+  import { useEffect } from 'react';
   import { comRef } from "mybricks";
   import css from "./index.less";
 
@@ -311,6 +287,7 @@ PopupVisible 装饰器说明：
   \`\`\`
   
   \`\`\`jsx
+  import { useEffect } from 'react';
   import { comRef, redirect } from "mybricks";
   import { Button } from "xy-ui";
   import store from "../store.js";

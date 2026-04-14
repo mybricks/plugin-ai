@@ -117,7 +117,18 @@ const ChatPanel = ({
       {header ? <Header title={title} onClear={onClear} onExport={onExportHistory} /> : null}
 
       <div className={css["messages-area"]}>
-        <MessageList messages={messages} user={user} copilot={copilot} renderUserMessage={renderUserMessage} />
+        <MessageList messages={messages} user={user} copilot={copilot} renderUserMessage={renderUserMessage} onRetry={(id: string) => {
+          if (!agent) return;
+          context.aiQueue.clearQueue(agentKey);
+          context.aiQueue.send(
+            agentKey,
+            async () => {
+              context.aiQueue.registerAbort(agentKey, () => agent.abort());
+              await agent.retry(id);
+            },
+            { message: "" }
+          );
+        }} />
       </div>
 
       <Sender

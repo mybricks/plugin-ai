@@ -127,7 +127,7 @@ export function setupSandbox(params: SetupSandboxParams): void {
         const agent = context.agentMap.get(agentKey);
 
         if (!agent) return;
-        ensureAIPanelOpen(agentKey).then(() => {
+        ensureAIPanelOpen(comId).then(() => {
           context.aiQueue.send(
             agentKey,
             async () => {

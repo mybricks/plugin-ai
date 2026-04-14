@@ -129,7 +129,7 @@ export function maskMessages(
   // 而 history user 消息是按 turns 顺序输出的，我们只需跟 turns 里 success 的轮次对齐即可。
 
   const successTurnIndices: number[] = turns
-    .map((t, i) => (t.status === "success" ? i : -1))
+    .map((t, i) => (!t.retried ? i : -1))
     .filter((i) => i !== -1);
 
   // 标记 messages 中每条 user 消息对应的 turn index（-1 表示非 history user 消息）

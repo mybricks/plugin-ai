@@ -70,6 +70,15 @@
   color: var(--mybricks-text-color-main, #333);
   cursor: default;
   user-select: none;
+
+  // 错误状态：文本变红色
+  &.code-card-error {
+    .code-card-filename,
+    .code-card-lines,
+    .code-card-toggle {
+      color: #f44;
+    }
+  }
 }
 
 .code-card-header {
@@ -203,4 +212,12 @@
   font-size: 12px;
   color: var(--mybricks-text-color-main, #333);
   font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+// ── multi_write 专属 ──────────────────────────────────────────────────────────
+
+.multi-write-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }

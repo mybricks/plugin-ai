@@ -111,6 +111,11 @@ export interface TurnRecord {
   status: "success" | "abort" | "error";
   /** 错误信息（status === 'error' 时有值） */
   error?: string;
+  /**
+   * 是否已被 retry 替代（仅对 iterations 为空的 error turn 有效）。
+   * 标记后该 turn 不再参与 LLM 上下文构建，但保留在历史记录中供 UI 展示。
+   */
+  retried?: boolean;
 
   /**
    * 本轮的 AI 生成摘要（由 autoSummary fork 异步写入）。
@@ -315,7 +320,7 @@ export interface Tool {
 
 /**
  * 将历史 TurnRecord[] 展开为 LLM 可直接使用的 messages 列表。
- * 只包含 status === 'success' 的轮次（abort/error 的轮次不作为上下文）。
+ * 包含所有状态的轮次（success / error / abort）——由调用方决定是否过滤。
  *
  * 对于有工具调用的轮次，精确重建 ReAct 消息序列：
  *   user → assistant(tool_calls) → tool(results)… → assistant → …
@@ -335,7 +340,7 @@ export function turnsToMessages(turns: TurnRecord[], compactRecord?: CompactReco
 
   for (let i = 0; i < turns.length; i++) {
     const turn = turns[i];
-    if (turn.status !== "success") continue;
+    if (turn.retried) continue;
 
     // 游标之前（含游标本身）的 turns 跳过，由 buildMessages 负责输出摘要消息对
     if (compactBoundaryIdx !== -1 && i <= compactBoundaryIdx) {

@@ -7,9 +7,9 @@ import { context } from "../context";
  * TODO: _showAIDialog_ 目前由组件库的钩子挂载到 window，
  *       后续应改为由插件层统一提供，避免依赖组件副作用。
  */
-export function ensureAIPanelOpen(agentKey: string): Promise<void> {
+export function ensureAIPanelOpen(comId: string): Promise<void> {
   // _showAIDialog_ 由 ChatPanelList 组件挂载到 window
-  (window as any)._showAIDialog_?.(agentKey);
+  (window as any)._showAIDialog_?.(comId);
   return new Promise((resolve) => setTimeout(resolve, 500));
 }
 

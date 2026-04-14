@@ -14,6 +14,8 @@ export type AgentEventMap = {
    *   - `attachments` 用户上传的附件
    */
   "turn:start": {
+    /** 本轮 TurnRecord 的唯一 ID，与 agent.turns 中的 id 对应 */
+    turnId: string;
     message: string;
     attachments?: any[];
     meta?: Record<string, any>;

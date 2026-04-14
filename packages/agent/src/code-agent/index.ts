@@ -3,7 +3,9 @@ import type { Tool } from "../types";
 import {
   createReadTool, READ_TOOL_NAME,
   createWriteTool, WRITE_TOOL_NAME,
+  createMultiWriteTool, MULTI_WRITE_TOOL_NAME,
   createEditTool, EDIT_TOOL_NAME,
+  createMultiEditTool, MULTI_EDIT_TOOL_NAME,
   createDeleteTool, DELETE_TOOL_NAME,
 } from "./tools";
 import { getCodeAgentSystemPrompt, type CodeAgentPromptOptions } from "./prompt";
@@ -102,7 +104,7 @@ export class CodeAgent extends Agent {
       : undefined;
 
     const sandboxTools: Tool[] = wrappedSandbox
-      ? [createReadTool(wrappedSandbox), createWriteTool(wrappedSandbox), createEditTool(wrappedSandbox), createDeleteTool(wrappedSandbox)]
+      ? [createReadTool(wrappedSandbox), createWriteTool(wrappedSandbox), createMultiWriteTool(wrappedSandbox), createEditTool(wrappedSandbox), createMultiEditTool(wrappedSandbox), createDeleteTool(wrappedSandbox)]
       : [];
 
     // ── sandbox.getContext 作为 getContextMessages ────────────────────────────

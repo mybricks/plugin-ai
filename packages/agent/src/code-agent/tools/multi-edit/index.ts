@@ -1,0 +1,143 @@
+import type { Tool, ToolResult } from "../../../types";
+import { ToolValidationError } from "../../../types";
+import type { Sandbox } from "../../index";
+import { READ_TOOL_NAME } from "../read";
+import { replaceInContent } from "../edit/replace";
+
+export const MULTI_EDIT_TOOL_NAME = "multi_edit";
+
+export function createMultiEditTool(adapter: Sandbox): Tool {
+  return {
+    name: MULTI_EDIT_TOOL_NAME,
+    description: `批量编辑多个文件，对每个文件进行精确的字符串替换。一次调用可以对多个文件同时进行编辑，比多次调用 edit_file 更高效。
+警告：
+- 如果 old_str 与文件内容不完全匹配（包括空白），工具将失败
+- 如果 old_str 与 new_str 相同，工具将失败
+
+编辑时请确保：
+- 所有编辑结果符合语言习惯、语法正确
+- 不要让代码处于损坏状态
+- 除非用户明确要求，否则不要使用 emoji
+- 使用 replace_all 在文件中批量替换和重命名字符串（例如重命名变量时非常有用）`,
+    parameters: {
+      type: "object",
+      properties: {
+        edits: {
+          type: "array",
+          description: "编辑操作列表",
+          items: {
+            type: "object",
+            properties: {
+              path: {
+                type: "string",
+                description: "文件路径",
+              },
+              old_str: {
+                type: "string",
+                description: "要被替换的原始内容（必须与文件中完全一致）",
+              },
+              new_str: {
+                type: "string",
+                description: "替换后的内容。传空字符串表示删除 old_str",
+              },
+              replace_all: {
+                type: "boolean",
+                description: "是否替换文件中所有匹配的 old_str（默认 false）",
+              },
+            },
+            required: ["path", "old_str", "new_str"],
+          },
+        },
+      },
+      required: ["edits"],
+    },
+    validate(params: { edits?: Array<{ path?: string; old_str?: string; new_str?: string; replace_all?: boolean }> }) {
+      if (!Array.isArray(params.edits) || params.edits.length === 0) {
+        throw new ToolValidationError("edits must be a non-empty array");
+      }
+      for (let i = 0; i < params.edits.length; i++) {
+        const edit = params.edits[i];
+        if (!edit.path || typeof edit.path !== "string" || !edit.path.trim()) {
+          throw new ToolValidationError(`edits[${i}].path is required and must be a non-empty string`);
+        }
+        if (edit.old_str === undefined || edit.old_str === null) {
+          throw new ToolValidationError(`edits[${i}].old_str is required`);
+        }
+        if (edit.new_str === undefined || edit.new_str === null) {
+          throw new ToolValidationError(`edits[${i}].new_str is required`);
+        }
+      }
+    },
+    async execute(
+      params: { edits: Array<{ path: string; old_str: string; new_str: string; replace_all?: boolean }> }
+    ): Promise<ToolResult> {
+      // 批量读取所有文件
+      const files = await adapter.getFiles();
+      const fileMap = new Map(files.map((f) => [f.path, f.content]));
+
+      // 对每个编辑操作执行替换
+      const updates: Array<{ path: string; content: string }> = [];
+      const results: Array<{ path: string; strategy?: string; error?: string }> = [];
+
+      for (const edit of params.edits) {
+        const content = fileMap.get(edit.path);
+        if (content === undefined) {
+          results.push({
+            path: edit.path,
+            error: `File not found: ${edit.path}. Use \`${READ_TOOL_NAME}\` without path to list available files.`,
+          });
+          continue;
+        }
+
+        const result = replaceInContent(content, edit.old_str, edit.new_str, edit.replace_all ?? false);
+        if (!result.ok) {
+          results.push({
+            path: edit.path,
+            error: result.message ?? "Replace failed",
+          });
+          continue;
+        }
+        
+        console.log('result', result)
+
+        // 更新 fileMap 以支持对同一文件的多次编辑
+        fileMap.set(edit.path, result.newContent!);
+        updates.push({ path: edit.path, content: result.newContent! });
+        results.push({ path: edit.path, strategy: result.strategy });
+      }
+
+      // 检查是否有失败
+      const errors = results.filter((r) => r.error);
+      if (errors.length > 0) {
+        const errorMessages = errors.map((e) => `${e.path}: ${e.error}`).join("\n");
+        throw new ToolValidationError(`Some edits failed:\n${errorMessages}`);
+      }
+
+      console.log('updates', updates)
+
+      // 批量写入更新后的文件
+      try {
+        await adapter.updateFiles(updates);
+      } catch (err) {
+        throw new ToolValidationError(
+          `Failed to write files: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+
+      const summaries = results.map((r) => ({
+        path: r.path,
+        strategy: r.strategy,
+      }));
+
+      const output = summaries
+        .map((s) => `${s.path} (${s.strategy ?? "unknown"})`)
+        .join("\n");
+
+      return {
+        title: `${params.edits.length} files edited`,
+        output: `Files edited:\n${output}`,
+        metadata: { edits: summaries },
+      };
+    },
+  };
+}

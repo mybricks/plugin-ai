@@ -87,6 +87,12 @@ export class AIRequestQueue {
     this.events.emit("queue", { key, queue: [...next] });
   }
 
+  /** 清空指定 key 的排队消息（不影响当前正在执行的请求） */
+  clearQueue(key: string) {
+    this.queues.set(key, []);
+    this.events.emit("queue", { key, queue: [] });
+  }
+
   private run(key: string, runFn: () => Promise<void>, _params: AIRequestParams) {
     this.loadingKeys.add(key);
     this.events.emit("loading", { key, loading: true });

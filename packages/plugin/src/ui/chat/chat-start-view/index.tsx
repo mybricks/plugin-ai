@@ -12,6 +12,8 @@ import css from "./index.less";
 export interface ChatStartViewProps {
   /** agent 实例 */
   agent?: CodeAgent;
+  /** sandbox 组件 ID，用于打开对应面板 */
+  comId?: string;
   /** 上传文件回调 */
   onUpload?: (file: File) => Promise<string>;
   /** 占位符文案 */
@@ -22,6 +24,7 @@ export interface ChatStartViewProps {
 
 const ChatStartView = ({
   agent,
+  comId,
   onUpload,
   placeholder = "请尽量详细描述您的需求，或者上传图片作为补充。完成后您可以导出源码或者Figma设计稿。",
   welcomeTitle = "在这里，开始您的需求",
@@ -49,11 +52,10 @@ const ChatStartView = ({
   }, [agentKey]);
 
   const onSend = (params: Parameters<SenderProps["onSend"]>[0]) => {
-    if (loading || !agent) return;
+    if (loading || !agent || !comId) return;
     setEmpty(false);
 
-    const sandbox = context.sandboxMap.get(agentKey);
-    ensureAIPanelOpen(agentKey).then(() => {
+    ensureAIPanelOpen(comId).then(() => {
       context.aiQueue.send(
         agentKey,
         async () => {
@@ -118,7 +120,7 @@ export interface ComChatStartViewProps extends Omit<ChatStartViewProps, "agent">
 const ComChatStartView = ({ comId, ...rest }: ComChatStartViewProps) => {
   const agentKey = context.getAgentKey(comId);
   const agent = context.agentMap.get(agentKey);
-  return <ChatStartView agent={agent} onUpload={context.pluginParams.onUpload} {...rest} />;
+  return <ChatStartView agent={agent} comId={comId} onUpload={context.pluginParams.onUpload} {...rest} />;
 };
 
 export { ChatStartView, ComChatStartView };
