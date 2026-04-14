@@ -8,7 +8,7 @@ export const MYBRICKS_PROMPT_SECTIONS = {
 当您完成任务时，请回复一份简明的报告，涵盖已完成的工作和任何关键发现。`,
     usingToolsSection: `# 工具使用
 > 当前项目会提供项目的所有代码，所以项目代码一开始可以跳过读取文件阶段，如果遇到skills文件需要读取，可以使用 \`${READ_TOOL_NAME}\` 。
-> 并行调用工具是提高效率的关键，必须严格遵守以下原则以最小化调用轮次。
+> 在一轮中并发调用工具是提高效率的关键，必须严格遵守以下原则以最小化调用轮次。
 
 <常用工作流>
 常用工作流：生成/修改代码 -> 查看状态（检查渲染情况、是否有报错）-> 在完成任务前检查是否要修改md文件（特别是README.md 和 requirement.md），如果要修改，则进行同步修改
@@ -18,20 +18,23 @@ export const MYBRICKS_PROMPT_SECTIONS = {
 - 使用 \`${WRITE_TOOL_NAME}\` 新建文件，或在需要完整重写文件时使用。对已有文件优先使用 \`${EDIT_TOOL_NAME}\`。
 - 使用 \`${DELETE_TOOL_NAME}\` 删除文件
 3. 检查渲染状态：检查渲染情况、渲染日志、以及是否有报错，如果有报错或者渲染问题，需要再次回到流程2；
-4. 最后检查文档的状态，是否需要更新，特别是README.md 和 requirement.md），如果要修改，则进行同步修改。文档的修改决策基于后续提供的「文档更新」提示词。
+4. 最后检查文档的状态，是否需要更新，特别是README.md 和 requirement.md），如果要修改，则进行修改。文档的修改决策基于后续提供的「文档更新」提示词。
 </常用工作流>
 
 <并行调用工具原则：必须遵守>
 CRITICAL: 尽量在同一个响应中同时并行调用多个代码工具；
+CRITICAL: You can call multiple tools in a single response. make all independent tool calls in parallel. Maximize use of parallel tool calls where possible to increase efficiency.
+  <推荐的模式>
+  - 一次响应中并行调用多个 \`${WRITE_TOOL_NAME}\` 来创建/重构文件，通过多个function call将需要创建的文件在一次响应内批量生成，禁止分批创建。；
+  - 一次响应中并行调用多个 \`${EDIT_TOOL_NAME}\` 来修改文件；
+  </推荐的模式>
 
-推荐的模式：
-- 一次响应中并行调用多个 \`${WRITE_TOOL_NAME}\` 来创建文件，将需要创建的文件在一次 assistant turn 内一并发出，禁止分批创建。；
-- 一次响应中并行调用多个 \`${EDIT_TOOL_NAME}\` 来修改文件；
+  <禁止的反模式>
+  - 读一个文件 → 回复给用户 → 再读下一个文件（应该一次调用所有）
+  - 调用工具 → 思考分析 → 再调用下一个工具（应该一次调用所有）
+  - 分多轮完成本可以一轮完成的独立操作
+  </禁止的反模式>
 
-禁止的反模式：
-- 读一个文件 → 回复给用户 → 再读下一个文件
-- 调用工具 → 思考分析 → 再调用下一个工具（应该一次调用所有）
-- 分多轮完成本可以一轮完成的独立操作
 <并行调用工具原则：必须遵守/>
 `,
   },
@@ -224,7 +227,8 @@ PopupVisible 装饰器说明：
   <assistant_response>
   好的，我将为您开发两个页面，包含主页面和查看详情页。我会先创建基础结构，然后创建页面。
   
-  \`\`\`write file="index.jsx"
+  首先创建基础框架，同时创建index.jsx、store.js、dataSource.js、 setup.js等文件
+  \`\`\`jsx
   import { appRef, Routes, Route } from "mybricks";
   import MainPage from "./pages/MainPage";
   import ViewPage from "./pages/ViewPage";
@@ -238,76 +242,8 @@ PopupVisible 装饰器说明：
     );
   });
   \`\`\`
-  
-  \`\`\`write file="pages/MainPage/index.jsx"
-  import { comRef } from "mybricks";
-  import ToolBar from "./ToolBar";
-  import css from "./index.less";
 
-  export default comRef(() => {
-    return (
-      <div className={css.viewContainer}>
-        <ToolBar />
-      </div>
-    );
-  });
-  \`\`\`
-
-  \`\`\`write file="pages/MainPage/index.less"
-  :frame {
-    width: 1600px;
-  }
-  .viewContainer {
-    position: relative;
-    width: 100%;
-    height: 100%;
-  }
-  \`\`\`
-  
-  \`\`\`write file="pages/ViewPage/index.jsx"
-  import { comRef } from "mybricks";
-  import css from "./index.less";
-
-  export default comRef(() => {
-    return (
-      <div className={css.viewContainer}>
-        // 查看页面内容
-      </div>
-    );
-  });
-  \`\`\`
-  
-  \`\`\`write file="pages/ViewPage/index.less"
-  :frame {
-    width: 1600px;
-  }
-  .viewContainer {
-    position: relative;
-    width: 100%;
-    height: 100%;
-  }
-  \`\`\`
-  
-  \`\`\`write file="pages/MainPage/ToolBar/index.jsx"
-  import { comRef, redirect } from "mybricks";
-  import { Button } from "xy-ui";
-  import store from "../store.js";
-  import css from "./index.less";
-
-  export default comRef(() => {
-    return store.btns.map((btn) => (
-      <Button className={css.btn} key={btn.text} onClick={() => redirect(btn.path)}>{btn.text}</Button>
-    ));
-  });
-  \`\`\`
-  
-  \`\`\`write file="pages/MainPage/ToolBar/index.less"
-  .btn {
-    position: absolute;
-  }
-  \`\`\`
-  
-  \`\`\`write file="pages/MainPage/store.js"
+  \`\`\`js
   import { makeAutoObservable } from "mybricks";
 
   class Store {
@@ -321,6 +257,76 @@ PopupVisible 装饰器说明：
   }
 
   export default new Store();
+  \`\`\`
+  
+  然后，同时创建页面内的所有文件
+
+  \`\`\`jsx
+  import { comRef } from "mybricks";
+  import ToolBar from "./ToolBar";
+  import css from "./index.less";
+
+  export default comRef(() => {
+    return (
+      <div className={css.viewContainer}>
+        <ToolBar />
+      </div>
+    );
+  });
+  \`\`\`
+
+  \`\`\`less
+  :frame {
+    width: 1600px;
+  }
+  .viewContainer {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
+  \`\`\`
+  
+  \`\`\`jsx
+  import { comRef } from "mybricks";
+  import css from "./index.less";
+
+  export default comRef(() => {
+    return (
+      <div className={css.viewContainer}>
+        // 查看页面内容
+      </div>
+    );
+  });
+  \`\`\`
+  
+  \`\`\`less
+  :frame {
+    width: 1600px;
+  }
+  .viewContainer {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
+  \`\`\`
+  
+  \`\`\`jsx
+  import { comRef, redirect } from "mybricks";
+  import { Button } from "xy-ui";
+  import store from "../store.js";
+  import css from "./index.less";
+
+  export default comRef(() => {
+    return store.btns.map((btn) => (
+      <Button className={css.btn} key={btn.text} onClick={() => redirect(btn.path)}>{btn.text}</Button>
+    ));
+  });
+  \`\`\`
+  
+  \`\`\`less
+  .btn {
+    position: absolute;
+  }
   \`\`\`
   </assistant_response>
 </example>

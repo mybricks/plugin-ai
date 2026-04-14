@@ -49,8 +49,6 @@ const external = [
   'react-dom',
   'antd',
   '@ant-design/icons',
-  'classnames',
-  'markdown-it',
 ];
 
 const sharedPlugins = [
@@ -63,26 +61,28 @@ const sharedPlugins = [
   postcssPlugin,
 ];
 
+const entry = path.resolve(root, 'index.tsx');
+
 const configs = [
-  // ESM
-  {
-    input: path.resolve(root, 'packages/plugin/src/index.tsx'),
-    output: {
-      dir: path.resolve(root, 'packages/plugin/dist'),
-      entryFileNames: '[name].js',
-      chunkFileNames: '[name].js',
-      assetFileNames: '[name][extname]',
-      format: 'es',
-      sourcemap: true,
-      preserveModules: true,
-      preserveModulesRoot: path.resolve(root, 'packages/plugin/src'),
-    },
-    external,
-    plugins: sharedPlugins,
-  },
+  // ESM（暂时禁用）
+  // {
+  //   input: entry,
+  //   output: {
+  //     dir: path.resolve(root, 'packages/plugin/dist'),
+  //     entryFileNames: '[name].js',
+  //     chunkFileNames: '[name].js',
+  //     assetFileNames: '[name][extname]',
+  //     format: 'es',
+  //     sourcemap: true,
+  //     preserveModules: true,
+  //     preserveModulesRoot: root,
+  //   },
+  //   external,
+  //   plugins: sharedPlugins,
+  // },
   // UMD
   {
-    input: path.resolve(root, 'packages/plugin/src/index.tsx'),
+    input: entry,
     output: {
       file: path.resolve(root, 'packages/plugin/dist/index.umd.js'),
       format: 'umd',
@@ -95,8 +95,6 @@ const configs = [
         'react-dom': 'ReactDOM',
         antd: 'antd',
         '@ant-design/icons': 'icons',
-        classnames: 'classNames',
-        'markdown-it': 'markdownit',
       },
     },
     external,

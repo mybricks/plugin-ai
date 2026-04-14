@@ -7,3 +7,8 @@ export * from "./packages/agent/src/index";
 
 // re-export packages/request
 export * from "./packages/request/src/index";
+
+/**
+ * @deprecated 兼容
+ */
+export function fileFormat () {};

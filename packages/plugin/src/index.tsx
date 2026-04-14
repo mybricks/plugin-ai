@@ -37,6 +37,12 @@ export interface PluginAIParams {
   onRequest?: RequestAsStreamFn;
   onUpload?: (file: File) => Promise<string>;
   onDownload?: (params: { name: string; content: string }) => Promise<void> | void;
+  codingConfig?: {
+    availableLibraries?: any[];
+    themes?: any[];
+    codeRules?: string;
+    designRules?: string;
+  };
   /** agents.md 内容，对标 CLAUDE.md，注入到系统 prompt 末尾 */
   agentsMd?: string;
   /** 技能文件列表，挂载为虚拟 .skills/ 文件，LLM 按需读取 */
@@ -55,6 +61,7 @@ export default function pluginAI(params: PluginAIParams): any {
     onRequest,
     onUpload,
     onDownload,
+    codingConfig,
     agentsMd,
     skills,
     promptSections,
@@ -83,7 +90,15 @@ export default function pluginAI(params: PluginAIParams): any {
 
   // ── window._sandbox_：sandbox 与 Plugin 的统一交互 API ─────────────────────
 
-  setupSandbox({ requestAsStream, agentsMd, skills, promptSections: mergedPromptSections, tools });
+  setupSandbox({
+    requestAsStream,
+    agentsMd,
+    skills,
+    promptSections: mergedPromptSections,
+    tools,
+    availableLibraries: codingConfig?.availableLibraries ?? [],
+    themes: codingConfig?.themes ?? [],
+  });
 
   return {
     name: "@mybricks/plugins/ai",
@@ -94,6 +109,16 @@ export default function pluginAI(params: PluginAIParams): any {
     contributes: {
       aiService: {
         init(_api: any) {
+          // 兼容旧版：给组件 runtime 提供项目配置读取入口
+          (window as any)._getProjectConfig_ = () => {
+            return {
+              availableLibraries: codingConfig?.availableLibraries ?? [],
+              themes: codingConfig?.themes ?? [],
+              codeRules: codingConfig?.codeRules ?? "",
+              designRules: codingConfig?.designRules ?? "",
+            };
+          };
+
           return {
             focus(params: AiServiceFocusParams) {
               const currentFocus = params ?? undefined;
