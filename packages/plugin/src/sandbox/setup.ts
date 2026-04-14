@@ -9,7 +9,7 @@ import type { ComChatStartViewProps } from "../ui/chat";
 import type { PrdRenderProps } from "../ui/renders/prd-render";
 import { ComChatStartViewWithStyles, PrdRenderWithStyles } from "../ui/renders/register";
 import { context } from "../context";
-import { ensureAIPanelOpen } from "../utils/ensure-ai-panel-open";
+import { ensureAIPanelOpen, ensureFocusComId } from "../utils/ensure-ai-panel-open";
 import { buildFocusInfo } from "../utils/focus-dom-summary";
 
 // ─── 类型定义 ─────────────────────────────────────────────────────────────────
@@ -131,6 +131,7 @@ export function setupSandbox(params: SetupSandboxParams): void {
           context.aiQueue.send(
             agentKey,
             async () => {
+              await ensureFocusComId(comId);
               context.aiQueue.registerAbort(agentKey, () => agent.abort());
               await agent.requestAI({
                 message: params.message,
@@ -204,11 +205,23 @@ function connectToAI(
     agentsMd,
     skills,
     formatUserMessage: (params) => {
-      const focus = params.meta?.focus;
-      console.log('params', params)
-      if (!focus?.element) return params.message;
-      const focusInfo = buildFocusInfo(focus.element);
-      return `${focusInfo}\n\n${params.message}`;
+      const focusSnapshot = context.currentFocus;
+      const ele = focusSnapshot?.focusArea?.ele;
+      const focusInfoText = ele ? buildFocusInfo(ele) : undefined;
+      const focusMeta = focusSnapshot ? {
+        focus: {
+          comId: focusSnapshot.comId,
+          pageId: focusSnapshot.pageId,
+          title: focusSnapshot.title,
+          type: focusSnapshot.type,
+          focusArea: focusSnapshot.focusArea ? { title: focusSnapshot.focusArea.title } : undefined,
+        }
+      } : {};
+      return {
+        message: focusInfoText ? `${focusInfoText}\n\n${params.message}` : params.message,
+        attachments: params.attachments,
+        meta: { ...params.meta, ...focusMeta },
+      };
     },
   });
 

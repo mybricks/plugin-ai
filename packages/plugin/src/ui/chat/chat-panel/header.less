@@ -21,7 +21,7 @@
     display: flex;
     align-items: center;
     flex: 1;
-    gap: 4px;
+    justify-content: space-between;
 
     .action {
       display: flex;
@@ -39,6 +39,15 @@
       svg {
         width: 12px;
         height: 12px;
+      }
+
+      &.export {
+        margin-top: 1.5px;
+
+        svg {
+          width: 14px;
+          height: 14px;
+        }
       }
     }
   }

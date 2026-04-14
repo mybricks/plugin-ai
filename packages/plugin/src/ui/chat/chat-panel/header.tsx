@@ -1,14 +1,16 @@
 import React from "react";
-import { Delete } from "../../components/icons";
+import classNames from "classnames";
+import { Delete, Export } from "../../components/icons";
 import { context } from "../../../context";
 import css from "./header.less";
 
 interface HeaderProps {
   onClear?: () => void;
+  onExport?: () => void;
   title?: string;
 }
 
-const Header = ({ onClear, title }: HeaderProps) => {
+const Header = ({ onClear, onExport, title }: HeaderProps) => {
   return (
     <div className={css.header}>
       <span className={css.title}>{title ?? context.name}</span>
@@ -19,6 +21,13 @@ const Header = ({ onClear, title }: HeaderProps) => {
           onClick={onClear}
         >
           <Delete />
+        </div>
+        <div
+          className={classNames(css.action, css.export)}
+          data-mybricks-tip="导出对话记录"
+          onClick={onExport}
+        >
+          <Export />
         </div>
       </div>
     </div>

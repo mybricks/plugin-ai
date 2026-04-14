@@ -108,10 +108,18 @@ export interface AgentOptions {
   };
   /**
    * 用户消息格式化函数（异步）。
-   * 在 turn 开始时、buildBaseMessages 之前调用，对用户输入进行处理（如注入上下文前缀等）。
-   * 接收完整的 RequestAIOptions，返回格式化后的消息文本。
+   * 在 turn 开始时、buildBaseMessages 之前调用，对用户输入进行后处理。
+   * 入参：requestAI 的完整参数（message、attachments、meta?）。
+   * 出参：处理后的 { message, attachments, meta }，可用于注入 focus 上下文等。
    */
-  formatUserMessage?: (params: RequestAIOptions) => Promise<string> | string;
+  formatUserMessage?: (params: RequestAIOptions) => Promise<FormatUserMessageResult> | FormatUserMessageResult;
+}
+
+/** formatUserMessage 的返回值类型 */
+export interface FormatUserMessageResult {
+  message: string;
+  attachments?: any[];
+  meta?: Record<string, any>;
 }
 
 // ─── ForkOptions ─────────────────────────────────────────────────────────────
@@ -513,9 +521,29 @@ export class Agent {
     const maxSteps = this.options.maxSteps ?? Infinity;
     const doomLoopThreshold = this.options.doomLoopThreshold ?? 3;
 
-    // ── 构建本轮 TurnRecord
+    // ── 格式化用户消息（在构建 TurnRecord 之前执行，格式化结果写入 turn）
+    // formatUserMessage 返回 { message, attachments?, meta? }，可覆盖原始参数
+    // 注意：turn.userText 保留原始 message（UI 展示用），LLM 收到的是 formattedParams.message
+    let formattedParams = params;
+    if (this.options.formatUserMessage) {
+      try {
+        const result = await this.options.formatUserMessage(params);
+        formattedParams = {
+          ...params,
+          message: result.message,
+          ...(result.attachments !== undefined ? { attachments: result.attachments } : {}),
+          ...(result.meta !== undefined ? { meta: { ...params.meta, ...result.meta } } : {}),
+        };
+      } catch (e) {
+        console.warn("[Agent] options.formatUserMessage failed:", e);
+      }
+    }
+
+    // ── 构建本轮 TurnRecord（使用格式化后的 attachments / meta）
     const turnId = `turn-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const userAttachments = (attachments ?? []).map((a: any) => ({
+    const formattedMeta = formattedParams.meta;
+    const formattedAttachments = formattedParams.attachments ?? attachments ?? [];
+    const userAttachments = formattedAttachments.map((a: any) => ({
       type: a.type ?? "image",
       content: a.url ?? a.content ?? "",
     }));
@@ -524,8 +552,9 @@ export class Agent {
       id: turnId,
       startTime: Date.now(),
       userText: message,
+      ...(formattedParams.message !== message ? { userFormattedText: formattedParams.message } : {}),
       userAttachments,
-      ...(meta ? { meta } : {}),
+      ...(formattedMeta ? { meta: formattedMeta } : {}),
       content: "",
       thinkingContent: "",
       iterations: [],
@@ -533,7 +562,12 @@ export class Agent {
     };
 
     const stepStartTime = Date.now();
-    this.events.emit("turn:start", { message, attachments, meta });
+    this.events.emit("turn:start", {
+      message,
+      attachments: formattedParams.attachments ?? attachments,
+      meta: formattedMeta,
+      ...(formattedParams.message !== message ? { userFormattedText: formattedParams.message } : {}),
+    });
     this.events.emit("llm:start", { step: 1, startTime: stepStartTime });
 
     // ── 执行 beforeTurn hook（在 buildMessages 之前，确保快照时机正确）
@@ -542,17 +576,6 @@ export class Agent {
     } catch (e) {
       console.warn("[Agent] hooks.beforeTurn failed:", e);
     }
-
-    // ── 格式化用户消息（原始文本保存在 turn.userText，格式化后的发给 LLM）
-    let formattedMessage = message;
-    if (this.options.formatUserMessage) {
-      try {
-        formattedMessage = await this.options.formatUserMessage(params);
-      } catch (e) {
-        console.warn("[Agent] options.formatUserMessage failed:", e);
-      }
-    }
-    const formattedParams = formattedMessage !== message ? { ...params, message: formattedMessage } : params;
 
     // 构建基础 messages（system + agentsMd + context + compact + history），每轮 turn 只算一次
     const { baseMessages, prefixCount } = await buildMessages(this.options, this.turns, this.compactRecord);

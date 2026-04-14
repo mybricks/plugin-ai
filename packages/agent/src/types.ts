@@ -66,8 +66,10 @@ export interface TurnRecord {
   /** 本轮结束时间（Unix ms），abort/error 时也记录 */
   endTime?: number;
 
-  /** 用户输入文本 */
+  /** 用户输入文本（原始，用于 UI 展示） */
   userText: string;
+  /** 格式化后的用户消息文本（发给 LLM，含 focus 上下文等注入内容；未格式化时与 userText 相同） */
+  userFormattedText?: string;
   /** 用户附件（图片等） */
   userAttachments: Array<{ type: string; content: string }>;
   /**
@@ -343,13 +345,13 @@ export function turnsToMessages(turns: TurnRecord[], compactRecord?: CompactReco
     // 用户消息
     const userContent: Message["content"] = turn.userAttachments.length
       ? [
-          { type: "text", text: turn.userText },
+          { type: "text", text: turn.userFormattedText ?? turn.userText },
           ...turn.userAttachments.map((a) => ({
             type: "image_url",
             image_url: { url: a.content },
           })),
         ]
-      : turn.userText;
+      : (turn.userFormattedText ?? turn.userText);
     messages.push({ role: "user", content: userContent });
 
     // 用 iterations 重建 ReAct 序列（向后兼容：无 iterations 时降级到简单 assistant 消息）

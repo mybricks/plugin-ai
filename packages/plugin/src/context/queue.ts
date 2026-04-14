@@ -10,6 +10,7 @@ export interface QueueItem {
   message: string;
   attachments?: any[];
   params: AIRequestParams;
+  runFn: () => Promise<void>;
 }
 
 type EventMap = {
@@ -59,6 +60,7 @@ export class AIRequestQueue {
         message: params.message ?? "",
         attachments: params.attachments,
         params,
+        runFn,
       };
       queue.push(item);
       this.queues.set(key, queue);
@@ -101,8 +103,8 @@ export class AIRequestQueue {
           const next = queue.shift()!;
           this.queues.set(key, queue);
           this.events.emit("queue", { key, queue: [...queue] });
-          // 排队的请求也需要 runFn，此处简化处理
-          this.events.emit("queue", { key, queue: [] });
+          // 执行队列中的下一个请求
+          this.run(key, next.runFn, next.params);
         } else {
           this.events.emit("queue", { key, queue: [] });
         }

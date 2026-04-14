@@ -31,11 +31,7 @@ export interface Designer {
    * 例如：当前项目代码、组件结构等。
    */
   exportToMessage(): string;
-  /**
-   * 获取当前聚焦元素的信息（Markdown 格式）。
-   * 返回当前 focus 的组件/页面/区域的详细信息。
-   */
-  getFocusInfo(): string;
+
 }
 
 import type { AgentHooks } from "../../../agent/src";

@@ -21,7 +21,7 @@ export interface MessageListProps {
   messages: MessageRecord[];
   user?: User;
   copilot?: User;
-  renderUserMessage?: (text: string, record: MessageRecord) => React.ReactNode;
+  renderUserMessage?: (record: MessageRecord) => React.ReactNode;
 }
 
 const MessageList = ({ messages, user, copilot, renderUserMessage }: MessageListProps) => {
@@ -47,7 +47,7 @@ const MessageBubble = ({ record, user, copilot, renderUserMessage }: {
   record: MessageRecord;
   user?: User;
   copilot?: User;
-  renderUserMessage?: (text: string, record: MessageRecord) => React.ReactNode;
+  renderUserMessage?: (record: MessageRecord) => React.ReactNode;
 }) => (
   <div className={css["chat-bubble-container"]}>
     {/* 时间戳居中 */}
@@ -64,7 +64,7 @@ const MessageBubble = ({ record, user, copilot, renderUserMessage }: {
         )}
       </header>
       <section className={classNames(css["chat-message-container"], css["user-message"])}>
-        {renderUserMessage ? renderUserMessage(record.userText, record) : <span>{record.userText}</span>}
+        {renderUserMessage ? renderUserMessage(record) : <span>{record.userText}</span>}
         {record.userAttachments.length > 0 && (
           <AttachmentsList
             className={css["attachments-list"]}

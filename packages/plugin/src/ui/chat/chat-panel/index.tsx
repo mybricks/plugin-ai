@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
-import { MentionTag } from "../../components/mention";
 import { context } from "../../../context";
 import type { QueueItem } from "../../../context/queue";
-import type { CodeAgent } from "../../../../agent/src";
+import type { CodeAgent } from "../../../../../agent/src";
 import { useSession } from "../use-session";
 import { MessageList } from "../messages";
 import { Header } from "./header";
+import type { MessageRecord } from "../use-sessions";
 import css from "./index.less";
 
 interface User {
@@ -17,24 +17,38 @@ interface User {
 export interface ChatPanelProps {
   user?: User;
   copilot?: User;
+  /** 是否展示 Header，默认 true */
+  header?: boolean;
   /** agent 实例 */
   agent?: CodeAgent;
-  /** focus 快照，用于初始化 sender 的 mention */
-  focusSnapshot?: any;
   /** 上传文件回调，不传时回退到 context.pluginParams.onUpload */
   onUpload?: (file: File) => Promise<string>;
   /** Header 标题，不传时读 context.name */
   title?: string;
   /**
-   * 用户消息文本的自定义渲染函数（原始文本，未经 formatUserMessage 处理）。
+   * 用户消息自定义渲染函数（只有 record）。
    * 返回 ReactNode，替换消息气泡中的默认文本展示。
    */
-  renderUserMessage?: (text: string, record: any) => React.ReactNode;
+  renderUserMessage?: (record: MessageRecord) => React.ReactNode;
+  /**
+   * 输入框上方 focus 区域的渲染函数。
+   * 返回 ReactNode，展示当前聚焦的组件 / 区域信息。
+   */
+  renderFocus?: () => React.ReactNode;
 }
 
 // ─── ChatPanel ────────────────────────────────────────────────────────────────
 
-const ChatPanel = ({ user, copilot, agent, focusSnapshot, onUpload, title, renderUserMessage }: ChatPanelProps) => {
+const ChatPanel = ({
+  user,
+  copilot,
+  header = true,
+  agent,
+  onUpload,
+  title,
+  renderUserMessage,
+  renderFocus,
+}: ChatPanelProps) => {
   const agentKey = agent?.key ?? "";
 
   const senderRef = useRef<SenderRef>(null);
@@ -61,38 +75,40 @@ const ChatPanel = ({ user, copilot, agent, focusSnapshot, onUpload, title, rende
     return () => { unL(); unQ(); };
   }, [agentKey]);
 
-  // focusSnapshot 变化时注入 mention 并聚焦
-  useEffect(() => {
-    if (focusSnapshot) {
-      const { onProgress, ...mentionData } = focusSnapshot;
-      setTimeout(() => {
-        senderRef.current?.setMentions?.([mentionData] as any);
-        senderRef.current?.focus();
-      });
-    }
-  }, [focusSnapshot]);
-
   const onClear = async () => {
     if (!agent) return;
     await agent.clearHistory();
     clearSession();
   };
 
+  const onExportHistory = async () => {
+    if (!agent) return;
+
+    try {
+      const content = {
+        agentKey: agent.key,
+        exportedAt: new Date().toISOString(),
+        turns: agent.getTurns(),
+        compactRecord: agent.getCompactRecord?.() ?? null,
+      };
+      const name = `rxai-${Date.now()}.json`;
+      await context.pluginParams.onDownload({ name, content: JSON.stringify(content) });
+    } catch (e) {
+      console.error("[plugin-ai] export history failed", e);
+    }
+  };
+
   const onSend = (sendMessage: Parameters<SenderProps["onSend"]>[0]) => {
     const { message, attachments } = sendMessage;
     if (!agent) return;
 
-    const sandbox = context.sandboxMap.get(agentKey);
-
     context.aiQueue.send(
       agentKey,
       async () => {
+        debugger
+        console.log('send message', message, attachments)
         context.aiQueue.registerAbort(agentKey, () => agent.abort());
-        await agent.requestAI({
-          message,
-          attachments,
-          ...(focusSnapshot ? { meta: { focus: focusSnapshot } } : {}),
-        });
+        await agent.requestAI({ message, attachments });
       },
       { message, attachments }
     );
@@ -100,7 +116,7 @@ const ChatPanel = ({ user, copilot, agent, focusSnapshot, onUpload, title, rende
 
   return (
     <div className={css["chat-panel"]}>
-      <Header title={title} onClear={onClear} />
+      {header ? <Header title={title} onClear={onClear} onExport={onExportHistory} /> : null}
 
       <div className={css["messages-area"]}>
         <MessageList messages={messages} user={user} copilot={copilot} renderUserMessage={renderUserMessage} />
@@ -119,16 +135,7 @@ const ChatPanel = ({ user, copilot, agent, focusSnapshot, onUpload, title, rende
         onStop={() => context.aiQueue.stop(agentKey)}
         pendingQueue={pendingQueue}
         onRemoveFromQueue={(id) => context.aiQueue.removeFromQueue(agentKey, id)}
-        renderFocus={focusSnapshot ? () => (
-          <>
-            <span>对于</span>
-            {focusSnapshot.focusArea ? (
-              <span className={css["focus-area"]}>{focusSnapshot.focusArea.title || "区域"}</span>
-            ) : (
-              <MentionTag mention={focusSnapshot} />
-            )}
-          </>
-        ) : undefined}
+        renderFocus={renderFocus}
       />
     </div>
   );

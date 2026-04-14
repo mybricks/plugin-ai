@@ -17,6 +17,8 @@ export type AgentEventMap = {
     message: string;
     attachments?: any[];
     meta?: Record<string, any>;
+    /** 格式化后的消息文本（含 focus 等注入内容，不同于 message 时才存在） */
+    userFormattedText?: string;
   };
 
   /**

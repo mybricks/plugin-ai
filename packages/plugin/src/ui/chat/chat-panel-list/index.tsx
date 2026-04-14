@@ -28,22 +28,17 @@ interface ComInstance {
 // ─── 默认 renderUserMessage ────────────────────────────────────────────────────
 // 渲染 focus 信息 + 消息文本
 
-const pluginRenderUserMessage = (text: string, record: MessageRecord) => {
+const pluginRenderUserMessage = (record: MessageRecord) => {
   const focus = record.meta?.focus;
   return (
     <span>
       {focus && (
         <span className={css["user-message-focus"]}>
-          <span>对于</span>
-          {focus.focusArea ? (
-            <span className={css["user-message-focus-area"]}>{focus.focusArea.title || "区域"}</span>
-          ) : (
-            <MentionTag mention={focus} />
-          )}
+          <MentionTag focus={focus} />
           {" "}
         </span>
       )}
-      {text}
+      {record.userText}
     </span>
   );
 };
@@ -126,12 +121,17 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
           >
             <ChatPanel
               agent={agent}
-              focusSnapshot={focusSnapshot}
               user={user}
               copilot={copilot}
               onUpload={onUpload}
               title={title}
               renderUserMessage={pluginRenderUserMessage}
+              renderFocus={focusSnapshot ? () => (
+                <>
+                  <span>对于</span>
+                  <MentionTag focus={focusSnapshot} />
+                </>
+              ) : undefined}
             />
           </div>
         );

@@ -36,6 +36,7 @@ export interface PluginAIParams {
   key: string;
   onRequest?: RequestAsStreamFn;
   onUpload?: (file: File) => Promise<string>;
+  onDownload?: (params: { name: string; content: string }) => Promise<void> | void;
   /** agents.md 内容，对标 CLAUDE.md，注入到系统 prompt 末尾 */
   agentsMd?: string;
   /** 技能文件列表，挂载为虚拟 .skills/ 文件，LLM 按需读取 */
@@ -53,6 +54,7 @@ export default function pluginAI(params: PluginAIParams): any {
     key: pluginKey,
     onRequest,
     onUpload,
+    onDownload,
     agentsMd,
     skills,
     promptSections,
@@ -63,10 +65,21 @@ export default function pluginAI(params: PluginAIParams): any {
 
   const requestAsStream: RequestAsStreamFn = onRequest ?? createRequestAsStream();
   const upload = onUpload ?? createOnUpload();
+  const download = onDownload ?? (({ name, content }: { name: string; content: string }) => {
+    const eleLink = document.createElement("a");
+    eleLink.download = name;
+    eleLink.style.display = "none";
+
+    const blob = new Blob([content]);
+    eleLink.href = URL.createObjectURL(blob);
+    document.body.appendChild(eleLink);
+    eleLink.click();
+    document.body.removeChild(eleLink);
+  });
 
   context.name = name;
   context.setPluginKey(pluginKey);
-  context.pluginParams = { name, user, onUpload: upload };
+  context.pluginParams = { name, user, onUpload: upload, onDownload: download };
 
   // ── window._sandbox_：sandbox 与 Plugin 的统一交互 API ─────────────────────
 
@@ -107,6 +120,7 @@ export default function pluginAI(params: PluginAIParams): any {
               context.aiQueue.send(
                 agentKey,
                 async () => {
+                  context.aiQueue.registerAbort(agentKey, () => agent.abort());
                   await agent.requestAI({
                     message: requestParams.message ?? "",
                     attachments,

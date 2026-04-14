@@ -1,5 +1,5 @@
 export { Agent, AgentEvents } from "./agent";
-export type { AgentOptions, AgentHooks, RequestAIOptions, MaskOptions, ForkOptions, CompactRecord, BoundHistory } from "./agent";
+export type { AgentOptions, AgentHooks, RequestAIOptions, MaskOptions, ForkOptions, CompactRecord, FormatUserMessageResult } from "./agent";
 export { maskMessages } from "./mask";
 
 export type { AgentEventMap } from "./events";
