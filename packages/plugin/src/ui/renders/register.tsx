@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ChatStartView, type ChatStartViewProps, ComChatStartView, type ComChatStartViewProps } from "../chat";
+import { ChatStartView, type ChatStartViewProps, ComChatStartView, type ComChatStartViewProps, LoadingView, type LoadingViewProps } from "../chat";
 import { PrdRender, type PrdRenderProps } from "./prd-render";
 
 // ─── Shadow DOM 样式注入高阶组件 ───────────────────────────────────────────────
@@ -50,6 +50,11 @@ function withShadowStyles<P extends object>(
     );
   };
 }
+
+export const LoadingViewWithStyles = withShadowStyles<LoadingViewProps>(
+  LoadingView,
+  "__pluginAiStartViewStyleInjected__"
+);
 
 export const ChatStartViewWithStyles = withShadowStyles<ChatStartViewProps>(
   ChatStartView,

@@ -7,6 +7,24 @@ import { useSession } from "../use-session";
 import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
 import css from "./index.less";
 
+// ─── LoadingView ────────────────────────────────────────────────────────────
+export interface LoadingViewProps {
+  tip: string;
+}
+
+const LoadingView = (props: LoadingViewProps) => {
+  return (
+    <div className={css["loading-view"]}>
+      <div className={css["loading-dots"]}>
+        <span className={css["dot"]} />
+        <span className={css["dot"]} />
+        <span className={css["dot"]} />
+      </div>
+      <span className={css["loading-text"]}>{props.tip}</span>
+    </div>
+  )
+}
+
 // ─── ChatStartView ────────────────────────────────────────────────────────────
 
 export interface ChatStartViewProps {
@@ -85,14 +103,7 @@ const ChatStartView = ({
         </div>
       )}
       {loading && (
-        <div className={css["loading-view"]}>
-          <div className={css["loading-dots"]}>
-            <span className={css["dot"]} />
-            <span className={css["dot"]} />
-            <span className={css["dot"]} />
-          </div>
-          <span className={css["loading-text"]}>正在思考中...</span>
-        </div>
+        <LoadingView tip="正在思考中..." />
       )}
       {!loading && (
         <Sender
@@ -123,4 +134,4 @@ const ComChatStartView = ({ comId, ...rest }: ComChatStartViewProps) => {
   return <ChatStartView agent={agent} comId={comId} onUpload={context.pluginParams.onUpload} {...rest} />;
 };
 
-export { ChatStartView, ComChatStartView };
+export { ChatStartView, ComChatStartView, LoadingView };

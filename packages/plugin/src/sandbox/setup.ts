@@ -5,7 +5,7 @@ import type { PromptSections } from "../prompts";
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { Designer, RegistSandBoxConfig } from "./types";
 import { createCheckStatusTool } from "./tools/check-status";
-import type { ComChatStartViewProps } from "../ui/chat";
+import { LoadingView, type ComChatStartViewProps, type LoadingViewProps } from "../ui/chat";
 import type { PrdRenderProps } from "../ui/renders/prd-render";
 import { ComChatStartViewWithStyles, PrdRenderWithStyles } from "../ui/renders/register";
 import { context } from "../context";
@@ -30,6 +30,7 @@ export interface SandboxHelpers {
   renders: {
     renderStartView: (props: ComChatStartViewProps) => React.ReactElement;
     renderPrdView: (props?: PrdRenderProps) => React.ReactElement;
+    renderLoadingView: (props: LoadingViewProps) => React.ReactElement;
   };
 }
 
@@ -152,6 +153,8 @@ export function setupSandbox(params: SetupSandboxParams): void {
           React.createElement(ComChatStartViewWithStyles, props),
         renderPrdView: (props?: PrdRenderProps): React.ReactElement =>
           React.createElement(PrdRenderWithStyles, props ?? { content: "" }),
+        renderLoadingView: (props: LoadingViewProps): React.ReactElement =>
+          React.createElement(LoadingView, props),
       },
     },
 
