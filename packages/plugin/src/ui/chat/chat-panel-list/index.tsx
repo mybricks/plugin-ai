@@ -25,6 +25,21 @@ interface ComInstance {
   focusSnapshot: any;
 }
 
+const FocusTag = ({ focus }: { focus: any }) => {
+  const label = focus?.focusArea?.title ?? focus?.title ?? "元素";
+  return (
+    <span className={css["focus-tag"]}>
+      <span className={css["focus-tag-icon"]} aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none">
+          <rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.2" />
+          <path d="M5.5 5.5h5m-5 2.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+        </svg>
+      </span>
+      <span className={css["focus-tag-text"]}>{label}</span>
+    </span>
+  );
+};
+
 // ─── 默认 renderUserMessage ────────────────────────────────────────────────────
 // 渲染 focus 信息 + 消息文本
 
@@ -128,8 +143,8 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
               renderUserMessage={pluginRenderUserMessage}
               renderFocus={focusSnapshot ? () => (
                 <>
-                  <span>对于</span>
-                  <MentionTag focus={focusSnapshot} />
+                  <span>对于 </span>
+                  <FocusTag focus={focusSnapshot} />
                 </>
               ) : undefined}
             />

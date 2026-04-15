@@ -21,7 +21,7 @@ export interface AgentHooks {
    * 每次 LLM 请求前触发（每个 step 都会调用）。
    * 可用于动态修改请求参数、注入上下文等。
    */
-  beforeRequest?: (params: { message: string; attachments: any[]; step: number }) => Promise<void> | void;
+  beforeRequest?: (params: { meta?: any }) => Promise<void> | void;
   /**
    * 每轮 turn 结束后的钩子（无论成功、取消还是错误）。
    * 在 turn:complete / turn:abort / turn:error 事件触发后同步调用。
@@ -595,7 +595,7 @@ export class Agent {
     const signal = this._abortController.signal;
 
     const { key, history } = this.options;
-    const maxSteps = this.options.maxSteps ?? Infinity;
+    const maxSteps = this.options.maxSteps ?? 50;
     const doomLoopThreshold = this.options.doomLoopThreshold ?? 3;
 
     // 获取 formattedParams（如果需要）
@@ -635,9 +635,7 @@ export class Agent {
         // 执行 beforeRequest hook
         try {
           await this.options.hooks?.beforeRequest?.({
-            message: userParams.message,
-            attachments: userParams.attachments ?? [],
-            step,
+            meta: userParams.meta,
           });
         } catch (e) {
           console.warn("[Agent] hooks.beforeRequest failed:", e);
@@ -702,8 +700,10 @@ export class Agent {
         turn.thinkingContent += llmResult.thinkingContent;
         if (llmResult.usage) turn.usage = llmResult.usage;
 
-        // 判断是否终止
-        const modelFinished = !["tool_calls", "unknown"].includes(llmResult.finishReason);
+        // 判断是否终止：只有存在实际工具调用时才继续循环
+        const hasToolCalls = llmResult.toolCalls.length > 0;
+        const shouldContinueWithTools = hasToolCalls;
+        const modelFinished = !shouldContinueWithTools;
         if (modelFinished) {
           turn.content = llmResult.content;
           turn.endTime = iterEndTime;
@@ -878,7 +878,7 @@ export class Agent {
    * 发起 AI 请求（ReAct 循环）。
    *
    * 循环终止条件（对标 opencode prompt.ts）：
-   *   1. finishReason 不是 "tool_calls" 也不是 "unknown" → 模型主动结束
+   *   1. 仅当 finishReason === "tool_calls" 且实际存在工具调用时继续；否则结束
    *   2. 超出 maxSteps
    *   3. Doom loop 触发（连续 doomLoopThreshold 次完全相同的工具调用）
    *   4. 用户 abort()

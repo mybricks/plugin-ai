@@ -139,6 +139,10 @@ export default function pluginAI(params: PluginAIParams): any {
             focus(params: AiServiceFocusParams) {
               const currentFocus = params ?? undefined;
               context.currentFocus = currentFocus;
+
+              // 后续要干掉
+              window._ai_focus_params_ = params
+
               context.events.emit("focus", currentFocus);
             },
 
