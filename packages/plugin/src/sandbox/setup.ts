@@ -46,6 +46,10 @@ export interface SandboxConfig {
    * 主题变量（由宿主应用注入）。
    */
   themes?: any[];
+  /**
+   * 组件运行时扩展
+   */
+  componentRuntime?: any;
 }
 
 /**
@@ -103,6 +107,7 @@ export interface SetupSandboxParams {
   tools?: Tool[];
   availableLibraries?: any[];
   themes?: any[];
+  componentRuntime?: any;
 }
 
 // ─── 主入口 ───────────────────────────────────────────────────────────────────
@@ -112,7 +117,7 @@ export interface SetupSandboxParams {
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
 export function setupSandbox(params: SetupSandboxParams): void {
-  const { requestAsStream, agentsMd, skills, promptSections, tools, availableLibraries, themes } = params;
+  const { requestAsStream, agentsMd, skills, promptSections, tools, availableLibraries, themes, componentRuntime } = params;
 
   window._sandbox_ = {
     // ── sandbox → Plugin ──────────────────────────────────────────────────────
@@ -155,6 +160,7 @@ export function setupSandbox(params: SetupSandboxParams): void {
       promptSections,
       availableLibraries: availableLibraries ?? [],
       themes: themes ?? [],
+      componentRuntime
     },
   };
 }
