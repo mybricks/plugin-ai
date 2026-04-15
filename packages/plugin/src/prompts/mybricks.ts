@@ -40,7 +40,7 @@ CRITICAL: You can call multiple tools in a single response. make all independent
   },
   developeGuide: {
     firstOfAll: `- 开发宪章
-> 参考「开发指南」+「源代码」进行代码开发任务，完成代码任务后，参考「文档规范」进行文档的同步。
+> 参考「开发指南」+「源代码」进行代码开发任务，完成代码任务后，参考「文档规范」进行文档（README 和 requirement两个文件）的同步。
 - 总体规则
   - 功能：生产级别的功能性；
   - 细节：在每个细节都精心完善；
