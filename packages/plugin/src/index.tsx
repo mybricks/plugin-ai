@@ -51,6 +51,20 @@ export interface PluginAIParams {
   promptSections?: PromptSections;
   /** 额外自定义工具，追加到内置工具（read_file / write_file 等）之后 */
   tools?: import("../../agent/src").Tool[];
+  /** 组件运行时扩展 */
+  componentRuntime?: {
+    /** 基于babel的自定义插件 */
+    babelPlugins?: ((params: { filename: string }) => ((params: any) => any))[]
+    /** 获取依赖信息 */
+    getDependencies?: (params: any) => Record<string, any>
+    /** 入口文件 */
+    entryFile?: string
+    /** 画布 */
+    canvas?: {
+      width?: number
+      height?: number
+    }
+  }
 }
 
 export default function pluginAI(params: PluginAIParams): any {
@@ -66,6 +80,7 @@ export default function pluginAI(params: PluginAIParams): any {
     skills,
     promptSections,
     tools,
+    componentRuntime
   } = params;
 
   const mergedPromptSections = resolvePromptOptions(promptSections);
@@ -98,6 +113,7 @@ export default function pluginAI(params: PluginAIParams): any {
     tools,
     availableLibraries: codingConfig?.availableLibraries ?? [],
     themes: codingConfig?.themes ?? [],
+    componentRuntime
   });
 
   return {
