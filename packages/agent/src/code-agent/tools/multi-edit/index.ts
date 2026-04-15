@@ -17,6 +17,7 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
 编辑时请确保：
 - 所有编辑结果符合语言习惯、语法正确
 - 不要让代码处于损坏状态
+- 一次操作文件不得超过5个
 - 除非用户明确要求，否则不要使用 emoji
 - 使用 replace_all 在文件中批量替换和重命名字符串（例如重命名变量时非常有用）`,
     parameters: {
