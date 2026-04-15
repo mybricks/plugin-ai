@@ -313,8 +313,8 @@ export interface Tool {
   /**
    * 参数校验（可选）。校验不通过时抛出 ToolValidationError。
    */
-  validate?(params: any): void;
-  execute(params: any): Promise<ToolResult>;
+  validate?(params: any, ctx?: any): void;
+  execute(params: any, ctx?: any): Promise<ToolResult>;
 }
 
 // ─── 从 TurnRecord[] 重建 LLM messages ───────────────────────────────────────

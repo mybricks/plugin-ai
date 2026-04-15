@@ -1,3 +1,6 @@
+import { READ_TOOL_NAME } from "../read";
+
+
 /**
  * 基于 oldStr / newStr 的文本替换工具，用于文件内容片段的匹配与修改。
  *
@@ -161,7 +164,11 @@ export interface MultiReplaceResult {
  */
 export function replaceInContent(content: string, oldStr: string, newStr: string, replaceAll = false): ReplaceResult {
   if (oldStr === newStr) {
-    return { ok: false, error: "NO_CHANGE", message: "old_str 与 new_str 相同，无需替换" };
+    return {
+      ok: false,
+      error: "NO_CHANGE",
+      message: "old_str 与 new_str 相同，修改失败。",
+    };
   }
 
   // 整文件写入
@@ -215,14 +222,14 @@ export function replaceInContent(content: string, oldStr: string, newStr: string
     return {
       ok: false,
       error: "NOT_FOUND",
-      message: `未在文件中找到 old_str。检测到源文件中包含中文全角符号：${punctuationList}，注意检查引号类型是否一致`,
+      message: `未在文件中找到 old_str。检测到源文件中包含中文全角符号：${punctuationList}，注意检查引号类型是否一致。`,
     };
   }
 
   return {
     ok: false,
     error: "NOT_FOUND",
-    message: "未在文件中找到 old_str，请确认内容与当前文件一致（包括缩进）",
+    message: "未在文件中找到 old_str，请确认内容与当前文件一致（包括缩进）。",
   };
 }
 

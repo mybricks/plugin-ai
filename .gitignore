@@ -18,3 +18,5 @@ packages/request/src/cdzd.ts
 packages/request/rollup.cdzd.mjs
 
 .codeflicker
+
+pnpm-lock.yaml

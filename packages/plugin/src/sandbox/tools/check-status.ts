@@ -12,7 +12,7 @@ export function createCheckStatusTool(designerRef: { current: Designer | undefin
   return {
     name: CHECK_STATUS_TOOL_NAME,
     description: `查看当前项目渲染情况，包含所处环境（设计态/运行态）、渲染页面和弹窗情况、运行日志（用于排查问题）、报错信息（如果有）。
-常常用在代码修改后，检查渲染情况是否正常。`,
+常常用在本轮所有代码修改后，本轮工作结束前，检查渲染情况是否正常。`,
     parameters: { type: "object", properties: {} },
     async execute(_params: any) {
       const designer = designerRef.current;

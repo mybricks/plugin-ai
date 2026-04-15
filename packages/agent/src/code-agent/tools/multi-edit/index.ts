@@ -1,10 +1,48 @@
 import type { Tool, ToolResult } from "../../../types";
+import type { ToolExecutionContext } from "../../../agent";
 import { ToolValidationError } from "../../../types";
 import type { Sandbox } from "../../index";
 import { READ_TOOL_NAME } from "../read";
 import { replaceInContent } from "../edit/replace";
 
 export const MULTI_EDIT_TOOL_NAME = "multi_edit";
+const EDIT_TOOL_NAME = "edit_file";
+
+function countPrevFailures(
+  ctx: ToolExecutionContext | undefined,
+  path: string,
+  oldStr: string
+): number {
+  if (!ctx) return 0;
+  let count = 0;
+  for (const iter of ctx.iterations) {
+    for (const call of iter.toolCalls) {
+      if (call.status !== "error") continue;
+      if (call.name === EDIT_TOOL_NAME) {
+        if (call.args?.path === path && call.args?.old_str === oldStr) count++;
+        continue;
+      }
+      if (call.name === MULTI_EDIT_TOOL_NAME) {
+        const edits: Array<{ path?: string; old_str?: string }> = Array.isArray(call.args?.edits) ? call.args.edits : [];
+        if (edits.some((e: { path?: string; old_str?: string }) => e.path === path && e.old_str === oldStr)) count++;
+      }
+    }
+  }
+  return count;
+}
+
+function appendActionHint(
+  message: string,
+  ctx: ToolExecutionContext | undefined,
+  path: string,
+  oldStr: string
+): string {
+  const prev = countPrevFailures(ctx, path, oldStr);
+  if (prev === 0) {
+    return `${message} 请先通过 \`${READ_TOOL_NAME}\` 读取 ${path} 的最新内容，确认 old_str 后再编辑。`;
+  }
+  return `${message} 同一 old_str 已连续失败 ${prev + 1} 次，建议改用 \`write_file\` 或 \`multi_write\` 直接重写该文件。`;
+}
 
 export function createMultiEditTool(adapter: Sandbox): Tool {
   return {
@@ -70,7 +108,8 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
       }
     },
     async execute(
-      params: { edits: Array<{ path: string; old_str: string; new_str: string; replace_all?: boolean }> }
+      params: { edits: Array<{ path: string; old_str: string; new_str: string; replace_all?: boolean }> },
+      ctx?: ToolExecutionContext,
     ): Promise<ToolResult> {
       // 批量读取所有文件
       const files = await adapter.getFiles();
@@ -94,12 +133,10 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
         if (!result.ok) {
           results.push({
             path: edit.path,
-            error: result.message ?? "Replace failed",
+            error: appendActionHint(result.message ?? "Replace failed", ctx, edit.path, edit.old_str),
           });
           continue;
         }
-        
-        console.log('result', result)
 
         // 更新 fileMap 以支持对同一文件的多次编辑
         fileMap.set(edit.path, result.newContent!);

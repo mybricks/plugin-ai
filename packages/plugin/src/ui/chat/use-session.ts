@@ -163,12 +163,17 @@ export function useSession(agent: Agent | undefined) {
         pendingContent = "";
         pendingThinking = "";
         update((r) => {
-          const iters = r.iterations.map((iter) => ({
-            ...iter,
-            toolCalls: iter.toolCalls.map((t) =>
-              t.execEndTime === 0 ? { ...t, execEndTime: Date.now() } : t
-            ),
-          }));
+          const now = Date.now();
+          const iters = r.iterations.map((iter, i) => {
+            const isLast = i === r.iterations.length - 1;
+            return {
+              ...iter,
+              ...(isLast && iter.endTime === undefined ? { endTime: now } : {}),
+              toolCalls: iter.toolCalls.map((t) =>
+                t.execEndTime === 0 ? { ...t, execEndTime: now } : t
+              ),
+            };
+          });
           return { ...r, status: "abort" as const, iterations: iters };
         });
         pendingIdRef.current = null;

@@ -191,7 +191,17 @@ export function useSessions() {
       agent.events.on("turn:abort", () => {
         pendingContent = "";
         pendingThinking = "";
-        update((r) => ({ ...r, status: "abort" }));
+        update((r) => {
+          const now = Date.now();
+          const iters = r.iterations.length > 0
+            ? r.iterations.map((iter, i) =>
+                i === r.iterations.length - 1 && iter.endTime === undefined
+                  ? { ...iter, endTime: now }
+                  : iter
+              )
+            : r.iterations;
+          return { ...r, status: "abort", iterations: iters };
+        });
       }),
 
       agent.events.on("turn:error", ({ error }) => {

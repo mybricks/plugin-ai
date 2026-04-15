@@ -9,6 +9,22 @@ export { AgentEvents };
 export type { Message, History, Tool, TurnRecord, ToolCallRecord };
 export type { CompactRecord, MaskOptions, BoundHistory };
 
+// ─── ToolExecutionContext ─────────────────────────────────────────────────────
+
+/**
+ * 工具执行时的运行时上下文，由 Agent 在调用工具前构造并传入。
+ * 工具可通过此上下文获取本轮 turn 的历史信息，用于重复调用检测等策略判断。
+ */
+export interface ToolExecutionContext {
+  /** 当前 turn 的唯一 ID */
+  turnId: string;
+  /**
+   * 当前 turn 到此刻为止的迭代记录（只读快照）。
+   * 供工具自行做重试/重复调用检测等策略判断。
+   */
+  iterations: ReadonlyArray<TurnRecord["iterations"][number]>;
+}
+
 // ─── AgentHooks ──────────────────────────────────────────────────────────────
 
 export interface AgentHooks {
@@ -764,6 +780,10 @@ export class Agent {
 
           const tool = this.options.tools?.find(t => t.name === tc.name);
           let toolResultContent: string;
+          const toolContext: ToolExecutionContext = {
+            turnId: turn.id,
+            iterations: turn.iterations,
+          };
 
           if (!tool) {
             const err = new Error(`Tool not found: ${tc.name}`);
@@ -774,8 +794,8 @@ export class Agent {
             this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: err, step, endTime: toolRecord.execEndTime });
           } else {
             try {
-              tool.validate?.(tc.args);
-              const result = await tool.execute(tc.args);
+              tool.validate?.(tc.args, toolContext);
+              const result = await tool.execute(tc.args, toolContext);
               if (signal.aborted) {
                 toolRecord.status = "error";
                 toolRecord.error = "用户已取消";

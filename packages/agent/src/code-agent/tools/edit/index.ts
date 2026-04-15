@@ -1,10 +1,57 @@
 import type { Tool, ToolResult } from "../../../types";
+import type { ToolExecutionContext } from "../../../agent";
 import { ToolValidationError } from "../../../types";
 import type { Sandbox } from "../../index";
 import { READ_TOOL_NAME } from "../read";
 import { replaceInContent } from "./replace";
 
 export const EDIT_TOOL_NAME = "edit_file";
+const MULTI_EDIT_TOOL_NAME = "multi_edit";
+
+/**
+ * 统计本轮 turn 中，同一 path + old_str 的编辑调用已失败了多少次（不含本次）。
+ * edit_file 和 multi_edit 都计入（multi_edit 以单条 edit 为粒度）。
+ */
+function countPrevFailures(
+  ctx: ToolExecutionContext | undefined,
+  path: string,
+  oldStr: string
+): number {
+  if (!ctx) return 0;
+  let count = 0;
+  for (const iter of ctx.iterations) {
+    for (const call of iter.toolCalls) {
+      if (call.status !== "error") continue;
+      if (call.name === EDIT_TOOL_NAME) {
+        if (call.args?.path === path && call.args?.old_str === oldStr) count++;
+        continue;
+      }
+      if (call.name === MULTI_EDIT_TOOL_NAME) {
+        const edits: Array<{ path?: string; old_str?: string }> = Array.isArray(call.args?.edits) ? call.args.edits : [];
+        if (edits.some((e: { path?: string; old_str?: string }) => e.path === path && e.old_str === oldStr)) count++;
+      }
+    }
+  }
+  return count;
+}
+
+/**
+ * 根据历史失败次数，在错误消息末尾追加对应的行动建议：
+ * - 第 1 次（prevFailures === 0）→ 建议先 read_file 核对内容
+ * - 第 2 次及以上（prevFailures >= 1）→ 建议改用 write_file / multi_write
+ */
+function appendActionHint(
+  message: string,
+  ctx: ToolExecutionContext | undefined,
+  path: string,
+  oldStr: string
+): string {
+  const prev = countPrevFailures(ctx, path, oldStr);
+  if (prev === 0) {
+    return `${message} 请先通过 \`${READ_TOOL_NAME}\` 读取 ${path} 的最新内容，确认 old_str 后再编辑。`;
+  }
+  return `${message} 同一 old_str 已连续失败 ${prev + 1} 次，建议改用 \`write_file\` 或 \`multi_write\` 直接重写该文件。`;
+}
 
 export function createEditTool(adapter: Sandbox): Tool {
   return {
@@ -52,6 +99,7 @@ export function createEditTool(adapter: Sandbox): Tool {
     },
     async execute(
       params: { path: string; old_str: string; new_str: string; replace_all?: boolean },
+      ctx?: ToolExecutionContext,
     ): Promise<ToolResult> {
       const files = await adapter.getFiles();
       const file = files.find((f) => f.path === params.path);
@@ -63,7 +111,9 @@ export function createEditTool(adapter: Sandbox): Tool {
 
       const result = replaceInContent(file.content, params.old_str, params.new_str, params.replace_all ?? false);
       if (!result.ok) {
-        throw new ToolValidationError(result.message ?? "Replace failed");
+        throw new ToolValidationError(
+          appendActionHint(result.message ?? "Replace failed", ctx, params.path, params.old_str)
+        );
       }
 
       try {
