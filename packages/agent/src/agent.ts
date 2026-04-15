@@ -278,7 +278,10 @@ function assembleMessages(
   }
   const userMessage: Message = { role: "user", content: userContent };
 
-  const assembled = [...baseMessages, userMessage, ...tail];
+  // 给 tail 每一条消息打 cache
+  const cachedTail = tail.map(msg => ({ ...msg, cache: true }));
+
+  const assembled = [...baseMessages, userMessage, ...cachedTail];
 
   // 应用遮蔽（仅当配置了 mask）
   // 遮蔽时跳过前缀（system/agentsMd/context/compact，不在 turns 中，不应被遮蔽）
@@ -553,7 +556,7 @@ export class Agent {
         initialTail.push({
           role: "tool",
           tool_call_id: tc.callId,
-          content: tc.status === "error" ? `Error: ${tc.error}` : JSON.stringify(tc.result ?? {}),
+          content: tc.status === "error" ? `Error: ${tc.error}` : tc.result?.output ?? "",
         });
       }
     }
@@ -780,7 +783,7 @@ export class Agent {
                 toolResultContent = `Error: 用户已取消`;
                 this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: "用户已取消", step, endTime: toolRecord.execEndTime });
               } else {
-                toolRecord.result = result.metadata ?? {};
+                toolRecord.result = { output: result.output, metadata: result.metadata };
                 toolRecord.execEndTime = Date.now();
                 toolResultContent = result.output;
                 this.events.emit("tool:result", { callId: tc.id, name: tc.name, result: toolRecord.result, step, endTime: toolRecord.execEndTime });

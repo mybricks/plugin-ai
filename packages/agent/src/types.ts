@@ -36,7 +36,8 @@ export interface ToolCallRecord {
   callId: string;
   name: string;
   args: any;
-  result?: any;
+  /** 工具执行结果（包含 output 和 metadata） */
+  result?: { output: string; metadata?: any };
   error?: any;
   status: "success" | "error";
   /** 工具开始执行的时间（Unix ms） */
@@ -382,7 +383,7 @@ export function turnsToMessages(turns: TurnRecord[], compactRecord?: CompactReco
           for (const tc of iter.toolCalls) {
             const toolResult = tc.status === "error"
               ? `Error: ${tc.error}`
-              : JSON.stringify(tc.result ?? null);
+              : tc.result?.output ?? "";
             messages.push({
               role: "tool",
               content: toolResult,

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Success, Eye, Pencil, FileWrite, Delete, ErrorIcon } from "../../../components/icons";
+import { Success, Eye, Pencil, FileWrite, Delete } from "../../../components/icons";
 import { TextShimmer } from "../../../components/text-shimmer";
 import { ElapsedTime } from "../../../components/elapsed-time";
 import { registerToolRenderer } from "./index";
@@ -16,9 +16,6 @@ import css from "./render.less";
 const StatusIcon = ({ tool, icon }: { tool: ToolRecord; icon?: React.ReactElement }) => {
   if (tool.status === "pending") {
     return <span className={css["tool-icon-pending"]}>○</span>;
-  }
-  if (tool.status === "error") {
-    return <span className={css["tool-icon"]}><ErrorIcon /></span>;
   }
   return (
     <span className={css["tool-icon"]}>
@@ -212,7 +209,7 @@ const CodeCard = ({ tool, icon, title, content, isDelete, lineMeta, diffMode }: 
         style={canToggle ? undefined : { cursor: "default" }}
       >
         <span className={css["code-card-icon"]}>
-          {isError ? <ErrorIcon /> : icon}
+          {icon}
         </span>
         <span className={css["code-card-filename"]}>{title}</span>
         {lineMeta && <span className={css["code-card-lines"]}>{lineMeta}</span>}
