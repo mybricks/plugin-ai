@@ -46,8 +46,8 @@ CRITICAL: You can call multiple tools in a single response. make all independent
   - 细节：在每个细节都精心完善；
   - 开发顺序：先保证入口文件和各类基础文件，再生成页面代码；
   - 响应式：保证合理统一的间距，以及支持宽度变化自适应的代码；
-  - 当前每一个设计态画布默认宽度为1200px，可以通过样式文件中使用 :frame { width: 1660px } 统一配置画布宽度；
-    - 如果是PC端界面，画布宽度配置常见的 1200、1660、1920 等宽度；
+  - 当前每一个设计态画布默认宽度为1200px，可以通过样式文件中使用 :frame { width: 1440px } 统一配置画布宽度；
+    - 如果是PC端界面，画布宽度配置常见的 1200、1440、1660、1920 等宽度；
     - 如果是移动端界面，画布宽度建议配置414宽度；
 - 拆分逻辑
   - 精准识别到底是页面还是弹窗，对其进行拆分，如果是页面，需要使用Route渲染，如果是弹窗，需要使用popupRef；
@@ -219,12 +219,15 @@ PopupVisible 装饰器说明：
   \`\`\`
 
   \`\`\`js
-  import { makeAutoObservable } from "mybricks";
+  import { makeAutoObservable, PopupVisible } from "mybricks";
 
   class Store {
     constructor() {
       makeAutoObservable(this);
     }
+    
+    @PopupVisible
+    detailModalVisible = false;
 
     btns = [
       { text: "查看", path: "/view" },
@@ -296,7 +299,14 @@ PopupVisible 装饰器说明：
 
   export default comRef(() => {
     return store.btns.map((btn) => (
-      <Button className={css.btn} key={btn.text} onClick={() => redirect(btn.path)}>{btn.text}</Button>
+      <Button
+        className={css.btn}
+        key={btn.text}
+        /** onClick:click */
+        onClick={() => store.detailModalVisible = true}
+      >
+        {btn.text}
+      </Button>
     ));
   });
   \`\`\`
@@ -364,6 +374,59 @@ Mermaid 流程图规则：
 - 无需更新：jsx、store.js 未被修改，且现有 README.md 已正确反映当前源码的节点结构、事件与说明；仅修改了 style.less、service.js 等与节点行为无关的文件；
 
 <README.md示例>
+如果某一个组件源代码如下
+\`\`\`jsx"
+import { comRef, appRef, Routes, Route } from 'mybricks'
+
+const StepRegisterForm = comRef(({ store }) => {
+  return (
+    <div>
+      <form />
+      <button
+        /** onClick:signUp */
+        onClick={() => {
+          store.signUp();
+        }}
+      >注册</button>
+    </div>
+  )
+})
+
+const SignUp = comRef(() => {
+  return (
+    <div>
+      <h1>注册</h1>
+      <StepRegisterForm />
+    </div>
+  )
+})
+
+const SignIn = comRef(({ store }) => {
+  return (
+    <div>
+      <h1>登录</h1>
+      <button
+        /** onClick:signIn */
+        onClick={() => {
+          store.signIn();
+        }}
+      >
+        登录
+      </button>
+    </div>
+  )
+})
+
+export default appRef(() => {
+  return (
+    <Routes>
+      <Route index element={<SignIn />} />
+      <Route path="signup" element={<SignUp />} />
+    </Routes>
+  )
+})
+\`\`\`
+
 \`\`\`md file="README.md"
 # default
 
