@@ -23,8 +23,10 @@ export interface PromptSectionsDevelopeGuide {
   assetsUsageSection?: string;
   /** 项目目录结构、jsx/less/store 等文件编写规范 */
   architectureSection?: string;
-  /** 额外补充的开发规范，追加到本节末尾 */
-  extraSection?: string;
+  /** 示例代码块，展示典型开发模式 */
+  examplesSection?: string;
+  /** 追加到本节末尾 */
+  end?: string;
 }
 
 /**
@@ -32,6 +34,14 @@ export interface PromptSectionsDevelopeGuide {
  */
 export interface PromptSectionsDesignGuide {
   /** 视觉美学指南，描述主题、配色、布局等设计原则 */
+  firstOfAll?: string;
+}
+
+/**
+ * 文档规范相关提示词节。
+ */
+export interface PromptSectionsDocumentGuide {
+  /** README.md 与 requirement.md 的书写规范 */
   firstOfAll?: string;
 }
 
@@ -50,6 +60,8 @@ export interface PromptSections {
   developeGuide?: PromptSectionsDevelopeGuide;
   /** 设计风格提示词 */
   designGuide?: PromptSectionsDesignGuide;
+  /** 文档规范提示词 */
+  documentGuide?: PromptSectionsDocumentGuide;
 }
 
 /**

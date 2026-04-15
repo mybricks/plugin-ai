@@ -194,8 +194,8 @@ PopupVisible 装饰器说明：
       - UserList（有列表数据与分页 → 独立 comRef）
         - UserRow（列表单项含多字段与操作 → 独立 comRef）
       - EditModal（修改数据弹窗）`,
-    
-    extraSection: `#### 开发示例
+
+    examplesSection: `
 <example>
   <user_query>开发一个按钮查看，点击查看详情</user_query>
   <assistant_response>
@@ -307,10 +307,16 @@ PopupVisible 装饰器说明：
   \`\`\`
   </assistant_response>
 </example>
-
-
-#### 文档同步规范
-
+`,
+    end: ``,
+  },
+  designGuide: {
+    firstOfAll: `美学指南：
+- 在浅色和深色主题、不同字体、美学之间变化；
+注意：永远不要使用通用的AI生成美学、陈词滥调的配色方案（特别是白色背景上的紫色渐变）、可预测的布局，以及缺乏特征的千篇一律的设计。`,
+  },
+  documentGuide: {
+    firstOfAll: `<文档规范>
 **README.md — 模块说明文档**
 
 节点顺序与类型：
@@ -456,12 +462,7 @@ related: NewModalButton,ItemNewModal
 ...
 \`\`\`
 </requirement.md示例>
-`
-  },
-  designGuide: {
-    firstOfAll: `美学指南：
-- 在浅色和深色主题、不同字体、美学之间变化；
-注意：永远不要使用通用的AI生成美学、陈词滥调的配色方案（特别是白色背景上的紫色渐变）、可预测的布局，以及缺乏特征的千篇一律的设计。`,
+</文档规范>`
   }
 }
 

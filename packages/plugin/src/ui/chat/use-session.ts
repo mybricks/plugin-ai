@@ -162,7 +162,15 @@ export function useSession(agent: Agent | undefined) {
       a.events.on("turn:abort", () => {
         pendingContent = "";
         pendingThinking = "";
-        update((r) => ({ ...r, status: "abort" }));
+        update((r) => {
+          const iters = r.iterations.map((iter) => ({
+            ...iter,
+            toolCalls: iter.toolCalls.map((t) =>
+              t.execEndTime === 0 ? { ...t, execEndTime: Date.now() } : t
+            ),
+          }));
+          return { ...r, status: "abort" as const, iterations: iters };
+        });
         pendingIdRef.current = null;
       }),
 

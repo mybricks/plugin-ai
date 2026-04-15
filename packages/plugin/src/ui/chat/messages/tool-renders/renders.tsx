@@ -246,7 +246,8 @@ const CodeCard = ({ tool, icon, title, content, isDelete, lineMeta, diffMode }: 
 const ReadFileRenderer = ({ tool }: { tool: ToolRecord }) => {
   const path: string = tool.args?.path ?? "";
   const name = path ? basename(path) : "";
-  const title = name ? `查看文件 ${name}` : (path || "查看文件");
+  const baseTitle = name ? `查看文件 ${name}` : (path || "查看文件");
+  const title = errorSuffix(baseTitle, tool.status);
 
   // pending 状态
   if (tool.status === "pending") {
@@ -293,7 +294,8 @@ const ReadFileRenderer = ({ tool }: { tool: ToolRecord }) => {
 const WriteFileRenderer = ({ tool }: { tool: ToolRecord }) => {
   const path: string = tool.args?.path ?? "";
   const name = path ? basename(path) : "";
-  const title = name ? `写文件 ${name}` : (path || "写文件");
+  const baseTitle = name ? `写文件 ${name}` : (path || "写文件");
+  const title = errorSuffix(baseTitle, tool.status);
 
   // pending 状态
   if (tool.status === "pending") {
@@ -342,7 +344,8 @@ const MultiWriteRenderer = ({ tool }: { tool: ToolRecord }) => {
       {files.map((file, idx) => {
         const fileTool = createFileToolRecord(file, tool);
         const name = basename(file.path);
-        const title = name ? `写文件 ${name}` : file.path;
+        const baseTitle = name ? `写文件 ${name}` : file.path;
+        const title = errorSuffix(baseTitle, tool.status);
 
         // pending 状态：每个文件单独展示 pending 卡片
         if (tool.status === "pending") {
@@ -404,7 +407,8 @@ const MultiEditRenderer = ({ tool }: { tool: ToolRecord }) => {
       {edits.map((edit, idx) => {
         const editTool = createEditToolRecord(edit, tool);
         const name = basename(edit.path);
-        const title = name ? `修改文件 ${name}` : edit.path;
+        const baseTitle = name ? `修改文件 ${name}` : edit.path;
+        const title = errorSuffix(baseTitle, tool.status);
 
         // pending 状态：每个编辑单独展示 pending 卡片
         if (tool.status === "pending") {
@@ -444,7 +448,8 @@ const MultiEditRenderer = ({ tool }: { tool: ToolRecord }) => {
 const EditFileRenderer = ({ tool }: { tool: ToolRecord }) => {
   const path: string = tool.args?.path ?? "";
   const name = path ? basename(path) : "";
-  const title = name ? `修改文件 ${name}` : (path || "修改文件");
+  const baseTitle = name ? `修改文件 ${name}` : (path || "修改文件");
+  const title = errorSuffix(baseTitle, tool.status);
 
   // pending 状态：流式时 new_str 可能还在生成
   if (tool.status === "pending") {
@@ -482,7 +487,8 @@ const EditFileRenderer = ({ tool }: { tool: ToolRecord }) => {
 const DeleteFileRenderer = ({ tool }: { tool: ToolRecord }) => {
   const paths: string[] = Array.isArray(tool.args?.paths) ? tool.args.paths : [];
   const deletedPaths: string[] = Array.isArray(tool.result?.deletedPaths) ? tool.result.deletedPaths : paths;
-  const title = deletedPaths.length === 1 ? `删除文件 ${basename(deletedPaths[0])}` : `删除文件 ${deletedPaths.length} 项`;
+  const baseTitle = deletedPaths.length === 1 ? `删除文件 ${basename(deletedPaths[0])}` : `删除文件 ${deletedPaths.length} 项`;
+  const title = errorSuffix(baseTitle, tool.status);
   const content = deletedPaths.join("\n");
 
   if (tool.status === "pending") {
@@ -527,14 +533,19 @@ function detectLang(path: string): string {
   return map[ext] ?? "plaintext";
 }
 
+/** 在 error 状态时添加"失败"后缀 */
+const errorSuffix = (title: string, status: string) =>
+  status === "error" ? `${title}失败` : title;
+
 // ─── check-status 渲染 ───────────────────────────────────────────────────────
 
 const CheckStatusRenderer = ({ tool }: { tool: ToolRecord }) => {
+  const label = errorSuffix("查看当前状态", tool.status);
   if (tool.status === "pending") {
     return (
       <div className={css["tool-card"]}>
         <StatusIcon tool={tool} icon={<Eye />} />
-        <TextShimmer className={css["tool-label"]}>查看当前状态...</TextShimmer>
+        <TextShimmer className={css["tool-label"]}>{label}...</TextShimmer>
         <Duration tool={tool} />
       </div>
     );
@@ -544,7 +555,7 @@ const CheckStatusRenderer = ({ tool }: { tool: ToolRecord }) => {
   return (
     <div className={css["tool-card"]}>
       <StatusIcon tool={tool} icon={<Eye />} />
-      <span className={css["tool-label"]}>查看当前状态</span>
+      <span className={css["tool-label"]}>{label}</span>
       <Duration tool={tool} />
     </div>
   );
