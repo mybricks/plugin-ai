@@ -56,10 +56,11 @@ CRITICAL: You can call multiple tools in a single response. make all independent
   - 如果没有图标组件，则使用 placehold.co，禁止使用 Emoji 或特殊字符，它们可能导致在不同设备上的显示差异。
 - 对于图片：图片是传递信息与氛围的关键。我们建议根据其用途选择合适的来源：
   - https://placehold.co/600x400/orange/ffffff?text=hello，可以配置一个橙色背景带白色hello文字的色块占位图片，请注意text需要使用英文字符；
-  - https://ai.mybricks.world/image-search?term=searchWord&w=20&h=20，可以配置一个高质量的摄影图片；
-  对于海报/写实图片：我们建议使用高质量的摄影图片；
-  对于品牌/Logo：我们建议使用色块占位图片；
-  对于插画/装饰性图形：我们优先推荐使用简单的svg来占位，避免使用图片过于跳脱；`,
+  - https://ai.mybricks.world/image-search?term=searchWord&w=20&h=20，可以配置一个高质量的写实图片（比如摄影、人文等）；
+  具体来说
+  - 对于海报/写实/商品/图片等：我们建议使用高质量的写实图片；
+  - 对于Logo：我们建议使用色块占位图片；
+  - 对于插画/装饰性图形：我们优先推荐使用简单的svg来占位，避免使用图片过于跳脱；`,
     architectureSection: `\`\`\`
 ├─ index.jsx           # 模块入口，有且仅有一个，必须写在根路径
 ├─ index.less
