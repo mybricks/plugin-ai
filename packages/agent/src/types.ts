@@ -163,7 +163,7 @@ export interface VersionRecord {
   turnId: string;
   /** 展示标签，如 "V0" / "V1"，由调用方维护序号 */
   label: string;
-  type: 'ai' | 'manual' | 'rollback';
+  type: 'ai' | 'manual' | 'rollback' | 'init';
   /** 创建时间（Unix ms） */
   createdAt: number;
   /** AI 生成的本轮摘要（由 afterTurnSummary 异步写入） */
