@@ -12,7 +12,7 @@ import { createMyBricksAIRequest, createMyBricksAIRequestSSE } from "./mybricks"
 import { checkInfraAvailable, createInfraAIOnUpload, createInfraAIRequest, createOnUpload } from "./infra";
 import type { OnUploadFn, RequestAsStreamFn } from "./types";
 
-// import { requestAsStreamInfra } from './cdzd'
+import { requestAsStreamInfra } from './cdzd'
 
 export type {
   TokenUsage,
@@ -48,7 +48,7 @@ function createRequestAsStream(): RequestAsStreamFn {
 
   return async function (params) {
 
-    // return requestAsStreamInfra(params);
+    return requestAsStreamInfra(params);
 
     if (isProduction()) {
       return requestAsStreamForProduction()(params);

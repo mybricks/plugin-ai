@@ -132,10 +132,10 @@ class DiffErrorBoundary extends React.Component<
   }
 }
 
-const DiffLines = ({ oldStr, newStr }: { oldStr: string; newStr: string }) => {
+const DiffLines = ({ oldStr, newStr, bodyClass }: { oldStr: string; newStr: string; bodyClass?: string }) => {
   const lines = computeDiff(oldStr, newStr);
   return (
-    <pre className={css["code-card-body"]}>
+    <pre className={bodyClass ?? css["code-card-body"]}>
       <code>
         {lines.map((l, i) => (
           <span
@@ -157,9 +157,9 @@ const DiffLines = ({ oldStr, newStr }: { oldStr: string; newStr: string }) => {
   );
 };
 
-const DiffView = ({ oldStr, newStr, onError }: { oldStr: string; newStr: string; onError: () => void }) => (
+const DiffView = ({ oldStr, newStr, onError, bodyClass }: { oldStr: string; newStr: string; onError: () => void; bodyClass?: string }) => (
   <DiffErrorBoundary onError={onError}>
-    <DiffLines oldStr={oldStr} newStr={newStr} />
+    <DiffLines oldStr={oldStr} newStr={newStr} bodyClass={bodyClass} />
   </DiffErrorBoundary>
 );
 
@@ -188,6 +188,25 @@ const PendingCodeCard = ({ tool, icon, title }: { tool: ToolRecord; icon: React.
     </div>
   </div>
 );
+
+/** pending 时展示流式内容的代码卡片（默认展开，内容实时刷新） */
+const StreamingCodeCard = ({ tool, icon, title, content }: { tool: ToolRecord; icon: React.ReactElement; title: string; content: string }) => {
+  const lang = detectLang(tool.args?.path ?? "");
+  return (
+    <div className={css["code-card"]}>
+      <div className={css["code-card-header"]} style={{ cursor: "default" }}>
+        <span className={css["code-card-icon"]}>
+          <StatusIcon tool={tool} icon={icon} />
+        </span>
+        <TextShimmer className={css["code-card-filename"]}>{title}</TextShimmer>
+        <Duration tool={tool} />
+      </div>
+      <pre className={css["code-card-body"]}>
+        <code className={`language-${lang}`}>{content}</code>
+      </pre>
+    </div>
+  );
+};
 
 const CodeCard = ({ tool, icon, title, content, isDelete, lineMeta, diffMode }: CodeCardProps) => {
   const [collapsed, setCollapsed] = useState(false);
@@ -294,12 +313,15 @@ const WriteFileRenderer = ({ tool }: { tool: ToolRecord }) => {
   const baseTitle = name ? `写文件 ${name}` : (path || "写文件");
   const title = errorSuffix(baseTitle, tool.status);
 
-  // pending 状态
+  const content: string = tool.args?.content ?? "";
+
+  // pending 时：有内容就展示流式预览，否则展示 shimmer
   if (tool.status === "pending") {
+    if (content) {
+      return <StreamingCodeCard tool={tool} icon={<FileWrite />} title={`${title}...`} content={content} />;
+    }
     return <PendingCodeCard tool={tool} icon={<FileWrite />} title={`${title}...`} />;
   }
-
-  const content: string = tool.args?.content ?? "";
 
   return (
     <CodeCard
@@ -311,67 +333,162 @@ const WriteFileRenderer = ({ tool }: { tool: ToolRecord }) => {
   );
 };
 
-// ─── multi_write 渲染 ───────────────────────────────────────────────────────
+// ─── 批量操作组件（BatchGroup）────────────────────────────────────────────────
 
-/** 为单个文件创建虚拟 ToolRecord，复用 CodeCard 渲染逻辑 */
-const createFileToolRecord = (
-  file: { path: string; content?: string },
-  baseTool: ToolRecord
-): ToolRecord => ({
-  ...baseTool,
-  args: { path: file.path, content: file.content },
-  result: undefined,
-});
+interface BatchItemProps {
+  tool: ToolRecord;
+  /** 文件路径（用于语言检测） */
+  path: string;
+  /** 文件名（display） */
+  name: string;
+  /** 流式/完成内容（可能未闭合） */
+  content?: string;
+  /** diff 模式（edit 完成后） */
+  diffMode?: { oldStr: string; newStr: string };
+  /** 是否删除片段 */
+  isDelete?: boolean;
+  /** 是否是流式 pending 中 */
+  streaming?: boolean;
+}
+
+const BatchItem = ({ tool, path, name, content, diffMode, isDelete, streaming }: BatchItemProps) => {
+  const [collapsed, setCollapsed] = useState(false);
+  const [diffBroken, setDiffBroken] = useState(false);
+  const lang = detectLang(path);
+  const lineCount = content ? content.split("\n").length : 0;
+  const isError = tool.status === "error";
+
+  const hasBody = !!(diffMode || content);
+  const isCollapsed = streaming ? false : (collapsed || diffBroken);
+  const canToggle = hasBody && !streaming && !diffBroken;
+
+  const headerCls = [
+    css["batch-item-header"],
+    !canToggle ? css["batch-item-header-no-toggle"] : "",
+  ].filter(Boolean).join(" ");
+
+  return (
+    <div className={css["batch-item"]}>
+      <div
+        className={headerCls}
+        onClick={() => canToggle && setCollapsed((prev: boolean) => !prev)}
+      >
+        <span className={css["batch-item-icon"]}>
+          {streaming
+            ? <span style={{ opacity: 0.4, fontSize: 10 }}>○</span>
+            : <Success />}
+        </span>
+        {streaming
+          ? <TextShimmer className={css["batch-item-filename"]}>{name + "..."}</TextShimmer>
+          : <span className={css["batch-item-filename"]}>{name}{isError ? "（失败）" : ""}</span>}
+        {!streaming && lineCount > 0 && (
+          <span className={css["batch-item-lines"]}>{lineCount} 行</span>
+        )}
+        {canToggle && (
+          <span className={css["batch-item-toggle"]}>{isCollapsed ? "▶" : "▼"}</span>
+        )}
+      </div>
+      {!isCollapsed && hasBody && (
+        diffMode && !diffBroken ? (
+          <DiffView
+            oldStr={diffMode.oldStr}
+            newStr={diffMode.newStr}
+            onError={() => setDiffBroken(true)}
+            bodyClass={`${css["code-card-body"]} ${css["batch-item-body"]}`}
+          />
+        ) : content ? (
+          <pre className={`${css["code-card-body"]} ${css["batch-item-body"]}${isDelete ? ` ${css["batch-item-body-delete"]}` : ""}`}>
+            <code className={`language-${lang}`}>{content}</code>
+          </pre>
+        ) : null
+      )}
+    </div>
+  );
+};
+
+interface BatchGroupProps {
+  tool: ToolRecord;
+  icon: React.ReactElement;
+  /** 标题（如"写文件"、"修改文件"） */
+  verb: string;
+  items: React.ReactNode;
+  count: number;
+}
+
+const BatchGroup = ({ tool, icon, verb, items, count }: BatchGroupProps) => {
+  const isError = tool.status === "error";
+  const isPending = tool.status === "pending";
+
+  const headerTitle = isPending
+    ? `${verb}...`
+    : isError
+      ? `${verb}（失败）`
+      : verb;
+
+  const metaLabel = count > 0 ? `${count} 个文件` : undefined;
+
+  return (
+    <div className={css["batch-group"]}>
+      <div className={css["batch-group-header"]}>
+        <span className={css["batch-group-header-icon"]}>
+          {isPending
+            ? <span style={{ opacity: 0.4, fontSize: 12 }}>○</span>
+            : icon}
+        </span>
+        {isPending
+          ? <TextShimmer className={css["batch-group-header-title"]}>{headerTitle}</TextShimmer>
+          : <span className={css["batch-group-header-title"]}>{headerTitle}</span>}
+        {metaLabel && <span className={css["batch-group-header-meta"]}>{metaLabel}</span>}
+        <Duration tool={tool} />
+      </div>
+      <div className={css["batch-group-body"]}>
+        {items}
+      </div>
+    </div>
+  );
+};
+
+// ─── multi_write 渲染 ───────────────────────────────────────────────────────
 
 const MultiWriteRenderer = ({ tool }: { tool: ToolRecord }) => {
   const files: Array<{ path: string; content?: string }> = Array.isArray(tool.args?.files) ? tool.args.files : [];
+  const isPending = tool.status === "pending";
 
   if (files.length === 0) {
     return (
       <div className={css["tool-card"]}>
         <StatusIcon tool={tool} icon={<FileWrite />} />
-        <Label tool={tool} text="写文件" />
+        <Label tool={tool} text="批量写文件" />
         <Duration tool={tool} />
       </div>
     );
   }
 
+  const paths = files.map((f) => f.path);
+  const items = files.map((file, idx) => {
+    const name = shortPath(file.path, paths);
+    const content = file.content ?? "";
+    const isLastAndPending = isPending && idx === files.length - 1;
+    return (
+      <BatchItem
+        key={file.path || idx}
+        tool={tool}
+        path={file.path}
+        name={name}
+        content={content}
+        streaming={isLastAndPending && !content ? false : isLastAndPending}
+      />
+    );
+  });
+
   return (
-    <div className={css["multi-write-container"]}>
-      {files.map((file, idx) => {
-        const fileTool = createFileToolRecord(file, tool);
-        const name = basename(file.path);
-        const baseTitle = name ? `写文件 ${name}` : file.path;
-        const title = errorSuffix(baseTitle, tool.status);
-
-        // pending 状态：每个文件单独展示 pending 卡片
-        if (tool.status === "pending") {
-          return (
-            <PendingCodeCard
-              key={file.path || idx}
-              tool={fileTool}
-              icon={<FileWrite />}
-              title={`${title}...`}
-            />
-          );
-        }
-
-        // success/error：展示可展开的代码卡片
-        const content = file.content ?? "";
-        const lineCount = content.split("\n").length;
-
-        return (
-          <CodeCard
-            key={file.path || idx}
-            tool={fileTool}
-            icon={<FileWrite />}
-            title={title}
-            content={content}
-            lineMeta={lineCount > 0 ? `${lineCount} 行` : undefined}
-          />
-        );
-      })}
-    </div>
+    <BatchGroup
+      tool={tool}
+      icon={<FileWrite />}
+      verb="批量写文件"
+      count={files.length}
+      items={items}
+    />
   );
 };
 
@@ -379,64 +496,50 @@ const MultiWriteRenderer = ({ tool }: { tool: ToolRecord }) => {
 
 type EditItem = { path: string; old_str?: string; new_str?: string; replace_all?: boolean };
 
-/** 为单个编辑操作创建虚拟 ToolRecord */
-const createEditToolRecord = (edit: EditItem, baseTool: ToolRecord): ToolRecord => ({
-  ...baseTool,
-  args: { path: edit.path, old_str: edit.old_str, new_str: edit.new_str, replace_all: edit.replace_all },
-  result: undefined,
-});
-
 const MultiEditRenderer = ({ tool }: { tool: ToolRecord }) => {
   const edits: EditItem[] = Array.isArray(tool.args?.edits) ? tool.args.edits : [];
+  const isPending = tool.status === "pending";
 
   if (edits.length === 0) {
     return (
       <div className={css["tool-card"]}>
         <StatusIcon tool={tool} icon={<Pencil />} />
-        <Label tool={tool} text="编辑文件" />
+        <Label tool={tool} text="批量修改" />
         <Duration tool={tool} />
       </div>
     );
   }
 
+  const paths = edits.map((e) => e.path);
+  const items = edits.map((edit, idx) => {
+    const name = shortPath(edit.path, paths);
+    const oldStr = edit.old_str ?? "";
+    const newStr = edit.new_str ?? "";
+    const isDelete = !isPending && newStr === "" && oldStr !== "";
+    const streamContent = newStr || oldStr;
+    const isLastAndPending = isPending && idx === edits.length - 1;
+    return (
+      <BatchItem
+        key={(edit.path || idx) + "-" + idx}
+        tool={tool}
+        path={edit.path}
+        name={name}
+        content={isDelete ? oldStr : (isPending ? streamContent : newStr)}
+        diffMode={!isPending && !isDelete && oldStr ? { oldStr, newStr } : undefined}
+        isDelete={isDelete}
+        streaming={isLastAndPending}
+      />
+    );
+  });
+
   return (
-    <div className={css["multi-write-container"]}>
-      {edits.map((edit, idx) => {
-        const editTool = createEditToolRecord(edit, tool);
-        const name = basename(edit.path);
-        const baseTitle = name ? `修改文件 ${name}` : edit.path;
-        const title = errorSuffix(baseTitle, tool.status);
-
-        // pending 状态：每个编辑单独展示 pending 卡片
-        if (tool.status === "pending") {
-          return (
-            <PendingCodeCard
-              key={edit.path || idx}
-              tool={editTool}
-              icon={<Pencil />}
-              title={`${title}...`}
-            />
-          );
-        }
-
-        // success/error：展示可展开的代码卡片（diff 模式）
-        const oldStr: string = edit.old_str ?? "";
-        const newStr: string = edit.new_str ?? "";
-        const isDelete = newStr === "" && oldStr !== "";
-
-        return (
-          <CodeCard
-            key={edit.path || idx}
-            tool={editTool}
-            icon={<Pencil />}
-            title={title}
-            content={isDelete ? oldStr : newStr}
-            isDelete={isDelete}
-            diffMode={isDelete ? undefined : { oldStr, newStr }}
-          />
-        );
-      })}
-    </div>
+    <BatchGroup
+      tool={tool}
+      icon={<Pencil />}
+      verb="批量修改"
+      count={edits.length}
+      items={items}
+    />
   );
 };
 
@@ -448,8 +551,12 @@ const EditFileRenderer = ({ tool }: { tool: ToolRecord }) => {
   const baseTitle = name ? `修改文件 ${name}` : (path || "修改文件");
   const title = errorSuffix(baseTitle, tool.status);
 
-  // pending 状态：流式时 new_str 可能还在生成
+  // pending 状态：流式时 new_str 可能还在生成，有内容就展示流式预览
   if (tool.status === "pending") {
+    const streamContent: string = tool.args?.new_str ?? tool.args?.old_str ?? "";
+    if (streamContent) {
+      return <StreamingCodeCard tool={tool} icon={<Pencil />} title={`${title}...`} content={streamContent} />;
+    }
     return <PendingCodeCard tool={tool} icon={<Pencil />} title={`${title}...`} />;
   }
 
@@ -517,6 +624,39 @@ const DeleteFileRenderer = ({ tool }: { tool: ToolRecord }) => {
 
 function basename(path: string): string {
   return path.replace(/\\/g, "/").split("/").pop() ?? path;
+}
+
+/**
+ * 从一组路径中计算每条路径的"有意义短路径"：
+ * 去除所有路径共同的前缀目录后剩余的部分。
+ * 例如 ["src/a/foo.ts", "src/b/bar.ts"] → ["a/foo.ts", "b/bar.ts"]
+ * 单个路径时直接返回原路径（或文件名若路径较短）。
+ */
+function shortPath(path: string, allPaths: string[]): string {
+  const norm = path.replace(/\\/g, "/");
+  if (allPaths.length <= 1) return norm;
+
+  const parts = allPaths.map((p) => p.replace(/\\/g, "/").split("/"));
+  const normParts = norm.split("/");
+
+  // 找公共前缀深度（不含文件名那一层）
+  const minLen = Math.min(...parts.map((p) => p.length - 1));
+  let commonDepth = 0;
+  for (let i = 0; i < minLen; i++) {
+    const seg = parts[0][i];
+    if (parts.every((p) => p[i] === seg)) {
+      commonDepth = i + 1;
+    } else {
+      break;
+    }
+  }
+
+  // 去掉公共前缀后，至少保留"父目录/文件名"（最后两段），
+  // 避免所有文件同目录时退化为纯文件名
+  const minKeep = Math.min(2, normParts.length);
+  const keepFrom = Math.min(commonDepth, normParts.length - minKeep);
+  const short = normParts.slice(keepFrom).join("/");
+  return short || norm;
 }
 
 function detectLang(path: string): string {

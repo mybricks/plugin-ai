@@ -106,6 +106,8 @@ export interface TurnRecord {
     endTime?: number;
     /** 本次 LLM 思考内容 */
     thinkingContent?: string;
+    /** 本 step 实际使用的 aiRole（未指定时为空） */
+    aiRole?: string;
   }>;
 
   /** 本轮状态 */
@@ -123,6 +125,12 @@ export interface TurnRecord {
    * 用于版本记录场景。
    */
   summary?: string;
+  /**
+   * 本轮的可延续对话摘要（由 autoSummary fork 异步写入）。
+   * 包含目标、指示、发现、已完成工作、相关文件等结构化内容，
+   * 供后续 agent 接手时作为上下文使用。
+   */
+  handoff?: string;
 
   /** token 用量（turn:complete 时携带） */
   usage?: {
@@ -329,8 +337,16 @@ export interface Tool {
  * compactRecord 参数：
  *   如果传入，只展开游标（upToTurnId）之后的 turns。
  *   游标之前的 turns 由 buildMessages 单独构建为摘要消息对，此处跳过。
+ *
+ * handoffTurnIds 参数：
+ *   命中 handoff 条件的 turn id 集合（由 mask.ts 的 computeHandoffTurnIds 计算）。
+ *   命中的 turn 整体替换为 user（原始用户消息）+ assistant（handoff 内容）两条消息。
  */
-export function turnsToMessages(turns: TurnRecord[], compactRecord?: CompactRecord | null): Message[] {
+export function turnsToMessages(
+  turns: TurnRecord[],
+  compactRecord?: CompactRecord | null,
+  handoffTurnIds?: Set<string>
+): Message[] {
   const messages: Message[] = [];
 
   // 找到 compact 游标的索引（-1 表示无 compact）
@@ -348,16 +364,26 @@ export function turnsToMessages(turns: TurnRecord[], compactRecord?: CompactReco
       continue;
     }
 
-    // 用户消息
+    // 用户消息（handoff 和普通模式都需要，保留原始文本，不含附件）
+    const userText = turn.userFormattedText ?? turn.userText;
+
+    // ── Handoff 模式：整个 turn 替换为 user + assistant(handoff) ──────────────
+    if (handoffTurnIds?.has(turn.id)) {
+      messages.push({ role: "user", content: userText });
+      messages.push({ role: "assistant", content: turn.handoff ?? "" });
+      continue;
+    }
+
+    // ── 普通模式 ──────────────────────────────────────────────────────────────
     const userContent: Message["content"] = turn.userAttachments.length
       ? [
-          { type: "text", text: turn.userFormattedText ?? turn.userText },
+          { type: "text", text: userText },
           ...turn.userAttachments.map((a) => ({
             type: "image_url",
             image_url: { url: a.content },
           })),
         ]
-      : (turn.userFormattedText ?? turn.userText);
+      : userText;
     messages.push({ role: "user", content: userContent });
 
     // 用 iterations 重建 ReAct 序列（向后兼容：无 iterations 时降级到简单 assistant 消息）

@@ -61,6 +61,11 @@ export interface CodeAgentOptions extends Omit<AgentOptions, 'system'> {
    *   - 不全量注入，避免 token 浪费
    */
   skills?: SkillFile[];
+  /**
+   * 追加到内置 system prompt 末尾的额外系统提示词。
+   * 可用于注入项目特定规范、约束或上下文。
+   */
+  system?: string;
 }
 
 /** 虚拟 skills 路径前缀 */
@@ -83,10 +88,9 @@ const SKILLS_PREFIX = ".skills/";
  *   - `agentsMd`  — agents.md 规则文档，追加到系统 prompt 末尾
  *   - `skills`    — 技能文件列表，挂载为虚拟文件系统，LLM 按需读取
  */
-// 注意：system prompt 由 CodeAgent 内部管理，不对外暴露配置入口。
 export class CodeAgent extends Agent {
   constructor(options: CodeAgentOptions) {
-    const { sandbox, skills, ...agentOptions } = options;
+    const { sandbox, skills, system, ...agentOptions } = options;
 
     // ── 包装 sandbox.getFiles()，追加 skills 虚拟文件 ─────────────────────────
     const wrappedSandbox: Sandbox | undefined = sandbox
@@ -104,7 +108,7 @@ export class CodeAgent extends Agent {
       : undefined;
 
     const sandboxTools: Tool[] = wrappedSandbox
-      ? [createReadTool(wrappedSandbox), createWriteTool(wrappedSandbox), createMultiWriteTool(wrappedSandbox), createEditTool(wrappedSandbox), createMultiEditTool(wrappedSandbox), createDeleteTool(wrappedSandbox)]
+      ? [createReadTool(wrappedSandbox), createWriteTool(wrappedSandbox), createEditTool(wrappedSandbox), createMultiEditTool(wrappedSandbox), createDeleteTool(wrappedSandbox)]
       : [];
 
     // ── sandbox.getContext 作为 getContextMessages ────────────────────────────
@@ -115,10 +119,11 @@ export class CodeAgent extends Agent {
     };
 
     const builtinSystem = getCodeAgentSystemPrompt(agentOptions.promptOptions, skills);
+    const finalSystem = system ? `${builtinSystem}\n\n${system}` : builtinSystem;
 
     super({
       ...agentOptions,
-      system: builtinSystem,
+      system: finalSystem,
       getContextMessages,
       // 内置沙箱工具在前，外部注入工具（如 check_design_status）在后
       tools: [...sandboxTools, ...(agentOptions.tools ?? [])],

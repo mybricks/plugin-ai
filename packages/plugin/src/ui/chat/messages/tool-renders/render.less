@@ -214,8 +214,134 @@
   font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
 }
 
-// ── multi_write 专属 ──────────────────────────────────────────────────────────
+// ── 批量操作组（multi_write / multi_edit）─────────────────────────────────────
 
+// 外层容器：圆角边框，整体一张卡片
+.batch-group {
+  border-radius: 6px;
+  border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  background: var(--mybricks-bg-color-secondary, #F5F5F5);
+  margin: 3px 0;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--mybricks-text-color-main, #333);
+  user-select: none;
+}
+
+// 顶部 header：操作名 + 文件数 + 耗时
+.batch-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: var(--mybricks-bg-color-secondary, #F5F5F5);
+  border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  min-height: 28px;
+  cursor: default;
+}
+
+.batch-group-header-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: inherit;
+  svg { width: 12px; height: 12px; }
+}
+
+.batch-group-header-title {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--mybricks-text-color-main, #333);
+}
+
+.batch-group-header-meta {
+  font-size: 11px;
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+
+// 文件列表区域
+.batch-group-body {
+  display: flex;
+  flex-direction: column;
+}
+
+// 组内的单个文件行：无外边框、无外 margin、与相邻行用分隔线区分
+.batch-item {
+  border-top: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  background: transparent;
+  overflow: hidden;
+
+  &:first-child {
+    border-top: none;
+  }
+}
+
+// 组内文件行 header（可点击展开）
+.batch-item-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 14px; // 左缩进对齐层次感
+  min-height: 26px;
+  cursor: pointer;
+  user-select: none;
+
+  &.batch-item-header-no-toggle {
+    cursor: default;
+  }
+}
+
+.batch-item-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: inherit;
+  svg { width: 11px; height: 11px; }
+}
+
+.batch-item-filename {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.85;
+}
+
+.batch-item-lines {
+  font-size: 10px;
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+
+.batch-item-toggle {
+  font-size: 8px;
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.4;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+// 组内代码体：直接复用 code-card-body，仅覆盖 border-top 和 max-height
+.batch-item-body {
+  border-top: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  max-height: calc(11px * 1.6 * 10 + 12px);
+}
+
+.batch-item-body-delete {
+  background: rgba(255, 68, 68, 0.06);
+  color: #c0392b;
+}
+
+// 兼容旧名（可逐步迁移）
 .multi-write-container {
   display: flex;
   flex-direction: column;

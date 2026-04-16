@@ -3,7 +3,7 @@ import type { RequestAsStreamFn, ToolDescriptor } from "../../request/src";
 import { AgentEvents } from "./events";
 import type { CompactRecord, Message, History, Tool, TurnRecord, ToolCallRecord, BoundHistory } from "./types";
 import { turnsToMessages, bindHistory } from "./types";
-import { maskMessages, type MaskOptions } from "./mask";
+import { maskMessages, computeHandoffTurnIds, type MaskOptions } from "./mask";
 
 export { AgentEvents };
 export type { Message, History, Tool, TurnRecord, ToolCallRecord };
@@ -23,6 +23,13 @@ export interface ToolExecutionContext {
    * 供工具自行做重试/重复调用检测等策略判断。
    */
   iterations: ReadonlyArray<TurnRecord["iterations"][number]>;
+  /** 读取当前 turn 后续 step 使用的 aiRole（未指定时返回 undefined） */
+  getAiRole: () => string | undefined;
+  /**
+   * 设置后续 step 使用的 aiRole（仅当前 turn 生效）。
+   * 传空字符串或 undefined 可清空，恢复默认路由。
+   */
+  setAiRole: (aiRole?: string) => void;
 }
 
 // ─── AgentHooks ──────────────────────────────────────────────────────────────
@@ -224,34 +231,40 @@ async function buildMessages(
       ]
     : [];
 
-  const historyMessages = turnsToMessages(turns, compactRecord);
+  // 计算命中 handoff 条件的 turn id 集合（未启用或 turn 无 handoff 内容时不加入）
+  const handoffTurnIds = options.mask
+    ? computeHandoffTurnIds(turns, options.mask)
+    : new Set<string>();
 
-  // ── 自动打 prompt cache 断点 ──────────────────────────────────────────────
-  // 断点 1：静态前缀（system + agentsMd + context + compact）中最后一个存在的消息打 cache
-  const staticPrefix: Message[] = [
-    ...(systemMessage ? [systemMessage] : []),
+  const historyMessages = turnsToMessages(turns, compactRecord, handoffTurnIds);
+
+  // ── prompt cache 断点 ────────────────────────────────────────────────────
+  // 断点 1：system message 单独打 cache（几乎不变，命中率最高）
+  const cachedSystemMessage: Message | null = systemMessage
+    ? { ...systemMessage, cache: true }
+    : null;
+
+  // 断点 2：agentsMd + context + compact 最后一条打 cache
+  const staticRest: Message[] = [
     ...(agentsMdMessage ? [agentsMdMessage] : []),
     ...contextMessages,
     ...compactMessages,
   ];
-  if (staticPrefix.length > 0) {
-    staticPrefix[staticPrefix.length - 1] = {
-      ...staticPrefix[staticPrefix.length - 1],
+  if (staticRest.length > 0) {
+    staticRest[staticRest.length - 1] = {
+      ...staticRest[staticRest.length - 1],
       cache: true,
     };
   }
 
-  // 断点 2：历史对话最后一条消息打 cache（只有历史存在时才打）
-  const cachedHistoryMessages = historyMessages.length > 0
-    ? [
-        ...historyMessages.slice(0, -1),
-        { ...historyMessages[historyMessages.length - 1], cache: true },
-      ]
-    : historyMessages;
+  const staticPrefix: Message[] = [
+    ...(cachedSystemMessage ? [cachedSystemMessage] : []),
+    ...staticRest,
+  ];
 
   const baseMessages = [
     ...staticPrefix,
-    ...cachedHistoryMessages,
+    ...historyMessages,
   ];
 
   // historyStartIndex：assembled 数组中，静态前缀（system/agentsMd/context/compact）之后的起始索引
@@ -294,8 +307,8 @@ function assembleMessages(
   }
   const userMessage: Message = { role: "user", content: userContent };
 
-  // 给 tail 每一条消息打 cache
-  const cachedTail = tail.map(msg => ({ ...msg, cache: true }));
+  // cache 断点改为请求体顶层 cache_control，不再逐条标记
+  const cachedTail = tail;
 
   const assembled = [...baseMessages, userMessage, ...cachedTail];
 
@@ -611,6 +624,21 @@ export class Agent {
     const { context: { baseMessages, historyStartIndex }, initialTail, startStep, turn, userParams, llmRest = {} } = opts;
     this._abortController = new AbortController();
     const signal = this._abortController.signal;
+    // 每次进入 ReAct 循环都从入口参数初始化一份 turn 级 aiRole，
+    // 循环结束后自然销毁，不污染下一次 request/retry。
+    const baseLlmRest: Record<string, any> = { ...llmRest };
+    const initialAiRole = baseLlmRest.aiRole as string | undefined;
+    let turnAiRole: string | undefined = initialAiRole || undefined;
+    const buildStepLLMRest = (): { rest: Record<string, any>; effectiveAiRole?: string } => {
+      const rest = { ...baseLlmRest };
+      const effectiveAiRole = turnAiRole;
+      if (effectiveAiRole) {
+        rest.aiRole = effectiveAiRole;
+      } else {
+        delete rest.aiRole;
+      }
+      return { rest, effectiveAiRole };
+    };
 
     const { key, history } = this.options;
     const maxSteps = this.options.maxSteps ?? 50;
@@ -670,13 +698,14 @@ export class Agent {
         );
 
         // 调用 LLM
+        const { rest: stepLLMRest, effectiveAiRole } = buildStepLLMRest();
         let llmResult: LLMCallResult;
         try {
           llmResult = await callLLM(
             this.options,
             messages,
             signal,
-            llmRest,
+            stepLLMRest,
             step,
             (delta, content, thinkingDelta, thinkingContent) => {
               this.events.emit("llm:content", { delta, content, thinkingDelta, thinkingContent, step });
@@ -713,6 +742,7 @@ export class Agent {
           startTime: stepLLMStartTime,
           endTime: iterEndTime,
           ...(llmResult.thinkingContent ? { thinkingContent: llmResult.thinkingContent } : {}),
+          ...(effectiveAiRole ? { aiRole: effectiveAiRole } : {}),
         };
         turn.iterations.push(currentIter);
         turn.thinkingContent += llmResult.thinkingContent;
@@ -785,6 +815,10 @@ export class Agent {
           const toolContext: ToolExecutionContext = {
             turnId: turn.id,
             iterations: turn.iterations,
+            getAiRole: () => turnAiRole,
+            setAiRole: (aiRole?: string) => {
+              turnAiRole = aiRole || undefined;
+            },
           };
 
           if (!tool) {
@@ -1077,14 +1111,57 @@ export class Agent {
    */
   private async _runAutoSummary(turn: TurnRecord): Promise<void> {
     const SUMMARY_PROMPT = `IMPORTANT: 不要调用工具！
+你有两个任务
+
+1. 生成一份总结
+<总结生成规则>
 用 1-3 句话对本轮对话进行总结，内容用 <summary></summary> 标签包裹。
 关注点：做了什么有效的事情。
+
 比如
 <summary>
 修改整体为卡通风格
 1. 将卡片的风格改成了卡通风格，涉及对卡片的样式代码和结构进行修改；
 2. 将字体调整至卡通风格字体；
 </summary>
+
+</总结生成规则>
+
+2. 为后续对话生成一份「可延续对话摘要」。目标是让另一个 agent 读完这份摘要后，能无缝接手并继续当前工作。
+
+<可延续对话摘要生成规则>
+请基于下方对话历史，严格按照以下模板输出（保留二级标题与结构，只填写各节内容），并将整份摘要用 <handoff></handoff> 标签包裹：
+
+<handoff>
+## 目标
+
+[用户想要达成的目标是什么？用 1～2 句话说明。]
+
+## 重要指示
+
+- [用户给出的、与任务相关的重要指示]
+- [若有计划或规格说明，简要概括，便于下一 agent 按此继续]
+
+## 关键发现
+
+[对话过程中发现的重要信息、结论或约束，对后续 agent 继续工作有帮助的内容]
+
+## 完成情况
+
+[已完成的工作、进行中的工作、以及尚未完成/待办的工作]
+
+## 相关文件
+
+[与任务相关的文件或目录列表：已读、已编辑或已创建的文件；若某目录下文件都相关，可只写目录路径。保持结构化、便于查找。]
+</handoff>
+
+要求：
+1. 信息完整、准确，便于下一 agent 理解上下文并继续执行。
+2. 语言精炼，避免重复；相关文件尽量列出真实路径或文件名。
+3. 直接输出上述模板的填写结果，不要额外解释。
+
+</可延续对话摘要生成规则>
+
 IMPORTANT: 不要调用工具！
 `;
     const fork = this.createFork({ tools: [], copyTurns: 1 });
@@ -1098,17 +1175,25 @@ IMPORTANT: 不要调用工具！
 
     if (!lastContent) return;
 
-    // 解析 <summary>...</summary> 标签内容，未命中则不写入
-    const match = lastContent.match(/<summary>([\s\S]*?)<\/summary>/);
-    if (!match) return;
-    const summaryText = match[1].trim();
-    if (!summaryText) return;
+    // 解析 <summary>...</summary>
+    const summaryMatch = lastContent.match(/<summary>([\s\S]*?)<\/summary>/);
+    const summaryText = summaryMatch?.[1].trim() ?? "";
 
-    turn.summary = summaryText;
+    // 解析 <handoff>...</handoff>（可延续对话摘要）
+    const handoffMatch = lastContent.match(/<handoff>([\s\S]*?)<\/handoff>/);
+    const handoffText = handoffMatch?.[1].trim() ?? "";
+
+    if (!summaryText && !handoffText) return;
+
+    if (summaryText) turn.summary = summaryText;
+    if (handoffText) turn.handoff = handoffText;
 
     const { history, key } = this.options;
     if (history && key) {
-      await history.update(key, turn.id, { summary: turn.summary });
+      await history.update(key, turn.id, {
+        ...(summaryText ? { summary: summaryText } : {}),
+        ...(handoffText ? { handoff: handoffText } : {}),
+      });
     }
 
     void Promise.resolve(this.options.hooks?.afterTurnSummary?.(turn, summaryText)).catch((e) => {

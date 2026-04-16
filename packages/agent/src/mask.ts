@@ -42,6 +42,24 @@ export interface MaskOptions {
    * 默认："[Old attachment cleared]"
    */
   attachmentPlaceholder?: string;
+  /**
+   * Handoff 机制：命中遮蔽条件的 turn，在构建 LLM 消息时将整个 turn 替换为
+   * user（原始用户消息） + assistant（turn.handoff 内容）两条消息，
+   * 而非保留完整的 ReAct 序列。
+   *
+   * 启用条件：
+   *   - `handoff.enabled` 为 true
+   *   - turn 有 `handoff` 字段（由 autoSummary 异步写入）
+   *   - turn 命中遮蔽条件（maxTurns / maxAgeMinutes）
+   *
+   * 若命中条件但 turn 无 handoff 内容，则降级为普通遮蔽（tool 占位符替换）。
+   *
+   * 默认：不启用
+   */
+  handoff?: {
+    /** 是否启用 handoff 机制，默认 false */
+    enabled: boolean;
+  };
 }
 
 // ─── maskMessages ─────────────────────────────────────────────────────────────
@@ -118,6 +136,26 @@ export function maskMessages(
 
   if (maskedCallIds.size === 0 && maskedTurnIndices.size === 0) {
     return messages;
+  }
+
+  // ── Handoff：从遮蔽集合中剔除已由 turnsToMessages 整体替换的 turn ──────────
+  // 命中 handoff 的 turn 在 turnsToMessages 里已经被替换为 user+assistant(handoff)，
+  // 展开后的 messages 里不再有对应的 tool 消息和 image_url，无需再做遮蔽。
+  if (options.handoff?.enabled) {
+    const handoffTurnIds = computeHandoffTurnIds(turns, options);
+    if (handoffTurnIds.size > 0) {
+      // 从 maskedCallIds 中移除已 handoff turn 的 toolCall id
+      for (const idx of maskedTurnIndices) {
+        const turn = turns[idx];
+        if (!handoffTurnIds.has(turn.id)) continue;
+        maskedTurnIndices.delete(idx);
+        for (const iter of turn.iterations ?? []) {
+          for (const tc of iter.toolCalls ?? []) {
+            maskedCallIds.delete(tc.callId);
+          }
+        }
+      }
+    }
   }
 
   // ── 需要遮蔽附件时，建立 "该 user 消息在第几个 turn" 的映射 ─────────────
@@ -211,4 +249,52 @@ export function maskMessages(
 
     return msg;
   });
+}
+
+// ─── computeHandoffTurnIds ────────────────────────────────────────────────────
+
+/**
+ * 计算哪些 turn 命中 handoff 条件，返回其 id 集合。
+ *
+ * 命中条件（同时满足）：
+ *   1. handoff.enabled 为 true
+ *   2. turn 命中遮蔽条件（maxTurns / maxAgeMinutes）
+ *   3. turn 为 success 且未被 retried
+ *   4. turn.handoff 有内容（无内容时降级为普通 mask 遮蔽）
+ *
+ * 供 agent.ts 的 buildMessages 调用，计算结果传给 turnsToMessages。
+ */
+export function computeHandoffTurnIds(
+  turns: TurnRecord[],
+  options: MaskOptions
+): Set<string> {
+  const result = new Set<string>();
+  if (!options.handoff?.enabled) return result;
+
+  const {
+    maxTurns = Infinity,
+    maxAgeMinutes = DEFAULT_MAX_AGE_MINUTES,
+  } = options;
+
+  const now = Date.now();
+  const maxAgeMs = maxAgeMinutes * 60 * 1000;
+  const totalTurns = turns.length;
+
+  for (let i = 0; i < totalTurns; i++) {
+    const turn = turns[i];
+    if (turn.status !== "success" || turn.retried) continue;
+
+    const turnsAgo = totalTurns - 1 - i;
+    const ageMs = now - (turn.endTime ?? turn.startTime);
+
+    const shouldMask =
+      (isFinite(maxTurns) && turnsAgo >= maxTurns) ||
+      ageMs > maxAgeMs;
+
+    if (shouldMask && turn.handoff) {
+      result.add(turn.id);
+    }
+  }
+
+  return result;
 }

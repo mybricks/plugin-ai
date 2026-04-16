@@ -270,12 +270,143 @@ export function useSession(agent: Agent | undefined) {
 
 // ─── 辅助 ─────────────────────────────────────────────────────────────────────
 
+/**
+ * 从流式输出的不完整 JSON 字符串中提取已知字段。
+ * 支持：path / content / old_str / new_str / files / edits
+ */
 function tryParsePartialArgs(raw: string): Record<string, any> | null {
   if (!raw) return null;
+
+  // 优先尝试完整解析
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") return parsed;
+  } catch {
+    // 继续做部分提取
+  }
+
   const result: Record<string, any> = {};
-  const pathMatch = raw.match(/"path"\s*:\s*"([^"\\]*)"/);
+
+  // path
+  const pathMatch = raw.match(/"path"\s*:\s*"((?:[^"\\]|\\.)*)"/);
   if (pathMatch) result.path = pathMatch[1];
-  if (/"oldString"\s*:/.test(raw)) result._hasOldString = true;
-  if (/"newString"\s*:/.test(raw)) result._hasNewString = true;
+
+  // content（单文件 write）—— 可能很长且未闭合，取到目前为止的内容
+  const contentStart = raw.indexOf('"content"');
+  if (contentStart !== -1) {
+    const colonIdx = raw.indexOf(":", contentStart);
+    if (colonIdx !== -1) {
+      const afterColon = raw.slice(colonIdx + 1).trimStart();
+      if (afterColon.startsWith('"')) {
+        // 提取到目前为止（可能未闭合）
+        const inner = afterColon.slice(1);
+        const closeIdx = findUnescapedQuote(inner);
+        result.content = closeIdx === -1 ? inner : inner.slice(0, closeIdx);
+      }
+    }
+  }
+
+  // old_str（单文件 edit）—— 用手动提取方式避免 /s flag 兼容性问题
+  const oldStrKeyIdx = raw.indexOf('"old_str"');
+  if (oldStrKeyIdx !== -1) {
+    const colonIdx2 = raw.indexOf(":", oldStrKeyIdx);
+    if (colonIdx2 !== -1) {
+      const afterColon2 = raw.slice(colonIdx2 + 1).trimStart();
+      if (afterColon2.startsWith('"')) {
+        const inner2 = afterColon2.slice(1);
+        const closeIdx2 = findUnescapedQuote(inner2);
+        result.old_str = closeIdx2 === -1 ? inner2 : inner2.slice(0, closeIdx2);
+      }
+    }
+  }
+
+  const newStrStart = raw.indexOf('"new_str"');
+  if (newStrStart !== -1) {
+    const colonIdx = raw.indexOf(":", newStrStart);
+    if (colonIdx !== -1) {
+      const afterColon = raw.slice(colonIdx + 1).trimStart();
+      if (afterColon.startsWith('"')) {
+        const inner = afterColon.slice(1);
+        const closeIdx = findUnescapedQuote(inner);
+        result.new_str = closeIdx === -1 ? inner : inner.slice(0, closeIdx);
+      }
+    }
+  }
+
+  // files（multi_write）—— 提取已完整出现的 { path, content } 条目
+  const filesKeyIdx = raw.indexOf('"files"');
+  if (filesKeyIdx !== -1) {
+    const arrStart = raw.indexOf("[", filesKeyIdx);
+    if (arrStart !== -1) {
+      result.files = extractPartialObjectArray(raw.slice(arrStart), ["path", "content"]);
+    }
+  }
+
+  // edits（multi_edit）—— 提取已完整出现的 { path, old_str, new_str } 条目
+  const editsKeyIdx = raw.indexOf('"edits"');
+  if (editsKeyIdx !== -1) {
+    const arrStart = raw.indexOf("[", editsKeyIdx);
+    if (arrStart !== -1) {
+      result.edits = extractPartialObjectArray(raw.slice(arrStart), ["path", "old_str", "new_str"]);
+    }
+  }
+
   return Object.keys(result).length > 0 ? result : null;
+}
+
+/** 在字符串中找到第一个未被转义的双引号的位置 */
+function findUnescapedQuote(s: string): number {
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '"') {
+      let backslashes = 0;
+      let j = i - 1;
+      while (j >= 0 && s[j] === "\\") { backslashes++; j--; }
+      if (backslashes % 2 === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * 从不完整的 JSON 数组字符串中提取已完整出现的对象条目。
+ * 对于最后一个未闭合的对象，尽量提取已知字段作为部分条目。
+ */
+function extractPartialObjectArray(arrStr: string, fields: string[]): Record<string, any>[] {
+  const items: Record<string, any>[] = [];
+
+  // 先找完整的对象（花括号闭合）
+  let depth = 0;
+  let objStart = -1;
+  for (let i = 0; i < arrStr.length; i++) {
+    const ch = arrStr[i];
+    if (ch === "{") {
+      if (depth === 0) objStart = i;
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0 && objStart !== -1) {
+        const objStr = arrStr.slice(objStart, i + 1);
+        try {
+          const parsed = JSON.parse(objStr);
+          if (parsed && typeof parsed === "object") items.push(parsed);
+        } catch {
+          // 忽略无法解析的片段
+        }
+        objStart = -1;
+      }
+    }
+  }
+
+  // 最后一个未闭合的对象：尽量提取已知字段
+  if (objStart !== -1) {
+    const partial = arrStr.slice(objStart);
+    const partialItem: Record<string, any> = {};
+    for (const field of fields) {
+      const fieldMatch = partial.match(new RegExp(`"${field}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`));
+      if (fieldMatch) partialItem[field] = fieldMatch[1];
+    }
+    if (Object.keys(partialItem).length > 0) items.push(partialItem);
+  }
+
+  return items;
 }

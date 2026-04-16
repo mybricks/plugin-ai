@@ -57,7 +57,7 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
 - 不要让代码处于损坏状态
 - 一次操作文件不得超过5个
 - 编辑文件时，建议先通过 \`${READ_TOOL_NAME}\` 读取文件内容，确认 old_str 后再编辑。
-- 除非用户明确要求，否则不要使用 emoji
+- 不要使用 emoji
 - 使用 replace_all 在文件中批量替换和重命名字符串（例如重命名变量时非常有用）`,
     parameters: {
       type: "object",
@@ -151,8 +151,6 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
         const errorMessages = errors.map((e) => `${e.path}: ${e.error}`).join("\n");
         throw new ToolValidationError(`Some edits failed:\n${errorMessages}`);
       }
-
-      console.log('updates', updates)
 
       // 批量写入更新后的文件
       try {

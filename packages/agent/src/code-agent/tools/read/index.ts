@@ -20,8 +20,6 @@ export function createReadTool(adapter: Sandbox): Tool {
 // - 如果读取的文件不存在，会返回错误信息
 // - 可并行调用此工具同时读取多个文件`,
     description: `读取项目中的文件内容。
-> 注意当前项目代码都是默认全部实时提供的，无需读取代码，但是如果需要读取.skills/ 下的文件时，需要此工具。
-
 用法：
 - 传 path 则返回该文件的内容（默认最多返回 ${DEFAULT_LINE_LIMIT} 行）
 - 使用 startLine / endLine 读取指定行范围（1-indexed，含首尾）
