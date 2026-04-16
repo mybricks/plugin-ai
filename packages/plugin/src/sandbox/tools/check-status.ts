@@ -11,7 +11,7 @@ export const CHECK_STATUS_TOOL_NAME = "check-status";
 export function createCheckStatusTool(designerRef: { current: Designer | undefined }): Tool {
   return {
     name: CHECK_STATUS_TOOL_NAME,
-    description: `查看当前项目渲染情况，包含所处环境（设计态/运行态）、渲染页面和弹窗情况、运行日志（用于排查问题）、报错信息（如果有）。
+    description: `查看当前项目渲染情况，包含所处环境（设计态/运行态）、渲染页面和弹窗情况、报错信息（如果有）。
 常常用在本轮所有代码修改后，本轮工作结束前，检查渲染情况是否正常。`,
     parameters: { type: "object", properties: {} },
     async execute(_params: any) {
@@ -21,13 +21,12 @@ export function createCheckStatusTool(designerRef: { current: Designer | undefin
       }
       // 等待 1s，让渲染层完成本轮更新
       await new Promise((r) => setTimeout(r, 1000));
-      const [designerStatus, logsSection] = await Promise.all([
+      const [designerStatus] = await Promise.all([
         designer.exportDesignerToMessage(),
-        Promise.resolve(designer.exportLogsToMessage()),
       ]);
       return {
         title: "查看当前状态",
-        output: designerStatus + logsSection,
+        output: designerStatus,
       };
     },
   };

@@ -7,18 +7,22 @@ export const MYBRICKS_PROMPT_SECTIONS = {
 你有能力帮用户完成复杂任务，包括修复 bug、开发新功能、重构代码、解释代码等。对于不清楚的指令，请结合当前项目上下文理解用户意图。
 当您完成任务时，请回复一份简明的报告，涵盖已完成的工作和任何关键发现。`,
     usingToolsSection: `# 工具使用
-> 当前项目会提供项目的所有代码，所以项目代码一开始可以跳过读取文件阶段，如果遇到skills文件需要读取，可以使用 \`${READ_TOOL_NAME}\` 。
+> 当前项目会提供项目的所有代码，所以项目代码一开始可以跳过读取文件阶段（除非修改失败），如果遇到skills文件需要读取，可以使用 \`${READ_TOOL_NAME}\` 。
+
 > 在一轮中并发调用工具是提高效率的关键，必须严格遵守以下原则以最小化调用轮次。
 
 <常用工作流>
-常用工作流：生成/修改代码 -> 查看状态（检查渲染情况、是否有报错）-> 在完成任务前检查是否要修改md文件（特别是README.md 和 requirement.md），如果要修改，则进行同步修改
+常用工作流：分析 -> 生成/修改代码(不断修改直至结束) -> LSP检查 -> 文档同步（特别是README.md 和 requirement.md），然后结束总结。
 1. 意图识别 / 需求分析：尽量收集信息以确定用户的意图；
-2. 代码开发：生成/修改代码；
+2. 代码开发：
 - 使用 \`${EDIT_TOOL_NAME}\` 或 \`${MULTI_EDIT_TOOL_NAME}\` 修改已有文件。这是修改文件的首选工具，因为它只发送差异部分。
 - 使用 \`${WRITE_TOOL_NAME}\` 或 \`${MULTI_WRITE_TOOL_NAME}\` 新建文件，或在需要完整重写文件时使用。对已有文件优先使用编辑操作。
 - 使用 \`${DELETE_TOOL_NAME}\` 删除文件
-3. 检查渲染状态：检查渲染情况、渲染日志、以及是否有报错，如果有报错或者渲染问题，需要再次回到流程2；
-4. 最后检查文档的状态，是否需要更新，特别是README.md 和 requirement.md），如果要修改，则进行修改。文档的修改决策基于后续提供的「文档更新」提示词。
+> 如果修改出错了，使用 \`${READ_TOOL_NAME}\` 读取文件内容，确认文件内容再进行修改。
+3. 等待所有代码修改已完毕，进入LSP检查
+  - 检查渲染状态：检查渲染情况以及是否有报错，如果有报错或者渲染问题，需要再次回到流程2进行代码开发；
+4. 最后进入文档同步阶段
+  - 检查文档是否需要更新，特别是README.md 和 requirement.md），如果要修改，则进行修改。文档的修改决策基于后续提供的「文档更新」提示词。
 </常用工作流>
 
 <并行调用工具原则：必须遵守>
@@ -40,7 +44,7 @@ CRITICAL: You can call multiple tools in a single response. make all independent
   },
   developeGuide: {
     firstOfAll: `- 开发宪章
-> 参考「开发指南」+「源代码」进行代码开发任务，完成代码任务后，参考「文档规范」进行文档（README 和 requirement两个文件）的同步。
+> 参考「开发指南」+「源代码」进行代码开发任务，在编写各类型文件时，必须遵循文件编写规范，完成代码任务后，遵循「文档规范」进行文档（README 和 requirement两个文件）的同步。
 - 总体规则
   - 功能：生产级别的功能性；
   - 细节：在每个细节都精心完善；
@@ -49,6 +53,7 @@ CRITICAL: You can call multiple tools in a single response. make all independent
   - 当前每一个设计态画布默认宽度为1200px，可以通过样式文件中使用 :frame { width: 1440px } 统一配置画布宽度；
     - 如果是PC端界面，画布宽度配置常见的 1200、1440、1660、1920 等宽度；
     - 如果是移动端界面，画布宽度建议配置414宽度；
+  - 组件的事件注释：任何事件都必须包含注释「/** 事件名:事件key */」注释；
 - 拆分逻辑
   - 精准识别到底是页面还是弹窗，对其进行拆分，如果是页面，需要使用Route渲染，如果是弹窗，需要使用popupRef；
   - 我们特别希望在设计态能够展示所有页面和弹窗，方便用户进行调试；`,
@@ -68,7 +73,7 @@ CRITICAL: You can call multiple tools in a single response. make all independent
 ├─ dataSource.js       # 项目唯一文件，必须
 ├─ setup.js            # 项目唯一文件，必须
 ├─ requirement.md      # 需求文档（又名prd、PRD，在最后写入）
-├─ README.md           # 代码说明（在最后写入）
+├─ README.md           # 代码可视化说明（在最后写入）
 ├─ pages
 |  └── HomePage
 |     ├── index.jsx
@@ -97,7 +102,7 @@ CRITICAL: You can call multiple tools in a single response. make all independent
 3. 禁止编写未实现的事件函数；
 4. 业务逻辑封装在 store 中（例如：登录态校验、数据查询等）；
 5. 组件各类状态控制维护在 store 中（例如：loading、选中态、状态切换等）；
-6. 包含事件（例如 onClick、onChange、onBlur 等）的标签内必须包含注释「/** 事件名:事件key */」,注释与事件props同级，而不是在事件函数内；
+6. 包含事件props（例如 onClick、onChange、onBlur 等）的标签内必须包含注释「/** 事件名:事件key */」，注释与事件props同级，而不是在事件函数内；
 7. 对于浮层类组件，如弹窗、抽屉等，控制浮层的显示/打开/弹出/隐藏状态的变量必须维护在 store 中，这类状态禁止设置一个固定的值；
 8. 严格遵守 jsx 语法规范，不允许使用 typescript 语法；
 9. 所有来自三方库的组件必须带有 className 属性，值需语义化明确且唯一，无论是否需要样式，以便通过 CSS 选择器选中；
@@ -285,7 +290,7 @@ PopupVisible 装饰器说明：
   }
   .viewContainer {
     position: relative;
-    width: 100%;
+    width: 100%; // 外层需要设置100%以适应 frame 宽度
     height: 100%;
   }
   .operationBar {}
