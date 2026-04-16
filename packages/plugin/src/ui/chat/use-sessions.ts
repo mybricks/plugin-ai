@@ -214,6 +214,13 @@ export function useSessions() {
         }));
       }),
 
+      agent.events.on("turn:resume", ({ turnId }) => {
+        if (turnId !== id) return;
+        pendingContent = "";
+        pendingThinking = "";
+        update((r) => ({ ...r, status: "pending", error: undefined }));
+      }),
+
       // tool:content — LLM 流式输出 tool_calls，在当前 iteration 预创建 ToolCallRecord
       agent.events.on("tool:content", ({ callId, name, argsDelta }) => {
         update((r) => {

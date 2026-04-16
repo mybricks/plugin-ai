@@ -32,6 +32,7 @@ import {
   maxStepsCase,
 } from "./edge-cases";
 import { compactTriggerCase, compactWithToolsCase } from "./compact";
+import { markdownRichCase, userMessageWithLinksCase, streamingMarkdownCase, toolThenEmptyContentCase } from "./ui-render";
 
 export type { TestCase } from "./types";
 
@@ -66,6 +67,12 @@ export const ALL_CASES: TestCase[] = [
   // Compact
   compactTriggerCase,
   compactWithToolsCase,
+  // UI 渲染
+  markdownRichCase,
+  userMessageWithLinksCase,
+  streamingMarkdownCase,
+  // 异常检测—工具后空 content
+  toolThenEmptyContentCase,
 ];
 
 /** 按 group 分组 */

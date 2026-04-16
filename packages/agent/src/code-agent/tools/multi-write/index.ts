@@ -8,7 +8,7 @@ export function createMultiWriteTool(adapter: Sandbox): Tool {
   return {
     name: MULTI_WRITE_TOOL_NAME,
     description: `批量写入多个文件到项目中。一次调用写入多个文件，比多次调用 write_file 更高效。
-特别适合空项目创建文件时使用，一次创建文件不得超过5个。
+特别适合空项目创建文件时使用，一次创建文件不得超过6个。
 使用前：
 1. 确认文件路径正确（使用绝对路径）
 2. 对于已有文件，优先使用 edit_file 或 multi_edit 进行局部修改

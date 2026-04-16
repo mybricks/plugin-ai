@@ -24,6 +24,14 @@ export type AgentEventMap = {
   };
 
   /**
+   * 中途失败后从失败点继续（`retry` 且已有 iterations）。
+   * 在再次进入 ReAct 前触发；UI 可据此把同一条 turn 从 error 切回 pending，并恢复订阅后续 llm:*。
+   */
+  "turn:resume": {
+    turnId: string;
+  };
+
+  /**
    * 一次对话正常结束（整轮只触发一次）。
    */
   "turn:complete": Record<string, never>;

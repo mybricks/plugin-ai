@@ -581,6 +581,8 @@ export class Agent {
     turn.status = "success";
     turn.error = undefined;
 
+    this.events.emit("turn:resume", { turnId: turn.id });
+
     // 从失败点继续执行
     await this._runReActLoop({
       context,

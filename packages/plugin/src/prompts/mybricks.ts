@@ -66,6 +66,8 @@ CRITICAL: You can call multiple tools in a single response. make all independent
 ├─ store.js            # 全局 store（可选）
 ├─ dataSource.js       # 项目唯一文件，必须
 ├─ setup.js            # 项目唯一文件，必须
+├─ requirement.md      # 需求文档（又名prd、PRD，在最后写入）
+├─ README.md           # 代码说明（在最后写入）
 ├─ pages
 |  └── HomePage
 |     ├── index.jsx
@@ -76,6 +78,8 @@ CRITICAL: You can call multiple tools in a single response. make all independent
       ├── index.jsx
       └── index.less
 \`\`\`
+
+> 项目支持渐进式渲染，初始化项目时，建议将入口和公共文件先初始化好，再按照页面进行初始化。
 
 #### 页面与组件的文件拆分
 - index.jsx：模块入口，有且仅有一个，且必须写在根路径的 \`index.jsx\` 中；
@@ -88,19 +92,18 @@ CRITICAL: You can call multiple tools in a single response. make all independent
 1. 组件 props 禁止传递保留字段（\`_env\`、\`popupNode\`）以及 store 数据：
    - 错误：\`<UserInfo _env={_env} popupNode={popupNode} store={store} user={store.user} />\`
    - 正确：\`<UserInfo />\`
-2. 拆分的各区块应是独立的：每个区块（非「单项」复用单元）必须自行从 store 读取所需数据、自行调用 store 方法更新，禁止由父组件通过 props 传入 value/onChange 等受控属性或事件回调；组合区块（如 SearchBar）只负责布局与子区块的挂载，不向子区块传递 value、onChange、onClick 等；仅当区块是可复用单元（如列表单项的单条数据）时才通过 props 传数据，且单项内部如需读写状态应自行接收 store，不通过父组件传事件回调；
+2. 组件必须自行从 store 读取所需数据、自行调用 store 方法更新，禁止由父组件通过 props 传入 value/onChange 等受控属性或事件回调；组合区块（如 SearchBar）只负责布局与子区块的挂载，不向子区块传递 value、onChange、onClick 等；仅当区块是可复用单元（如列表单项的单条数据）时才通过 props 传数据，且单项内部如需读写状态应自行接收 store，不通过父组件传事件回调；
 3. 禁止编写未实现的事件函数；
 4. 业务逻辑封装在 store 中（例如：登录态校验、数据查询等）；
 5. 组件各类状态控制维护在 store 中（例如：loading、选中态、状态切换等）；
-6. 包含事件（例如 onClick、onChange、onBlur 等）的标签内必须包含注释「/** 事件名:事件key */」；
+6. 包含事件（例如 onClick、onChange、onBlur 等）的标签内必须包含注释「/** 事件名:事件key */」,注释与事件props同级，而不是在事件函数内；
 7. 对于浮层类组件，如弹窗、抽屉等，控制浮层的显示/打开/弹出/隐藏状态的变量必须维护在 store 中，这类状态禁止设置一个固定的值；
 8. 严格遵守 jsx 语法规范，不允许使用 typescript 语法；
-9. 不要使用 \`{/* */}\` 这种注释方式，只能使用 \`//\` 注释方式；
-10. 所有来自三方库的组件必须带有 className 属性，值需语义化明确且唯一，无论是否需要样式，以便通过 CSS 选择器选中；
-11. 所有与样式相关的内容都要写在 less 文件中，避免在 jsx 中通过 style 编写；
-12. 各类动效、动画等，尽量使用 css3 的方式在 less 中实现，不要为此引入任何的额外类库；
-13. 禁止出现直接引用标签的写法，例如 \`<Tags[XX] property={'aa'}/>\`，正确的写法是先定义 \`const XX = Tag[XX]; <XX property={'aa'}/>\`；
-14. 所有列表中的组件，必须通过 key 属性做唯一标识，不要使用 index 作为 key；
+9. 所有来自三方库的组件必须带有 className 属性，值需语义化明确且唯一，无论是否需要样式，以便通过 CSS 选择器选中；
+10. 所有与样式相关的内容都要写在 less 文件中，避免在 jsx 中通过 style 编写；
+11. 各类动效、动画等，尽量使用 css3 的方式在 less 中实现，不要为此引入任何的额外类库；
+12. 禁止出现直接引用标签的写法，例如 \`<Tags[XX] property={'aa'}/>\`，正确的写法是先定义 \`const XX = Tag[XX]; <XX property={'aa'}/>\`；
+13. 所有列表中的组件，必须通过 key 属性做唯一标识，不要使用 index 作为 key；
 
 保留字段（禁止通过 props 传递）：
 - \`_env\`：环境变量，\`_env.mode\` 表示运行环境（design | runtime）；
@@ -237,85 +240,60 @@ PopupVisible 装饰器说明：
   export default new Store();
   \`\`\`
   
-  然后，使用批量创建工具创建单个页面内的所有文件
+  然后，使用批量创建工具创建页面内的所有文件
 
   \`\`\`jsx
   import { useEffect } from 'react';
   import { comRef } from "mybricks";
-  import ToolBar from "./ToolBar";
-  import css from "./index.less";
-
-  export default comRef(() => {
-    return (
-      <div className={css.viewContainer}>
-        <ToolBar />
-      </div>
-    );
-  });
-  \`\`\`
-
-  \`\`\`less
-  :frame {
-    width: 1600px;
-  }
-  .viewContainer {
-    position: relative;
-    width: 100%;
-    height: 100%;
-  }
-  \`\`\`
-  
-  \`\`\`jsx
-  import { useEffect } from 'react';
-  import { comRef } from "mybricks";
-  import css from "./index.less";
-
-  export default comRef(() => {
-    return (
-      <div className={css.viewContainer}>
-        // 查看页面内容
-      </div>
-    );
-  });
-  \`\`\`
-  
-  \`\`\`less
-  :frame {
-    width: 1600px;
-  }
-  .viewContainer {
-    position: relative;
-    width: 100%;
-    height: 100%;
-  }
-  \`\`\`
-  
-  \`\`\`jsx
-  import { useEffect } from 'react';
-  import { comRef, redirect } from "mybricks";
-  import { Button } from "xy-ui";
+    import { Button } from "xy-ui";
   import store from "../store.js";
   import css from "./index.less";
 
+  const OperationBar = comRef(() => {
+    return (
+      <div className={css.operationBar}>
+        <Button
+          /** onClick:open */
+          onClick={() => store.detailModalVisible = true}
+        >查看</Button>
+        <Button
+          /** onClick:close */
+          onClick={() => store.detailModalVisible = false}
+        >关闭</Button>
+      </div>
+    );
+  });
+
   export default comRef(() => {
-    return store.btns.map((btn) => (
-      <Button
-        className={css.btn}
-        key={btn.text}
-        /** onClick:click */
-        onClick={() => store.detailModalVisible = true}
-      >
-        {btn.text}
-      </Button>
-    ));
+    useEffect(() => {
+      store.title = "用户管理";
+    }, []);
+
+    return (
+      <div className={css.viewContainer}>
+        <OperationBar />
+        <p>{store.title}</p>
+      </div>
+    );
   });
   \`\`\`
-  
+
   \`\`\`less
-  .btn {
-    position: absolute;
+  :frame {
+    width: 1600px;
   }
+  .viewContainer {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
+  .operationBar {}
   \`\`\`
+
+  最后检查下状态
+
+  当前已经渲染了一个页面+一个弹窗，发现文档需要同步，我们开始批量同步文档。
+  
   </assistant_response>
 </example>
 `,

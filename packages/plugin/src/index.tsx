@@ -13,7 +13,7 @@ import { context } from "./context";
 import { setupSandbox } from "./sandbox";
 import type { Designer, Hooks, RegistSandBoxConfig } from "./sandbox";
 import { ChatPanelList, ChatStartView, ComChatStartView } from "./ui/chat";
-
+import { ensureAIPanelOpen, ensureFocusComId } from "./utils/ensure-ai-panel-open";
 
 // ─── 工具类型重导出 ────────────────────────────────────────────────────────────
 
@@ -162,17 +162,20 @@ export default function pluginAI(params: PluginAIParams): any {
                 ? requestParams.attachments.map((a: any) => ({ ...a }))
                 : [];
 
-              context.aiQueue.send(
-                agentKey,
-                async () => {
-                  context.aiQueue.registerAbort(agentKey, () => agent.abort());
-                  await agent.requestAI({
-                    message: requestParams.message ?? "",
-                    attachments,
-                  });
-                },
-                { message: requestParams.message, attachments, focus }
-              );
+              ensureAIPanelOpen(comId).then(() => {
+                context.aiQueue.send(
+                  agentKey,
+                  async () => {
+                    await ensureFocusComId(comId);
+                    context.aiQueue.registerAbort(agentKey, () => agent.abort());
+                    await agent.requestAI({
+                      message: requestParams.message ?? "",
+                      attachments,
+                    });
+                  },
+                  { message: requestParams.message, attachments, focus }
+                );
+              })
             },
           };
         },
@@ -180,7 +183,7 @@ export default function pluginAI(params: PluginAIParams): any {
 
       aiView: {
         render(_api: AiViewApi) {
-          return <ChatPanelList user={user} copilot={{ name, avatar: "https://my.mybricks.world/image/icon.png" }} />;
+          return <ChatPanelList user={user} copilot={{ name }} />;
         },
         display() {
           context.events.emit("aiViewDisplay", true);

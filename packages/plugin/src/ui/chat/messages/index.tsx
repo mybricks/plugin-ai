@@ -66,7 +66,7 @@ const MessageBubble = ({ record, user, copilot, renderUserMessage, onRetry }: {
         )}
       </header>
       <section className={classNames(css["chat-message-container"], css["user-message"])}>
-        {renderUserMessage ? renderUserMessage(record) : <span>{record.userText}</span>}
+        {renderUserMessage ? renderUserMessage(record) : <div className={css["user-message-text"]}>{record.userText}</div>}
         {record.userAttachments.length > 0 && (
           <AttachmentsList
             className={css["attachments-list"]}
@@ -90,7 +90,7 @@ const MessageBubble = ({ record, user, copilot, renderUserMessage, onRetry }: {
         <div className={css["markdown-body"]}>
           {/* 无任何 iteration 且 pending → 规划占位 */}
           {record.status === "pending" && record.iterations.length === 0 && (
-            <TextShimmer className={css["iter-header-placeholder"]}>规划下一步...</TextShimmer>
+            <TextShimmer className={css["iter-header-placeholder"]}>思考中...</TextShimmer>
           )}
 
           {/* 按 iteration 渲染 */}
@@ -124,7 +124,7 @@ const MessageBubble = ({ record, user, copilot, renderUserMessage, onRetry }: {
                     </>
                   ) : iter.toolCalls.length === 0 && isPending ? (
                     <>
-                      <TextShimmer className={css["iter-header-placeholder"]}>规划下一步...</TextShimmer>
+                      <TextShimmer className={css["iter-header-placeholder"]}>思考中...</TextShimmer>
                       {iter.startTime && <ElapsedTime startTime={iter.startTime} endTime={iter.endTime} className={css["planning-elapsed"]} />}
                     </>
                   ) : null}

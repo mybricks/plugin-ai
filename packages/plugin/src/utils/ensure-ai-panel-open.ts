@@ -9,7 +9,7 @@ import { context } from "../context";
  */
 export function ensureAIPanelOpen(comId: string): Promise<void> {
   // _showAIDialog_ 由 ChatPanelList 组件挂载到 window
-  (window as any)._showAIDialog_?.(comId);
+  ;(window as any)._showAIDialog_?.(comId);
   return new Promise((resolve) => setTimeout(resolve, 500));
 }
 

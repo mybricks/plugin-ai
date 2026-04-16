@@ -34,6 +34,11 @@ export type MockStep =
       contentChunks?: string[];
       chunkDelayMs?: number;
       ttftMs?: number;
+    }
+  | {
+      /** 既不 complete 也不 error，Promise 永不 resolve（mock 无限 pending） */
+      type: "pending";
+      delayMs?: number;
     };
 
 // ─── 脚本化 request ───────────────────────────────────────────────────────────
@@ -45,6 +50,7 @@ export type MockStep =
  *   const req = makeScriptedRequest([
  *     { type: "tool_calls", calls: [...] },   // 第 1 次调用 → 返回工具
  *     { type: "error", error: new Error("Network error"), delayMs: 500 }, // 第 2 次 → 报错
+ *     { type: "pending" }, // 第 3 次 → 流挂起（如重试后的下一请求）
  *   ]);
  *
  * steps 耗尽后，默认循环最后一步（可通过 loop 参数控制）。
@@ -66,6 +72,14 @@ export function makeScriptedRequest(
       params.emits.error(
         typeof step.error === "string" ? new Error(step.error) : step.error
       );
+      return;
+    }
+
+    if (step.type === "pending") {
+      await delay(step.delayMs ?? 0);
+      await new Promise<void>(() => {
+        /* 永不 resolve，模拟 SSE 不结束 */
+      });
       return;
     }
 

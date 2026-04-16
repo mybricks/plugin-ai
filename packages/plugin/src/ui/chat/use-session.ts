@@ -56,6 +56,7 @@ export function useSession(agent: Agent | undefined) {
    * - tool:error      → 更新工具错误
    * - turn:abort      → status=abort
    * - turn:error      → status=error
+   * - turn:resume     → 续跑重试：同 turn 回到 pending，恢复 pendingId（中途失败后 retry）
    *
    * 每次调用都会先清除上一次注册的监听器（同一个组件切换 agent 时安全）。
    */
@@ -117,6 +118,17 @@ export function useSession(agent: Agent | undefined) {
           usage: undefined,
         };
         setMessages((prev) => [...prev, record]);
+      }),
+
+      a.events.on("turn:resume", ({ turnId }) => {
+        pendingContent = "";
+        pendingThinking = "";
+        pendingIdRef.current = turnId;
+        setMessages((prev) =>
+          prev.map((r) =>
+            r.id === turnId ? { ...r, status: "pending" as const, error: undefined } : r
+          )
+        );
       }),
 
       a.events.on("llm:start", ({ startTime }) => {
