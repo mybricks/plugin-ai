@@ -108,7 +108,7 @@ export class CodeAgent extends Agent {
       : undefined;
 
     const sandboxTools: Tool[] = wrappedSandbox
-      ? [createReadTool(wrappedSandbox), createWriteTool(wrappedSandbox), createEditTool(wrappedSandbox), createMultiEditTool(wrappedSandbox), createDeleteTool(wrappedSandbox)]
+      ? [createReadTool(wrappedSandbox), createWriteTool(wrappedSandbox), createMultiWriteTool(wrappedSandbox), createEditTool(wrappedSandbox), createMultiEditTool(wrappedSandbox), createDeleteTool(wrappedSandbox)]
       : [];
 
     // ── sandbox.getContext 作为 getContextMessages ────────────────────────────
