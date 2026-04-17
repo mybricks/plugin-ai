@@ -261,6 +261,7 @@ function parseSSELine(
   const choice = json.choices?.[0];
   if (delta?.content != null) result.content = delta.content;
   if (delta?.reasoning_content != null) result.thinking = delta.reasoning_content;
+  else if (delta?.reasoning != null) result.thinking = delta.reasoning;
   if (Array.isArray(delta?.tool_calls) && delta.tool_calls.length > 0) {
     result.rawToolCallDeltas = delta.tool_calls.map((tc: any) => ({
       index: tc.index ?? 0,
