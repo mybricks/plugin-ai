@@ -41,7 +41,7 @@ const Duration = ({ tool }: { tool: ToolRecord }) => {
 
 const Label = ({ tool, text }: { tool: ToolRecord; text: string }) =>
   tool.status === "pending"
-    ? <TextShimmer className={css["tool-label"]}>{text}</TextShimmer>
+    ? <span className={css["tool-label"]}><TextShimmer>{text}</TextShimmer></span>
     : <span className={css["tool-label"]}>{text}</span>;
 
 // ─── 基础渲染（未注册专属渲染时的默认样式）────────────────────────────────────
@@ -183,7 +183,7 @@ const PendingCodeCard = ({ tool, icon, title }: { tool: ToolRecord; icon: React.
       <span className={css["code-card-icon"]}>
         <StatusIcon tool={tool} icon={icon} />
       </span>
-      <TextShimmer className={css["code-card-filename"]}>{title}</TextShimmer>
+      <span className={css["code-card-filename"]}><TextShimmer>{title}</TextShimmer></span>
       <Duration tool={tool} />
     </div>
   </div>
@@ -192,13 +192,17 @@ const PendingCodeCard = ({ tool, icon, title }: { tool: ToolRecord; icon: React.
 /** pending 时展示流式内容的代码卡片（默认展开，内容实时刷新） */
 const StreamingCodeCard = ({ tool, icon, title, content }: { tool: ToolRecord; icon: React.ReactElement; title: string; content: string }) => {
   const lang = detectLang(tool.args?.path ?? "");
+  const lineCount = content ? content.split("\n").length : 0;
   return (
     <div className={css["code-card"]}>
       <div className={css["code-card-header"]} style={{ cursor: "default" }}>
         <span className={css["code-card-icon"]}>
           <StatusIcon tool={tool} icon={icon} />
         </span>
-        <TextShimmer className={css["code-card-filename"]}>{title}</TextShimmer>
+        <span className={css["code-card-filename"]}><TextShimmer>{title}</TextShimmer></span>
+        {lineCount > 0 && (
+          <span className={css["code-card-lines"]}>{lineCount} 行</span>
+        )}
         <Duration tool={tool} />
       </div>
       <pre className={css["code-card-body"]}>
@@ -379,9 +383,9 @@ const BatchItem = ({ tool, path, name, content, diffMode, isDelete, streaming }:
             : <Success />}
         </span>
         {streaming
-          ? <TextShimmer className={css["batch-item-filename"]}>{name + "..."}</TextShimmer>
+          ? <span className={css["batch-item-filename"]}><TextShimmer>{name + "..."}</TextShimmer></span>
           : <span className={css["batch-item-filename"]}>{name}{isError ? "（失败）" : ""}</span>}
-        {!streaming && lineCount > 0 && (
+        {lineCount > 0 && (
           <span className={css["batch-item-lines"]}>{lineCount} 行</span>
         )}
         {canToggle && (
@@ -436,7 +440,7 @@ const BatchGroup = ({ tool, icon, verb, items, count }: BatchGroupProps) => {
             : icon}
         </span>
         {isPending
-          ? <TextShimmer className={css["batch-group-header-title"]}>{headerTitle}</TextShimmer>
+          ? <span className={css["batch-group-header-title"]}><TextShimmer>{headerTitle}</TextShimmer></span>
           : <span className={css["batch-group-header-title"]}>{headerTitle}</span>}
         {metaLabel && <span className={css["batch-group-header-meta"]}>{metaLabel}</span>}
         <Duration tool={tool} />
@@ -682,7 +686,7 @@ const CheckStatusRenderer = ({ tool }: { tool: ToolRecord }) => {
     return (
       <div className={css["tool-card"]}>
         <StatusIcon tool={tool} icon={<Eye />} />
-        <TextShimmer className={css["tool-label"]}>{label}...</TextShimmer>
+        <span className={css["tool-label"]}><TextShimmer>{`${label}...`}</TextShimmer></span>
         <Duration tool={tool} />
       </div>
     );

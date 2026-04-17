@@ -198,6 +198,9 @@ function connectToAI(
     getContext: async () => {
       return designerRef.current?.exportToMessage() ?? null;
     },
+    getRealtime: async () => {
+      return designerRef.current?.exportResourceCode() ?? null;
+    },
   };
 
   const designerRef: { current: Designer | undefined } = { current: designer };

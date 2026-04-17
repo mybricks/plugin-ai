@@ -37,6 +37,15 @@ export interface Sandbox {
    * 返回的文本内容会通过 getContextMessages 注入到 LLM 上下文中。
    */
   getContext?: () => Promise<string | null>;
+  /**
+   * @experimental
+   * 获取每个 step 的实时状态信息（如资源代码、运行时快照等）。
+   * 返回的文本内容会通过 getRealtimeMessages 注入到 LLM 上下文中，
+   * 追加在 tail 末尾，每次 step 前重新获取，不参与 prompt cache。
+   * - 返回字符串：构造为一条 user 消息注入。
+   * - 返回字符串数组：每个元素构造为一条独立的 user 消息注入。
+   */
+  getRealtime?: () => Promise<string | string[] | null>;
 }
 
 // ─── CodeAgentOptions ────────────────────────────────────────────────────────
@@ -118,6 +127,18 @@ export class CodeAgent extends Agent {
       return [{ role: "user", content: ctx }];
     };
 
+    // ── sandbox.getRealtime 作为 getRealtimeMessages（@experimental）──────────
+    const getRealtimeMessages = wrappedSandbox?.getRealtime
+      ? async (): Promise<import("../types").Message[]> => {
+          const rt = await wrappedSandbox.getRealtime!() ?? null;
+          if (!rt) return [];
+          if (Array.isArray(rt)) {
+            return rt.map((c) => ({ role: "user" as const, content: c }));
+          }
+          return [{ role: "user", content: rt }];
+        }
+      : undefined;
+
     const builtinSystem = getCodeAgentSystemPrompt(agentOptions.promptOptions, skills);
     const finalSystem = system ? `${builtinSystem}\n\n${system}` : builtinSystem;
 
@@ -125,6 +146,7 @@ export class CodeAgent extends Agent {
       ...agentOptions,
       system: finalSystem,
       getContextMessages,
+      getRealtimeMessages,
       // 内置沙箱工具在前，外部注入工具（如 check_design_status）在后
       tools: [...sandboxTools, ...(agentOptions.tools ?? [])],
     });

@@ -61,7 +61,6 @@ export function createEditTool(adapter: Sandbox): Tool {
 用法：
 - 优先编辑项目中已有的文件，除非明确需要，否则不要新建文件。
 - 只有在用户明确要求时才使用 emoji，避免在文件中写入 emoji。
-- 编辑文件时，建议先通过 \`${READ_TOOL_NAME}\` 读取文件内容，确认 old_str 后再编辑。
 - 如果 old_str 在文件中不唯一，编辑会失败。请提供包含更多上下文行的更大字符串使其唯一。
 - 使用 \`replace_all\` 批量替换和重命名文件中的字符串，例如重命名某个变量时非常有用。
 - 确保 old_str 与当前文件内容完全一致（包括缩进）。`,

@@ -31,6 +31,11 @@ export interface Designer {
    * 例如：当前项目代码、组件结构等。
    */
   exportToMessage(): string;
+  /**
+   * 导出当前项目的资源代码（如依赖列表、公共资源引用等），
+   * 用于与 exportToMessage 共同构成 getContext 的返回值。
+   */
+  exportResourceCode(): string;
 
 }
 

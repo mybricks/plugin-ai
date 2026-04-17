@@ -79,6 +79,14 @@ export interface AgentOptions {
    * 每次请求前调用，返回的消息列表会插入到对话历史末尾、用户消息之前。
    */
   getContextMessages?: () => Promise<Message[]>;
+  /**
+   * @experimental
+   * 实时上下文注入（异步）。
+  * 每个 step 请求前调用，返回的消息列表插入在用户消息之后、本轮已积累的
+  * assistant/tool 消息（tail）之前，使 LLM 在每次推理前都能感知到最新的运行时状态。
+   * 不参与 prompt cache，适合高频变化的状态（如当前资源代码、运行时快照等）。
+   */
+  getRealtimeMessages?: () => Promise<Message[]>;
   /** 工具列表（plugin 初始化时注册额外工具） */
   tools?: Tool[];
   /** 历史记录实现 */
@@ -276,14 +284,15 @@ async function buildMessages(
 
 /**
  * 每次 LLM 请求前组装完整 messages 列表：
- *   baseMessages（静态前缀 + 动态上下文 + 历史）+ 用户消息 + 本轮已积累的对话尾部
+ *   baseMessages（静态前缀 + 动态上下文 + 历史）+ 用户消息 + 本轮已积累的对话尾部 + 实时消息
  *
- * @param baseMessages  buildMessages 返回的基础部分（包含 context，turn 开始时已固化）
+ * @param baseMessages       assembleBaseMessages 返回的基础部分
  * @param historyStartIndex  assembled 数组中历史消息的起始索引（mask 时跳过静态前缀）
- * @param options       AgentOptions
- * @param turns         当前 turns 快照（用于 mask）
- * @param params        本轮用户请求参数
- * @param tail          本轮已积累的 assistant + tool 消息（step > 1 时非空）
+ * @param options            AgentOptions
+ * @param turns              当前 turns 快照（用于 mask）
+ * @param params             本轮用户请求参数
+ * @param tail               本轮已积累的 assistant + tool 消息（step > 1 时非空）
+ * @param realtimeMessages   每 step 实时获取的消息，插入在 userMessage 之后、tail 之前（@experimental）
  */
 function assembleMessages(
   baseMessages: Message[],
@@ -291,7 +300,8 @@ function assembleMessages(
   options: AgentOptions,
   turns: TurnRecord[],
   params: RequestAIOptions,
-  tail: Message[]
+  tail: Message[],
+  realtimeMessages: Message[]
 ): Message[] {
   const { message, attachments } = params;
 
@@ -307,10 +317,8 @@ function assembleMessages(
   }
   const userMessage: Message = { role: "user", content: userContent };
 
-  // cache 断点改为请求体顶层 cache_control，不再逐条标记
-  const cachedTail = tail;
-
-  const assembled = [...baseMessages, userMessage, ...cachedTail];
+  // realtimeMessages 紧跟在 userMessage 之后、tail 之前，LLM 每次推理前看到最新运行时状态
+  const assembled = [...baseMessages, userMessage, ...realtimeMessages, ...tail];
 
   // 应用遮蔽（仅当配置了 mask）
   // 遮蔽时跳过前缀（system/agentsMd/context/compact，不在 turns 中，不应被遮蔽）
@@ -352,6 +360,48 @@ interface LLMCallResult {
   aborted: boolean;
 }
 
+/**
+ * 递归将对象中字符串值里的 \uXXXX 字面量还原为真正的 Unicode 字符。
+ */
+function decodeUnicodeEscapes(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
+      String.fromCharCode(parseInt(hex, 16))
+    );
+  }
+  if (Array.isArray(value)) {
+    return value.map(decodeUnicodeEscapes);
+  }
+  if (value !== null && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      result[k] = decodeUnicodeEscapes(v);
+    }
+    return result;
+  }
+  return value;
+}
+
+/**
+ * 兼容性 JSON parse：应对 LLM 有时返回含未解码 \uXXXX 字面量的 tool call arguments。
+ *
+ * 策略（按优先级）：
+ * 1. 直接 JSON.parse —— 标准路径，parse 成功后再 decode 字符串值里残留的 \uXXXX 字面量
+ * 2. decode 原始字符串后再 JSON.parse —— 应对 LLM 把 \uXXXX 混入 JSON 结构本身导致直接 parse 失败的情况
+ * 3. 全部失败则抛出原始错误，由调用方决定如何处理
+ */
+function parseToolArgs(raw: string): Record<string, unknown> {
+  try {
+    return decodeUnicodeEscapes(JSON.parse(raw)) as Record<string, unknown>;
+  } catch (firstErr) {
+    try {
+      return JSON.parse(decodeUnicodeEscapes(raw) as string);
+    } catch {
+      throw firstErr;
+    }
+  }
+}
+
 function callLLM(
   options: AgentOptions,
   messages: Message[],
@@ -367,8 +417,8 @@ function callLLM(
     let toolCalls: Array<{ id: string; name: string; args: any }> = [];
     let finishReason = "unknown";
     let aborted = false;
-    // index → { callId, name } 映射（在 callLLM 内维护）
-    const indexToCallInfo = new Map<number, { callId: string; name: string }>();
+    // index → { callId, name, argsRaw } 映射（在 callLLM 内维护，用于检测 JSON 解析失败）
+    const indexToCallInfo = new Map<number, { callId: string; name: string; argsRaw: string }>();
 
     if (signal.aborted) {
       resolve({ content, thinkingContent, toolCalls, finishReason, aborted: true });
@@ -410,19 +460,40 @@ function callLLM(
         },
         onToolCalls: (calls) => {
           if (aborted) return;
-          toolCalls = calls;
+          // 流式接口：indexToCallInfo 已累积完整 argsRaw，用它重新 parse 作为主路径，
+          // parse 失败说明 LLM 返回了无效 JSON，标记 _argsParseError 让 agent 拦截并
+          // 返回错误，促使 LLM 重新生成正确的调用。
+          // 非流式接口：indexToCallInfo 为空，直接沿用网络层已解析好的 args。
+          if (indexToCallInfo.size > 0) {
+            toolCalls = calls.map((call) => {
+              const info = [...indexToCallInfo.values()].find(
+                (v) => v.callId === call.id
+              );
+              if (!info) return call;
+              try {
+                return { ...call, args: parseToolArgs(info.argsRaw) };
+              } catch {
+                return { ...call, args: { _argsParseError: true, _argsRaw: info.argsRaw } };
+              }
+            });
+          } else {
+            toolCalls = calls;
+          }
         },
         onToolCallStream: (delta) => {
           if (aborted) return;
           const { index, id, name, argsChunk } = delta;
           if (id && name && !indexToCallInfo.has(index)) {
-            // 首帧：记录 callId + name
-            indexToCallInfo.set(index, { callId: id, name });
+            // 首帧：记录 callId + name，初始化 argsRaw
+            indexToCallInfo.set(index, { callId: id, name, argsRaw: argsChunk ?? "" });
             onToolStreaming(id, name, argsChunk ?? "");
           } else if (argsChunk) {
-            // 后续帧：只有 args 增量
+            // 后续帧：累积 argsRaw
             const info = indexToCallInfo.get(index);
-            if (info) onToolStreaming(info.callId, info.name, argsChunk);
+            if (info) {
+              info.argsRaw += argsChunk;
+              onToolStreaming(info.callId, info.name, argsChunk);
+            }
           }
         },
         onFinishReason: (reason: string) => {
@@ -687,6 +758,11 @@ export class Agent {
           console.warn("[Agent] hooks.beforeRequest failed:", e);
         }
 
+        // @experimental 实时消息：每 step 获取最新值，追加在 tail 末尾
+        const realtimeMessages: Message[] = this.options.getRealtimeMessages
+          ? await this.options.getRealtimeMessages()
+          : [];
+
         // 组装 messages
         const messages = assembleMessages(
           baseMessages,
@@ -694,7 +770,8 @@ export class Agent {
           this.options,
           this.turns,
           formattedParams,
-          tail
+          tail,
+          realtimeMessages
         );
 
         // 调用 LLM
@@ -821,7 +898,19 @@ export class Agent {
             },
           };
 
-          if (!tool) {
+          if (tc.args?._argsParseError) {
+            const raw = tc.args._argsRaw ?? "";
+            const err = new Error(
+              `Invalid JSON in tool arguments for "${tc.name}". ` +
+              `Raw content: ${raw.slice(0, 200)}${raw.length > 200 ? "…" : ""}. ` +
+              `Please re-issue the tool call with valid JSON arguments.`
+            );
+            toolRecord.status = "error";
+            toolRecord.error = err.message;
+            toolRecord.execEndTime = Date.now();
+            toolResultContent = `Error: ${err.message}`;
+            this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: err, step, endTime: toolRecord.execEndTime });
+          } else if (!tool) {
             const err = new Error(`Tool not found: ${tc.name}`);
             toolRecord.status = "error";
             toolRecord.error = err.message;
