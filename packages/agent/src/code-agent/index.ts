@@ -104,7 +104,6 @@ export class CodeAgent extends Agent {
     // ── 包装 sandbox.getFiles()，追加 skills 虚拟文件 ─────────────────────────
     const wrappedSandbox: Sandbox | undefined = sandbox
       ? {
-          ...sandbox,
           getFiles: async () => {
             const realFiles = await sandbox.getFiles();
             const skillFiles = (skills ?? []).map((s) => ({
@@ -113,6 +112,10 @@ export class CodeAgent extends Agent {
             }));
             return [...realFiles, ...skillFiles];
           },
+          updateFiles: sandbox.updateFiles.bind(sandbox),
+          deleteFiles: sandbox.deleteFiles.bind(sandbox),
+          ...(sandbox.getContext ? { getContext: sandbox.getContext.bind(sandbox) } : {}),
+          ...(sandbox.getRealtime ? { getRealtime: sandbox.getRealtime.bind(sandbox) } : {}),
         }
       : undefined;
 

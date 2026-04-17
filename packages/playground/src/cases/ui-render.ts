@@ -18,6 +18,42 @@ const RICH_MARKDOWN = `以下是一份完整的 React 性能优化报告，包�
 
 ---
 
+## 多级列表（嵌套）
+
+无序列表多级缩进：
+
+- **渲染层**
+  - 组件级：\`React.memo\`、\`useMemo\`
+  - 列表级：固定高度 + \`key\`、虚拟滚动
+    - \`react-window\` / \`react-virtualized\`
+    - 自研分片渲染
+- **数据层**
+  - 全局状态：拆分 store、按路由懒加载
+  - 服务端：分页、游标、SWR / React Query
+
+有序列表嵌套：
+
+1. **测量**
+   1. 打开 React DevTools Profiler
+   2. 录制一次典型交互
+2. **优化**
+   - 先消除明显无效渲染
+   - 再考虑算法与数据结构
+3. **回归验证**
+   1. 对比优化前后 commit 次数
+   2. 关注 LCP / INP 等核心指标
+
+混合列表（有序内含无序）：
+
+1. 首屏路径
+   - 关键路径 CSS
+   - 字体 \`font-display: swap\`
+2. 运行时路径
+   1. 事件委托
+   2. 防抖与节流
+
+---
+
 ## 优化方案对比
 
 | 问题 | 方案 | 收益 | 难度 |
@@ -123,13 +159,15 @@ const historyWithLinks = makeTextHistory([
 
 // ─── Cases ────────────────────────────────────────────────────────────────────
 
-/** Markdown 富文本渲染：列表 + 表格 + 代码块 */
+/** Markdown 富文本渲染：一级/多级列表 + 表格 + 代码块 */
 export const markdownRichCase: TestCase = {
   id: "ui-markdown-rich",
   name: "富文本渲染（列表+表格+代码块）",
   group: "UI 渲染",
-  description: "LLM 返回包含列表、Markdown 表格、多个代码块的完整回复，验证渲染效果。",
-  expectedBehavior: "消息气泡正确渲染列表、表格、代码块，代码有高亮，表格有边框对齐。",
+  description:
+    "LLM 返回包含一级列表、多级嵌套列表、Markdown 表格、多个代码块的完整回复，验证渲染效果。",
+  expectedBehavior:
+    "消息气泡正确渲染一级与多级缩进列表、表格、代码块；嵌套层级视觉区分清晰，表格有边框对齐。",
   initialTurns: [],
   request: makeScriptedRequest([
     {
@@ -190,8 +228,10 @@ export const streamingMarkdownCase: TestCase = {
   id: "ui-streaming-markdown",
   name: "流式 Markdown 渲染",
   group: "UI 渲染",
-  description: "以较慢速度逐字输出 Markdown（含代码块），验证流式渲染过程中不出现乱码或格式错乱。",
-  expectedBehavior: "代码块在输出到 ``` 时正确开始高亮，表格在输出完整行后正确对齐。",
+  description:
+    "以较慢速度逐字输出 Markdown（含多级列表与代码块），验证流式渲染过程中不出现乱码或格式错乱。",
+  expectedBehavior:
+    "多级列表在流式追加 chunk 时缩进与嵌套结构最终正确；代码块在闭合 ``` 后高亮；表格在完整行出现后对齐。",
   initialTurns: [],
   request: makeScriptedRequest([
     {

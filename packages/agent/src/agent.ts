@@ -360,47 +360,6 @@ interface LLMCallResult {
   aborted: boolean;
 }
 
-/**
- * 递归将对象中字符串值里的 \uXXXX 字面量还原为真正的 Unicode 字符。
- */
-function decodeUnicodeEscapes(value: unknown): unknown {
-  if (typeof value === "string") {
-    return value.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
-      String.fromCharCode(parseInt(hex, 16))
-    );
-  }
-  if (Array.isArray(value)) {
-    return value.map(decodeUnicodeEscapes);
-  }
-  if (value !== null && typeof value === "object") {
-    const result: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      result[k] = decodeUnicodeEscapes(v);
-    }
-    return result;
-  }
-  return value;
-}
-
-/**
- * 兼容性 JSON parse：应对 LLM 有时返回含未解码 \uXXXX 字面量的 tool call arguments。
- *
- * 策略（按优先级）：
- * 1. 直接 JSON.parse —— 标准路径，parse 成功后再 decode 字符串值里残留的 \uXXXX 字面量
- * 2. decode 原始字符串后再 JSON.parse —— 应对 LLM 把 \uXXXX 混入 JSON 结构本身导致直接 parse 失败的情况
- * 3. 全部失败则抛出原始错误，由调用方决定如何处理
- */
-function parseToolArgs(raw: string): Record<string, unknown> {
-  try {
-    return decodeUnicodeEscapes(JSON.parse(raw)) as Record<string, unknown>;
-  } catch (firstErr) {
-    try {
-      return JSON.parse(decodeUnicodeEscapes(raw) as string);
-    } catch {
-      throw firstErr;
-    }
-  }
-}
 
 function callLLM(
   options: AgentOptions,
@@ -460,27 +419,32 @@ function callLLM(
         },
         onToolCalls: (calls) => {
           if (aborted) return;
-          toolCalls = calls;
-          // TODO: 兼容 LLM 返回未解码 \uXXXX 字面量或无效 JSON 的情况
-          // 流式接口：indexToCallInfo 已累积完整 argsRaw，用它重新 parse 作为主路径，
-          // parse 失败说明 LLM 返回了无效 JSON，标记 _argsParseError 让 agent 拦截并
-          // 返回错误，促使 LLM 重新生成正确的调用。
+          // 流式接口：indexToCallInfo 已累积完整 argsRaw，用它作为主路径：
+          //   先将字面量 \uXXXX 还原为真正的 Unicode 字符，再 JSON.parse。
+          //   无参数工具（argsRaw 为空/空白/"{}"）直接给 {}。
+          //   parse 失败则回退用网络层已解析的 args。
           // 非流式接口：indexToCallInfo 为空，直接沿用网络层已解析好的 args。
-          // if (indexToCallInfo.size > 0) {
-          //   toolCalls = calls.map((call) => {
-          //     const info = [...indexToCallInfo.values()].find(
-          //       (v) => v.callId === call.id
-          //     );
-          //     if (!info) return call;
-          //     try {
-          //       return { ...call, args: parseToolArgs(info.argsRaw) };
-          //     } catch {
-          //       return { ...call, args: { _argsParseError: true, _argsRaw: info.argsRaw } };
-          //     }
-          //   });
-          // } else {
-          //   toolCalls = calls;
-          // }
+          if (indexToCallInfo.size > 0) {
+            toolCalls = calls.map((call) => {
+              const info = [...indexToCallInfo.values()].find(
+                (v) => v.callId === call.id
+              );
+              if (!info) return call;
+              const raw = info.argsRaw.trim();
+              if (!raw || raw === "{}") return { ...call, args: {} };
+              try {
+                const fixed = raw.replace(/\\\\u([0-9a-fA-F]{4})/g, (_, hex) => {
+                  const result = String.fromCharCode(parseInt(hex, 16));
+                  return result;
+                });
+                return { ...call, args: JSON.parse(fixed) };
+              } catch {
+                return call;
+              }
+            });
+          } else {
+            toolCalls = calls;
+          }
         },
         onToolCallStream: (delta) => {
           if (aborted) return;

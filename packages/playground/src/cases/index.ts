@@ -12,7 +12,10 @@ import {
   toolReadThenWriteCase,
   toolDeleteCase,
   toolNotFoundCase,
+  toolWriteUnicodeEscapeCase,
+  toolWriteUnicodeMidStreamCase,
 } from "./tool-error";
+import { customSlowToolCase } from "./custom-tool";
 import {
   maskByTurnsCase,
   maskByAgeCase,
@@ -49,6 +52,9 @@ export const ALL_CASES: TestCase[] = [
   toolReadThenWriteCase,
   toolDeleteCase,
   toolNotFoundCase,
+  toolWriteUnicodeEscapeCase,
+  toolWriteUnicodeMidStreamCase,
+  customSlowToolCase,
   // 多轮 ReAct
   multiTurnNormalCase,
   multiTurnMidErrorCase,

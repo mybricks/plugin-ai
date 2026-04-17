@@ -212,3 +212,160 @@ export const toolNotFoundCase: TestCase = {
     },
   ], { loop: true }),
 };
+
+/**
+ * LLM 将 write_file 的 content 中的中文以 \uXXXX 字面量形式输出。
+ *
+ * 复现场景：某些模型在生成工具参数 JSON 时，对非 ASCII 字符采用
+ * ASCII-safe 编码策略，将"关闭"写成字面文本 \u5173\u95ed，
+ * 而非直接输出汉字。这导致写入文件的内容包含 \uXXXX 文本而非真实汉字。
+ *
+ * 在 JS 源码中，'\\u5173' 是包含字面反斜杠的 6 字符字符串 \u5173，
+ * JSON.stringify 后变为 \\u5173，agent 解析 JSON 后得到含反斜杠的字面文本。
+ */
+export const toolWriteUnicodeEscapeCase: TestCase = {
+  id: "tool-write-unicode-escape",
+  name: "write_file 含 \\uXXXX 转义中文",
+  group: "工具调用",
+  description:
+    "LLM 返回的 write_file content 中，中文以字面 \\uXXXX 形式出现（如 \\u5173\\u95ed 代替「关闭」），而非直接输出汉字。",
+  expectedBehavior:
+    "工具卡片绿色，FS Viewer 中文件内容包含字面量 \\uXXXX 文本，可观察到汉字未被正确写入。",
+  initialTurns: [],
+  request: makeScriptedRequest(
+    [
+      {
+        type: "tool_calls",
+        calls: [
+          {
+            id: "c_unicode_1",
+            name: "write_file",
+        args: {
+          path: "src/components/Button.tsx",
+          // 字符串中的 \\uXXXX 是字面反斜杠 + uXXXX，模拟 LLM 将汉字转义输出的场景
+          content: [
+            "import React from 'react';",
+            "",
+            "// \\u6309\\u9215\\u7ec4\\u4ef6 (Button)",
+            "interface ButtonProps {",
+            "  // \\u6807\\u7b7e (label)",
+            "  label: string;",
+            "  // \\u70b9\\u51fb\\u4e8b\\u4ef6 (onClick)",
+            "  onClick?: () => void;",
+            "  // \\u7981\\u7528\\u72b6\\u6001 (disabled)",
+            "  disabled?: boolean;",
+            "}",
+            "",
+            "export function Button({ label, onClick, disabled }: ButtonProps) {",
+            "  return (",
+            "    // \\u6309\\u9215\\u5bb9\\u5668",
+            "    <button",
+            "      className=\"btn\"",
+            "      onClick={onClick}",
+            "      disabled={disabled}",
+            "    >",
+            "      {/* \\u6309\\u9215\\u6587\\u5b57 */}",
+            "      {label}",
+            "    </button>",
+            "  );",
+            "}",
+          ].join("\n"),
+        },
+          },
+        ],
+        delayMs: 400,
+      },
+      {
+        type: "content",
+        chunks: [
+          "\\u5df2\\u521b\\u5efa Modal.tsx\\uff0c",
+          "\\u5305\\u542b\\u5f39\\u7a97\\u7ec4\\u4ef6\\u7684\\u57fa\\u7840\\u7ed3\\u6784\\u3002",
+        ],
+        ttftMs: 300,
+        chunkDelayMs: 80,
+      },
+    ],
+    { loop: true }
+  ),
+};
+
+/**
+ * write_file 的 content 含 \uXXXX 转义序列，且流式传输在某个转义序列中途断开。
+ *
+ * 复现场景：
+ *  1. LLM 开始流式输出 write_file 的参数 JSON
+ *  2. content 中含有多处 \uXXXX 序列（字面反斜杠 + uXXXX）
+ *  3. 在第一个 \\u 序列的数字部分尚未完整传输时，连接中断
+ *
+ * 此 case 使用 raw async 函数以精确控制流的截断位置。
+ */
+export const toolWriteUnicodeMidStreamCase: TestCase = {
+  id: "tool-write-unicode-mid-stream",
+  name: "write_file \\uXXXX 序列流式中断",
+  group: "工具调用",
+  description:
+    "write_file 的 content 含字面 \\uXXXX 序列，流式传输时在某个转义序列的数字部分中途断开连接。",
+  expectedBehavior:
+    "工具卡片显示不完整参数后进入 error 状态，消息气泡进入 error 状态，可重试。",
+  initialTurns: [],
+  request: async (params) => {
+    const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+    // content 中含字面 \uXXXX 序列（JS 源码中 \\uXXXX = 字面反斜杠 + uXXXX）
+    // JSON.stringify 后，单个反斜杠变为 \\，即流中传输的是 \\u5173 等序列
+    const argsObj = {
+      path: "src/components/Button.tsx",
+      content: [
+        "import React from 'react';",
+        "",
+        "// \\u6309\\u9215\\u7ec4\\u4ef6 (Button)",
+        "interface ButtonProps {",
+        "  label: string; // \\u6807\\u7b7e",
+        "  onClick?: () => void; // \\u70b9\\u51fb",
+        "  disabled?: boolean; // \\u7981\\u7528",
+        "}",
+        "",
+        "export function Button({ label, onClick, disabled }: ButtonProps) {",
+        "  return <button onClick={onClick} disabled={disabled}>{label}</button>;",
+        "}",
+      ].join("\n"),
+    };
+    const argsStr = JSON.stringify(argsObj);
+
+    // 找到第一处 \\u 序列（JSON 中两个连续反斜杠后跟 u），在其数字部分中途截断
+    // argsStr 是 JS 字符串，\\（两个反斜杠）在 JS 字符串中分别是独立的反斜杠字符
+    let cutIdx = -1;
+    for (let i = 0; i < argsStr.length - 2; i++) {
+      if (argsStr[i] === "\\" && argsStr[i + 1] === "\\" && argsStr[i + 2] === "u") {
+        // 截断在 \\u 之后、16 进制数字的中间（保留前两位数字，丢弃后两位）
+        cutIdx = i + 5; // \\u + 前两位数字（共 5 字符），留下 \\u5f 然后断流
+        break;
+      }
+    }
+    if (cutIdx === -1) cutIdx = Math.floor(argsStr.length * 0.55);
+
+    await delay(300);
+
+    params.emits.onToolCallStream?.({
+      index: 0,
+      id: "c_umid_1",
+      name: "write_file",
+      argsChunk: "",
+    });
+
+    // 流式发送直到截断点，每次 4 字符
+    for (let i = 0; i < cutIdx; i += 4) {
+      await delay(20);
+      params.emits.onToolCallStream?.({
+        index: 0,
+        argsChunk: argsStr.slice(i, Math.min(i + 4, cutIdx)),
+      });
+    }
+
+    // 在 \uXXXX 序列数字部分中途断流
+    await delay(200);
+    params.emits.error(
+      new Error("Stream aborted: connection reset mid-unicode-escape (\\uXXXX truncated)")
+    );
+  },
+};

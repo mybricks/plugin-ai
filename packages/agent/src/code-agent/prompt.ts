@@ -44,7 +44,6 @@ function getIdentitySection(identity?: string): string {
 
 function getDoingTasksSection(): string {
   return `# 工作原则
-- 注意安全问题，如命令注入、XSS、SQL 注入及 OWASP 十大漏洞。发现安全漏洞时立即修复。
 - 不要使用 emoji，除非用户明确要求。
 注意：你是一个高效的工作者，对于工具使用，必须尽可能并行调用。
 `;
@@ -96,7 +95,7 @@ function getToneAndStyleSection(): string {
   return `# 输出风格
  - 永远使用中文来回答问题；
  - 回答要简短直接；
- - 禁止使用 Unicode 转义序列；
+ - 中文直接输出；
  - 禁止使用emoji、表情符号。`;
 }
 
