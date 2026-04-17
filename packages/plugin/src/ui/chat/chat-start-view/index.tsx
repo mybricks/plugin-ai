@@ -85,16 +85,6 @@ const ChatStartView = ({
     });
   };
 
-  useEffect(() => {
-    // 如果宿主应用在组件初始化前通过 window.__vibePendingMessage__ 预置了消息，
-    // 则在 StartView 挂载后立即触发发送，实现自动开始对话的效果。
-    const pendingMessage = (window as any).__vibePendingMessage__;
-    (window as any).__vibePendingMessage__ = null;
-    if (pendingMessage) {
-      setTimeout(() => onSend(pendingMessage), 300);
-    }
-  }, []);
-
   return (
     <div className={classNames(css["start-view"], { [css["empty"]]: empty && !loading })}>
       {empty && !loading && (
