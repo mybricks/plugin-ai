@@ -54,7 +54,7 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
 
 编辑时请确保：
 - 所有编辑结果符合语言习惯、语法正确
-- 不要让代码处于损坏状态
+- 只包含需要更改的代码行，出于唯一性的考虑，需要包含一些周围的必要的行，一个old_str/new_str至少3行（除非源文件不够3行），避免出现误操作;
 - 一次操作文件不得超过5个
 - 编辑文件时，建议先通过 \`${READ_TOOL_NAME}\` 读取文件内容，确认 old_str 后再编辑。
 - 不要使用 emoji
