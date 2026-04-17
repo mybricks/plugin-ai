@@ -316,6 +316,26 @@ PopupVisible 装饰器说明：
   
   </assistant_response>
 </example>
+
+<example>
+  <user_query>(注意，当前选择了: logo(selector=.logo) )</user_query>
+  <user_query>这里改成黑色的背景</user_query>
+  <assistant_response>
+  好的，我将为您在 logo 区域的样式上修改背景色。
+
+  \`\`\`less
+  .logo {
+    background-color: #FF0000;
+  }
+  \`\`\`
+  
+  \`\`\`less
+  .logo {
+    background-color: #000;
+  }
+  \`\`\`
+  </assistant_response>
+</example>
 `,
     end: ``,
   },
