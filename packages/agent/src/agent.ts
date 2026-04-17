@@ -292,7 +292,7 @@ async function buildMessages(
  * @param turns              当前 turns 快照（用于 mask）
  * @param params             本轮用户请求参数
  * @param tail               本轮已积累的 assistant + tool 消息（step > 1 时非空）
- * @param realtimeMessages   每 step 实时获取的消息，插入在 userMessage 之后、tail 之前（@experimental）
+ * @param realtimeMessages   每 step 实时获取的消息，插入在 userMessage 之前，确保用户消息始终在末尾（@experimental）
  */
 function assembleMessages(
   baseMessages: Message[],
@@ -317,8 +317,8 @@ function assembleMessages(
   }
   const userMessage: Message = { role: "user", content: userContent };
 
-  // realtimeMessages 紧跟在 userMessage 之后、tail 之前，LLM 每次推理前看到最新运行时状态
-  const assembled = [...baseMessages, userMessage, ...realtimeMessages, ...tail];
+  // realtimeMessages 插在 userMessage 之前，确保用户消息始终紧贴 tail（或作为末尾）
+  const assembled = [...baseMessages, ...realtimeMessages, userMessage, ...tail];
 
   // 应用遮蔽（仅当配置了 mask）
   // 遮蔽时跳过前缀（system/agentsMd/context/compact，不在 turns 中，不应被遮蔽）
@@ -460,25 +460,27 @@ function callLLM(
         },
         onToolCalls: (calls) => {
           if (aborted) return;
+          toolCalls = calls;
+          // TODO: 兼容 LLM 返回未解码 \uXXXX 字面量或无效 JSON 的情况
           // 流式接口：indexToCallInfo 已累积完整 argsRaw，用它重新 parse 作为主路径，
           // parse 失败说明 LLM 返回了无效 JSON，标记 _argsParseError 让 agent 拦截并
           // 返回错误，促使 LLM 重新生成正确的调用。
           // 非流式接口：indexToCallInfo 为空，直接沿用网络层已解析好的 args。
-          if (indexToCallInfo.size > 0) {
-            toolCalls = calls.map((call) => {
-              const info = [...indexToCallInfo.values()].find(
-                (v) => v.callId === call.id
-              );
-              if (!info) return call;
-              try {
-                return { ...call, args: parseToolArgs(info.argsRaw) };
-              } catch {
-                return { ...call, args: { _argsParseError: true, _argsRaw: info.argsRaw } };
-              }
-            });
-          } else {
-            toolCalls = calls;
-          }
+          // if (indexToCallInfo.size > 0) {
+          //   toolCalls = calls.map((call) => {
+          //     const info = [...indexToCallInfo.values()].find(
+          //       (v) => v.callId === call.id
+          //     );
+          //     if (!info) return call;
+          //     try {
+          //       return { ...call, args: parseToolArgs(info.argsRaw) };
+          //     } catch {
+          //       return { ...call, args: { _argsParseError: true, _argsRaw: info.argsRaw } };
+          //     }
+          //   });
+          // } else {
+          //   toolCalls = calls;
+          // }
         },
         onToolCallStream: (delta) => {
           if (aborted) return;
@@ -898,19 +900,21 @@ export class Agent {
             },
           };
 
-          if (tc.args?._argsParseError) {
-            const raw = tc.args._argsRaw ?? "";
-            const err = new Error(
-              `Invalid JSON in tool arguments for "${tc.name}". ` +
-              `Raw content: ${raw.slice(0, 200)}${raw.length > 200 ? "…" : ""}. ` +
-              `Please re-issue the tool call with valid JSON arguments.`
-            );
-            toolRecord.status = "error";
-            toolRecord.error = err.message;
-            toolRecord.execEndTime = Date.now();
-            toolResultContent = `Error: ${err.message}`;
-            this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: err, step, endTime: toolRecord.execEndTime });
-          } else if (!tool) {
+          // TODO: 兼容 LLM 返回未解码 \uXXXX 字面量或无效 JSON 的情况
+          // if (tc.args?._argsParseError) {
+          //   const raw = tc.args._argsRaw ?? "";
+          //   const err = new Error(
+          //     `Invalid JSON in tool arguments for "${tc.name}". ` +
+          //     `Raw content: ${raw.slice(0, 200)}${raw.length > 200 ? "…" : ""}. ` +
+          //     `Please re-issue the tool call with valid JSON arguments.`
+          //   );
+          //   toolRecord.status = "error";
+          //   toolRecord.error = err.message;
+          //   toolRecord.execEndTime = Date.now();
+          //   toolResultContent = `Error: ${err.message}`;
+          //   this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: err, step, endTime: toolRecord.execEndTime });
+          // } else
+          if (!tool) {
             const err = new Error(`Tool not found: ${tc.name}`);
             toolRecord.status = "error";
             toolRecord.error = err.message;
