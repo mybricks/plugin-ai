@@ -35,18 +35,17 @@ export interface Message {
 export interface ToolCallRecord {
   callId: string;
   name: string;
+  /** 工具标题（可选），用于 UI 展示。来源于 Tool.title。 */
+  title?: string;
   args: any;
   /** 工具执行结果（包含 output 和 metadata） */
   result?: { output: string; metadata?: any };
   error?: any;
-  status: "success" | "error";
+  status: "pending" | "success" | "error";
   /** 工具开始执行的时间（Unix ms） */
   execStartTime: number;
   /** 工具执行完成的时间（Unix ms），执行中为 0 */
   execEndTime: number;
-  // ── 流式专用（只在 UI 层使用，不存入数据库）──
-  /** 流式接收中的原始 args 字符串（未完整），用于展示中间状态 */
-  argsRaw?: string;
 }
 
 /**
@@ -309,13 +308,17 @@ export class ToolValidationError extends Error {
  *   - metadata 持久化元数据，前端渲染可用（如路径、行数、策略等）
  */
 export interface ToolResult {
-  title: string;
   output: string;
   metadata?: Record<string, any>;
 }
 
 export interface Tool {
   name: string;
+  /**
+   * 工具标题（可选）。用于 DefaultToolRenderer 展示。
+   * 仅当工具没有自定义 render 时生效，有自定义 render 则无需设置。
+   */
+  title?: string;
   description: string;
   parameters?: Record<string, any>;
   /**
@@ -323,6 +326,13 @@ export interface Tool {
    */
   validate?(params: any, ctx?: any): void;
   execute(params: any, ctx?: any): Promise<ToolResult>;
+  /**
+   * 自定义 UI 渲染函数（可选）。
+   * 工具调用时的 React 渲染，参数为 ToolRecord（含 status/args/result 等）。
+   * 若不传则使用 DefaultToolRenderer 兜底。
+   * 注意：ToolRecord 类型在 UI 包中定义（@plugin-ai/plugin），此处用 any 避免循环依赖。
+   */
+  render?: (tool: any) => any;
 }
 
 // ─── 从 TurnRecord[] 重建 LLM messages ───────────────────────────────────────

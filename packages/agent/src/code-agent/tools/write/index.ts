@@ -45,7 +45,6 @@ IMPORTANT: All string values must use raw Unicode characters. Never escape any c
       }
       const lineCount = params.content.split("\n").length;
       return {
-        title: params.path,
         output: `File written: ${params.path} (${lineCount} lines)`,
         metadata: { path: params.path, lineCount },
       };

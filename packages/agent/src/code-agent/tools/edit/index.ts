@@ -123,7 +123,6 @@ export function createEditTool(adapter: Sandbox): Tool {
         throw new ToolValidationError(`Failed to edit ${params.path}: ${err instanceof Error ? err.message : String(err)}`);
       }
       return {
-        title: params.path,
         output: `File edited: ${params.path} (strategy: ${result.strategy})`,
         metadata: { path: params.path, strategy: result.strategy, replaceAll: params.replace_all ?? false },
       };

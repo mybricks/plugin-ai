@@ -4,6 +4,12 @@ import {
   networkErrorDelayedCase,
   networkErrorAfterStreamCase,
   toolCallArgsMidErrorCase,
+  networkErrorRetrySuccessCase,
+  networkErrorMultiRetrySuccessCase,
+  networkErrorRetryExhaustedCase,
+  networkErrorStreamInterruptRetryCase,
+  networkErrorBeforeToolRetryCase,
+  networkErrorLongRetryCase,
 } from "./network-error";
 import {
   toolSuccessCase,
@@ -36,6 +42,17 @@ import {
 } from "./edge-cases";
 import { compactTriggerCase, compactWithToolsCase } from "./compact";
 import { markdownRichCase, userMessageWithLinksCase, streamingMarkdownCase, toolThenEmptyContentCase } from "./ui-render";
+import {
+  initProjectSingleFileCase,
+  initProjectMultiFileCase,
+  initProjectStreamingProgressCase,
+  initProjectNoFilesCase,
+  initProjectPartialFailureCase,
+  initProjectIncompleteBlockCase,
+  initProjectWithLanguageCase,
+  initProjectLongWaitCase,
+  initProjectRetryCase,
+} from "./init-project";
 
 export type { TestCase } from "./types";
 
@@ -45,6 +62,13 @@ export const ALL_CASES: TestCase[] = [
   networkErrorDelayedCase,
   networkErrorAfterStreamCase,
   toolCallArgsMidErrorCase,
+  // 网络中断（带重试）
+  networkErrorRetrySuccessCase,
+  networkErrorMultiRetrySuccessCase,
+  networkErrorRetryExhaustedCase,
+  networkErrorStreamInterruptRetryCase,
+  networkErrorBeforeToolRetryCase,
+  networkErrorLongRetryCase,
   // 工具调用（真实 MemFS）
   toolSuccessCase,
   toolWriteCase,
@@ -79,6 +103,16 @@ export const ALL_CASES: TestCase[] = [
   streamingMarkdownCase,
   // 异常检测—工具后空 content
   toolThenEmptyContentCase,
+  // 初始化项目 SubAgent
+  initProjectSingleFileCase,
+  initProjectMultiFileCase,
+  initProjectStreamingProgressCase,
+  initProjectNoFilesCase,
+  initProjectPartialFailureCase,
+  initProjectIncompleteBlockCase,
+  initProjectWithLanguageCase,
+  initProjectLongWaitCase,
+  initProjectRetryCase,
 ];
 
 /** 按 group 分组 */

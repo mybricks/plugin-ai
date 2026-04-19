@@ -32,10 +32,13 @@ export function usePlaygroundAgent(
       request: reqFn ?? testCase.request,
       sandbox: fs,
       tools: testCase.tools ?? [],
+      subAgents: testCase.createSubAgents ? testCase.createSubAgents(fs) : testCase.subAgents,
       summary: { enabled: false },
       compact: testCase.compactOptions ?? { enabled: false },
       ...(testCase.maskOptions ? { mask: testCase.maskOptions } : {}),
-      ...(testCase.agentOptions ?? {}),
+      ...(testCase.agentOptions?.retry ? { retry: testCase.agentOptions.retry } : {}),
+      ...(testCase.agentOptions?.maxSteps ? { maxSteps: testCase.agentOptions.maxSteps } : {}),
+      ...(testCase.agentOptions?.doomLoopThreshold ? { doomLoopThreshold: testCase.agentOptions.doomLoopThreshold } : {}),
     });
 
     await newAgent.loadHistory();

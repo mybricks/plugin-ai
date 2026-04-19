@@ -1,13 +1,16 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useMemo, useState } from "react";
 import classNames from "classnames";
 import markdownit from "markdown-it";
 import { TextShimmer } from "../../components/text-shimmer";
 import { AttachmentsList } from "../../components/attachments";
 import { ElapsedTime } from "../../components/elapsed-time";
 import type { MessageRecord } from "../use-sessions";
-import type { ToolCallRecord } from "../../../../agent/src";
+import type { ToolCallRecord } from "../../../../../agent/src";
+import type { CodeAgent } from "../../../../../agent/src";
 import { getToolRenderer } from "./tool-renders/index";
+import type { ToolRenderer } from "./tool-renders/index";
 import { DefaultToolRenderer } from "./tool-renders/renders";
+import "./tool-renders/register";
 import css from "./index.less";
 
 const md = markdownit();
@@ -21,12 +24,30 @@ export interface MessageListProps {
   messages: MessageRecord[];
   user?: User;
   copilot?: User;
+  agent?: CodeAgent;
   renderUserMessage?: (record: MessageRecord) => React.ReactNode;
   onRetry?: (turnId: string) => void;
 }
 
-const MessageList = ({ messages, user, copilot, renderUserMessage, onRetry }: MessageListProps) => {
+const MessageList = ({ messages, user, copilot, agent, renderUserMessage, onRetry }: MessageListProps) => {
   const mainRef = useRef<HTMLElement>(null);
+
+  // 缓存工具渲染器映射，避免流式渲染时重复计算
+  const toolRendererMap = useMemo(() => {
+    const map = new Map<string, ToolRenderer>();
+
+    // 优先从 agent 的工具列表中提取自定义渲染器
+    if (agent) {
+      const tools = agent.getTools();
+      for (const tool of tools) {
+        if (tool.render) {
+          map.set(tool.name, tool.render);
+        }
+      }
+    }
+
+    return map;
+  }, [agent]);
 
   useEffect(() => {
     const autoScroller = new AutoScroller(mainRef.current!);
@@ -36,7 +57,16 @@ const MessageList = ({ messages, user, copilot, renderUserMessage, onRetry }: Me
   return (
     <main ref={mainRef} className={css["message-list"]}>
       {messages.map((record, index) => (
-        <MessageBubble key={record.id} record={record} user={user} copilot={copilot} renderUserMessage={renderUserMessage} onRetry={index === messages.length - 1 ? onRetry : undefined} />
+        <MessageBubble
+          key={record.id}
+          record={record}
+          user={user}
+          copilot={copilot}
+          toolRendererMap={toolRendererMap}
+          renderUserMessage={renderUserMessage}
+          onRetry={index === messages.length - 1 ? onRetry : undefined}
+          agent={agent}
+        />
       ))}
     </main>
   );
@@ -44,142 +74,200 @@ const MessageList = ({ messages, user, copilot, renderUserMessage, onRetry }: Me
 
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
-const MessageBubble = ({ record, user, copilot, renderUserMessage, onRetry }: {
+const MessageBubble = ({ record, user, copilot, toolRendererMap, renderUserMessage, onRetry, agent }: {
   record: MessageRecord;
   user?: User;
   copilot?: User;
+  toolRendererMap: Map<string, ToolRenderer>;
   renderUserMessage?: (record: MessageRecord) => React.ReactNode;
   onRetry?: (turnId: string) => void;
-}) => (
-  <div className={css["chat-bubble-container"]}>
-    {/* 时间戳居中 */}
-    <div className={css["chat-bubble-time"]}>{formatTime(record.startTime)}</div>
+  agent?: CodeAgent;
+}) => {
+  // 重试状态：{ attempt, maxRetries } 或 null
+  const [retryState, setRetryState] = useState<{ attempt: number; maxRetries: number } | null>(null);
 
-    {/* 用户消息 —— 靠右 */}
-    <div className={classNames(css["chat-bubble"], css["user-bubble"])}>
-      <header className={css["chat-bubble-header"]}>
-        <span className={css["chat-bubble-header-name"]}>{user?.name ?? "用户"}</span>
-        {user?.avatar && (
-          <div className={css["chat-bubble-header-avatar"]}>
-            <img className={css["user-avatar"]} src={user.avatar} />
-          </div>
-        )}
-      </header>
-      <section className={classNames(css["chat-message-container"], css["user-message"])}>
-        {renderUserMessage ? renderUserMessage(record) : <div className={css["user-message-text"]}>{record.userText}</div>}
-        {record.userAttachments.length > 0 && (
-          <AttachmentsList
-            className={css["attachments-list"]}
-            attachments={record.userAttachments.filter((a) => a.type === "image") as any}
-          />
-        )}
-      </section>
-    </div>
+  // 订阅 llm:retry 事件
+  useEffect(() => {
+    if (!agent) return;
 
-    {/* AI 回复 —— 靠左 */}
-    <div className={classNames(css["chat-bubble"], css["ai-bubble"])}>
-      <header className={css["chat-bubble-header"]}>
-        {copilot?.avatar && (
-          <div className={css["chat-bubble-header-avatar"]}>
-            <img className={css["user-avatar"]} src={copilot.avatar} />
-          </div>
-        )}
-        <span className={css["chat-bubble-header-name"]}>{copilot?.name ?? "智能助手"}</span>
-      </header>
-      <section className={classNames(css["chat-message-container"], css["ai-message"])}>
-        <div className={css["markdown-body"]}>
-          {/* 无任何 iteration 且 pending → 规划占位 */}
-          {record.status === "pending" && record.iterations.length === 0 && (
-            <TextShimmer className={css["iter-header-placeholder"]}>思考中...</TextShimmer>
-          )}
+    const unsubscribe = agent.events.on('llm:retry', ({ step, attempt, maxRetries }) => {
+      // 只显示当前 pending record 的重试状态
+      if (record.status === 'pending') {
+        setRetryState({ attempt, maxRetries });
+      }
+    });
 
-          {/* 按 iteration 渲染 */}
-          {record.iterations.map((iter, iterIdx) => {
-            const isLastIter = iterIdx === record.iterations.length - 1;
-            const isPending = record.status === "pending";
-            const hasTools = iter.toolCalls.length > 0;
-            // 当前 iteration 的 LLM 是否已完成
-            const llmDone = iter.endTime !== undefined;
-            // 是否是最后一个 iteration 且 LLM 还在响应中
-            const llmStreaming = isLastIter && isPending && !llmDone;
-            // 是否在等待下一轮 LLM（当前 iter 工具全完成，还没下一个 iter）
-            const waitingNextStep = isLastIter && isPending && llmDone && !hasTools;
+    // 清理：当 record 不再 pending 时清空重试状态
+    if (record.status !== 'pending') {
+      setRetryState(null);
+    }
 
-            return (
-              <React.Fragment key={iterIdx}>
-                {/* 思考内容 */}
-                {iter.thinkingContent && (
-                  <ThinkingCard
-                    thinkingContent={iter.thinkingContent}
-                    llmStreaming={llmStreaming}
-                  />
-                )}
+    return unsubscribe;
+  }, [agent, record.status]);
 
-                {/* iter 头部 */}
-                <div className={css["iter-header"]}>
-                  {iter.content ? (
-                    <>
-                      <BubbleMessage message={iter.content} />
-                      {iter.startTime && <ElapsedTime startTime={iter.startTime} endTime={iter.endTime} className={css["planning-elapsed"]} />}
-                    </>
-                  ) : iter.toolCalls.length === 0 && isPending ? (
-                    <>
-                      <TextShimmer className={css["iter-header-placeholder"]}>思考中...</TextShimmer>
-                      {iter.startTime && <ElapsedTime startTime={iter.startTime} endTime={iter.endTime} className={css["planning-elapsed"]} />}
-                    </>
-                  ) : null}
-                </div>
+  return (
+    <div className={css["chat-bubble-container"]}>
+      {/* 时间戳居中 */}
+      <div className={css["chat-bubble-time"]}>{formatTime(record.startTime)}</div>
 
-                {/* 工具列表 */}
-                {iter.toolCalls.map((tool) => {
-                  const toolStatus = tool.status === "success" || tool.execEndTime ? tool.status : "pending" as const;
-                  const uiTool = { ...tool, status: toolStatus as "pending" | "success" | "error" };
-                  return (
-                    <React.Fragment key={tool.callId}>
-                      <ToolBubble tool={uiTool} />
-                    </React.Fragment>
-                  );
-                })}
-              </React.Fragment>
-            );
-          })}
-
-          {/* 已取消 */}
-          {record.status === "abort" && (
-            <div className={css["ai-chat-abort-tip"]}>已取消</div>
-          )}
-
-          {/* 错误 */}
-          {record.status === "error" && record.error && (
-            <div className={css["ai-chat-error-code-block"]}>
-              <span>{record.error}</span>
-              {onRetry && (
-                <button
-                  className={css["retry-button"]}
-                  onClick={() => {
-                    onRetry(record.id)
-                  }}
-                >
-                  重试
-                </button>
-              )}
+      {/* 用户消息 —— 靠右 */}
+      <div className={classNames(css["chat-bubble"], css["user-bubble"])}>
+        <header className={css["chat-bubble-header"]}>
+          <span className={css["chat-bubble-header-name"]}>{user?.name ?? "用户"}</span>
+          {user?.avatar && (
+            <div className={css["chat-bubble-header-avatar"]}>
+              <img className={css["user-avatar"]} src={user.avatar} />
             </div>
           )}
-        </div>
-      </section>
+        </header>
+        <section className={classNames(css["chat-message-container"], css["user-message"])}>
+          {renderUserMessage ? renderUserMessage(record) : <div className={css["user-message-text"]}>{record.userText}</div>}
+          {record.userAttachments.length > 0 && (
+            <AttachmentsList
+              className={css["attachments-list"]}
+              attachments={record.userAttachments.filter((a) => a.type === "image") as any}
+            />
+          )}
+        </section>
+      </div>
+
+      {/* AI 回复 —— 靠左 */}
+      <div className={classNames(css["chat-bubble"], css["ai-bubble"])}>
+        <header className={css["chat-bubble-header"]}>
+          {copilot?.avatar && (
+            <div className={css["chat-bubble-header-avatar"]}>
+              <img className={css["user-avatar"]} src={copilot.avatar} />
+            </div>
+          )}
+          <span className={css["chat-bubble-header-name"]}>{copilot?.name ?? "智能助手"}</span>
+        </header>
+        <section className={classNames(css["chat-message-container"], css["ai-message"])}>
+          <div className={css["markdown-body"]}>
+            {/* 无任何 iteration 且 pending → 规划占位 */}
+            {record.status === "pending" && record.iterations.length === 0 && (
+              <div className={css["iter-header"]}>
+                <div className={css["iter-header-content"]}>
+                  {retryState && (
+                    <span className={css["retry-info"]}>
+                      重试 {retryState.attempt}/{retryState.maxRetries}
+                    </span>
+                  )}
+                  <TextShimmer className={css["iter-header-placeholder"]}>思考中...</TextShimmer>
+                </div>
+              </div>
+            )}
+
+            {/* 按 iteration 渲染 */}
+            {record.iterations.map((iter, iterIdx) => {
+              const isLastIter = iterIdx === record.iterations.length - 1;
+              const isPending = record.status === "pending";
+              const hasTools = iter.toolCalls.length > 0;
+              // 当前 iteration 的 LLM 是否已完成
+              const llmDone = iter.endTime !== undefined;
+              // 是否是最后一个 iteration 且 LLM 还在响应中
+              const llmStreaming = isLastIter && isPending && !llmDone;
+              // 是否在等待下一轮 LLM（当前 iter 工具全完成，还没下一个 iter）
+              const waitingNextStep = isLastIter && isPending && llmDone && !hasTools;
+
+              return (
+                <React.Fragment key={iterIdx}>
+                  {/* 思考内容 */}
+                  {iter.thinkingContent && (
+                    <ThinkingCard
+                      thinkingContent={iter.thinkingContent}
+                      llmStreaming={llmStreaming}
+                    />
+                  )}
+
+                  {/* iter 头部 */}
+                  <div className={css["iter-header"]}>
+                    {iter.content ? (
+                      <>
+                        <div className={css["iter-header-content"]}>
+                          {retryState && isLastIter && isPending && (
+                            <span className={css["retry-info"]}>
+                              重试 {retryState.attempt}/{retryState.maxRetries}
+                            </span>
+                          )}
+                          <BubbleMessage message={iter.content} />
+                        </div>
+                        {iter.startTime && <ElapsedTime startTime={iter.startTime} endTime={iter.endTime} className={css["planning-elapsed"]} />}
+                      </>
+                    ) : iter.toolCalls.length === 0 && isPending ? (
+                      <>
+                        <div className={css["iter-header-content"]}>
+                          {retryState && isLastIter && (
+                            <span className={css["retry-info"]}>
+                              重试 {retryState.attempt}/{retryState.maxRetries}
+                            </span>
+                          )}
+                          <TextShimmer className={css["iter-header-placeholder"]}>思考中...</TextShimmer>
+                        </div>
+                        {iter.startTime && <ElapsedTime startTime={iter.startTime} endTime={iter.endTime} className={css["planning-elapsed"]} />}
+                      </>
+                    ) : null}
+                  </div>
+
+                  {/* 工具列表 */}
+                  {iter.toolCalls.map((tool) => {
+                    const toolStatus = tool.status === "success" || tool.execEndTime ? tool.status : "pending" as const;
+                    const uiTool = { ...tool, status: toolStatus as "pending" | "success" | "error" };
+                    return (
+                      <React.Fragment key={tool.callId}>
+                        <ToolBubble tool={uiTool} toolRendererMap={toolRendererMap} />
+                      </React.Fragment>
+                    );
+                  })}
+                </React.Fragment>
+              );
+            })}
+
+            {/* 已取消 */}
+            {record.status === "abort" && (
+              <div className={css["ai-chat-abort-tip"]}>已取消</div>
+            )}
+
+            {/* 错误 */}
+            {record.status === "error" && record.error && (
+              <div className={css["ai-chat-error-code-block"]}>
+                <span>{record.error}</span>
+                {onRetry && (
+                  <button
+                    className={css["retry-button"]}
+                    onClick={() => {
+                      onRetry(record.id)
+                    }}
+                  >
+                    重试
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
     </div>
-  </div>
-);
+  )
+};
 
 // ─── ToolBubble ───────────────────────────────────────────────────────────────
 
 type UIToolRecord = Omit<ToolCallRecord, "status"> & { status: "pending" | "success" | "error" };
 
-const ToolBubble = ({ tool }: { tool: UIToolRecord }) => {
-  const renderer = getToolRenderer(tool.name);
-  if (renderer) {
-    return <>{renderer(tool as any)}</>;
+const ToolBubble = ({ tool, toolRendererMap }: { tool: UIToolRecord; toolRendererMap: Map<string, ToolRenderer> }) => {
+  // 优先从 agent 的工具列表中查找自定义渲染函数（已缓存）
+  const customRenderer = toolRendererMap.get(tool.name);
+  if (customRenderer) {
+    return <>{customRenderer(tool as any)}</>;
   }
+
+  // 降级到全局 registry（用于内置工具）
+  const globalRenderer = getToolRenderer(tool.name);
+  if (globalRenderer) {
+    return <>{globalRenderer(tool as any)}</>;
+  }
+
+  // 最终降级到默认渲染器
   return <DefaultToolRenderer tool={tool as any} />;
 };
 

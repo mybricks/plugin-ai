@@ -103,7 +103,7 @@ const ChatStartView = ({
           onSend={onSend}
           variant="loose"
           placeholder={placeholder}
-          attachmentsPrompt="根据附件中的图片内容进行设计开发，要求尽可能还原其中的各类设计细节以及功能，在此基础上可做调整优化创新"
+          attachmentsPrompt="根据附件中的图片内容进行设计开发，要求尽可能还原其中的各类设计细节以及功能"
           onUpload={onUpload}
         />
       )}

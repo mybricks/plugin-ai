@@ -4,6 +4,7 @@ import { AgentEvents } from "./events";
 import type { CompactRecord, Message, History, Tool, TurnRecord, ToolCallRecord, BoundHistory } from "./types";
 import { turnsToMessages, bindHistory } from "./types";
 import { maskMessages, computeHandoffTurnIds, type MaskOptions } from "./mask";
+import { wrapRequestWithRetry, type RetryOptions } from "./retry";
 
 export { AgentEvents };
 export type { Message, History, Tool, TurnRecord, ToolCallRecord };
@@ -23,6 +24,10 @@ export interface ToolExecutionContext {
    * 供工具自行做重试/重复调用检测等策略判断。
    */
   iterations: ReadonlyArray<TurnRecord["iterations"][number]>;
+  /** 获取当前 turn 的用户消息（message + attachments） */
+  getUserMessage: () => { message: string; attachments?: any[] };
+  /** 获取当前 Agent 实例 */
+  getAgent: () => Agent;
   /** 读取当前 turn 后续 step 使用的 aiRole（未指定时返回 undefined） */
   getAiRole: () => string | undefined;
   /**
@@ -30,6 +35,13 @@ export interface ToolExecutionContext {
    * 传空字符串或 undefined 可清空，恢复默认路由。
    */
   setAiRole: (aiRole?: string) => void;
+  /**
+   * 发送工具流式进度更新（用于长时间运行的工具）。
+   * 触发 tool:progress 事件，UI 层可据此实时更新工具卡片状态。
+   *
+   * @param data 自定义进度数据，由工具定义结构（如 SubAgent 可传递子 agent 的流式输出）
+   */
+  emitProgress: (data: any) => void;
 }
 
 // ─── AgentHooks ──────────────────────────────────────────────────────────────
@@ -144,6 +156,11 @@ export interface AgentOptions {
    * 出参：处理后的 { message, attachments, meta }，可用于注入 focus 上下文等。
    */
   formatUserMessage?: (params: RequestAIOptions) => Promise<FormatUserMessageResult> | FormatUserMessageResult;
+  /**
+   * 重试配置（用于网络瞬时故障自动重试）。
+   * 只要 emits.error 被调用就重试，不做额外的错误类型判断。
+   */
+  retry?: RetryOptions;
 }
 
 /** formatUserMessage 的返回值类型 */
@@ -173,7 +190,14 @@ export interface ForkOptions {
    * - 传具体列表：替换为指定工具（适合 subAgent 场景）
    */
   tools?: Tool[];
+  /**
+   * 覆盖系统 prompt。
+   * 不传则继承父 Agent 的 system。
+   */
+  system?: string;
 }
+
+// ─── ForkAgent ────────────────────────────────────────────────────────────────
 
 export interface RequestAIOptions {
   message: string;
@@ -368,7 +392,7 @@ function callLLM(
   rest: Record<string, any>,
   step: number,
   onContent: (delta: string, content: string, thinkingDelta?: string, thinkingContent?: string) => void,
-  onToolStreaming: (callId: string, name: string, argsDelta: string) => void
+  onToolStreaming: (callId: string, name: string, delta: string, content: string) => void
 ): Promise<LLMCallResult> {
   return new Promise<LLMCallResult>((resolve, reject) => {
     let content = "";
@@ -376,7 +400,7 @@ function callLLM(
     let toolCalls: Array<{ id: string; name: string; args: any }> = [];
     let finishReason = "unknown";
     let aborted = false;
-    // index → { callId, name, argsRaw } 映射（在 callLLM 内维护，用于检测 JSON 解析失败）
+    // index → { callId, name, argsRaw } 映射（在 callLLM 内累积，用于 JSON 解析）
     const indexToCallInfo = new Map<number, { callId: string; name: string; argsRaw: string }>();
 
     if (signal.aborted) {
@@ -419,9 +443,9 @@ function callLLM(
         },
         onToolCalls: (calls) => {
           if (aborted) return;
-          // 流式接口：indexToCallInfo 已累积完整 argsRaw，用它作为主路径：
-          //   先将字面量 \uXXXX 还原为真正的 Unicode 字符，再 JSON.parse。
-          //   无参数工具（argsRaw 为空/空白/"{}"）直接给 {}。
+          // 流式接口：indexToCallInfo 已累积完整参数字符串，用它作为主路径：
+          //   先将字面量 \\uXXXX 还原为真正的 Unicode 字符，再 JSON.parse。
+          //   无参数工具（累积串为空/空白/"{}"）直接给 {}。
           //   parse 失败则回退用网络层已解析的 args。
           // 非流式接口：indexToCallInfo 为空，直接沿用网络层已解析好的 args。
           if (indexToCallInfo.size > 0) {
@@ -450,15 +474,15 @@ function callLLM(
           if (aborted) return;
           const { index, id, name, argsChunk } = delta;
           if (id && name && !indexToCallInfo.has(index)) {
-            // 首帧：记录 callId + name，初始化 argsRaw
+            // 首帧：记录 callId + name，开始累积参数字符串
             indexToCallInfo.set(index, { callId: id, name, argsRaw: argsChunk ?? "" });
-            onToolStreaming(id, name, argsChunk ?? "");
+            onToolStreaming(id, name, argsChunk ?? "", argsChunk ?? "");
           } else if (argsChunk) {
-            // 后续帧：累积 argsRaw
+            // 后续帧：继续累积参数字符串，回调传增量 + 全量
             const info = indexToCallInfo.get(index);
             if (info) {
               info.argsRaw += argsChunk;
-              onToolStreaming(info.callId, info.name, argsChunk);
+              onToolStreaming(info.callId, info.name, argsChunk, info.argsRaw);
             }
           }
         },
@@ -512,13 +536,19 @@ export class Agent {
   private _abortController: AbortController | null = null;
 
   constructor(options: AgentOptions) {
-    // 仅在调用方“未声明该字段”时注入默认值；
+    // 仅在调用方”未声明该字段”时注入默认值；
     // 若调用方显式传入 summary/compact（即便是 undefined），按原值保留。
     const hasSummary = Object.prototype.hasOwnProperty.call(options, "summary");
     const hasCompact = Object.prototype.hasOwnProperty.call(options, "compact");
 
+    // 如果配置了 retry，包装 request 函数
+    const wrappedRequest = options.retry
+      ? wrapRequestWithRetry(options.request, options.retry, this.events)
+      : options.request;
+
     this.options = {
       ...options,
+      request: wrappedRequest,
       ...(hasSummary ? {} : { summary: { enabled: true } }),
       ...(hasCompact ? {} : { compact: { enabled: true, maxTurns: 30 } }),
     };
@@ -562,6 +592,14 @@ export class Agent {
     const key = this.key;
     if (!history || !key) return null;
     return bindHistory(history, key);
+  }
+
+  /**
+   * 获取当前 agent 的工具列表。
+   * 供 UI 层按需查找工具定义（如自定义渲染函数）。
+   */
+  getTools(): Tool[] {
+    return this.options.tools ?? [];
   }
 
   /** 主动取消当前请求，触发 turn:abort */
@@ -748,13 +786,13 @@ export class Agent {
             this.options,
             messages,
             signal,
-            stepLLMRest,
+            { ...stepLLMRest, _step: step }, // 传递 step 用于 retry 事件
             step,
             (delta, content, thinkingDelta, thinkingContent) => {
               this.events.emit("llm:content", { delta, content, thinkingDelta, thinkingContent, step });
             },
-            (callId, name, argsDelta) => {
-              this.events.emit("tool:content", { callId, name, argsDelta, step });
+            (callId, name, delta, content) => {
+              this.events.emit("tool:args", { callId, name, delta, content, step });
             }
           );
         } catch (e) {
@@ -840,12 +878,14 @@ export class Agent {
             break;
           }
 
+          const tool = this.options.tools?.find(t => t.name === tc.name);
           const execStartTime = Date.now();
           const toolRecord: ToolCallRecord = {
             callId: tc.id,
             name: tc.name,
+            title: tool?.title,
             args: tc.args,
-            status: "success",
+            status: "pending",
             execStartTime,
             execEndTime: 0,
           };
@@ -853,14 +893,21 @@ export class Agent {
 
           this.events.emit("tool:call", { callId: tc.id, name: tc.name, args: tc.args, step, startTime: execStartTime });
 
-          const tool = this.options.tools?.find(t => t.name === tc.name);
           let toolResultContent: string;
           const toolContext: ToolExecutionContext = {
             turnId: turn.id,
             iterations: turn.iterations,
+            getUserMessage: () => ({
+              message: userParams.message,
+              attachments: userParams.attachments,
+            }),
+            getAgent: () => this,
             getAiRole: () => turnAiRole,
             setAiRole: (aiRole?: string) => {
               turnAiRole = aiRole || undefined;
+            },
+            emitProgress: (data: any) => {
+              this.events.emit("tool:progress", { callId: tc.id, name: tc.name, data, step });
             },
           };
 
@@ -897,6 +944,7 @@ export class Agent {
                 this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: "用户已取消", step, endTime: toolRecord.execEndTime });
               } else {
                 toolRecord.result = { output: result.output, metadata: result.metadata };
+                toolRecord.status = "success";
                 toolRecord.execEndTime = Date.now();
                 toolResultContent = result.output;
                 this.events.emit("tool:result", { callId: tc.id, name: tc.name, result: toolRecord.result, step, endTime: toolRecord.execEndTime });
@@ -1097,20 +1145,23 @@ export class Agent {
    *
    * 可用于 autoSummary、autoCompact、subAgent 等场景。
    */
-  createFork(forkOptions?: ForkOptions): Agent {
-    const { copyTurns, tools } = forkOptions ?? {};
+  createFork(forkOptions?: ForkAgentOptions): ForkAgent {
+    const { copyTurns, tools, aiRole } = forkOptions ?? {};
 
     // turns 快照：按 copyTurns 截取最近 N 轮，或全量
     const snapshotTurns =
       copyTurns != null ? this.turns.slice(-copyTurns) : [...this.turns];
 
     // options 继承 + 覆盖
+    const { system } = forkOptions ?? {};
     const forkAgentOptions: AgentOptions = {
       ...this.options,
       key: randomUUID(),     // 随机隔离 key
       history: undefined,    // fork 不写历史
       // tools：不传=继承父；传了（含 []）则覆盖
       ...(forkOptions && "tools" in forkOptions ? { tools } : {}),
+      // system：不传=继承父；传了则覆盖
+      ...(system !== undefined ? { system } : {}),
       // fork 强制关闭 summary/compact，防止递归 fork
       summary: { enabled: false },
       compact: { enabled: false },
@@ -1118,9 +1169,28 @@ export class Agent {
       hooks: undefined,
     };
 
-    // 直接构造 Agent，绕过 loadHistory()，手动注入 turns 快照
-    const fork = new Agent(forkAgentOptions);
+    // 使用 ForkAgent 构造，传入 aiRole
+    const fork = new ForkAgent(forkAgentOptions, aiRole);
     fork.turns = snapshotTurns;
+    return fork;
+  }
+
+  /**
+   * 创建一个 SubAgent 实例（基于 fork 机制）。
+   *
+   * 与 createFork 的差异：
+   *   - 强制 maxSteps: 1（不允许多次 ReAct 轮询）
+   *   - 强制 tools: []（不允许工具调用）
+   *   - 支持通过 SubAgentConfig 覆盖 system
+   *   - 全量继承父 turns 历史
+   */
+  createSubAgent(config: import("./sub-agent").SubAgentConfig): ForkAgent {
+    const fork = this.createFork({
+      tools: [],
+      ...(config.system !== undefined ? { system: config.system } : {}),
+      ...(config.aiRole !== undefined ? { aiRole: config.aiRole } : {}),
+    });
+    (fork as any).options.maxSteps = 1;
     return fork;
   }
 
@@ -1309,5 +1379,46 @@ IMPORTANT: 不要调用工具！
     if (history && key) {
       await history.saveCompact(key, compactRecord);
     }
+  }
+}
+
+// ─── ForkAgent ────────────────────────────────────────────────────────────────
+
+/**
+ * ForkAgent 配置项。
+ * 继承 ForkOptions，额外支持 aiRole 用于指定模型角色。
+ */
+export interface ForkAgentOptions extends ForkOptions {
+  /**
+   * 指定 aiRole（模型角色），如 "image" 表示使用支持视觉的模型。
+   */
+  aiRole?: string;
+}
+
+/**
+ * ForkAgent 是 Agent 的子类，用于 fork 出的独立 Agent 实例。
+ * 核心差异：requestAI 时会自动带上创建时指定的 aiRole。
+ */
+export class ForkAgent extends Agent {
+  private _forkAiRole?: string;
+
+  constructor(options: AgentOptions, aiRole?: string) {
+    super(options);
+    this._forkAiRole = aiRole;
+  }
+
+  /**
+   * 重写 requestAI，自动注入 fork 时指定的 aiRole。
+   */
+  async requestAI(params: RequestAIOptions): Promise<void> {
+    const { message, attachments, ...rest } = params;
+    // 有图片附件时，自动将 aiRole 覆盖为 "image"
+    if (attachments?.length) {
+      rest.aiRole = "image";
+    } else if (this._forkAiRole) {
+      // 否则使用 fork 时指定的 aiRole
+      rest.aiRole = this._forkAiRole;
+    }
+    return super.requestAI({ message, attachments, ...rest });
   }
 }

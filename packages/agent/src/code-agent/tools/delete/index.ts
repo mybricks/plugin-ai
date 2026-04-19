@@ -57,7 +57,6 @@ export function createDeleteTool(adapter: Sandbox): Tool {
 
       if (existingPaths.length === 0) {
         return {
-          title: "删除文件",
           output: missingPaths.length > 0 ? `No files deleted. Missing: ${missingPaths.join(", ")}` : "No files deleted.",
           metadata: {
             paths: requestedPaths,
@@ -75,7 +74,6 @@ export function createDeleteTool(adapter: Sandbox): Tool {
       }
 
       return {
-        title: existingPaths.length === 1 ? existingPaths[0] : `删除 ${existingPaths.length} 个文件`,
         output: `Deleted files:\n${existingPaths.join("\n")}${missingPaths.length > 0 ? `\n\nIgnored missing files:\n${missingPaths.join("\n")}` : ""}`,
         metadata: {
           paths: requestedPaths,

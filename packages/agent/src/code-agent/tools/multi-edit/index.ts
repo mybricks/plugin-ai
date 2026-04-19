@@ -171,7 +171,6 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
         .join("\n");
 
       return {
-        title: `${params.edits.length} files edited`,
         output: `Files edited:\n${output}`,
         metadata: { edits: summaries },
       };

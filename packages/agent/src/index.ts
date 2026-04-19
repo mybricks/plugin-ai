@@ -1,5 +1,5 @@
-export { Agent, AgentEvents } from "./agent";
-export type { AgentOptions, AgentHooks, RequestAIOptions, MaskOptions, ForkOptions, CompactRecord, FormatUserMessageResult } from "./agent";
+export { Agent, AgentEvents, ForkAgent } from "./agent";
+export type { AgentOptions, AgentHooks, RequestAIOptions, MaskOptions, ForkOptions, ForkAgentOptions, CompactRecord, FormatUserMessageResult } from "./agent";
 export { maskMessages } from "./mask";
 
 export type { AgentEventMap } from "./events";
@@ -12,3 +12,8 @@ export { READ_TOOL_NAME, WRITE_TOOL_NAME, MULTI_WRITE_TOOL_NAME, EDIT_TOOL_NAME,
 
 export { IDBHistory } from "./history/idb-history";
 export { HTTPHistory } from "./history/http-history";
+
+export { createSubAgentTool, CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
+export type { SubAgentConfig } from "./sub-agent";
+
+export type { RetryOptions } from "./retry";

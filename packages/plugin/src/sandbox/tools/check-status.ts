@@ -21,7 +21,7 @@ export function createCheckStatusTool(designerRef: { current: Designer | undefin
 
       const designer = designerRef.current;
       if (!designer) {
-        return { title: "查看当前状态", output: "（设计器状态不可用）" };
+        return { output: "（设计器状态不可用）" };
       }
       // 等待 1s，让渲染层完成本轮更新
       await new Promise((r) => setTimeout(r, 1000));
@@ -29,7 +29,6 @@ export function createCheckStatusTool(designerRef: { current: Designer | undefin
         designer.exportDesignerToMessage(),
       ]);
       return {
-        title: "查看当前状态",
         output: designerStatus,
       };
     },

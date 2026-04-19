@@ -8,6 +8,34 @@ import { useRequestInspector, type RequestSnapshot } from "./lib/use-request-ins
 import type { MemFS } from "./lib/mem-fs";
 import "./app.css";
 
+// ─── Theme Toggle ─────────────────────────────────────────────────────────────
+
+const THEME_KEY = "pg-theme";
+
+function useTheme() {
+  const [dark, setDark] = useState(() => {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved !== null) return saved === "dark";
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("pg-dark", dark);
+    localStorage.setItem(THEME_KEY, dark ? "dark" : "light");
+  }, [dark]);
+
+  const toggle = useCallback(() => setDark((d) => !d), []);
+  return { dark, toggle };
+}
+
+function ThemeToggle({ dark, onToggle }: { dark: boolean; onToggle: () => void }) {
+  return (
+    <button className="pg-theme-toggle" onClick={onToggle} title={dark ? "切换到浅色模式" : "切换到暗黑模式"}>
+      {dark ? "☀️" : "🌙"}
+    </button>
+  );
+}
+
 const GROUPS = groupCases(ALL_CASES);
 const GROUP_ICONS: Record<string, string> = {
   "网络中断": "🌐",
@@ -152,6 +180,8 @@ function InspectorPanel({ snapshots }: { snapshots: RequestSnapshot[] }) {
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
+  const { dark, toggle: toggleTheme } = useTheme();
+
   // 从 URL 读取初始 case（?case=xxx）
   const initialCaseId = new URLSearchParams(window.location.search).get("case");
   const initialCase = ALL_CASES.find(c => c.id === initialCaseId) ?? ALL_CASES[0] ?? null;
@@ -178,34 +208,42 @@ export default function App() {
 
   return (
     <div className="pg-layout">
-      {/* Case 侧边栏 */}
-      <aside className="pg-sidebar">
-        <div className="pg-sidebar-header">
-          <span className="pg-sidebar-title">🧪 Test Cases</span>
-          <span className="pg-case-count">{ALL_CASES.length}</span>
-        </div>
-        <div className="pg-sidebar-body">
-          {Object.entries(GROUPS).map(([group, cases]) => (
-            <div key={group} className="pg-group">
-              <div className="pg-group-label">
-                {GROUP_ICONS[group] ?? "📁"} {group}
-              </div>
-              {cases.map((c) => (
-                <button
-                  key={c.id}
-                  className={`pg-case-btn${activeCase?.id === c.id ? " active" : ""}`}
-                  onClick={() => handleSelectCase(c)}
-                >
-                  {c.name}
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-      </aside>
+      {/* 顶栏：主题切换 */}
+      <header className="pg-header">
+        <span className="pg-header-title">Playground</span>
+        <ThemeToggle dark={dark} onToggle={toggleTheme} />
+      </header>
 
-      {/* 主区域 */}
-      <main className="pg-main">
+      {/* Body: sidebar + main */}
+      <div className="pg-body">
+        {/* Case 侧边栏 */}
+        <aside className="pg-sidebar">
+          <div className="pg-sidebar-header">
+            <span className="pg-sidebar-title">🧪 Test Cases</span>
+            <span className="pg-case-count">{ALL_CASES.length}</span>
+          </div>
+          <div className="pg-sidebar-body">
+            {Object.entries(GROUPS).map(([group, cases]) => (
+              <div key={group} className="pg-group">
+                <div className="pg-group-label">
+                  {GROUP_ICONS[group] ?? "📁"} {group}
+                </div>
+                {cases.map((c) => (
+                  <button
+                    key={c.id}
+                    className={`pg-case-btn${activeCase?.id === c.id ? " active" : ""}`}
+                    onClick={() => handleSelectCase(c)}
+                  >
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        {/* 主区域 */}
+        <main className="pg-main">
         {activeCase && (
           <div className="pg-case-info">
             <div className="pg-case-info-left">
@@ -240,6 +278,7 @@ export default function App() {
           </div>
         </div>
       </main>
+      </div>
     </div>
   );
 }

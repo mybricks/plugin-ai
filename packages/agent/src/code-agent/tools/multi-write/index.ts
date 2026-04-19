@@ -72,7 +72,6 @@ IMPORTANT: All string values must use raw Unicode characters. Never escape any c
         .join("\n");
 
       return {
-        title: `${params.files.length} files written`,
         output: `Files written:\n${output}`,
         metadata: { files: summaries },
       };

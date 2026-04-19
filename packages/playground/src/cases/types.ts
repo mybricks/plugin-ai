@@ -1,6 +1,7 @@
 import type { TurnRecord } from "@agent/types";
 import type { RequestAsStreamFn } from "@request/types";
 import type { Tool } from "@agent/types";
+import type { SubAgentConfig, Sandbox } from "@agent/code-agent";
 import type { FsFile } from "../lib/mem-fs";
 
 export interface TestCase {
@@ -15,6 +16,8 @@ export interface TestCase {
   initialFiles?: FsFile[];
   request: RequestAsStreamFn;
   tools?: Tool[];
+  subAgents?: SubAgentConfig[];
+  createSubAgents?: (sandbox: Sandbox) => SubAgentConfig[];
   maskOptions?: {
     maxTurns?: number;
     maxAgeMinutes?: number;
@@ -27,5 +30,10 @@ export interface TestCase {
   agentOptions?: {
     maxSteps?: number;
     doomLoopThreshold?: number;
+    retry?: {
+      maxRetries?: number;
+      baseDelayMs?: number;
+      maxDelayMs?: number;
+    };
   };
 }

@@ -11,6 +11,8 @@ import {
 import { getCodeAgentSystemPrompt, type CodeAgentPromptOptions } from "./prompt";
 export type { CodeAgentPromptOptions };
 import { type SkillFile, resolveSkillMeta } from "./skills";
+import { createSubAgentTool, type SubAgentConfig } from "../sub-agent";
+export type { SubAgentConfig };
 
 export type { SkillFile };
 export { resolveSkillMeta };
@@ -75,6 +77,12 @@ export interface CodeAgentOptions extends Omit<AgentOptions, 'system'> {
    * 可用于注入项目特定规范、约束或上下文。
    */
   system?: string;
+  /**
+   * 子 Agent 配置列表。
+   * 配置后会自动注册一个 `call-sub-agent` 工具，LLM 可通过工具调用来发起子 Agent 任务。
+   * 不传或传空数组时不注册该工具。
+   */
+  subAgents?: SubAgentConfig[];
 }
 
 /** 虚拟 skills 路径前缀 */
@@ -99,7 +107,7 @@ const SKILLS_PREFIX = ".skills/";
  */
 export class CodeAgent extends Agent {
   constructor(options: CodeAgentOptions) {
-    const { sandbox, skills, system, ...agentOptions } = options;
+    const { sandbox, skills, system, subAgents, ...agentOptions } = options;
 
     // ── 包装 sandbox.getFiles()，追加 skills 虚拟文件 ─────────────────────────
     const wrappedSandbox: Sandbox | undefined = sandbox
@@ -120,7 +128,7 @@ export class CodeAgent extends Agent {
       : undefined;
 
     const sandboxTools: Tool[] = wrappedSandbox
-      ? [createReadTool(wrappedSandbox), createWriteTool(wrappedSandbox), createMultiWriteTool(wrappedSandbox), createEditTool(wrappedSandbox), createMultiEditTool(wrappedSandbox), createDeleteTool(wrappedSandbox)]
+      ? [createReadTool(wrappedSandbox), createWriteTool(wrappedSandbox), createEditTool(wrappedSandbox), createMultiEditTool(wrappedSandbox), createDeleteTool(wrappedSandbox)]
       : [];
 
     // ── sandbox.getContext 作为 getContextMessages ────────────────────────────
@@ -153,5 +161,12 @@ export class CodeAgent extends Agent {
       // 内置沙箱工具在前，外部注入工具（如 check_design_status）在后
       tools: [...sandboxTools, ...(agentOptions.tools ?? [])],
     });
+
+    // ── 注册 call-sub-agent 工具（需要 this，在 super() 之后处理）─────────────────
+    // 用懒引用 () => this 避免在 super() 前访问 this
+    if (subAgents?.length) {
+      const subAgentTool = createSubAgentTool(() => this, subAgents);
+      this.options.tools = [...(this.options.tools ?? []), subAgentTool];
+    }
   }
 }

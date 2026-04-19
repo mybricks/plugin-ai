@@ -5,6 +5,7 @@ import type { PromptSections } from "../prompts";
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { Designer, RegistSandBoxConfig } from "./types";
 import { createCheckStatusTool } from "./tools/check-status";
+import { createInitProjectTool } from "./tools/init-project";
 import { LoadingView, type ComChatStartViewProps, type LoadingViewProps } from "../ui/chat";
 import type { PrdRenderProps } from "../ui/renders/prd-render";
 import { ComChatStartViewWithStyles, PrdRenderWithStyles } from "../ui/renders/register";
@@ -205,17 +206,24 @@ function connectToAI(
 
   const designerRef: { current: Designer | undefined } = { current: designer };
   const checkStatusTool = createCheckStatusTool(designerRef);
+  const initProjectTool = createInitProjectTool(sandbox);
 
   const agent = new CodeAgent({
     key: agentKey,
     history: new IDBHistory({ dbName: "@plugin-ai/plugin/messages" }),
     request: requestAsStream,
     sandbox,
-    tools: [checkStatusTool, ...(tools ?? [])],
+    tools: [checkStatusTool, initProjectTool, ...(tools ?? [])],
     promptOptions,
     hooks,
     agentsMd,
     skills,
+    subAgents: [],
+    retry: {
+      maxRetries: 3,      // 总共 4 次尝试（首次 + 3 次重试）
+      baseDelayMs: 1000,  // 初始延迟 1 秒
+      maxDelayMs: 10000,  // 最大延迟 10 秒
+    },
     formatUserMessage: (params) => {
       const focusSnapshot = context.currentFocus;
       const ele = focusSnapshot?.focusArea?.ele;

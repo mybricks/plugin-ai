@@ -119,21 +119,40 @@ export type AgentEventMap = {
     step: number;
   };
 
+  /**
+   * LLM 请求重试（网络瞬时故障自动重试时触发）。
+   * 仅通知 UI "正在第 X 次重试，共 Y 次"，不影响状态机。
+   *   - `step`        当前 LLM 调用的 step 编号
+   *   - `attempt`     当前是第几次重试（从 1 开始）
+   *   - `maxRetries`  最大重试次数
+   */
+  "llm:retry": {
+    step: number;
+    attempt: number;
+    maxRetries: number;
+  };
+
   // ── Tool / Function Call ──────────────────────────────────────────────────
 
   /**
-   * 工具调用流式内容更新（LLM 输出 tool_calls 片段时逐帧触发）。
+   * 工具 args 流式输出（LLM 输出 tool_calls 片段时逐帧触发）。
    * 早于 tool:call（后者在参数完整解析后触发）。
-   * 用于在参数尚未完整时展示中间状态（如工具名、路径）。
-   *   - `callId`    工具调用 ID（与后续 tool:call / tool:result / tool:error 一致）
-   *   - `name`      工具名称（首帧即有值）
-   *   - `argsDelta` 当前帧 arguments 片段（增量原始字符串）
-   *   - `step`      所属 step 编号
+   * 用于在参数尚未完整时 UI 提前渲染工具卡片（如提取文件名、预览内容）。
+   *
+   * SSE 语义：delta 为增量片段，content 为截至当前的累积全量。
+   * UI 层直接使用 content 渲染，无需自己 append；断线重连时只需最新一帧即可恢复。
+   *
+   *   - `callId`  工具调用 ID（与后续 tool:call / tool:result / tool:error 一致）
+   *   - `name`    工具名称（首帧即有值）
+   *   - `delta`   当前帧 arguments 增量原始字符串
+   *   - `content` 截至当前 arguments 累积全量原始字符串
+   *   - `step`    所属 step 编号
    */
-  "tool:content": {
+  "tool:args": {
     callId: string;
     name: string;
-    argsDelta: string;
+    delta: string;
+    content: string;
     step: number;
   };
 
@@ -183,6 +202,25 @@ export type AgentEventMap = {
     error: any;
     step: number;
     endTime: number;
+  };
+
+  /**
+   * 工具执行中的进度更新（工具在执行过程中通过 context.emitProgress() 主动触发）。
+   *
+   * 语义：覆盖快照，每次 data 为当前完整状态，UI 直接替换上一帧。
+   * SSE 友好：断线重连时只需服务端补发最新一帧即可恢复 UI 状态，无需重放历史。
+   * data 结构由工具自定义，文本流式输出建议在 data 中携带累积全量而非 delta。
+   *
+   *   - `callId`  对应 tool:call 的 callId
+   *   - `name`    工具名称
+   *   - `data`    自定义进度数据（覆盖式，由工具定义结构）
+   *   - `step`    所属 step 编号
+   */
+  "tool:progress": {
+    callId: string;
+    name: string;
+    data: any;
+    step: number;
   };
 };
 

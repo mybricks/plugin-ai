@@ -50,7 +50,7 @@ export function useSession(agent: Agent | undefined) {
    * - llm:start       → push 新 iteration
    * - llm:content     → 实时写入当前 iteration content/thinkingContent
    * - llm:complete    → done=true 时更新 record.content；done=false 时记录 iteration endTime
-   * - tool:content    → 预创建 ToolCallRecord（流式展示）
+   * - tool:args      → 预创建 ToolCallView（argsContent 流式累积）
    * - tool:call       → 更新 ToolCallRecord args/startTime
    * - tool:result     → 更新工具结果
    * - tool:error      → 更新工具错误
@@ -182,7 +182,9 @@ export function useSession(agent: Agent | undefined) {
               ...iter,
               ...(isLast && iter.endTime === undefined ? { endTime: now } : {}),
               toolCalls: iter.toolCalls.map((t) =>
-                t.execEndTime === 0 ? { ...t, execEndTime: now } : t
+                t.execEndTime === 0
+                  ? { ...t, status: "error" as const, execEndTime: now, error: "Aborted" }
+                  : t
               ),
             };
           });
@@ -194,15 +196,28 @@ export function useSession(agent: Agent | undefined) {
       a.events.on("turn:error", ({ error }) => {
         pendingContent = "";
         pendingThinking = "";
-        update((r) => ({
-          ...r,
-          status: "error",
-          error: String((error as any)?.message ?? error),
-        }));
+        update((r) => {
+          const now = Date.now();
+          const errorMsg = String((error as any)?.message ?? error);
+          const iters = r.iterations.map((iter) => ({
+            ...iter,
+            toolCalls: iter.toolCalls.map((t) =>
+              t.status === "pending"
+                ? { ...t, status: "error" as const, execEndTime: t.execEndTime || now, error: errorMsg }
+                : t
+            ),
+          }));
+          return {
+            ...r,
+            status: "error",
+            error: errorMsg,
+            iterations: iters,
+          };
+        });
         pendingIdRef.current = null;
       }),
 
-      a.events.on("tool:content", ({ callId, name, argsDelta }) => {
+      a.events.on("tool:args", ({ callId, name, content }) => {
         update((r) => {
           if (r.iterations.length === 0) return r;
           const iters = [...r.iterations];
@@ -211,14 +226,13 @@ export function useSession(agent: Agent | undefined) {
           if (existing) {
             last.toolCalls = last.toolCalls.map((t) => {
               if (t.callId !== callId) return t;
-              const newArgsRaw = (t.argsRaw ?? "") + argsDelta;
-              const partialArgs = tryParsePartialArgs(newArgsRaw);
-              return { ...t, argsRaw: newArgsRaw, ...(partialArgs ? { args: partialArgs } : {}) };
+              const partialArgs = tryParsePartialArgs(content);
+              return { ...t, argsContent: content, ...(partialArgs ? { args: partialArgs } : {}) };
             });
           } else {
             last.toolCalls = [
               ...last.toolCalls,
-              { callId, name, args: {}, status: "success" as const, execStartTime: Date.now(), execEndTime: 0, argsRaw: argsDelta },
+              { callId, name, args: {}, status: "pending" as const, execStartTime: Date.now(), execEndTime: 0, argsContent: content },
             ];
           }
           iters[iters.length - 1] = last;
@@ -235,12 +249,12 @@ export function useSession(agent: Agent | undefined) {
           const existing = last.toolCalls.find((t) => t.callId === callId);
           if (existing) {
             last.toolCalls = last.toolCalls.map((t) =>
-              t.callId === callId ? { ...t, args, argsRaw: undefined, execStartTime: startTime } : t
+              t.callId === callId ? { ...t, args, argsContent: undefined, execStartTime: startTime } : t
             );
           } else {
             last.toolCalls = [
               ...last.toolCalls,
-              { callId, name, args, status: "success" as const, execStartTime: startTime, execEndTime: 0 },
+              { callId, name, args, status: "pending" as const, execStartTime: startTime, execEndTime: 0 },
             ];
           }
           iters[iters.length - 1] = last;
@@ -254,6 +268,10 @@ export function useSession(agent: Agent | undefined) {
 
       a.events.on("tool:error", ({ callId, error, endTime }) => {
         updateLastIterTool(callId, (t) => ({ ...t, status: "error", execEndTime: endTime, error }));
+      }),
+
+      a.events.on("tool:progress", ({ callId, data }) => {
+        updateLastIterTool(callId, (t) => ({ ...t, progress: data }));
       })
     );
   }, []);

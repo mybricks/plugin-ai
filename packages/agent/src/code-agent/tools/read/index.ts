@@ -67,7 +67,6 @@ export function createReadTool(adapter: Sandbox): Tool {
       if (!params.path) {
         const paths = files.map((f) => f.path);
         return {
-          title: "列出文件",
           output: paths.join("\n"),
           metadata: { files: paths },
         };
@@ -104,7 +103,6 @@ export function createReadTool(adapter: Sandbox): Tool {
       }
 
       return {
-        title: params.path,
         output,
         metadata: {
           path: file.path,

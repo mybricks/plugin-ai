@@ -97,7 +97,7 @@ export function useSessions() {
    * 事件流与数据结构对应关系：
    *   llm:start       → push 新 iteration（设 llmStartTime）
    *   llm:content     → 写当前 iteration 的 content / thinkingContent（暂存）
-   *   tool:content    → 在当前 iteration 预创建 ToolCallRecord（pending）
+   *   tool:args      → 在当前 iteration 预创建 ToolCallView（argsContent 流式累积）
    *   tool:call       → 更新当前 iteration 当前工具的 execStartTime / args
    *   tool:result     → 更新当前 iteration 当前工具 status=success / endTime
    *   tool:error      → 更新当前 iteration 当前工具 status=error / endTime
@@ -221,33 +221,31 @@ export function useSessions() {
         update((r) => ({ ...r, status: "pending", error: undefined }));
       }),
 
-      // tool:content — LLM 流式输出 tool_calls，在当前 iteration 预创建 ToolCallRecord
-      agent.events.on("tool:content", ({ callId, name, argsDelta }) => {
+      // tool:args — LLM 流式输出 tool_calls args，在当前 iteration 预创建 ToolCallView
+      // content 为累积全量，UI 直接使用无需自己 append（SSE 断线重连只需最新帧）
+      agent.events.on("tool:args", ({ callId, name, content }) => {
         update((r) => {
           if (r.iterations.length === 0) return r;
           const iters = [...r.iterations];
           const last = { ...iters[iters.length - 1] };
           const existing = last.toolCalls.find((t) => t.callId === callId);
           if (existing) {
-            // 已有：追加 argsRaw，尝试提取路径
             last.toolCalls = last.toolCalls.map((t) => {
               if (t.callId !== callId) return t;
-              const newArgsRaw = (t.argsRaw ?? "") + argsDelta;
-              const partialArgs = tryParsePartialArgs(newArgsRaw);
-              return { ...t, argsRaw: newArgsRaw, ...(partialArgs ? { args: partialArgs } : {}) };
+              const partialArgs = tryParsePartialArgs(content);
+              return { ...t, argsContent: content, ...(partialArgs ? { args: partialArgs } : {}) };
             });
           } else {
-            // 首帧：预创建 pending 记录
             last.toolCalls = [
               ...last.toolCalls,
               {
                 callId,
                 name,
                 args: {},
-                status: "success" as const, // 占位，tool:call 后更新
+                status: "pending" as const,
                 execStartTime: Date.now(),
                 execEndTime: 0,
-                argsRaw: argsDelta,
+                argsContent: content,
               },
             ];
           }
@@ -266,14 +264,14 @@ export function useSessions() {
           if (existing) {
             last.toolCalls = last.toolCalls.map((t) =>
               t.callId === callId
-                ? { ...t, args, argsRaw: undefined, execStartTime: startTime }
+                ? { ...t, args, argsContent: undefined, execStartTime: startTime }
                 : t
             );
           } else {
-            // 未预创建（onToolCallStream 未触发）
+            // 未预创建（tool:args 未触发）
             last.toolCalls = [
               ...last.toolCalls,
-              { callId, name, args, status: "success" as const, execStartTime: startTime, execEndTime: 0 },
+              { callId, name, args, status: "pending" as const, execStartTime: startTime, execEndTime: 0 },
             ];
           }
           iters[iters.length - 1] = last;
@@ -287,6 +285,10 @@ export function useSessions() {
 
       agent.events.on("tool:error", ({ callId, error, endTime }) => {
         updateLastIterTool(callId, (t) => ({ ...t, status: "error", execEndTime: endTime, error }));
+      }),
+
+      agent.events.on("tool:progress", ({ callId, data }) => {
+        updateLastIterTool(callId, (t) => ({ ...t, progress: data }));
       })
     );
   }, []);
