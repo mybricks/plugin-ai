@@ -125,7 +125,7 @@ export interface AgentOptions {
    * 用户附件也会被替换为文字占位符，以减少发给 LLM 的 token 量。
    * 不传则不遮蔽。
    */
-  mask?: MaskOptions;
+  mask?: MaskOptions | false;
   /**
    * 生命周期 hooks。
    */
@@ -195,6 +195,20 @@ export interface ForkOptions {
    * 不传则继承父 Agent 的 system。
    */
   system?: string;
+  /**
+   * 覆盖遮蔽配置。
+   * - 不传（undefined）：继承父 Agent 的 mask
+   * - 传 false：关闭遮蔽（适合 compact 场景，需要看到完整历史）
+   * - 传具体配置：使用指定遮蔽参数
+   */
+  mask?: MaskOptions | false;
+  /**
+   * 覆盖重试配置。
+   * - 不传（undefined）：继承父 Agent 的 retry
+   * - 传 false 或 { maxRetries: 0 }：禁用重试
+   * - 传具体配置：使用指定重试参数
+   */
+  retry?: RetryOptions | false;
 }
 
 // ─── ForkAgent ────────────────────────────────────────────────────────────────
@@ -344,12 +358,14 @@ function assembleMessages(
   // realtimeMessages 插在 userMessage 之前，确保用户消息始终紧贴 tail（或作为末尾）
   const assembled = [...baseMessages, ...realtimeMessages, userMessage, ...tail];
 
-  // 应用遮蔽（仅当配置了 mask）
+
+  // 应用遮蔽（默认开启，可通过 mask: false 显式关闭）
   // 遮蔽时跳过前缀（system/agentsMd/context/compact，不在 turns 中，不应被遮蔽）
-  if (options.mask) {
+  if (options.mask !== false) {
+    const maskOpts: MaskOptions = options.mask && typeof options.mask === "object" ? options.mask : {};
     const prefix = assembled.slice(0, historyStartIndex);
     const rest = assembled.slice(historyStartIndex);
-    const maskedRest = maskMessages(rest, turns, options.mask);
+    const maskedRest = maskMessages(rest, turns, maskOpts);
     return [...prefix, ...maskedRest];
   }
 
@@ -550,7 +566,7 @@ export class Agent {
       ...options,
       request: wrappedRequest,
       ...(hasSummary ? {} : { summary: { enabled: true } }),
-      ...(hasCompact ? {} : { compact: { enabled: true, maxTurns: 30 } }),
+      ...(hasCompact ? {} : { compact: { enabled: true, maxTurns: 15 } }),
     };
     this.key = options.key;
   }
@@ -824,6 +840,7 @@ export class Agent {
           endTime: iterEndTime,
           ...(llmResult.thinkingContent ? { thinkingContent: llmResult.thinkingContent } : {}),
           ...(effectiveAiRole ? { aiRole: effectiveAiRole } : {}),
+          ...(llmResult.usage ? { usage: llmResult.usage } : {}),
         };
         turn.iterations.push(currentIter);
         turn.thinkingContent += llmResult.thinkingContent;
@@ -1146,7 +1163,7 @@ export class Agent {
    * 可用于 autoSummary、autoCompact、subAgent 等场景。
    */
   createFork(forkOptions?: ForkAgentOptions): ForkAgent {
-    const { copyTurns, tools, aiRole } = forkOptions ?? {};
+    const { copyTurns, tools, aiRole, mask, retry } = forkOptions ?? {};
 
     // turns 快照：按 copyTurns 截取最近 N 轮，或全量
     const snapshotTurns =
@@ -1162,6 +1179,10 @@ export class Agent {
       ...(forkOptions && "tools" in forkOptions ? { tools } : {}),
       // system：不传=继承父；传了则覆盖
       ...(system !== undefined ? { system } : {}),
+      // mask：不传=继承父；传了（含 false）则覆盖
+      ...(mask !== undefined ? { mask } : {}),
+      // retry：不传=继承父；传了则覆盖（false 或具体配置）
+      ...(retry !== undefined ? { retry: retry === false ? { maxRetries: 0 } : retry } : {}),
       // fork 强制关闭 summary/compact，防止递归 fork
       summary: { enabled: false },
       compact: { enabled: false },
@@ -1291,7 +1312,7 @@ export class Agent {
 
 IMPORTANT: 不要调用工具！
 `;
-    const fork = this.createFork({ tools: [], copyTurns: 1 });
+    const fork = this.createFork({ tools: [], copyTurns: 1, retry: { maxRetries: 0 } });
 
     let lastContent = "";
     fork.events.on("llm:content", ({ content }) => {
@@ -1394,8 +1415,8 @@ IMPORTANT: 不要调用工具！
     if (successTurns.length === 0) return;
     const lastSuccessTurn = successTurns[successTurns.length - 1];
 
-    // fork 带全量历史，无工具
-    const fork = this.createFork({ tools: [] });
+    // fork 带全量历史，无工具，关闭遮蔽以看到完整历史
+    const fork = this.createFork({ tools: [], mask: false, retry: { maxRetries: 0 } });
 
     let lastContent = "";
     fork.events.on("llm:content", ({ content }) => {

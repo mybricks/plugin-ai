@@ -1,3 +1,5 @@
+import type { TokenUsage } from "./types";
+
 // ─── SSE 风格事件类型 ─────────────────────────────────────────────────────────
 //
 // 事件分三类：
@@ -86,16 +88,7 @@ export type AgentEventMap = {
   "llm:complete": {
     step: number;
     finishReason: string;
-    usage?: {
-      /** 输入 token 数（prompt tokens） */
-      inputTokens?: number;
-      /** 输出 token 数（completion tokens） */
-      outputTokens?: number;
-      /** 总 token 数 */
-      totalTokens?: number;
-      /** 缓存命中的输入 token 数（部分模型支持） */
-      cachedInputTokens?: number;
-    };
+    usage?: TokenUsage;
     /** 是否整轮最后一次 LLM 完成（false 表示还有后续 step） */
     done: boolean;
     /** LLM 结束响应的时间戳（Unix ms） */

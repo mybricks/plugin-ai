@@ -1,5 +1,21 @@
 import type { AgentEvents } from "./events";
 
+// ─── TokenUsage（通用 token 用量格式） ────────────────────────────────────────
+
+/**
+ * 通用 token 用量格式（驼峰命名）
+ * request 层负责将各服务商的响应转换为此格式
+ */
+export type TokenUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens?: number;
+  promptTokensDetails?: {
+    cachedTokens?: number;
+    cacheWriteTokens?: number;
+  };
+};
+
 // ─── Message（LLM 请求格式） ──────────────────────────────────────────────────
 
 export interface Message {
@@ -107,6 +123,8 @@ export interface TurnRecord {
     thinkingContent?: string;
     /** 本 step 实际使用的 aiRole（未指定时为空） */
     aiRole?: string;
+    /** 本次 LLM 请求的 token 用量 */
+    usage?: TokenUsage;
   }>;
 
   /** 本轮状态 */
@@ -131,13 +149,8 @@ export interface TurnRecord {
    */
   handoff?: string;
 
-  /** token 用量（turn:complete 时携带） */
-  usage?: {
-    inputTokens?: number;
-    outputTokens?: number;
-    totalTokens?: number;
-    cachedInputTokens?: number;
-  };
+  /** token 用量（turn:complete 时携带，存最后一次请求的 usage） */
+  usage?: TokenUsage;
 }
 
 // ─── VersionRecord ───────────────────────────────────────────────────────────
@@ -217,6 +230,11 @@ export interface History {
   update(key: string, turnId: string, patch: Partial<TurnRecord>): Promise<void>;
   /** 清空指定 key 的历史（同时应清除对应的 compact 记录） */
   clear(key: string): Promise<void>;
+  /**
+   * 批量导入历史记录（覆盖写）。
+   * 用于调试场景：从导出的 JSON 文件恢复历史。
+   */
+  import(key: string, turns: TurnRecord[]): Promise<void>;
   /**
    * 加载该 agentKey 的 compact 记录（不存在时返回 null）。
    */

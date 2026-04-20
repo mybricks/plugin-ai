@@ -103,6 +103,42 @@ export default function pluginAI(params: PluginAIParams): any {
   context.setPluginKey(pluginKey);
   context.pluginParams = { name, user, onUpload: upload, onDownload: download };
 
+  // ── 调试工具：导入历史记录 ─────────────────────────────────────────────────
+
+  (window as any).__importRxAIJson__ = async () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,.rxai";
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        
+        if (!Array.isArray(data.turns)) {
+          alert("无效的历史记录文件格式");
+          return;
+        }
+        
+        const currentAgentKey = context.getAgentKey();
+        if (!currentAgentKey) {
+          alert("当前没有聚焦的组件，请先点击一个组件后再导入");
+          return;
+        }
+        
+        const history = new IDBHistory({ dbName: "@plugin-ai/plugin/messages" });
+        await history.import(currentAgentKey, data.turns);
+        alert(`导入成功！agentKey: ${currentAgentKey}, turns: ${data.turns.length}`);
+      } catch (err) {
+        console.error("导入失败:", err);
+        alert(`导入失败: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    };
+    input.click();
+  };
+
   // ── window._sandbox_：sandbox 与 Plugin 的统一交互 API ─────────────────────
 
   setupSandbox({

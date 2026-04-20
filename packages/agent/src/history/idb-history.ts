@@ -139,6 +139,16 @@ export class IDBHistory implements History {
     });
   }
 
+  async import(key: string, turns: TurnRecord[]): Promise<void> {
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(this.storeName, "readwrite");
+      const req = tx.objectStore(this.storeName).put({ key, turns });
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  }
+
   async loadCompact(key: string): Promise<CompactRecord | null> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {

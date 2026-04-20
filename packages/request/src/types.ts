@@ -1,14 +1,6 @@
-export type TokenUsage = {
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens?: number;
-  cachedTokens?: number;
-  textTokens?: number;
-  reasoningTokens?: number;
-  claudeCacheCreation5MTokens?: number;
-  claudeCacheCreation1HTokens?: number;
-  modelMaxTokens?: number;
-};
+import type { TokenUsage } from "../../agent/src/types";
+
+export type { TokenUsage };
 
 export type ToolCallSpec = {
   id: string;

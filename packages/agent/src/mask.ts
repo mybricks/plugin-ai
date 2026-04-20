@@ -19,7 +19,7 @@ export interface MaskOptions {
   /**
    * 距离最新 turn 超过多少轮时触发遮蔽。
    * 例如设为 5，则最近 5 轮不遮蔽，更早的轮次遮蔽。
-   * 默认：15
+   * 默认：6
    */
   maxTurns?: number;
   /**
@@ -90,7 +90,7 @@ export function maskMessages(
   options: MaskOptions
 ): Message[] {
   const {
-    maxTurns = 15,
+    maxTurns = 6,
     maxAgeMinutes = DEFAULT_MAX_AGE_MINUTES,
     minContentLength = DEFAULT_MIN_CONTENT_LENGTH,
     toolPlaceholder = DEFAULT_TOOL_PLACEHOLDER,

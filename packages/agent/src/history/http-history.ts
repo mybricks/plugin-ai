@@ -78,6 +78,14 @@ export class HTTPHistory implements History {
     ]);
   }
 
+  async import(key: string, turns: TurnRecord[]): Promise<void> {
+    await fetch(`${this.baseUrl}/turns`, {
+      method: "POST",
+      headers: this.defaultHeaders(),
+      body: JSON.stringify({ key, turns }),
+    });
+  }
+
   async loadCompact(key: string): Promise<CompactRecord | null> {
     const res = await fetch(`${this.baseUrl}/compact?key=${encodeURIComponent(key)}`, {
       headers: this.defaultHeaders(),

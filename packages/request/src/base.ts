@@ -307,18 +307,14 @@ type ParsedSSEChunk = {
 function normalizeUsage(raw: Record<string, any> | undefined): TokenUsage | undefined {
   if (!raw || typeof raw.prompt_tokens !== "number" || typeof raw.completion_tokens !== "number") return undefined;
   const promptDetails = raw.prompt_tokens_details as Record<string, any> | undefined;
-  const completionDetails = raw.completion_tokens_details as Record<string, any> | undefined;
-  const cachedFromDetails = typeof promptDetails?.cached_tokens === "number" ? promptDetails.cached_tokens : undefined;
   return {
-    inputTokens: raw.prompt_tokens,
-    outputTokens: raw.completion_tokens,
+    promptTokens: raw.prompt_tokens,
+    completionTokens: raw.completion_tokens,
     totalTokens: typeof raw.total_tokens === "number" ? raw.total_tokens : undefined,
-    cachedTokens: typeof raw.cached_tokens === "number" ? raw.cached_tokens : cachedFromDetails,
-    textTokens: typeof promptDetails?.text_tokens === "number" ? promptDetails.text_tokens : undefined,
-    reasoningTokens: typeof completionDetails?.reasoning_tokens === "number" ? completionDetails.reasoning_tokens : undefined,
-    claudeCacheCreation5MTokens: typeof raw.claude_cache_creation_5_m_tokens === "number" ? raw.claude_cache_creation_5_m_tokens : undefined,
-    claudeCacheCreation1HTokens: typeof raw.claude_cache_creation_1_h_tokens === "number" ? raw.claude_cache_creation_1_h_tokens : undefined,
-    modelMaxTokens: typeof raw.model_max_tokens === "number" ? raw.model_max_tokens : undefined,
+    promptTokensDetails: {
+      cachedTokens: typeof promptDetails?.cached_tokens === "number" ? promptDetails.cached_tokens : undefined,
+      cacheWriteTokens: typeof promptDetails?.cache_write_tokens === "number" ? promptDetails.cache_write_tokens : undefined,
+    },
   };
 }
 
