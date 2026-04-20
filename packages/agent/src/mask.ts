@@ -19,7 +19,7 @@ export interface MaskOptions {
   /**
    * 距离最新 turn 超过多少轮时触发遮蔽。
    * 例如设为 5，则最近 5 轮不遮蔽，更早的轮次遮蔽。
-   * 默认：Infinity（不按轮次遮蔽）
+   * 默认：15
    */
   maxTurns?: number;
   /**
@@ -90,7 +90,7 @@ export function maskMessages(
   options: MaskOptions
 ): Message[] {
   const {
-    maxTurns = Infinity,
+    maxTurns = 15,
     maxAgeMinutes = DEFAULT_MAX_AGE_MINUTES,
     minContentLength = DEFAULT_MIN_CONTENT_LENGTH,
     toolPlaceholder = DEFAULT_TOOL_PLACEHOLDER,
@@ -101,20 +101,26 @@ export function maskMessages(
 
   const now = Date.now();
   const maxAgeMs = maxAgeMinutes * 60 * 1000;
-  const totalTurns = turns.length;
+
+  // ── 过滤有效轮次（跳过 iterations 为空的轮）────────────────────────────
+  // 没有任何 LLM 响应的空轮次不参与遮蔽计算
+  const validTurns = turns.filter(t => (t.iterations?.length ?? 0) >= 1);
+  const totalTurns = validTurns.length;
+
+  if (totalTurns === 0) return messages;
 
   // ── 计算遮蔽集合 ─────────────────────────────────────────────────────────
 
   /** 需要遮蔽的 tool_call_id 集合 */
   const maskedCallIds = new Set<string>();
-  /** 需要遮蔽附件的 turn 索引（对应 turns 数组的索引）*/
+  /** 需要遮蔽附件的 turn 索引（对应原始 turns 数组的索引）*/
   const maskedTurnIndices = new Set<number>();
 
   for (let i = 0; i < totalTurns; i++) {
-    const turn = turns[i];
+    const turn = validTurns[i];
     if (turn.status !== "success") continue;
 
-    // 距当前最新 turn 的轮数（0 = 最新，totalTurns-1 = 最旧）
+    // 距当前最新有效 turn 的轮数（0 = 最新，totalTurns-1 = 最旧）
     const turnsAgo = totalTurns - 1 - i;
     const ageMs = now - (turn.endTime ?? turn.startTime);
 
@@ -124,7 +130,9 @@ export function maskMessages(
 
     if (!shouldMask) continue;
 
-    maskedTurnIndices.add(i);
+    // 找到该 turn 在原始 turns 数组中的索引
+    const originalIndex = turns.indexOf(turn);
+    maskedTurnIndices.add(originalIndex);
 
     // 收集该 turn 所有迭代中的 toolCall id
     for (const iter of turn.iterations ?? []) {
@@ -173,7 +181,6 @@ export function maskMessages(
   // 标记 messages 中每条 user 消息对应的 turn index（-1 表示非 history user 消息）
   const userMsgTurnIndex: Map<number, number> = new Map();
 
-  let turnCursor = 0;
   // 找到 history messages 的起始位置：跳过 system + agentsMd user message
   // 方法：先数出 history 中有多少条 user 消息，然后倒推
   // 更简单的方法：正向遍历，前 N 条 user 消息（N = successTurnIndices.length）
@@ -272,16 +279,19 @@ export function computeHandoffTurnIds(
   if (!options.handoff?.enabled) return result;
 
   const {
-    maxTurns = Infinity,
+    maxTurns = 8,
     maxAgeMinutes = DEFAULT_MAX_AGE_MINUTES,
   } = options;
 
   const now = Date.now();
   const maxAgeMs = maxAgeMinutes * 60 * 1000;
-  const totalTurns = turns.length;
+
+  // 过滤有效轮次（跳过 iterations 为空的轮）
+  const validTurns = turns.filter(t => (t.iterations?.length ?? 0) >= 2);
+  const totalTurns = validTurns.length;
 
   for (let i = 0; i < totalTurns; i++) {
-    const turn = turns[i];
+    const turn = validTurns[i];
     if (turn.status !== "success" || turn.retried) continue;
 
     const turnsAgo = totalTurns - 1 - i;
