@@ -117,7 +117,8 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
       const fileMap = new Map(files.map((f) => [f.path, f.content]));
 
       // 对每个编辑操作执行替换
-      const updates: Array<{ path: string; content: string }> = [];
+      // 用 Map 存储，确保同一路径只保留最终版本
+      const updates = new Map<string, string>();
       const results: Array<{ path: string; strategy?: string; error?: string }> = [];
 
       for (const edit of params.edits) {
@@ -141,7 +142,7 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
 
         // 更新 fileMap 以支持对同一文件的多次编辑
         fileMap.set(edit.path, result.newContent!);
-        updates.push({ path: edit.path, content: result.newContent! });
+        updates.set(edit.path, result.newContent!);
         results.push({ path: edit.path, strategy: result.strategy });
       }
 
@@ -152,9 +153,10 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
         throw new ToolValidationError(`Some edits failed:\n${errorMessages}`);
       }
 
-      // 批量写入更新后的文件
+      // 批量写入更新后的文件（去重后）
+      const filesToWrite = Array.from(updates.entries()).map(([path, content]) => ({ path, content }));
       try {
-        await adapter.updateFiles(updates);
+        await adapter.updateFiles(filesToWrite);
       } catch (err) {
         throw new ToolValidationError(
           `Failed to write files: ${err instanceof Error ? err.message : String(err)}`

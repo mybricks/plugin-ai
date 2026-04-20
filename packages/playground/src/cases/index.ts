@@ -53,6 +53,7 @@ import {
   initProjectLongWaitCase,
   initProjectRetryCase,
 } from "./init-project";
+import { multiEditSameFileCase } from "./multi-edit";
 
 export type { TestCase } from "./types";
 
@@ -79,6 +80,7 @@ export const ALL_CASES: TestCase[] = [
   toolWriteUnicodeEscapeCase,
   toolWriteUnicodeMidStreamCase,
   customSlowToolCase,
+  multiEditSameFileCase,
   // 多轮 ReAct
   multiTurnNormalCase,
   multiTurnMidErrorCase,

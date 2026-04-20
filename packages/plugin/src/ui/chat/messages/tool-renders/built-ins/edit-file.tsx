@@ -21,26 +21,14 @@ export const EditFileRenderer = ({ tool }: { tool: ToolRecord }) => {
 
   const newStr: string = tool.args?.new_str ?? "";
   const oldStr: string = tool.args?.old_str ?? "";
-  const isDelete = newStr === "" && oldStr !== "";
-  if (isDelete) {
-    return (
-      <CodeCard
-        tool={tool}
-        icon={<Pencil />}
-        title={title}
-        content={oldStr}
-        isDelete
-      />
-    );
-  }
-
+  
   return (
     <CodeCard
       tool={tool}
       icon={<Pencil />}
       title={title}
-      content={newStr}
-      diffMode={{ oldStr, newStr }}
+      content={newStr || oldStr}
+      diffMode={oldStr ? { oldStr, newStr } : undefined}
     />
   );
 };

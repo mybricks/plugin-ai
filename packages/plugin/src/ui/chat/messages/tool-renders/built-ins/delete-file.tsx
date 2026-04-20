@@ -34,7 +34,6 @@ export const DeleteFileRenderer = ({ tool }: { tool: ToolRecord }) => {
       icon={<Delete />}
       title={title}
       content={content}
-      isDelete
     />
   );
 };

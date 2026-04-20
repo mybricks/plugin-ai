@@ -171,7 +171,6 @@ export interface CodeCardProps {
   icon: React.ReactElement;
   title: string;
   content: string;
-  isDelete?: boolean;
   lineMeta?: string | null;
   diffMode?: { oldStr: string; newStr: string };
   /** 是否展示代码内容区域，默认 true */
@@ -212,7 +211,7 @@ export const StreamingCodeCard = ({ tool, icon, title, content, lang: langOverri
   );
 };
 
-export const CodeCard = ({ tool, icon, title, content, isDelete, lineMeta, diffMode, showCode = true }: CodeCardProps) => {
+export const CodeCard = ({ tool, icon, title, content, lineMeta, diffMode, showCode = true }: CodeCardProps) => {
   const [collapsed, setCollapsed] = useState(false);
   const [diffBroken, setDiffBroken] = useState(false);
   const lang = detectLang(tool.args?.path ?? "");
@@ -251,7 +250,7 @@ export const CodeCard = ({ tool, icon, title, content, isDelete, lineMeta, diffM
             onError={() => setDiffBroken(true)}
           />
         ) : content ? (
-          <pre className={`${css["code-card-body"]}${isDelete ? ` ${css["code-card-body-delete"]}` : ""}`}>
+          <pre className={css["code-card-body"]}>
             <code className={`language-${lang}`}>{content}</code>
           </pre>
         ) : null
@@ -268,11 +267,10 @@ export interface BatchItemProps {
   name: string;
   content?: string;
   diffMode?: { oldStr: string; newStr: string };
-  isDelete?: boolean;
   streaming?: boolean;
 }
 
-export const BatchItem = ({ tool, path, name, content, diffMode, isDelete, streaming }: BatchItemProps) => {
+export const BatchItem = ({ tool, path, name, content, diffMode, streaming }: BatchItemProps) => {
   const [collapsed, setCollapsed] = useState(false);
   const [diffBroken, setDiffBroken] = useState(false);
   const lang = detectLang(path);
@@ -316,7 +314,7 @@ export const BatchItem = ({ tool, path, name, content, diffMode, isDelete, strea
             bodyClass={`${css["code-card-body"]} ${css["batch-item-body"]}`}
           />
         ) : content ? (
-          <pre className={`${css["code-card-body"]} ${css["batch-item-body"]}${isDelete ? ` ${css["batch-item-body-delete"]}` : ""}`}>
+          <pre className={`${css["code-card-body"]} ${css["batch-item-body"]}`}>
             <code className={`language-${lang}`}>{content}</code>
           </pre>
         ) : null

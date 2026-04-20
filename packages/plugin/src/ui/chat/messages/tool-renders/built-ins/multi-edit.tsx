@@ -28,7 +28,6 @@ export const MultiEditRenderer = ({ tool }: { tool: ToolRecord }) => {
     const name = shortPath(edit.path, paths);
     const oldStr = edit.old_str ?? "";
     const newStr = edit.new_str ?? "";
-    const isDelete = !isPending && newStr === "" && oldStr !== "";
     const streamContent = newStr || oldStr;
     const isLastAndPending = isPending && idx === edits.length - 1;
     return (
@@ -37,9 +36,8 @@ export const MultiEditRenderer = ({ tool }: { tool: ToolRecord }) => {
         tool={tool}
         path={edit.path}
         name={name}
-        content={isDelete ? oldStr : (isPending ? streamContent : newStr)}
-        diffMode={!isPending && !isDelete && oldStr ? { oldStr, newStr } : undefined}
-        isDelete={isDelete}
+        content={isPending ? streamContent : newStr}
+        diffMode={!isPending && oldStr ? { oldStr, newStr } : undefined}
         streaming={isLastAndPending}
       />
     );
