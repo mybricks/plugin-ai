@@ -40,7 +40,7 @@ import {
   retrySuccessCase,
   maxStepsCase,
 } from "./edge-cases";
-import { compactTriggerCase, compactWithToolsCase } from "./compact";
+import { compactTriggerCase, compactWithToolsCase, compactWarmupByUsageCase, compactErrorCase, compactEmptyResponseCase, compactNoContentCase } from "./compact";
 import { markdownRichCase, userMessageWithLinksCase, streamingMarkdownCase, toolThenEmptyContentCase } from "./ui-render";
 import {
   initProjectSingleFileCase,
@@ -99,6 +99,10 @@ export const ALL_CASES: TestCase[] = [
   // Compact
   compactTriggerCase,
   compactWithToolsCase,
+  compactWarmupByUsageCase,
+  compactErrorCase,
+  compactEmptyResponseCase,
+  compactNoContentCase,
   // UI 渲染
   markdownRichCase,
   userMessageWithLinksCase,

@@ -1,4 +1,4 @@
-import type { TurnRecord, ToolCallRecord } from "@agent/types";
+import type { TurnRecord, ToolCallRecord, TokenUsage } from "@agent/types";
 
 let _idCounter = 1;
 const genId = () => `fixture-${Date.now()}-${_idCounter++}`;
@@ -110,6 +110,34 @@ export function makeTextHistory(
       endTime: base + i * 3000 + 2000,
     })
   );
+}
+
+/**
+ * 快速生成带 usage 的 N 轮纯文本对话历史，用于测试 compact token 阈值触发。
+ */
+export function makeTextHistoryWithUsage(
+  pairs: Array<{ user: string; assistant: string; usage?: TokenUsage }>,
+  /** 首轮开始时间（Unix ms），默认 1 小时前 */
+  baseTime?: number
+): TurnRecord[] {
+  const base = baseTime ?? Date.now() - 60 * 60 * 1000;
+  return pairs.map((p, i) => {
+    const turn = makeTurn({
+      userText: p.user,
+      content: p.assistant,
+      startTime: base + i * 3000,
+      endTime: base + i * 3000 + 2000,
+    });
+    if (p.usage) {
+      // 给 iteration 添加 usage
+      if (turn.iterations.length > 0) {
+        turn.iterations[0].usage = p.usage;
+      }
+      // 给 turn 添加 usage（汇总）
+      turn.usage = p.usage;
+    }
+    return turn;
+  });
 }
 
 /**

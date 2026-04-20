@@ -1,7 +1,7 @@
 import { randomUUID } from "./uuid";
 import type { RequestAsStreamFn, ToolDescriptor } from "../../request/src";
 import { AgentEvents } from "./events";
-import type { CompactRecord, Message, History, Tool, TurnRecord, ToolCallRecord, BoundHistory } from "./types";
+import type { CompactRecord, Message, History, Tool, TurnRecord, ToolCallRecord, BoundHistory, TokenUsage } from "./types";
 import { turnsToMessages, bindHistory } from "./types";
 import { maskMessages, computeHandoffTurnIds, type MaskOptions } from "./mask";
 import { wrapRequestWithRetry, type RetryOptions } from "./retry";
@@ -9,6 +9,14 @@ import { wrapRequestWithRetry, type RetryOptions } from "./retry";
 export { AgentEvents };
 export type { Message, History, Tool, TurnRecord, ToolCallRecord };
 export type { CompactRecord, MaskOptions, BoundHistory };
+
+// ─── Compact 阈值常量 ────────────────────────────────────────────────────────
+/** 默认上下文窗口大小（token 数） */
+const DEFAULT_CONTEXT_WINDOW = 200_000;
+/** 预留给模型输出的 token 数 */
+const COMPACT_RESERVE_OUTPUT = 20_000;
+/** 缓冲区大小（防止精确边界触发） */
+const COMPACT_BUFFER = 13_000;
 
 // ─── ToolExecutionContext ─────────────────────────────────────────────────────
 
@@ -139,14 +147,26 @@ export interface AgentOptions {
     enabled: boolean;
   };
   /**
-   * compact 配置（best-effort，失败只 log 不影响主流程）。
-   * 当成功的 turn 数超过 maxTurns 时，fork 一个 Agent 对所有历史生成摘要，
-   * 并将摘要以 CompactRecord 形式单独存储到 History。
+   * compact 配置。
+   * 触发条件：优先通过 token 阈值判断（需 usage 字段有值）；usage 缺失时降级为轮次判断。
+   * 触发时机：双时机策略——
+   *   1. turn 结束后异步（fire-and-forget），尽早完成压缩
+   *   2. requestAI 前同步阻塞（buildMessages 之前），确保 compactRecord 最新
+   *      若后置已压缩好（compactRecord 游标覆盖最新 success turn），前置直接跳过
    */
   compact?: {
     /** 是否启用自动 compact，默认 true */
     enabled?: boolean;
-    /** 超过多少轮成功 turn 时触发 compact，默认 30 */
+    /**
+     * 模型上下文窗口大小（token 数），用于计算 compact 触发阈值。
+     * 阈值 = contextWindow - 20000（预留输出）- 13000（缓冲区）
+     * 默认 200,000
+     */
+    contextWindow?: number;
+    /**
+     * usage 不可用时的降级：超过多少轮成功 turn 时触发 compact。
+     * 默认 15
+     */
     maxTurns?: number;
   };
   /**
@@ -416,6 +436,7 @@ function callLLM(
     let toolCalls: Array<{ id: string; name: string; args: any }> = [];
     let finishReason = "unknown";
     let aborted = false;
+    let usageFromCallback: TokenUsage | undefined = undefined;
     // index → { callId, name, argsRaw } 映射（在 callLLM 内累积，用于 JSON 解析）
     const indexToCallInfo = new Map<number, { callId: string; name: string; argsRaw: string }>();
 
@@ -442,7 +463,10 @@ function callLLM(
         complete: (usage?: any) => {
           signal.removeEventListener("abort", onAbort);
           if (aborted) return;
-          resolve({ content, thinkingContent, toolCalls, finishReason, usage, aborted: false });
+          const isValidUsage = (u: any): u is TokenUsage =>
+            u != null && typeof u === "object" && "promptTokens" in u;
+          const safeUsage = isValidUsage(usage) ? usage : isValidUsage(usageFromCallback) ? usageFromCallback : undefined;
+          resolve({ content, thinkingContent, toolCalls, finishReason, usage: safeUsage, aborted: false });
         },
         error: (e: any) => {
           signal.removeEventListener("abort", onAbort);
@@ -505,6 +529,10 @@ function callLLM(
         onFinishReason: (reason: string) => {
           if (aborted) return;
           finishReason = reason;
+        },
+        onUsage: (usage: TokenUsage) => {
+          if (aborted) return;
+          usageFromCallback = usage;
         },
       },
       ...rest,
@@ -1122,6 +1150,28 @@ export class Agent {
       console.warn("[Agent] hooks.beforeTurn failed:", e);
     }
 
+    // ── 前置阻塞 compact（buildMessages 之前执行，确保 compactRecord 最新）
+    // 1. 若不需要 compact（未达阈值），跳过
+    // 2. 若后置已压缩好（compactRecord 游标覆盖最新 success turn），跳过
+    // 3. 否则同步执行 compact，成功后继续，失败则 emit warmup error 并中断
+    if (this._shouldAutoCompact() && !this._isAlreadyCompacted()) {
+      this.events.emit("agent:warmup", { status: "loading", message: "启动中..." });
+      try {
+        await this._runAutoCompact();
+        this.events.emit("agent:warmup", { status: "success", message: "启动成功" });
+      } catch (e) {
+        this.events.emit("agent:warmup", { status: "error", message: "启动失败，建议清空历史记录再重新使用" });
+        // 中断本次 requestAI
+        turn.endTime = Date.now();
+        turn.status = "error";
+        turn.error = "启动失败，建议清空历史记录再重新使用";
+        await this._persistTurn(turn);
+        this.events.emit("turn:error", { error: new Error("启动失败，建议清空历史记录再重新使用") });
+        this._onTurnEnd(turn);
+        throw e;
+      }
+    }
+
     // 构建基础 messages（system + agentsMd + context + compact + history），每轮 turn 只算一次
     let context: { baseMessages: Message[]; historyStartIndex: number };
     try {
@@ -1241,9 +1291,7 @@ export class Agent {
     }
 
     if (compact != null && compact.enabled !== false) {
-      const maxTurns = compact.maxTurns ?? 30;
-      const successTurns = this.turns.filter((t) => t.status === "success");
-      if (successTurns.length > maxTurns) {
+      if (this._shouldAutoCompact()) {
         void this._runAutoCompact().catch((e) => {
           console.warn("[Agent] compact failed:", e);
         });
@@ -1352,6 +1400,49 @@ IMPORTANT: 不要调用工具！
   // ─── autoCompact ─────────────────────────────────────────────────────────
 
   /**
+   * 判断是否需要触发 autoCompact。
+   * 优先通过 token 阈值（promptTokens）判断；usage 缺失时降级为轮次判断。
+   */
+  private _shouldAutoCompact(): boolean {
+    const cfg = this.options.compact;
+    if (!cfg || cfg.enabled === false) return false;
+
+    const successTurns = this.turns.filter((t) => t.status === "success");
+
+    // 优先：token 阈值判断
+    const lastUsage = [...successTurns].reverse().find((t) => t.usage)?.usage;
+    const rawPromptTokens = lastUsage?.promptTokens;
+    const promptTokens = rawPromptTokens != null ? Number(rawPromptTokens) : NaN;
+    if (!isNaN(promptTokens) && promptTokens > 0) {
+      const contextWindow = cfg.contextWindow ?? DEFAULT_CONTEXT_WINDOW;
+      // 阈值 = (contextWindow - 预留输出) - 缓冲区
+      const threshold = contextWindow - COMPACT_RESERVE_OUTPUT - COMPACT_BUFFER;
+      // const pct = ((promptTokens / threshold) * 100).toFixed(1);
+      // const remaining = threshold - promptTokens;
+      // console.log(
+      //   `[Agent] 上下文占比: ${pct}% (${promptTokens} / ${threshold})，距阈值还剩 ${remaining} tokens`
+      // );
+      return promptTokens >= threshold;
+    }
+
+    // 降级：轮次判断
+    const maxTurns = cfg.maxTurns ?? 15;
+    return successTurns.length > maxTurns;
+  }
+
+  /**
+   * 判断 compactRecord 是否已覆盖当前所有 success turns（即后置已压缩好）。
+   * 依据：compactRecord.upToTurnId === 最新 success turn 的 id
+   */
+  private _isAlreadyCompacted(): boolean {
+    if (!this.compactRecord) return false;
+    const successTurns = this.turns.filter((t) => t.status === "success");
+    const lastSuccessTurn = successTurns[successTurns.length - 1];
+    if (!lastSuccessTurn) return false;
+    return this.compactRecord.upToTurnId === lastSuccessTurn.id;
+  }
+
+  /**
    * fork 一个无工具 Agent，对所有历史生成完整摘要，
    * 将摘要以 CompactRecord 形式单独存储到 History（不替换 turns）。
    * buildMessages 时会读取 compactRecord，用游标分割历史：
@@ -1360,7 +1451,7 @@ IMPORTANT: 不要调用工具！
    */
   private async _runAutoCompact(): Promise<void> {
     const COMPACT_PROMPT =
-      "你的任务是创建一份详细的对话总结，重点关注用户的明确请求和你之前的操作。这份总结应全面涵盖技术细节、代码模式和架构决策，这些内容对于后续的开发工作至关重要，同时又不丢失上下文。"
+      "你的任务是创建一份详细的对话总结，重点关注用户的明确请求和你之前的操作。这份总结应全面涵盖技术细节、代码模式和架构决策，这些内容对于后续的开发工作至关重要，同时又不丢失上下文。" + 
       "请对上方完整的对话历史进行总结，用 <compact></compact> 标签包裹内容。" +
       "总结将替代原有对话历史，请确保内容足够详细，以便对话可以连贯继续。不要使用工具。";
     
@@ -1425,13 +1516,13 @@ IMPORTANT: 不要调用工具！
 
     await fork.requestAI({ message: COMPACT_PROMPT });
 
-    if (!lastContent) return;
+    if (!lastContent) throw new Error("compact fork 返回空内容");
 
-    // 解析 <compact>...</compact> 标签内容，未命中则不写入
+    // 解析 <compact>...</compact> 标签内容，未命中则抛错
     const match = lastContent.match(/<compact>([\s\S]*?)<\/compact>/);
-    if (!match) return;
+    if (!match) throw new Error("compact fork 返回内容不含 <compact> 标签");
     const compactText = match[1].trim();
-    if (!compactText) return;
+    if (!compactText) throw new Error("compact fork 返回 <compact> 标签内容为空");
 
     const compactRecord: CompactRecord = {
       upToTurnId: lastSuccessTurn.id,

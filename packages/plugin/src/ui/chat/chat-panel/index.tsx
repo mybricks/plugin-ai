@@ -55,7 +55,7 @@ const ChatPanel = ({
   const [loading, setLoading] = useState(() => context.aiQueue.isLoading(agentKey));
   const [pendingQueue, setPendingQueue] = useState<QueueItem[]>(() => context.aiQueue.getQueue(agentKey));
 
-  const { messages, syncAgent, subscribeSession, clearSession } = useSession(agent);
+  const { messages, warmupStatus, syncAgent, subscribeSession, clearSession } = useSession(agent);
 
   // 同步历史 + 订阅事件
   useEffect(() => {
@@ -122,6 +122,7 @@ const ChatPanel = ({
           user={user}
           copilot={copilot}
           agent={agent}
+          warmupStatus={warmupStatus}
           renderUserMessage={renderUserMessage}
           onRetry={(id: string) => {
             if (!agent) return;

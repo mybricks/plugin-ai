@@ -215,6 +215,19 @@ export type AgentEventMap = {
     data: any;
     step: number;
   };
+
+  /**
+   * Agent 启动前置操作的状态通知（如 autoCompact）。
+   * 纯文本展示，不持久化到历史记录。
+   * UI 层收到后覆盖展示最新状态即可。
+   *
+   *   - `status`   当前状态：loading=进行中 / success=成功 / error=失败
+   *   - `message`  展示给用户的纯文本消息
+   */
+  "agent:warmup": {
+    status: "loading" | "success" | "error";
+    message: string;
+  };
 };
 
 type EventListener<T> = (data: T) => void;
