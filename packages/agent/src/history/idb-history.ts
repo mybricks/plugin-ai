@@ -236,25 +236,51 @@ export class IDBHistory implements History {
 
   async updateVersion(
     versionId: string,
-    patch: Partial<Pick<VersionRecord, "summary">>
+    patch: Partial<Pick<VersionRecord, "summary">> & { files?: VersionFile[] }
   ): Promise<void> {
     const db = await this.getDB();
-    // 先读出现有记录再合并写回，保留 agentKey 索引字段
-    const existing: (VersionRecord & { agentKey: string }) | undefined = await new Promise(
-      (resolve, reject) => {
-        const tx = db.transaction(this.versionMetaStoreName, "readonly");
-        const req = tx.objectStore(this.versionMetaStoreName).get(versionId);
-        req.onsuccess = () => resolve(req.result ?? undefined);
-        req.onerror = () => reject(req.error);
+
+    // 检查是否有不支持的字段
+    const allowedKeys = ["summary", "files"] as const;
+    const patchKeys = Object.keys(patch) as (keyof typeof patch)[];
+    const invalidKeys = patchKeys.filter((key) => !allowedKeys.includes(key));
+    if (invalidKeys.length > 0) {
+      console.warn(`[updateVersion] Unsupported fields: ${invalidKeys.join(", ")}`);
+    }
+
+    // 处理 summary 更新
+    if (patch.summary !== undefined) {
+      // 先读出现有记录再合并写回，保留 agentKey 索引字段
+      const existing: (VersionRecord & { agentKey: string }) | undefined = await new Promise(
+        (resolve, reject) => {
+          const tx = db.transaction(this.versionMetaStoreName, "readonly");
+          const req = tx.objectStore(this.versionMetaStoreName).get(versionId);
+          req.onsuccess = () => resolve(req.result ?? undefined);
+          req.onerror = () => reject(req.error);
+        }
+      );
+      if (existing) {
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(this.versionMetaStoreName, "readwrite");
+          const updated = { ...existing, summary: patch.summary };
+          const req = tx.objectStore(this.versionMetaStoreName).put(updated);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
       }
-    );
-    if (!existing) return;
-    const updated = { ...existing, ...patch };
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.versionMetaStoreName, "readwrite");
-      const req = tx.objectStore(this.versionMetaStoreName).put(updated);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-    });
+    }
+
+    // 处理 files 更新
+    if (patch.files !== undefined) {
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(this.versionFilesStoreName, "readwrite");
+        const req = tx.objectStore(this.versionFilesStoreName).put({
+          versionId,
+          files: patch.files,
+        });
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
+    }
   }
 }

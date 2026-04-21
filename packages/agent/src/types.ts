@@ -302,9 +302,13 @@ export interface History {
   getVersion(versionId: string): Promise<VersionRecord | null>;
 
   /**
-   * 更新版本的部分元数据字段（当前仅支持 summary 的异步写入）。
+   * 更新版本的部分字段（支持 summary 和 files 的修改）。
+   * 其他字段会触发 console.warn。
    */
-  updateVersion(versionId: string, patch: Partial<Pick<VersionRecord, 'summary'>>): Promise<void>;
+  updateVersion(
+    versionId: string,
+    patch: Partial<Pick<VersionRecord, 'summary'>> & { files?: VersionFile[] }
+  ): Promise<void>;
 }
 
 // ─── BoundHistory ─────────────────────────────────────────────────────────────
@@ -321,7 +325,10 @@ export interface BoundHistory {
   addVersion(record: VersionRecord, files: VersionFile[]): Promise<void>;
   getVersionFiles(versionId: string): Promise<VersionFile[]>;
   getVersion(versionId: string): Promise<VersionRecord | null>;
-  updateVersion(versionId: string, patch: Partial<Pick<VersionRecord, 'summary'>>): Promise<void>;
+  updateVersion(
+    versionId: string,
+    patch: Partial<Pick<VersionRecord, 'summary'>> & { files?: VersionFile[] }
+  ): Promise<void>;
 }
 
 /**
