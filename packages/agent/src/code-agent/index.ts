@@ -150,6 +150,7 @@ export class CodeAgent extends Agent {
             {
               role: "assistant",
               content: "",
+              reasoning_content: "查看下代码",
               tool_calls: [{
                 id: toolCallId,
                 type: "function",
@@ -159,7 +160,8 @@ export class CodeAgent extends Agent {
             {
               role: "tool",
               tool_call_id: toolCallId,
-              content
+              content,
+              reasoning_content: "查看下代码",
             }
           ];
         }
