@@ -1,13 +1,13 @@
 import { randomUUID } from "./uuid";
 import type { RequestAsStreamFn, ToolDescriptor } from "../../request/src";
 import { AgentEvents } from "./events";
-import type { CompactRecord, Message, History, Tool, TurnRecord, ToolCallRecord, BoundHistory, TokenUsage } from "./types";
-import { turnsToMessages, bindHistory } from "./types";
+import type { CompactRecord, Message, History, Tool, TurnRecord, ToolCallRecord, BoundHistory, TokenUsage, WarmupIter } from "./types";
+import { turnsToMessages, bindHistory, getLLMIterations } from "./types";
 import { maskMessages, computeHandoffTurnIds, type MaskOptions } from "./mask";
 import { wrapRequestWithRetry, type RetryOptions } from "./retry";
 
 export { AgentEvents };
-export type { Message, History, Tool, TurnRecord, ToolCallRecord };
+export type { Message, History, Tool, TurnRecord, ToolCallRecord, WarmupIter };
 export type { CompactRecord, MaskOptions, BoundHistory };
 
 // ─── Compact 阈值常量 ────────────────────────────────────────────────────────
@@ -288,11 +288,7 @@ async function buildMessages(
     ? [
         {
           role: "user",
-          content: "<system-reminder>\nThe following is a summary of the conversation history that has been compacted:\n</system-reminder>",
-        },
-        {
-          role: "assistant",
-          content: compactRecord.content,
+          content: `<system-reminder>\nThe following is a summary of the conversation history that has been compacted:\n${compactRecord.content}\n</system-reminder>`,
         },
       ]
     : [];
@@ -663,8 +659,8 @@ export class Agent {
       return;
     }
 
-    // 第一步失败：打 retried 标记，不再参与消息构建，重新发起请求
-    if (turn.iterations.length === 0) {
+    // 第一步失败（无 LLM iter）：打 retried 标记，不再参与消息构建，重新发起请求
+    if (getLLMIterations(turn.iterations).length === 0) {
       turn.retried = true;
       await this._persistTurn(turn);
       await this.requestAI({
@@ -685,9 +681,10 @@ export class Agent {
     const turnsWithoutRetried = this.turns.filter(t => t.id !== turn.id);
     const context = await buildMessages(this.options, turnsWithoutRetried, this.compactRecord);
 
-    // 从 iterations 重建 tail
+    // 从 iterations 重建 tail，跳过 warmup iter（无 LLM 内容，不参与消息重建）
     const initialTail: Message[] = [];
-    for (const iter of turn.iterations) {
+    const llmIters = getLLMIterations(turn.iterations);
+    for (const iter of llmIters) {
       const assistantMsg: Message = {
         role: "assistant",
         content: iter.content,
@@ -715,11 +712,11 @@ export class Agent {
 
     this.events.emit("turn:resume", { turnId: turn.id });
 
-    // 从失败点继续执行
+    // 从失败点继续执行（startStep 只计 LLM iter 数量，不含 warmup iter）
     await this._runReActLoop({
       context,
       initialTail,
-      startStep: turn.iterations.length + 1,
+      startStep: llmIters.length + 1,
       turn,
       userParams: { message: turn.userText, attachments: turn.userAttachments, meta: turn.meta },
     });
@@ -772,7 +769,7 @@ export class Agent {
     const toolCallHistory: Array<{ name: string; argsKey: string }> = [];
 
     // 收集已有工具调用历史（用于 doom loop 检测）
-    for (const iter of turn.iterations) {
+    for (const iter of getLLMIterations(turn.iterations)) {
       for (const tc of iter.toolCalls) {
         toolCallHistory.push({ name: tc.name, argsKey: JSON.stringify(tc.args) });
       }
@@ -789,11 +786,12 @@ export class Agent {
           return;
         }
 
-        const stepLLMStartTime = step === startStep && turn.iterations.length === 0
+        const llmIterations = getLLMIterations(turn.iterations);
+        const stepLLMStartTime = step === startStep && llmIterations.length === 0
           ? turn.startTime
           : Date.now();
 
-        if (step > startStep || turn.iterations.length === 0) {
+        if (step > startStep || llmIterations.length === 0) {
           this.events.emit("llm:start", { step, startTime: stepLLMStartTime });
         }
 
@@ -1153,20 +1151,39 @@ export class Agent {
     // ── 前置阻塞 compact（buildMessages 之前执行，确保 compactRecord 最新）
     // 1. 若不需要 compact（未达阈值），跳过
     // 2. 若后置已压缩好（compactRecord 游标覆盖最新 success turn），跳过
-    // 3. 否则同步执行 compact，成功后继续，失败则 emit warmup error 并中断
+    // 3. 否则同步执行 compact，插入 WarmupIter 到 turn.iterations，成功/失败后更新状态
     if (this._shouldAutoCompact() && !this._isAlreadyCompacted()) {
-      this.events.emit("agent:warmup", { status: "loading", message: "启动中..." });
+      const warmupStartTime = Date.now();
+      const warmupIter: WarmupIter = {
+        type: "warmup",
+        status: "loading",
+        content: "启动中，当前正在压缩上下文...",
+        startTime: warmupStartTime,
+        toolCalls: [],
+      };
+      turn.iterations.push(warmupIter);
+
+      this.events.emit("warmup:start", { startTime: warmupStartTime, content: warmupIter.content });
+
       try {
         await this._runAutoCompact();
-        this.events.emit("agent:warmup", { status: "success", message: "启动成功" });
+        const warmupEndTime = Date.now();
+        warmupIter.status = "success";
+        warmupIter.content = "上下文压缩完成。";
+        warmupIter.endTime = warmupEndTime;
+        this.events.emit("warmup:complete", { status: "success", content: warmupIter.content, endTime: warmupEndTime });
       } catch (e) {
-        this.events.emit("agent:warmup", { status: "error", message: "启动失败，建议清空历史记录再重新使用" });
+        const warmupEndTime = Date.now();
+        warmupIter.status = "error";
+        warmupIter.content = "启动失败，建议清空历史记录再重新使用";
+        warmupIter.endTime = warmupEndTime;
+        this.events.emit("warmup:complete", { status: "error", content: warmupIter.content, endTime: warmupEndTime });
         // 中断本次 requestAI
-        turn.endTime = Date.now();
+        turn.endTime = warmupEndTime;
         turn.status = "error";
-        turn.error = "启动失败，建议清空历史记录再重新使用";
+        turn.error = warmupIter.content;
         await this._persistTurn(turn);
-        this.events.emit("turn:error", { error: new Error("启动失败，建议清空历史记录再重新使用") });
+        this.events.emit("turn:error", { error: new Error(warmupIter.content) });
         this._onTurnEnd(turn);
         throw e;
       }
@@ -1514,7 +1531,9 @@ IMPORTANT: 不要调用工具！
       lastContent = content;
     });
 
-    await fork.requestAI({ message: COMPACT_PROMPT });
+    await fork.requestAI({
+      message: COMPACT_PROMPT + EXAMPLE_PROMPT
+    });
 
     if (!lastContent) throw new Error("compact fork 返回空内容");
 

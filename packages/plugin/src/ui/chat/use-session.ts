@@ -12,8 +12,6 @@ export interface MessageRecord extends Omit<TurnRecord, "status" | "endTime"> {
 
 export interface Session {
   messages: MessageRecord[];
-  /** warmup 状态：null 表示无状态，有值时 UI 展示状态消息 */
-  warmupStatus: { status: "loading" | "success" | "error"; message: string } | null;
 }
 
 // ─── 辅助 ─────────────────────────────────────────────────────────────────────
@@ -31,7 +29,6 @@ function turnsToMessageRecords(turns: TurnRecord[]): MessageRecord[] {
 
 export function useSession(agent: Agent | undefined) {
   const [messages, setMessages] = useState<MessageRecord[]>([]);
-  const [warmupStatus, setWarmupStatus] = useState<Session["warmupStatus"]>(null);
   const syncedRef = useRef(false);
   const unsubsRef = useRef<(() => void)[]>([]);
   // 当前正在进行的 turn 的 id（由 turn:start 写入，turn:complete/abort/error 清空）
@@ -103,7 +100,6 @@ export function useSession(agent: Agent | undefined) {
         pendingContent = "";
         pendingThinking = "";
         pendingIdRef.current = turnId;
-        setWarmupStatus(null); // 清除旧的 warmup 状态
         const userAttachments = (attachments ?? []).map((a: any) => ({
           type: a.type ?? "image",
           content: a.content ?? a.url ?? "",
@@ -278,10 +274,36 @@ export function useSession(agent: Agent | undefined) {
         updateLastIterTool(callId, (t) => ({ ...t, progress: data }));
       }),
 
-      // agent:warmup 事件
-      a.events.on("agent:warmup", ({ status, message }) => {
-        setWarmupStatus({ status, message });
-        // turn:start 时清除旧的 warmup 状态（如果有）
+      // warmup:start → push WarmupIter（status: loading）到 iterations
+      a.events.on("warmup:start", ({ startTime, content }) => {
+        update((r) => ({
+          ...r,
+          iterations: [...r.iterations, { type: "warmup" as const, status: "loading" as const, content, startTime, toolCalls: [] as [] }],
+        }));
+      }),
+
+      // warmup:content → 更新最后一个 warmup iter 的 content
+      a.events.on("warmup:content", ({ content }) => {
+        update((r) => {
+          if (r.iterations.length === 0) return r;
+          const iters = [...r.iterations];
+          const last = iters[iters.length - 1];
+          if (last.type !== "warmup") return r;
+          iters[iters.length - 1] = { ...last, content };
+          return { ...r, iterations: iters };
+        });
+      }),
+
+      // warmup:complete → 更新最后一个 warmup iter 的 status/endTime/content
+      a.events.on("warmup:complete", ({ status, content, endTime }) => {
+        update((r) => {
+          if (r.iterations.length === 0) return r;
+          const iters = [...r.iterations];
+          const last = iters[iters.length - 1];
+          if (last.type !== "warmup") return r;
+          iters[iters.length - 1] = { ...last, status, content, endTime };
+          return { ...r, iterations: iters };
+        });
       })
     );
   }, []);
@@ -291,10 +313,9 @@ export function useSession(agent: Agent | undefined) {
     syncedRef.current = false;
     pendingIdRef.current = null;
     setMessages([]);
-    setWarmupStatus(null);
   }, []);
 
-  return { messages, warmupStatus, syncAgent, subscribeSession, clearSession };
+  return { messages, syncAgent, subscribeSession, clearSession };
 }
 
 // ─── 辅助 ─────────────────────────────────────────────────────────────────────

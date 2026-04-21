@@ -39,6 +39,31 @@ export interface Message {
   cache?: boolean;
 }
 
+// ─── WarmupIter（warmup 阶段特殊 iter） ──────────────────────────────────────
+
+/**
+ * warmup 阶段的特殊 iter，挂在 TurnRecord.iterations[] 中。
+ * 不参与 LLM context 构建（turnsToMessages 会跳过）。
+ * 对应事件：warmup:start → warmup:content × N → warmup:complete
+ */
+export interface WarmupIter {
+  /** 固定为 "warmup"，用于区分普通 LLM iter */
+  type: "warmup";
+  /** 当前状态 */
+  status: "loading" | "success" | "error";
+  /** 展示给用户的描述文本（streaming 更新，与 LLM iter.content 对齐） */
+  content: string;
+  /** warmup 开始时间（Unix ms） */
+  startTime: number;
+  /** warmup 结束时间（Unix ms），进行中为 undefined */
+  endTime?: number;
+  /**
+   * 固定为空数组，与 LLM iter 兼容，避免遍历 toolCalls 时需要 type guard。
+   * warmup 没有工具调用。
+   */
+  toolCalls: [];
+}
+
 // ─── TurnRecord（SSE 事件粒度的完整调用记录） ─────────────────────────────────
 
 /**
@@ -100,32 +125,35 @@ export interface TurnRecord {
   thinkingContent: string;
 
   /**
-   * ReAct 迭代记录：每次 LLM 响应对应一个 iteration。
-   * 用于重建多轮对话历史（assistant tool_calls → tool results → next assistant…）
+   * ReAct 迭代记录：每次 LLM 响应对应一个 iteration，warmup 阶段插入特殊 WarmupIter。
+   * WarmupIter 由 type: "warmup" 区分，不参与 LLM context 构建。
    *
-   * 时间语义：
+   * LLM iter 时间语义：
    *   startTime     本次 LLM 请求发起的时间
    *   responseTime  LLM 首 token 到达的时间（流式开始）
    *   endTime       本次 LLM 请求完成的时间
    */
-  iterations: Array<{
-    /** 本次迭代 LLM 输出的纯文本 */
-    content: string;
-    /** 本次迭代的工具调用（若有） */
-    toolCalls: ToolCallRecord[];
-    /** 本次 LLM 请求发起时间（Unix ms） */
-    startTime: number;
-    /** LLM 首 token 到达时间（Unix ms），即响应时间 */
-    responseTime?: number;
-    /** 本次 LLM 请求完成时间（Unix ms） */
-    endTime?: number;
-    /** 本次 LLM 思考内容 */
-    thinkingContent?: string;
-    /** 本 step 实际使用的 aiRole（未指定时为空） */
-    aiRole?: string;
-    /** 本次 LLM 请求的 token 用量 */
-    usage?: TokenUsage;
-  }>;
+  iterations: Array<
+    | WarmupIter
+    | {
+        /** 本次迭代 LLM 输出的纯文本 */
+        content: string;
+        /** 本次迭代的工具调用（若有） */
+        toolCalls: ToolCallRecord[];
+        /** 本次 LLM 请求发起时间（Unix ms） */
+        startTime: number;
+        /** LLM 首 token 到达时间（Unix ms），即响应时间 */
+        responseTime?: number;
+        /** 本次 LLM 请求完成时间（Unix ms） */
+        endTime?: number;
+        /** 本次 LLM 思考内容 */
+        thinkingContent?: string;
+        /** 本 step 实际使用的 aiRole（未指定时为空） */
+        aiRole?: string;
+        /** 本次 LLM 请求的 token 用量 */
+        usage?: TokenUsage;
+      }
+  >;
 
   /** 本轮状态 */
   status: "success" | "abort" | "error";
@@ -353,6 +381,19 @@ export interface Tool {
   render?: (tool: any) => any;
 }
 
+/**
+ * 从 iterations 中过滤出 LLM iter（排除 warmup 等特殊 iter）。
+ * agent.ts 中所有需要"只计 LLM iter"的地方统一调用此函数。
+ */
+export function getLLMIterations(
+  iterations: TurnRecord["iterations"]
+): Array<Extract<TurnRecord["iterations"][number], { content: string; toolCalls: ToolCallRecord[] }>> {
+  return iterations.filter(
+    (iter): iter is Extract<TurnRecord["iterations"][number], { content: string; toolCalls: ToolCallRecord[] }> =>
+      iter.type !== "warmup"
+  );
+}
+
 // ─── 从 TurnRecord[] 重建 LLM messages ───────────────────────────────────────
 
 /**
@@ -416,7 +457,7 @@ export function turnsToMessages(
 
     // 用 iterations 重建 ReAct 序列（向后兼容：无 iterations 时降级到简单 assistant 消息）
     if (turn.iterations?.length) {
-      for (const iter of turn.iterations) {
+      for (const iter of getLLMIterations(turn.iterations)) {
         if (iter.toolCalls.length > 0) {
           // assistant 消息带 tool_calls
           const assistantMsg: Message = {

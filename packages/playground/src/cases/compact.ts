@@ -132,8 +132,8 @@ export const compactWithToolsCase: TestCase = {
           params.emits.write(chunk);
         }
         params.emits.onFinishReason?.("stop");
-        // 最后一轮回复后 usage 降回正常（compact 已在上一步触发）
-        params.emits.onUsage?.({ promptTokens: 8000, completionTokens: 50, totalTokens: 8050 });
+        // 最后一轮回复后 usage 仍然超过阈值（compact 尚未完成，还不会降）
+        params.emits.onUsage?.({ promptTokens: 175000, completionTokens: 50, totalTokens: 175050 });
         params.emits.complete?.("");
       }
     };
@@ -144,7 +144,7 @@ export const compactWithToolsCase: TestCase = {
 // ─── Usage 阈值触发 warmup ─────────────────────────────────────────────────────
 
 /**
- * usage 很大时触发 compact，启动时发送 agent:warmup 事件。
+ * usage 很大时触发 compact，启动时 Agent 插入 WarmupIter 并 emit warmup:start。
  * contextWindow 默认 200k，阈值 = 200k - 20k - 13k = 167000。
  * 当 usage.promptTokens >= 167000 时触发。
  * 
@@ -154,8 +154,8 @@ export const compactWarmupByUsageCase: TestCase = {
   id: "compact-warmup-usage",
   name: "compact 前置 warmup（usage 超阈值）",
   group: "Compact",
-  description: "预设历史 usage.promptTokens = 170000（超过阈值 167000），发消息时触发 agent:warmup loading -> compact -> success。",
-  expectedBehavior: "发送消息后，先显示 '启动中...' loading，然后执行 compact fork 请求（约 2 秒），最后显示 '启动成功'，主 Agent 正常回复。",
+  description: "预设历史 usage.promptTokens = 170000（超过阈值 167000），发消息时触发 warmup:start -> compact -> warmup:complete，UI 显示 WarmupIter。",
+  expectedBehavior: "发送消息后，消息气泡内出现 WarmupIter（'启动中...' shimmer + 计时），compact fork 完成（约 2 秒）后 WarmupIter 变为 '启动成功'，主 Agent 正常回复。",
   initialTurns: makeTextHistoryWithUsage([
     { user: "你好", assistant: "你好！有什么可以帮你的？", usage: { promptTokens: 50000, completionTokens: 1000 } },
     { user: "帮我读一下文件", assistant: "好的，文件内容如下...", usage: { promptTokens: 100000, completionTokens: 2000 } },
@@ -174,8 +174,8 @@ export const compactErrorCase: TestCase = {
   id: "compact-error",
   name: "compact 接口报错",
   group: "Compact",
-  description: "compact fork 请求返回 error 事件，触发 agent:warmup error。",
-  expectedBehavior: "发送消息后，显示 '启动中...'，然后 compact fork 请求失败，显示 '启动失败，建议清空历史记录再重新使用'，turn:error 事件触发，当前请求中断。",
+  description: "compact fork 请求返回 error 事件，WarmupIter 变为 error 态，turn:error 中断。",
+  expectedBehavior: "发送消息后，消息气泡内出现 WarmupIter（'启动中...' shimmer），compact fork 失败，WarmupIter 变为 '启动失败，建议清空历史记录再重新使用'，turn:error 触发，当前请求中断。",
   initialTurns: makeTextHistory([
     { user: "你好", assistant: "你好！有什么可以帮你的？" },
     { user: "帮我读一下 App.tsx", assistant: "好的，我来读取 App.tsx 文件。" },
@@ -191,8 +191,8 @@ export const compactEmptyResponseCase: TestCase = {
   id: "compact-empty-response",
   name: "compact 无有效返回",
   group: "Compact",
-  description: "compact fork 请求返回内容但不含 <compact> 标签，compact 不生效，继续正常流程。",
-  expectedBehavior: "发送消息后，显示 '启动中...'，compact fork 返回无效内容，不写入 compactRecord，显示 '启动成功'，主 Agent 正常回复。",
+  description: "compact fork 请求返回内容但不含 <compact> 标签，compact fork 抛错，触发 turn:error。",
+  expectedBehavior: "发送消息后，WarmupIter 显示 '启动中...'，compact fork 返回无效内容并抛错，WarmupIter 消失，底部显示错误提示 + 重试按钮。",
   initialTurns: makeTextHistory([
     { user: "你好", assistant: "你好！有什么可以帮你的？" },
     { user: "帮我读一下 App.tsx", assistant: "好的，我来读取 App.tsx 文件。" },
@@ -208,8 +208,8 @@ export const compactNoContentCase: TestCase = {
   id: "compact-no-content",
   name: "compact 无返回内容",
   group: "Compact",
-  description: "compact fork 请求直接返回空字符串（complete 无任何 write）。",
-  expectedBehavior: "发送消息后，显示 '启动中...'，compact fork 返回空内容，不写入 compactRecord，显示 '启动成功'，主 Agent 正常回复。",
+  description: "compact fork 请求直接返回空字符串（complete 无任何 write），compact fork 抛错，触发 turn:error。",
+  expectedBehavior: "发送消息后，WarmupIter 显示 '启动中...'，compact fork 返回空内容并抛错，WarmupIter 消失，底部显示错误提示 + 重试按钮。",
   initialTurns: makeTextHistory([
     { user: "你好", assistant: "你好！有什么可以帮你的？" },
     { user: "帮我读一下 App.tsx", assistant: "好的，我来读取 App.tsx 文件。" },

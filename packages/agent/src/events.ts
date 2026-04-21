@@ -216,17 +216,40 @@ export type AgentEventMap = {
     step: number;
   };
 
+  // ── Warmup iter 事件（对齐 llm:start / llm:content / llm:complete，前缀改为 warmup）──
+  //
+  // warmup 阶段（如 autoCompact）在 iterations[] 中插入一个 WarmupIter。
+  // 事件顺序：warmup:start → warmup:content × N → warmup:complete
+  // UI 侧用与普通 LLM iter 相同的 push / update 逻辑管理。
+
   /**
-   * Agent 启动前置操作的状态通知（如 autoCompact）。
-   * 纯文本展示，不持久化到历史记录。
-   * UI 层收到后覆盖展示最新状态即可。
-   *
-   *   - `status`   当前状态：loading=进行中 / success=成功 / error=失败
-   *   - `message`  展示给用户的纯文本消息
+   * warmup 阶段开始（如 autoCompact 开始执行）。
+   *   - `startTime`  开始时间（Unix ms）
+   *   - `content`    初始展示文本（如 "启动中..."）
    */
-  "agent:warmup": {
-    status: "loading" | "success" | "error";
-    message: string;
+  "warmup:start": {
+    startTime: number;
+    content: string;
+  };
+
+  /**
+   * warmup 阶段内容更新（类比 llm:content，streaming 更新展示文本）。
+   *   - `content`  当前完整文本（覆盖上一帧，UI 直接替换）
+   */
+  "warmup:content": {
+    content: string;
+  };
+
+  /**
+   * warmup 阶段结束（类比 llm:complete）。
+   *   - `status`   最终状态：success / error
+   *   - `content`  最终展示文本
+   *   - `endTime`  结束时间（Unix ms）
+   */
+  "warmup:complete": {
+    status: "success" | "error";
+    content: string;
+    endTime: number;
   };
 };
 

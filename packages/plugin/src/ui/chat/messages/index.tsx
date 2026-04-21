@@ -5,7 +5,7 @@ import { TextShimmer } from "../../components/text-shimmer";
 import { AttachmentsList } from "../../components/attachments";
 import { ElapsedTime } from "../../components/elapsed-time";
 import type { MessageRecord } from "../use-sessions";
-import type { ToolCallRecord } from "../../../../../agent/src";
+import type { ToolCallRecord, WarmupIter } from "../../../../../agent/src";
 import type { CodeAgent } from "../../../../../agent/src";
 import { getToolRenderer } from "./tool-renders/index";
 import type { ToolRenderer } from "./tool-renders/index";
@@ -27,11 +27,9 @@ export interface MessageListProps {
   agent?: CodeAgent;
   renderUserMessage?: (record: MessageRecord) => React.ReactNode;
   onRetry?: (turnId: string) => void;
-  /** warmup 状态：在 pending turn 的"思考中"位置展示 */
-  warmupStatus?: { status: "loading" | "success" | "error"; message: string } | null;
 }
 
-const MessageList = ({ messages, user, copilot, agent, renderUserMessage, onRetry, warmupStatus }: MessageListProps) => {
+const MessageList = ({ messages, user, copilot, agent, renderUserMessage, onRetry }: MessageListProps) => {
   const mainRef = useRef<HTMLElement>(null);
 
   // 缓存工具渲染器映射，避免流式渲染时重复计算
@@ -68,7 +66,6 @@ const MessageList = ({ messages, user, copilot, agent, renderUserMessage, onRetr
           renderUserMessage={renderUserMessage}
           onRetry={index === messages.length - 1 ? onRetry : undefined}
           agent={agent}
-          warmupStatus={warmupStatus}
         />
       ))}
     </main>
@@ -77,7 +74,7 @@ const MessageList = ({ messages, user, copilot, agent, renderUserMessage, onRetr
 
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
-const MessageBubble = ({ record, user, copilot, toolRendererMap, renderUserMessage, onRetry, agent, warmupStatus }: {
+const MessageBubble = ({ record, user, copilot, toolRendererMap, renderUserMessage, onRetry, agent }: {
   record: MessageRecord;
   user?: User;
   copilot?: User;
@@ -85,7 +82,6 @@ const MessageBubble = ({ record, user, copilot, toolRendererMap, renderUserMessa
   renderUserMessage?: (record: MessageRecord) => React.ReactNode;
   onRetry?: (turnId: string) => void;
   agent?: CodeAgent;
-  warmupStatus?: { status: "loading" | "success" | "error"; message: string } | null;
 }) => {
   // 重试状态：{ attempt, maxRetries } 或 null
   const [retryState, setRetryState] = useState<{ attempt: number; maxRetries: number } | null>(null);
@@ -156,15 +152,33 @@ const MessageBubble = ({ record, user, copilot, toolRendererMap, renderUserMessa
                       重试 {retryState.attempt}/{retryState.maxRetries}
                     </span>
                   )}
-                  <TextShimmer className={css["iter-header-placeholder"]}>
-                    {warmupStatus?.message ?? "思考中..."}
-                  </TextShimmer>
+                  <TextShimmer className={css["iter-header-placeholder"]}>思考中...</TextShimmer>
                 </div>
               </div>
             )}
 
             {/* 按 iteration 渲染 */}
             {record.iterations.map((iter, iterIdx) => {
+              // warmup 特殊 iter：只在 loading/success 时展示，error 态由底部错误块承担
+              if (iter.type === "warmup") {
+                const warmupIter = iter as WarmupIter;
+                if (warmupIter.status === "error") return null;
+                const isLoading = warmupIter.status === "loading";
+                return (
+                  <div key={iterIdx} className={css["iter-header"]}>
+                    <div className={css["iter-header-content"]}>
+                      {isLoading ? (
+                        <TextShimmer className={css["iter-header-placeholder"]}>{warmupIter.content}</TextShimmer>
+                      ) : (
+                        <span>{warmupIter.content}</span>
+                      )}
+                    </div>
+                    <ElapsedTime startTime={warmupIter.startTime} endTime={warmupIter.endTime} className={css["planning-elapsed"]} />
+                  </div>
+                );
+              }
+
+              // 普通 LLM iter
               const isLastIter = iterIdx === record.iterations.length - 1;
               const isPending = record.status === "pending";
               const hasTools = iter.toolCalls.length > 0;
