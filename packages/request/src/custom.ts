@@ -224,9 +224,18 @@ function formatRequestBody(
   tools?: ToolDescriptor[]
 ): any {
   const defaultModel = "gpt-4o";
+  // 为没有 reasoning_content 的 assistant（含 tool_calls）/tool 消息自动添加
+  const processedMessages = messages.map(msg => {
+    if ((msg.role === "assistant" && msg.tool_calls?.length) || msg.role === "tool") {
+      if (!msg.reasoning_content) {
+        return { ...msg, reasoning_content: "我思考一下" };
+      }
+    }
+    return msg;
+  });
   return {
     model: model?.trim() || defaultModel,
-    messages,
+    messages: processedMessages,
     stream: true,
     ...(tools?.length
       ? {
