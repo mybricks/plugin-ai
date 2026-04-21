@@ -200,7 +200,11 @@ function connectToAI(
       return designerRef.current?.exportToMessage() ?? null;
     },
     getRealtime: async () => {
-      return designerRef.current?.exportResourceCode() ?? null;
+      const resourcesCode = await designerRef.current?.exportResourceCode()
+      return resourcesCode ? `已读取当前所有代码，你可以从这里确认代码现状确认需求是否完成、代码是否生效。
+> 注意：读取文件是让你更好理解和确认之前的工具是否调用成功，请勿认为是要对全局进行重构和优化。
+
+${resourcesCode}` : null;
     },
   };
 

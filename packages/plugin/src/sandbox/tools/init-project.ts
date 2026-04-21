@@ -80,7 +80,7 @@ function parseFilesFromStreamingContent(content: string): Array<{
 /**
  * SubAgent 的系统 prompt
  */
-const SUB_AGENT_SYSTEM_PROMPT = `你是一个是一名资深的前端开发专家、架构师，技术资深、逻辑严谨、实事求是，同时具备专业的审美和设计能力。。
+const SUB_AGENT_SYSTEM_PROMPT = `你是一个是一名资深的前端开发专家、架构师，技术资深、逻辑严谨、实事求是，同时具备专业的审美和设计能力。
 根据用户的需求，输出完整的项目文件代码。
 
 !IMPORTANT: 生成内容中不允许包含md文档文件（非代码文件），这个应该由后续步骤写入。
@@ -93,7 +93,15 @@ const SUB_AGENT_SYSTEM_PROMPT = `你是一个是一名资深的前端开发专�
 </输出规则>
 
 <example>
-\`\`\`src/index.tsx
+\`\`\`index.jsx
+import React from 'react';
+// ...
+\`\`\`
+
+\`\`\`index.less
+\`\`\`
+
+\`\`\`pages/HomePage/index.jsx
 import React from 'react';
 // ...
 \`\`\`
@@ -116,24 +124,25 @@ async function executeSubAgent(
   ctx: { emitProgress: (data: any) => void; getUserMessage: () => { message: string; attachments?: any[] } },
   sandbox: Sandbox,
   expectedFiles: string[],
-  requirement: string
+  requirement?: string
 ) {
   // 获取父 Agent 当前轮的用户消息（包含附件）
   const parentUserMessage = ctx.getUserMessage();
+
+  const realRequirement = parentUserMessage.message;
 
   // 拼接完整消息
   const fullPrompt = `<用户原始需求>
 ${parentUserMessage.message}
 </用户原始需求>
 
-<当前任务>
-!IMPORTANT: 一切以完成上方的「用户原始需求」为目的，下方的需求只是基本的分析。
+<需要生产的文件>
 ${prompt}
-</当前任务>`;
+</需要生产的文件>`;
 
   // 进度状态
   const progressState = {
-    requirement,
+    requirement: realRequirement,
     content: "",
     thinkingContent: "",
     files: [] as Array<{
@@ -218,7 +227,7 @@ ${prompt}
   if (files.length === 0) {
     return {
       output: "未解析到任何文件，请检查输出格式是否正确。",
-      metadata: { requirement, files: [] },
+      metadata: { requirement: realRequirement, files: [] },
     };
   }
 
@@ -279,7 +288,7 @@ ${prompt}
 
   // 根据写入情况补充提示
   if (filesFailed === 0 && missingFiles.length === 0) {
-    output += `\n\n已完成需求所有代码文件的生成和写入，请继续考虑下一步，注意检查错误情况以及同步文档。`;
+    output += `\n\n已完成需求所有代码文件的生成和写入，如果不是有严重的需求不满足情况，请勿进行重复进行优化，接下来注意检查错误情况以及同步文档。`;
   } else if (missingFiles.length > 0) {
     output += `\n\n部分文件未生成，请继续。`;
   } else {
@@ -312,16 +321,16 @@ export function createInitProjectTool(sandbox: Sandbox): Tool {
     name: INIT_PROJECT_TOOL_NAME,
     title: "初始化项目",
     description:
-      "对空项目进行快速初始化开发，生成所需的所有代码文件（不包括md文档），根据需求内容（不要超过50字）和项目文件结构，从零开始完成项目开发",
+      "对空项目进行快速开发，根据需求生成所需的所有代码文件开发（不包括md文档），根据需求内容和项目文件结构，从零开始完成项目开发",
     parameters: {
       type: "object",
       properties: {
-        requirement: {
-          type: "string",
-          description: `分析的用户需求，不超过50字，比如：
-- 比如：开发一个售卖韩国美妆产品的电商网站，尽量对用户的需求进行拓展；
-- 比如：高保真还原附件图片中的界面设计，对图片进行1:1还原；`,
-        },
+//         requirement: {
+//           type: "string",
+//           description: `分析的用户需求，不超过50字，比如：
+// - 比如：开发一个售卖韩国美妆产品的电商网站，尽量对用户的需求进行拓展；
+// - 比如：高保真还原附件图片中的界面设计，对图片进行1:1还原；`,
+//         },
         filesToGenerate: {
           type: "array",
           items: {
@@ -330,14 +339,14 @@ export function createInitProjectTool(sandbox: Sandbox): Tool {
           description: "要生成的文件路径列表（不包含md文档文件）",
         },
       },
-      required: ["requirement", "filesToGenerate"],
+      required: ["filesToGenerate"],
     },
-    async execute(params: { requirement: string; filesToGenerate: string[] }, toolContext: ToolExecutionContext) {
-      const { requirement, filesToGenerate } = params;
+    async execute(params: { requirement?: string, filesToGenerate: string[] }, toolContext: ToolExecutionContext) {
+      const { requirement = '',filesToGenerate } = params;
 
       // 拼接 prompt 传递给 subAgent
-      const fileList = filesToGenerate.map((file) => `- ${file}`).join("\n");
-      const prompt = `需求：${requirement}\n\n要生成的文件列表：\n${fileList}`;
+      const fileList = filesToGenerate.map((file) => `${file}`).join("\n");
+      const prompt = `\n要生成的文件列表(遵循路径)：\n${fileList}`;
 
       // 从 toolContext 获取父 Agent
       const parentAgent = toolContext.getAgent();

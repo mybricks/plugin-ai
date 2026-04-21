@@ -8,6 +8,18 @@ import { replaceInContent } from "../edit/replace";
 export const MULTI_EDIT_TOOL_NAME = "multi_edit";
 const EDIT_TOOL_NAME = "edit_file";
 
+/**
+ * 计算字符串的行数（不含末尾空行）
+ */
+function countLines(str: string): number {
+  if (!str) return 0;
+  const lines = str.split("\n");
+  if (lines.length > 0 && lines[lines.length - 1] === "") {
+    return lines.length - 1;
+  }
+  return lines.length;
+}
+
 function countPrevFailures(
   ctx: ToolExecutionContext | undefined,
   path: string,
@@ -93,7 +105,7 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
     },
     validate(params: { edits?: Array<{ path?: string; old_str?: string; new_str?: string; replace_all?: boolean }> }) {
       if (!Array.isArray(params.edits) || params.edits.length === 0) {
-        throw new ToolValidationError("edits must be a non-empty array");
+        throw new ToolValidationError("现在拿不到edits参数，工具传参有问题。");
       }
       for (let i = 0; i < params.edits.length; i++) {
         const edit = params.edits[i];
@@ -163,17 +175,36 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
         );
       }
 
+      // 检查每个 old_str 行数是否过少
+      const warnings: string[] = [];
+      for (let i = 0; i < params.edits.length; i++) {
+        const edit = params.edits[i];
+        const fileContent = fileMap.get(edit.path);
+        if (fileContent && edit.old_str) {
+          const fileLines = countLines(fileContent);
+          const oldStrLines = countLines(edit.old_str);
+          if (fileLines >= 3 && oldStrLines < 3) {
+            warnings.push(`edits[${i}].old_str 只有 ${oldStrLines} 行`);
+          }
+        }
+      }
+
       const summaries = results.map((r) => ({
         path: r.path,
         strategy: r.strategy,
       }));
 
-      const output = summaries
+      let output = summaries
         .map((s) => `${s.path} (${s.strategy ?? "unknown"})`)
         .join("\n");
+      output = `Files edited:\n${output}`;
+
+      if (warnings.length > 0) {
+        output = `${output}\n注意：${warnings.join("，")}，行数较少（推荐3行及以上），请确保修改内容准确，避免误操作周围其他代码。`;
+      }
 
       return {
-        output: `Files edited:\n${output}`,
+        output,
         metadata: { edits: summaries },
       };
     },

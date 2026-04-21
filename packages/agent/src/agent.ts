@@ -371,8 +371,8 @@ function assembleMessages(
   }
   const userMessage: Message = { role: "user", content: userContent };
 
-  // realtimeMessages 插在 userMessage 之前，确保用户消息始终紧贴 tail（或作为末尾）
-  const assembled = [...baseMessages, ...realtimeMessages, userMessage, ...tail];
+  // realtimeMessages 放在 tail 末尾，模拟工具调用返回最新代码仓库信息
+  const assembled = [...baseMessages, userMessage, ...tail, ...realtimeMessages];
 
 
   // 应用遮蔽（默认开启，可通过 mask: false 显式关闭）

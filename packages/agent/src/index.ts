@@ -17,3 +17,4 @@ export { createSubAgentTool, CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
 export type { SubAgentConfig } from "./sub-agent";
 
 export type { RetryOptions } from "./retry";
+export { AbortError, isAbortError } from "./errors";

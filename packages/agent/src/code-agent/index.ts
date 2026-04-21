@@ -139,14 +139,29 @@ export class CodeAgent extends Agent {
     };
 
     // ── sandbox.getRealtime 作为 getRealtimeMessages（@experimental）──────────
+    // 返回模拟的工具调用序列：assistant 发起 viewCodeRepository 调用 → tool 返回结果
     const getRealtimeMessages = wrappedSandbox?.getRealtime
       ? async (): Promise<import("../types").Message[]> => {
           const rt = await wrappedSandbox.getRealtime!() ?? null;
           if (!rt) return [];
-          if (Array.isArray(rt)) {
-            return rt.map((c) => ({ role: "user" as const, content: c }));
-          }
-          return [{ role: "user", content: rt }];
+          const content = Array.isArray(rt) ? rt.join("\n") : rt;
+          const toolCallId = `realtime_${Date.now()}`;
+          return [
+            {
+              role: "assistant",
+              content: "",
+              tool_calls: [{
+                id: toolCallId,
+                type: "function",
+                function: { name: "check_repository_files", arguments: "{}" }
+              }]
+            },
+            {
+              role: "tool",
+              tool_call_id: toolCallId,
+              content
+            }
+          ];
         }
       : undefined;
 

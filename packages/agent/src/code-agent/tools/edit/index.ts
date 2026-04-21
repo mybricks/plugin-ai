@@ -9,6 +9,18 @@ export const EDIT_TOOL_NAME = "edit_file";
 const MULTI_EDIT_TOOL_NAME = "multi_edit";
 
 /**
+ * 计算字符串的行数（不含末尾空行）
+ */
+function countLines(str: string): number {
+  if (!str) return 0;
+  const lines = str.split("\n");
+  if (lines.length > 0 && lines[lines.length - 1] === "") {
+    return lines.length - 1;
+  }
+  return lines.length;
+}
+
+/**
  * 统计本轮 turn 中，同一 path + old_str 的编辑调用已失败了多少次（不含本次）。
  * edit_file 和 multi_edit 都计入（multi_edit 以单条 edit 为粒度）。
  */
@@ -122,8 +134,23 @@ export function createEditTool(adapter: Sandbox): Tool {
       } catch (err) {
         throw new ToolValidationError(`Failed to edit ${params.path}: ${err instanceof Error ? err.message : String(err)}`);
       }
+      // 检查 old_str 行数是否过少
+      const warnings: string[] = [];
+      const fileLines = countLines(file.content);
+      const oldStrLines = countLines(params.old_str);
+      if (fileLines >= 3 && oldStrLines < 3 && params.old_str) {
+        warnings.push(
+          `注意：当前 old_str 只有 ${oldStrLines} 行，行数较少（推荐3行及以上），请确保修改内容准确，避免误操作周围其他代码。`
+        );
+      }
+
+      let output = `File edited: ${params.path} (strategy: ${result.strategy})`;
+      if (warnings.length > 0) {
+        output = `${output}\n${warnings.join("\n")}`;
+      }
+
       return {
-        output: `File edited: ${params.path} (strategy: ${result.strategy})`,
+        output,
         metadata: { path: params.path, strategy: result.strategy, replaceAll: params.replace_all ?? false },
       };
     },

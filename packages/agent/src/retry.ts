@@ -1,5 +1,6 @@
 import type { RequestAsStreamFn, RequestAsStreamParams } from "../../request/src";
 import type { AgentEvents } from "./events";
+import { AbortError, isAbortError } from "./errors";
 
 /**
  * 重试配置项
@@ -49,13 +50,13 @@ export function wrapRequestWithRetry(
     while (currentAttempt <= maxRetries) {
       // 检查是否已取消
       if (retryAbortController.signal.aborted) {
-        throw new Error('Aborted');
+        throw new AbortError();
       }
 
       try {
         // 包装 error handler，捕获本次尝试的错误
         await new Promise<void>((resolve, reject) => {
-          const abortHandler = () => reject(new Error('Aborted'));
+          const abortHandler = () => reject(new AbortError());
           retryAbortController.signal.addEventListener('abort', abortHandler);
 
           const cleanup = () => {
@@ -84,7 +85,7 @@ export function wrapRequestWithRetry(
         return;
       } catch (err: any) {
         // 检查是否是取消导致的错误
-        if (err?.message === 'Aborted' || retryAbortController.signal.aborted) {
+        if (isAbortError(err) || retryAbortController.signal.aborted) {
           // 恢复原始 error handler 并调用
           params.emits.error = originalError;
           originalError(err);
@@ -135,7 +136,7 @@ export function wrapRequestWithRetry(
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
-      reject(new Error('Aborted'));
+      reject(new AbortError());
       return;
     }
 
@@ -144,7 +145,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     if (signal) {
       const abortHandler = () => {
         clearTimeout(timeout);
-        reject(new Error('Aborted'));
+        reject(new AbortError());
       };
       signal.addEventListener('abort', abortHandler, { once: true });
     }

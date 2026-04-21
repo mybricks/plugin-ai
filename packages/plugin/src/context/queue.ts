@@ -1,3 +1,5 @@
+import { AbortError } from "./../../../agent/src/errors";
+
 export interface AIRequestParams {
   message?: string;
   attachments?: any[];
@@ -98,7 +100,12 @@ export class AIRequestQueue {
     this.events.emit("loading", { key, loading: true });
 
     Promise.resolve(runFn())
-      .catch((error: any) => console.error(error))
+      .catch((error: any) => {
+        // AbortError 是正常的取消操作，不应该打印错误
+        if (!(error instanceof AbortError)) {
+          console.error(error);
+        }
+      })
       .finally(() => {
         this.loadingKeys.delete(key);
         this.abortMap.delete(key);
