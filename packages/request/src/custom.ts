@@ -127,7 +127,6 @@ export function createCustomRequest(config: CustomRequestConfig): RequestAsStrea
       let finishReason: string | null = null;
 
       const processParsedChunk = (parsed: ParsedCustomSSEChunk) => {
-        console.log('onUsage', parsed.usage)
         if (parsed.content) write(parsed.content);
         if (parsed.thinking && onThinking) onThinking(parsed.thinking);
         if (parsed.usage && onUsage) onUsage(parsed.usage);
