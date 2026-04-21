@@ -3,13 +3,11 @@ import { Pencil } from "../../../../components/icons";
 import type { ToolRecord } from "../index";
 import {
   PendingCodeCard, StreamingCodeCard, CodeCard,
-  basename,
 } from "../shared";
 
 export const EditFileRenderer = ({ tool }: { tool: ToolRecord }) => {
   const path: string = tool.args?.path ?? "";
-  const name = path ? basename(path) : "";
-  const title = name ? `修改文件 ${name}` : (path || "修改文件");
+  const title = path ? `修改文件 ${path}` : "修改文件";
 
   if (tool.status === "pending") {
     const streamContent: string = tool.args?.new_str ?? tool.args?.old_str ?? "";

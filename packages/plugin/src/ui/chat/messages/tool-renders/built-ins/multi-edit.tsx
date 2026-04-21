@@ -3,7 +3,6 @@ import { Pencil, Loading } from "../../../../components/icons";
 import type { ToolRecord } from "../index";
 import {
   StatusIcon, Duration, Label, BatchItem, BatchGroup,
-  shortPath,
 } from "../shared";
 import css from "../render.less";
 
@@ -25,7 +24,7 @@ export const MultiEditRenderer = ({ tool }: { tool: ToolRecord }) => {
 
   const paths = edits.map((e) => e.path);
   const items = edits.map((edit, idx) => {
-    const name = shortPath(edit.path, paths);
+    const name = edit.path;
     const oldStr = edit.old_str ?? "";
     const newStr = edit.new_str ?? "";
     const streamContent = newStr || oldStr;

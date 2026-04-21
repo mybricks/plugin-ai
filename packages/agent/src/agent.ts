@@ -906,6 +906,7 @@ export class Agent {
         // 执行工具
         const toolResultMessages: Message[] = [];
         let doomLoopTriggered = false;
+        let doomLoopInfo: { toolName: string; count: number } | null = null;
 
         for (let tcIdx = 0; tcIdx < llmResult.toolCalls.length; tcIdx++) {
           const tc = llmResult.toolCalls[tcIdx];
@@ -915,9 +916,10 @@ export class Agent {
           const argsKey = JSON.stringify(tc.args);
           toolCallHistory.push({ name: tc.name, argsKey });
           const doomCount = getDoomLoopCount(toolCallHistory, tc.name, argsKey);
-          if (doomCount >= doomLoopThreshold) {
+          if (doomCount > doomLoopThreshold) {
             this.events.emit("turn:doom", { toolName: tc.name, args: tc.args, count: doomCount });
             doomLoopTriggered = true;
+            doomLoopInfo = { toolName: tc.name, count: doomCount };
             break;
           }
 
@@ -1017,14 +1019,14 @@ export class Agent {
           return;
         }
 
-        if (doomLoopTriggered) {
+        if (doomLoopTriggered && doomLoopInfo) {
           const lastIter = turn.iterations[turn.iterations.length - 1];
           turn.content = lastIter?.content ?? "";
           turn.endTime = Date.now();
-          turn.status = "success";
+          turn.status = "error";
+          turn.error = `连续调用，已自动中断，可重新发起消息`;
           await this._persistTurn(turn);
-          this.events.emit("llm:complete", { step, finishReason: "stop", usage: turn.usage, done: true, endTime: turn.endTime });
-          this.events.emit("turn:complete", {});
+          this.events.emit("turn:error", { error: new Error(turn.error) });
           this._onTurnEnd(turn);
           return;
         }
@@ -1175,7 +1177,7 @@ export class Agent {
       } catch (e) {
         const warmupEndTime = Date.now();
         warmupIter.status = "error";
-        warmupIter.content = "启动失败，建议清空历史记录再重新使用";
+        warmupIter.content = "压缩失败，可尝试重试或咨询客服";
         warmupIter.endTime = warmupEndTime;
         this.events.emit("warmup:complete", { status: "error", content: warmupIter.content, endTime: warmupEndTime });
         // 中断本次 requestAI
@@ -1468,12 +1470,13 @@ IMPORTANT: 不要调用工具！
    */
   private async _runAutoCompact(): Promise<void> {
     const COMPACT_PROMPT =
-      "你的任务是创建一份详细的对话总结，重点关注用户的明确请求和你之前的操作。这份总结应全面涵盖技术细节、代码模式和架构决策，这些内容对于后续的开发工作至关重要，同时又不丢失上下文。" + 
-      "请对上方完整的对话历史进行总结，用 <compact></compact> 标签包裹内容。" +
-      "总结将替代原有对话历史，请确保内容足够详细，以便对话可以连贯继续。不要使用工具。";
+      "你的任务是创建一份详细的对话总结，重点关注用户的明确请求和你之前的操作。这份总结应全面涵盖技术细节、代码模式和架构决策，这些内容对于后续的开发工作至关重要，同时又不丢失上下文。\n" + 
+      "请对上方完整的对话历史进行总结，用 <compact></compact> 标签包裹内容。\n" +
+      "总结将替代原有对话历史，请确保内容足够详细，以便对话可以连贯继续。不要使用工具。\n";
     
     const EXAMPLE_PROMPT = `可参考示例如下，其中括号中的内容代表需要填空替换的内容。
 <example>
+
 <compact>
 1. 主要需求和意图：
   [描述]
@@ -1516,6 +1519,7 @@ IMPORTANT: 不要调用工具！
 9. 可选的下一步：
 [可选的下一步行动]
 </compact>
+
 </example>`
 
     // 确定游标：压缩到最后一个 success turn（即当前全量历史）

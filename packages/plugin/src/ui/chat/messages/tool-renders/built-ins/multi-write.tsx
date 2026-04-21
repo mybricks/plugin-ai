@@ -3,7 +3,6 @@ import { FileWrite } from "../../../../components/icons";
 import type { ToolRecord } from "../index";
 import {
   StatusIcon, Duration, Label, BatchItem, BatchGroup,
-  shortPath,
 } from "../shared";
 import css from "../render.less";
 
@@ -23,7 +22,7 @@ export const MultiWriteRenderer = ({ tool }: { tool: ToolRecord }) => {
 
   const paths = files.map((f) => f.path);
   const items = files.map((file, idx) => {
-    const name = shortPath(file.path, paths);
+    const name = file.path;
     const content = file.content ?? "";
     const isLastAndPending = isPending && idx === files.length - 1;
     return (

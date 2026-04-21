@@ -60,9 +60,9 @@ function appendActionHint(
 ): string {
   const prev = countPrevFailures(ctx, path, oldStr);
   if (prev === 0) {
-    return `${message} 请先通过 \`${READ_TOOL_NAME}\` 读取 ${path} 的最新内容，确认 old_str 后再编辑。`;
+    return `${message} 同一 old_str 已连续失败 ${prev + 1} 次，请先通过 \`${READ_TOOL_NAME}\` 读取 ${path} 的最新内容，确认 old_str 后再编辑。`;
   }
-  return `${message} 同一 old_str 已连续失败 ${prev + 1} 次，建议改用 \`write_file\` 或 \`multi_write\` 直接重写该文件。`;
+  return `${message} 同一 old_str 已连续失败 ${prev + 1} 次，再次编辑会造成重大失误，必须改用 \`write_file\` 直接重写该文件。`;
 }
 
 export function createEditTool(adapter: Sandbox): Tool {

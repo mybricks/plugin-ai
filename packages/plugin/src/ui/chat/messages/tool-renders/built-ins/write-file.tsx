@@ -3,13 +3,11 @@ import { FileWrite } from "../../../../components/icons";
 import type { ToolRecord } from "../index";
 import {
   PendingCodeCard, StreamingCodeCard, CodeCard,
-  basename,
 } from "../shared";
 
 export const WriteFileRenderer = ({ tool }: { tool: ToolRecord }) => {
   const path: string = tool.args?.path ?? "";
-  const name = path ? basename(path) : "";
-  const title = name ? `写文件 ${name}` : (path || "写文件");
+  const title = path ? `写文件 ${path}` : "写文件";
 
   const content: string = tool.args?.content ?? "";
 

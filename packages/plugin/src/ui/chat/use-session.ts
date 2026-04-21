@@ -188,7 +188,11 @@ export function useSession(agent: Agent | undefined) {
               ),
             };
           });
-          return { ...r, status: "abort" as const, iterations: iters };
+          return { 
+            ...r, 
+            status: "abort" as const, 
+            iterations: iters
+          };
         });
         pendingIdRef.current = null;
       }),

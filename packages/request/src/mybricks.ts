@@ -7,7 +7,10 @@ export function createMyBricksAIRequest(config: { getToken: () => string | Promi
   }));
 }
 
-export function createMyBricksAIRequestSSE(config: { getToken: () => string | Promise<string> }): RequestAsStreamFn {
+export function createMyBricksAIRequestSSE(config?: { getToken: () => string | Promise<string> }): RequestAsStreamFn {
+  if (!config) {
+    return requestAsStreamForProductionSSE();
+  }
   return requestAsStreamForProductionSSE(async () => ({
     Authorization: `Bearer ${await Promise.resolve(config.getToken())}`,
   }));

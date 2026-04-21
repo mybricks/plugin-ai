@@ -3,13 +3,11 @@ import { Eye } from "../../../../components/icons";
 import type { ToolRecord } from "../index";
 import {
   PendingCodeCard, CodeCard,
-  basename,
 } from "../shared";
 
 export const ReadFileRenderer = ({ tool }: { tool: ToolRecord }) => {
   const path: string = tool.args?.path ?? "";
-  const name = path ? basename(path) : "";
-  const title = name ? `查看文件 ${name}` : (path || "查看文件");
+  const title = path ? `查看文件 ${path}` : "查看文件";
 
   if (tool.status === "pending") {
     return <PendingCodeCard tool={tool} icon={<Eye />} title={`${title}...`} />;
