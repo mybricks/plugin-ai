@@ -127,6 +127,7 @@ export function createCustomRequest(config: CustomRequestConfig): RequestAsStrea
       let finishReason: string | null = null;
 
       const processParsedChunk = (parsed: ParsedCustomSSEChunk) => {
+        console.log('onUsage', parsed.usage)
         if (parsed.content) write(parsed.content);
         if (parsed.thinking && onThinking) onThinking(parsed.thinking);
         if (parsed.usage && onUsage) onUsage(parsed.usage);
@@ -270,11 +271,30 @@ function parseSSELine(
       argumentsChunk: tc.function?.arguments,
     }));
   }
-  if (json.usage) {
+
+  // token 用量
+  // Kimi 官方格式：usage 在 finish_reason 同级（choice.usage），例如：
+  // { "prompt_tokens": 15643, "completion_tokens": 262, "total_tokens": 15905,
+  //   "cached_tokens": 14592, "prompt_tokens_details": { "cached_tokens": 14592 } }
+  if (choice?.usage) {
     result.usage = {
-      inputTokens: json.usage.prompt_tokens ?? 0,
-      outputTokens: json.usage.completion_tokens ?? 0,
+      promptTokens: choice.usage.prompt_tokens ?? 0,
+      completionTokens: choice.usage.completion_tokens ?? 0,
+      totalTokens: choice.usage.total_tokens,
+      promptTokensDetails: {
+        cachedTokens: choice.usage.cached_tokens ?? choice.usage.prompt_tokens_details?.cached_tokens,
+      },
+    };
+  }
+  // OpenAI 格式：usage 在最外层，和 choices 同级
+  else if (json.usage) {
+    result.usage = {
+      promptTokens: json.usage.prompt_tokens ?? 0,
+      completionTokens: json.usage.completion_tokens ?? 0,
       totalTokens: json.usage.total_tokens,
+      promptTokensDetails: {
+        cachedTokens: json.usage.prompt_tokens_details?.cached_tokens,
+      },
     };
   }
   if (choice && "finish_reason" in choice) {

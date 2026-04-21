@@ -50,6 +50,13 @@ function createRequestAsStream(): RequestAsStreamFn {
 
     // return requestAsStreamInfra(params);
 
+    return createCustomRequest({
+      provider: () => "openai",
+      apiUrl: () => "https://api.moonshot.cn/v1/chat/completions",
+      apiKey: () => "sk-lzQcHMzkQCGUKVUa4iVwYlsZKXPrcCL5HAfOQFQGi60jGdhf",
+      model: () => 'kimi-k2.5'
+    })(params);
+
     if (isProduction()) {
       return requestAsStreamForProduction()(params);
     }
