@@ -20,6 +20,7 @@ import {
   toolNotFoundCase,
   toolWriteUnicodeEscapeCase,
   toolWriteUnicodeMidStreamCase,
+  toolWriteLongFilenameCase,
 } from "./tool-error";
 import { customSlowToolCase } from "./custom-tool";
 import {
@@ -54,6 +55,8 @@ import {
   initProjectRetryCase,
 } from "./init-project";
 import { multiEditSameFileCase } from "./multi-edit";
+import { editDoomLoopCase, editNoDoomLoopCase } from "./edit-doom-loop";
+import { editFewLinesCase } from "./edit-few-lines";
 
 export type { TestCase } from "./types";
 
@@ -79,8 +82,12 @@ export const ALL_CASES: TestCase[] = [
   toolNotFoundCase,
   toolWriteUnicodeEscapeCase,
   toolWriteUnicodeMidStreamCase,
+  toolWriteLongFilenameCase,
   customSlowToolCase,
   multiEditSameFileCase,
+  editDoomLoopCase,
+  editNoDoomLoopCase,
+  editFewLinesCase,
   // 多轮 ReAct
   multiTurnNormalCase,
   multiTurnMidErrorCase,

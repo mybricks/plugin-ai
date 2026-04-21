@@ -369,3 +369,67 @@ export const toolWriteUnicodeMidStreamCase: TestCase = {
     );
   },
 };
+
+/**
+ * write_file 超长文件名测试
+ *
+ * 复现场景：LLM 返回一个超长文件名（超过 200 字符），验证 UI 渲染不会溢出或截断异常。
+ * 文件名包含多级嵌套目录和长文件名，用于测试前端对长路径的展示效果。
+ */
+export const toolWriteLongFilenameCase: TestCase = {
+  id: "tool-write-long-filename",
+  name: "write_file 超长文件名",
+  group: "工具调用",
+  description: "LLM 调用 write_file 写入一个超长路径的文件，验证 UI 渲染效果",
+  expectedBehavior: "工具卡片显示完整路径，不应溢出或截断异常。多次发消息循环触发。",
+  initialTurns: [],
+  request: makeScriptedRequest([
+    {
+      type: "tool_calls",
+      calls: [{
+        id: "c_long_1",
+        name: "write_file",
+        args: {
+          path: "src/features/user-management/components/authentication/forms/login-form/fields/LoginFormUsernameFieldWithValidationAndPlaceholder.tsx",
+          content: `import React from 'react';
+
+interface LoginFormUsernameFieldProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+}
+
+export function LoginFormUsernameFieldWithValidationAndPlaceholder({
+  value,
+  onChange,
+  placeholder = '请输入用户名',
+  disabled = false,
+}: LoginFormUsernameFieldProps) {
+  return (
+    <input
+      type="text"
+      className="form-input username-field"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      disabled={disabled}
+      aria-label="用户名输入框"
+    />
+  );
+}`,
+        },
+      }],
+      delayMs: 400,
+    },
+    {
+      type: "content",
+      chunks: [
+        "已创建登录表单的用户名字段组件，路径较长以便于项目结构清晰。",
+        "组件包含验证逻辑和占位符文本，可直接在 LoginForm 中使用。",
+      ],
+      ttftMs: 300,
+      chunkDelayMs: 60,
+    },
+  ], { loop: true }),
+};
