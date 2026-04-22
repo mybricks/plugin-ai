@@ -169,13 +169,14 @@ export const compactWarmupByUsageCase: TestCase = {
 
 /**
  * compact fork 请求返回错误的例子。
+ * 启用重试后会重试 3 次，每次都报错最终失败。
  */
 export const compactErrorCase: TestCase = {
   id: "compact-error",
-  name: "compact 接口报错",
+  name: "compact 接口报错（重试 3 次后失败）",
   group: "Compact",
-  description: "compact fork 请求返回 error 事件，WarmupIter 变为 error 态，turn:error 中断。",
-  expectedBehavior: "发送消息后，消息气泡内出现 WarmupIter（'启动中...' shimmer），compact fork 失败，WarmupIter 变为 '启动失败，建议清空历史记录再重新使用'，turn:error 触发，当前请求中断。",
+  description: "compact fork 请求每次都返回 error 事件，重试 3 次后仍失败，WarmupIter 变为 error 态，触发 turn:error。",
+  expectedBehavior: "发送消息后，WarmupIter 显示'启动中...'，compact fork 报错并触发 3 次重试（content 会更新为'正在尝试不同策略进行压缩'），最终 WarmupIter 变为 error 态，底部显示错误'上下文压缩失败，请重试或者点击上方清空历史记录'。",
   initialTurns: makeTextHistory([
     { user: "你好", assistant: "你好！有什么可以帮你的？" },
     { user: "帮我读一下 App.tsx", assistant: "好的，我来读取 App.tsx 文件。" },
@@ -186,13 +187,14 @@ export const compactErrorCase: TestCase = {
 
 /**
  * compact fork 请求返回空内容（无 <compact> 标签）的例子。
+ * 启用重试后每次都没有标签，3 次重试后最终失败。
  */
 export const compactEmptyResponseCase: TestCase = {
   id: "compact-empty-response",
-  name: "compact 无有效返回",
+  name: "compact 无有效返回（重试 3 次后失败）",
   group: "Compact",
-  description: "compact fork 请求返回内容但不含 <compact> 标签，compact fork 抛错，触发 turn:error。",
-  expectedBehavior: "发送消息后，WarmupIter 显示 '启动中...'，compact fork 返回无效内容并抛错，WarmupIter 消失，底部显示错误提示 + 重试按钮。",
+  description: "compact fork 每次返回内容但不含 <compact> 标签，重试 3 次（保持相同历史轮数）后失败，WarmupIter 变为 error 态，触发 turn:error。",
+  expectedBehavior: "发送消息后，WarmupIter 显示'启动中...'，compact fork 3 次均返回无效内容，content 更新显示重试进度，最终 WarmupIter 变为 error 态，底部显示错误'上下文压缩失败，请重试或者点击上方清空历史记录'。",
   initialTurns: makeTextHistory([
     { user: "你好", assistant: "你好！有什么可以帮你的？" },
     { user: "帮我读一下 App.tsx", assistant: "好的，我来读取 App.tsx 文件。" },
@@ -203,13 +205,14 @@ export const compactEmptyResponseCase: TestCase = {
 
 /**
  * compact fork 请求返回空字符串的例子。
+ * 启用重试后每次都空返回，3 次二分缩减历史后仍失败。
  */
 export const compactNoContentCase: TestCase = {
   id: "compact-no-content",
-  name: "compact 无返回内容",
+  name: "compact 无返回内容（重试 3 次后失败）",
   group: "Compact",
-  description: "compact fork 请求直接返回空字符串（complete 无任何 write），compact fork 抛错，触发 turn:error。",
-  expectedBehavior: "发送消息后，WarmupIter 显示 '启动中...'，compact fork 返回空内容并抛错，WarmupIter 消失，底部显示错误提示 + 重试按钮。",
+  description: "compact fork 每次直接返回空字符串，触发场景A重试（二分缩减历史轮数），3 次重试后仍失败，WarmupIter 变为 error 态，触发 turn:error。",
+  expectedBehavior: "发送消息后，WarmupIter 显示'启动中...'，compact fork 3 次均空返回（历史逐次减半），content 更新显示重试进度，最终 WarmupIter 变为 error 态，底部显示错误'上下文压缩失败，请重试或者点击上方清空历史记录'。",
   initialTurns: makeTextHistory([
     { user: "你好", assistant: "你好！有什么可以帮你的？" },
     { user: "帮我读一下 App.tsx", assistant: "好的，我来读取 App.tsx 文件。" },
@@ -266,15 +269,14 @@ function makeCompactErrorRequest(): TestCase["request"] {
       typeof lastUserMsg?.content === "string" &&
       lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
 
-    await new Promise(r => setTimeout(r, 200));
-
     if (isCompactFork) {
-      // 模拟 compact fork 请求失败
+      // 每次尝试延迟 1.5 秒，让重试进度可见
+      await new Promise(r => setTimeout(r, 1500));
       params.emits.error?.(new Error("compact request failed: API rate limit exceeded"));
       return;
     }
 
-    // 正常回复
+    await new Promise(r => setTimeout(r, 300));
     const reply = "这是正常的回复内容。";
     for (const chunk of reply.match(/.{1,8}/g) ?? []) {
       await new Promise(r => setTimeout(r, 30));
@@ -294,10 +296,9 @@ function makeCompactEmptyResponseRequest(): TestCase["request"] {
       typeof lastUserMsg?.content === "string" &&
       lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
 
-    await new Promise(r => setTimeout(r, 200));
-
     if (isCompactFork) {
-      // 返回不含 <compact> 标签的内容
+      // 每次尝试延迟 1.5 秒，让重试进度可见
+      await new Promise(r => setTimeout(r, 1500));
       const invalidContent = "这是摘要内容，但没有正确的标签包裹。";
       for (const chunk of invalidContent.match(/.{1,10}/g) ?? []) {
         await new Promise(r => setTimeout(r, 20));
@@ -308,7 +309,7 @@ function makeCompactEmptyResponseRequest(): TestCase["request"] {
       return;
     }
 
-    // 正常回复
+    await new Promise(r => setTimeout(r, 300));
     const reply = "这是正常的回复内容。";
     for (const chunk of reply.match(/.{1,8}/g) ?? []) {
       await new Promise(r => setTimeout(r, 30));
@@ -328,22 +329,206 @@ function makeCompactNoContentRequest(): TestCase["request"] {
       typeof lastUserMsg?.content === "string" &&
       lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
 
-    await new Promise(r => setTimeout(r, 200));
-
     if (isCompactFork) {
-      // 直接返回空内容
+      // 每次尝试延迟 1.5 秒，让重试进度可见
+      await new Promise(r => setTimeout(r, 1500));
       params.emits.onFinishReason?.("stop");
       params.emits.complete?.("");
       return;
     }
 
-    // 正常回复
+    await new Promise(r => setTimeout(r, 300));
     const reply = "这是正常的回复内容。";
     for (const chunk of reply.match(/.{1,8}/g) ?? []) {
       await new Promise(r => setTimeout(r, 30));
       params.emits.write(chunk);
     }
     params.emits.onFinishReason?.("stop");
+    params.emits.complete?.("");
+  };
+}
+
+/**
+ * 前置 compact 无限延迟（用于测试取消效果）
+ * compact fork 请求永远不结束，用户可以测试取消按钮的效果。
+ */
+export const compactInfiniteCase: TestCase = {
+  id: "compact-infinite",
+  name: "compact 无限延迟（测试取消）",
+  group: "Compact",
+  description: "前置 compact warmup 触发后，compact fork 请求永远不结束，WarmupIter 一直显示 '启动中...'，可测试取消效果。",
+  expectedBehavior: "发送消息后，WarmupIter 显示 '启动中...' shimmer，compact fork 请求永不结束，用户点击取消按钮可中断请求。",
+  initialTurns: makeTextHistoryWithUsage([
+    { user: "你好", assistant: "你好！有什么可以帮你的？", usage: { promptTokens: 50000, completionTokens: 1000 } },
+    { user: "帮我读一下文件", assistant: "好的，文件内容如下...", usage: { promptTokens: 100000, completionTokens: 2000 } },
+    { user: "继续分析", assistant: "分析结果如下...", usage: { promptTokens: 170000, completionTokens: 3000 } },
+  ]),
+  request: makeCompactInfiniteRequest(),
+  compactOptions: { enabled: true, contextWindow: 200_000 },
+};
+
+/**
+ * compact 前两次接口报错，第三次成功（场景A 重试后成功）。
+ * 模拟 token 超限后 compact fork 二分缩减历史最终成功的场景。
+ */
+export const compactRetrySuccessErrorCase: TestCase = {
+  id: "compact-retry-success-error",
+  name: "compact 接口报错 → 重试后成功",
+  group: "Compact",
+  description: "compact fork 前 2 次请求报错，第 3 次（copyTurns 缩至 1/4）成功返回摘要。WarmupIter content 会更新重试进度。",
+  expectedBehavior: "WarmupIter 显示'启动中...'后两次更新为'正在尝试不同策略进行压缩（第 N 次重试）…'，最终变为 success，主 Agent 正常回复。",
+  initialTurns: makeTextHistoryWithUsage([
+    { user: "你好", assistant: "你好！有什么可以帮你的？", usage: { promptTokens: 50000, completionTokens: 1000 } },
+    { user: "帮我读一下文件", assistant: "好的，文件内容如下...", usage: { promptTokens: 100000, completionTokens: 2000 } },
+    { user: "继续分析", assistant: "分析结果如下...", usage: { promptTokens: 170000, completionTokens: 3000 } },
+  ]),
+  request: makeCompactRetrySuccessErrorRequest(),
+  compactOptions: { enabled: true, contextWindow: 200_000 },
+};
+
+/**
+ * compact 前两次无标签，第三次成功（场景B 重试后成功）。
+ * 模拟模型偶发不按格式返回，重试后恢复正常的场景。
+ */
+export const compactRetrySuccessTagCase: TestCase = {
+  id: "compact-retry-success-tag",
+  name: "compact 无标签返回 → 重试后成功",
+  group: "Compact",
+  description: "compact fork 前 2 次返回无 <compact> 标签的内容，第 3 次成功返回合法摘要。WarmupIter content 会更新重试进度。",
+  expectedBehavior: "WarmupIter 两次更新'正在尝试不同策略进行压缩（第 N 次重试）…'，第 3 次成功，WarmupIter 变为 success，主 Agent 正常回复。",
+  initialTurns: makeTextHistoryWithUsage([
+    { user: "你好", assistant: "你好！有什么可以帮你的？", usage: { promptTokens: 50000, completionTokens: 1000 } },
+    { user: "帮我读一下文件", assistant: "好的，文件内容如下...", usage: { promptTokens: 100000, completionTokens: 2000 } },
+    { user: "继续分析", assistant: "分析结果如下...", usage: { promptTokens: 170000, completionTokens: 3000 } },
+  ]),
+  request: makeCompactRetrySuccessTagRequest(),
+  compactOptions: { enabled: true, contextWindow: 200_000 },
+};
+
+/** compact fork 前 2 次报错，第 3 次成功 */
+function makeCompactRetrySuccessErrorRequest(): TestCase["request"] {
+  let compactAttempt = 0;
+  return async (params: any) => {
+    const msgs = params.messages ?? [];
+    const lastUserMsg = [...msgs].reverse().find((m: any) => m.role === "user");
+    const isCompactFork =
+      typeof lastUserMsg?.content === "string" &&
+      lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
+
+    if (isCompactFork) {
+      compactAttempt++;
+      // 每次尝试延迟 1.5 秒，让重试进度可见
+      await new Promise(r => setTimeout(r, 1500));
+      if (compactAttempt <= 2) {
+        // 前两次报错（场景A）
+        params.emits.error?.(new Error(`compact request failed (attempt ${compactAttempt}): API rate limit`));
+        return;
+      }
+      // 第三次成功
+      for (const chunk of COMPACT_RESPONSE_CONTENT.match(/.{1,20}/g) ?? []) {
+        await new Promise(r => setTimeout(r, 30));
+        params.emits.write(chunk);
+      }
+      params.emits.onFinishReason?.("stop");
+      params.emits.complete?.("");
+      return;
+    }
+
+    await new Promise(r => setTimeout(r, 300));
+    const reply = "compact 重试成功后的正常回复。";
+    for (const chunk of reply.match(/.{1,8}/g) ?? []) {
+      await new Promise(r => setTimeout(r, 30));
+      params.emits.write(chunk);
+    }
+    params.emits.onFinishReason?.("stop");
+    params.emits.onUsage?.({ promptTokens: 5000, completionTokens: 20, totalTokens: 5020 });
+    params.emits.complete?.("");
+  };
+}
+
+/** compact fork 前 2 次无标签，第 3 次成功 */
+function makeCompactRetrySuccessTagRequest(): TestCase["request"] {
+  let compactAttempt = 0;
+  return async (params: any) => {
+    const msgs = params.messages ?? [];
+    const lastUserMsg = [...msgs].reverse().find((m: any) => m.role === "user");
+    const isCompactFork =
+      typeof lastUserMsg?.content === "string" &&
+      lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
+
+    if (isCompactFork) {
+      compactAttempt++;
+      // 每次尝试延迟 1.5 秒，让重试进度可见
+      await new Promise(r => setTimeout(r, 1500));
+      if (compactAttempt <= 2) {
+        // 前两次无标签（场景B）
+        const invalid = `这是第 ${compactAttempt} 次摘要，但没有正确的标签包裹。`;
+        for (const chunk of invalid.match(/.{1,10}/g) ?? []) {
+          await new Promise(r => setTimeout(r, 20));
+          params.emits.write(chunk);
+        }
+        params.emits.onFinishReason?.("stop");
+        params.emits.complete?.("");
+        return;
+      }
+      // 第三次成功
+      for (const chunk of COMPACT_RESPONSE_CONTENT.match(/.{1,20}/g) ?? []) {
+        await new Promise(r => setTimeout(r, 30));
+        params.emits.write(chunk);
+      }
+      params.emits.onFinishReason?.("stop");
+      params.emits.complete?.("");
+      return;
+    }
+
+    await new Promise(r => setTimeout(r, 300));
+    const reply = "compact 重试成功后的正常回复。";
+    for (const chunk of reply.match(/.{1,8}/g) ?? []) {
+      await new Promise(r => setTimeout(r, 30));
+      params.emits.write(chunk);
+    }
+    params.emits.onFinishReason?.("stop");
+    params.emits.onUsage?.({ promptTokens: 5000, completionTokens: 20, totalTokens: 5020 });
+    params.emits.complete?.("");
+  };
+}
+
+/** 生成 compact 无限延迟的 mock（永不结束） */
+function makeCompactInfiniteRequest(): TestCase["request"] {
+  return async (params) => {
+    const msgs = params.messages ?? [];
+    const lastUserMsg = [...msgs].reverse().find(m => m.role === "user");
+    const isCompactFork =
+      typeof lastUserMsg?.content === "string" &&
+      lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
+
+    if (isCompactFork) {
+      // 模拟 compact 开始处理，但永不结束
+      // 先发送一点内容让它看起来在处理中
+      const prefix = "<compact>\n正在总结对话历史...";
+      for (const chunk of prefix.match(/.{1,10}/g) ?? []) {
+        await new Promise(r => setTimeout(r, 100));
+        params.emits.write(chunk);
+      }
+      // 永远不调用 onFinishReason 或 complete，让请求挂着
+      // 使用一个很长的循环来模拟无限等待
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        await new Promise(r => setTimeout(r, 1000));
+        // 每秒发送一个空格，保持连接活跃但不结束
+        params.emits.write(" ");
+      }
+    }
+
+    // 正常回复
+    await new Promise(r => setTimeout(r, 300));
+    const reply = "这是正常的回复内容。";
+    for (const chunk of reply.match(/.{1,8}/g) ?? []) {
+      await new Promise(r => setTimeout(r, 30));
+      params.emits.write(chunk);
+    }
+    params.emits.onFinishReason?.("stop");
+    params.emits.onUsage?.({ promptTokens: 5000, completionTokens: 20, totalTokens: 5020 });
     params.emits.complete?.("");
   };
 }

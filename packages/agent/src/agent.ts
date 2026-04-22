@@ -199,10 +199,12 @@ export interface FormatUserMessageResult {
  */
 export interface ForkOptions {
   /**
-   * 复制最近多少轮历史作为 fork 的初始上下文。
-   * 不传则全量复制当前 turns 快照。
+   * 截取 turns 快照的配置。
+   * - 不传：全量复制当前 turns
+   * - `{ from: "end", count: N }`：取最后 N 轮（适用于 autoSummary 等只需近期历史的场景）
+   * - `{ from: "start", count: N }`：取前 N 轮（适用于 autoCompact 二分重试等从历史开头压缩的场景）
    */
-  copyTurns?: number;
+  turnsSlice?: { from: "start" | "end"; count: number };
   /**
    * 覆盖工具列表。
    * - 不传（undefined）：继承父 Agent 的 tools
@@ -738,8 +740,8 @@ export class Agent {
     llmRest?: Record<string, any>;
   }): Promise<void> {
     const { context: { baseMessages, historyStartIndex }, initialTail, startStep, turn, userParams, llmRest = {} } = opts;
-    this._abortController = new AbortController();
-    const signal = this._abortController.signal;
+    // 复用 requestAI 中创建的 AbortController（已确保 warmup 阶段也能取消）
+    const signal = this._abortController!.signal;
     // 每次进入 ReAct 循环都从入口参数初始化一份 turn 级 aiRole，
     // 循环结束后自然销毁，不污染下一次 request/retry。
     const baseLlmRest: Record<string, any> = { ...llmRest };
@@ -1095,6 +1097,11 @@ export class Agent {
     if (attachments?.length) {
       rest.aiRole = "image";
     }
+    
+    // ── 提前创建 AbortController（确保 warmup 阶段也能取消）
+    this._abortController = new AbortController();
+    const signal = this._abortController.signal;
+    
     // ── 格式化用户消息（在构建 TurnRecord 之前执行，格式化结果写入 turn）
     // formatUserMessage 返回 { message, attachments?, meta? }，可覆盖原始参数
     // 注意：turn.userText 保留原始 message（UI 展示用），LLM 收到的是 formattedParams.message
@@ -1150,46 +1157,9 @@ export class Agent {
       console.warn("[Agent] hooks.beforeTurn failed:", e);
     }
 
-    // ── 前置阻塞 compact（buildMessages 之前执行，确保 compactRecord 最新）
-    // 1. 若不需要 compact（未达阈值），跳过
-    // 2. 若后置已压缩好（compactRecord 游标覆盖最新 success turn），跳过
-    // 3. 否则同步执行 compact，插入 WarmupIter 到 turn.iterations，成功/失败后更新状态
-    if (this._shouldAutoCompact() && !this._isAlreadyCompacted()) {
-      const warmupStartTime = Date.now();
-      const warmupIter: WarmupIter = {
-        type: "warmup",
-        status: "loading",
-        content: "启动中，当前正在压缩上下文...",
-        startTime: warmupStartTime,
-        toolCalls: [],
-      };
-      turn.iterations.push(warmupIter);
-
-      this.events.emit("warmup:start", { startTime: warmupStartTime, content: warmupIter.content });
-
-      try {
-        await this._runAutoCompact();
-        const warmupEndTime = Date.now();
-        warmupIter.status = "success";
-        warmupIter.content = "上下文压缩完成。";
-        warmupIter.endTime = warmupEndTime;
-        this.events.emit("warmup:complete", { status: "success", content: warmupIter.content, endTime: warmupEndTime });
-      } catch (e) {
-        const warmupEndTime = Date.now();
-        warmupIter.status = "error";
-        warmupIter.content = "压缩失败，可尝试重试或咨询客服";
-        warmupIter.endTime = warmupEndTime;
-        this.events.emit("warmup:complete", { status: "error", content: warmupIter.content, endTime: warmupEndTime });
-        // 中断本次 requestAI
-        turn.endTime = warmupEndTime;
-        turn.status = "error";
-        turn.error = warmupIter.content;
-        await this._persistTurn(turn);
-        this.events.emit("turn:error", { error: new Error(warmupIter.content) });
-        this._onTurnEnd(turn);
-        throw e;
-      }
-    }
+    // ── warmup 阶段（buildMessages 之前执行）
+    const warmupAborted = await this._runWarmup(turn, signal);
+    if (warmupAborted) return;
 
     // 构建基础 messages（system + agentsMd + context + compact + history），每轮 turn 只算一次
     let context: { baseMessages: Message[]; historyStartIndex: number };
@@ -1226,17 +1196,23 @@ export class Agent {
    *   - key = 随机 UUID（隔离 History 命名空间，不污染主 Agent）
    *   - history = undefined（fork 不写任何持久化记录）
    *   - events = 独立 AgentEvents 实例（外部监听器挂在主 Agent，不会收到 fork 事件）
-   *   - turns = 主 Agent 当前 turns 的浅拷贝快照（支持 copyTurns 截取最近 N 轮）
+   *   - turns = 主 Agent 当前 turns 的浅拷贝快照（支持 turnsSlice 截取）
    *   - options = 继承主 Agent options，forkOptions 可覆盖 tools
    *
    * 可用于 autoSummary、autoCompact、subAgent 等场景。
    */
   createFork(forkOptions?: ForkAgentOptions): ForkAgent {
-    const { copyTurns, tools, aiRole, mask, retry } = forkOptions ?? {};
+    const { turnsSlice, tools, aiRole, mask, retry } = forkOptions ?? {};
 
-    // turns 快照：按 copyTurns 截取最近 N 轮，或全量
-    const snapshotTurns =
-      copyTurns != null ? this.turns.slice(-copyTurns) : [...this.turns];
+    // turns 快照：根据 turnsSlice 截取，不传则全量
+    let snapshotTurns: TurnRecord[];
+    if (turnsSlice != null) {
+      snapshotTurns = turnsSlice.from === "start"
+        ? this.turns.slice(0, turnsSlice.count)
+        : this.turns.slice(-turnsSlice.count);
+    } else {
+      snapshotTurns = [...this.turns];
+    }
 
     // options 继承 + 覆盖
     const { system } = forkOptions ?? {};
@@ -1311,9 +1287,7 @@ export class Agent {
 
     if (compact != null && compact.enabled !== false) {
       if (this._shouldAutoCompact()) {
-        void this._runAutoCompact().catch((e) => {
-          console.warn("[Agent] compact failed:", e);
-        });
+        void this._runAutoCompact();
       }
     }
   }
@@ -1379,7 +1353,7 @@ export class Agent {
 
 IMPORTANT: 不要调用工具！
 `;
-    const fork = this.createFork({ tools: [], copyTurns: 1, retry: { maxRetries: 0 } });
+    const fork = this.createFork({ tools: [], turnsSlice: { from: "end", count: 1 }, retry: { maxRetries: 0 } });
 
     let lastContent = "";
     fork.events.on("llm:content", ({ content }) => {
@@ -1414,6 +1388,82 @@ IMPORTANT: 不要调用工具！
     void Promise.resolve(this.options.hooks?.afterTurnSummary?.(turn, summaryText)).catch((e) => {
       console.warn("[Agent] hooks.afterTurnSummary failed:", e);
     });
+  }
+
+  // ─── warmup ─────────────────────────────────────────────────────────────
+
+  /**
+   * warmup 阶段：在 buildMessages 之前执行预处理步骤。
+   * 
+   * 目前包含 compact 压缩，未来可扩展其他预处理步骤。
+   * 所有步骤共享同一个 WarmupIter，错误在各步骤内部消化，不向外抛出。
+   * 
+   * @returns true 表示用户取消，调用方应 return；false 表示继续主流程
+   */
+  private async _runWarmup(turn: TurnRecord, signal: AbortSignal): Promise<boolean> {
+    // 判断是否需要执行任何 warmup 步骤
+    const needCompact = this._shouldAutoCompact() && !this._isAlreadyCompacted();
+    if (!needCompact) return false;
+
+    const warmupStartTime = Date.now();
+    const warmupIter: WarmupIter = {
+      type: "warmup",
+      status: "loading",
+      content: "启动中，当前正在压缩上下文...",
+      startTime: warmupStartTime,
+      toolCalls: [],
+    };
+    turn.iterations.push(warmupIter);
+    this.events.emit("warmup:start", { startTime: warmupStartTime, content: warmupIter.content });
+
+    // ── compact 步骤（错误内部消化）
+    if (needCompact) {
+      const onRetry = (attempt: number) => {
+        warmupIter.content = `正在尝试其他策略进行压缩，第 ${attempt} 次重试…`;
+        this.events.emit("warmup:content", { content: warmupIter.content });
+      };
+      const compactOk = await this._runAutoCompact(signal, true, onRetry);
+      if (!compactOk) {
+        // compact 重试全部失败，以 error 终止本轮 turn
+        const errorMsg = "上下文压缩失败，请重试或者点击上方清空历史记录";
+        warmupIter.status = "error";
+        warmupIter.content = errorMsg;
+        warmupIter.endTime = Date.now();
+        this.events.emit("warmup:complete", { status: "error", content: errorMsg, endTime: warmupIter.endTime });
+        turn.endTime = warmupIter.endTime;
+        turn.status = "error";
+        turn.error = errorMsg;
+        await this._persistTurn(turn);
+        this.events.emit("turn:error", { error: new Error(errorMsg) });
+        this._onTurnEnd(turn);
+        return true;
+      }
+    }
+
+    // 统一处理取消
+    if (signal.aborted) {
+      const warmupEndTime = Date.now();
+      warmupIter.status = "error";
+      warmupIter.content = "已取消";
+      warmupIter.endTime = warmupEndTime;
+      this.events.emit("warmup:complete", { status: "error", content: warmupIter.content, endTime: warmupEndTime });
+      turn.endTime = warmupEndTime;
+      turn.status = "abort";
+      await this._persistTurn(turn);
+      this.events.emit("turn:abort", {});
+      this._onTurnEnd(turn);
+      return true;
+    }
+
+    // ── 未来可在此添加更多 warmup 步骤 ──
+
+    // warmup 全部成功
+    const warmupEndTime = Date.now();
+    warmupIter.status = "success";
+    warmupIter.content = "上下文压缩完成。";
+    warmupIter.endTime = warmupEndTime;
+    this.events.emit("warmup:complete", { status: "success", content: warmupIter.content, endTime: warmupEndTime });
+    return false;
   }
 
   // ─── autoCompact ─────────────────────────────────────────────────────────
@@ -1455,25 +1505,33 @@ IMPORTANT: 不要调用工具！
    */
   private _isAlreadyCompacted(): boolean {
     if (!this.compactRecord) return false;
-    const successTurns = this.turns.filter((t) => t.status === "success");
-    const lastSuccessTurn = successTurns[successTurns.length - 1];
-    if (!lastSuccessTurn) return false;
-    return this.compactRecord.upToTurnId === lastSuccessTurn.id;
+    const lastTurn = this.turns[this.turns.length - 1];
+    if (!lastTurn) return false;
+    return this.compactRecord.upToTurnId === lastTurn.id;
   }
 
   /**
-   * fork 一个无工具 Agent，对所有历史生成完整摘要，
+   * 执行 autoCompact：fork 一个无工具 Agent 对所有历史生成完整摘要，
    * 将摘要以 CompactRecord 形式单独存储到 History（不替换 turns）。
    * buildMessages 时会读取 compactRecord，用游标分割历史：
    *   游标前（含）→ 替换为摘要消息；游标后 → 正常展开。
-   * best-effort：异步执行，调用方用 .catch() 静默失败。
+   *
+   * 错误在内部消化，不向外抛出。返回 true 表示成功，false 表示失败/取消。
+   *
+   * @param signal       - AbortSignal，用于监听用户取消操作
+   * @param enableRetry  - 是否启用重试（前置 warmup 时传 true；后置 fire-and-forget 传 false）
+   * @param onRetry      - 重试时的回调，用于更新 warmup content（仅 enableRetry=true 时有意义）
    */
-  private async _runAutoCompact(): Promise<void> {
+  private async _runAutoCompact(
+    signal?: AbortSignal,
+    enableRetry = false,
+    onRetry?: (attempt: number) => void,
+  ): Promise<boolean> {
     const COMPACT_PROMPT =
-      "你的任务是创建一份详细的对话总结，重点关注用户的明确请求和你之前的操作。这份总结应全面涵盖技术细节、代码模式和架构决策，这些内容对于后续的开发工作至关重要，同时又不丢失上下文。\n" + 
+      "你的任务是创建一份详细的对话总结，重点关注用户的明确请求和你之前的操作。这份总结应全面涵盖技术细节、代码模式和架构决策，这些内容对于后续的开发工作至关重要，同时又不丢失上下文。\n" +
       "请对上方完整的对话历史进行总结，用 <compact></compact> 标签包裹内容。\n" +
       "总结将替代原有对话历史，请确保内容足够详细，以便对话可以连贯继续。不要使用工具。\n";
-    
+
     const EXAMPLE_PROMPT = `可参考示例如下，其中括号中的内容代表需要填空替换的内容。
 <example>
 
@@ -1520,47 +1578,87 @@ IMPORTANT: 不要调用工具！
 [可选的下一步行动]
 </compact>
 
-</example>`
+</example>`;
 
-    // 确定游标：压缩到最后一个 success turn（即当前全量历史）
-    const successTurns = this.turns.filter((t) => t.status === "success");
-    if (successTurns.length === 0) return;
-    const lastSuccessTurn = successTurns[successTurns.length - 1];
+    const totalTurns = this.turns.length;
+    if (totalTurns === 0) return false;
 
-    // fork 带全量历史，无工具，关闭遮蔽以看到完整历史
-    const fork = this.createFork({ tools: [], mask: false, retry: { maxRetries: 0 } });
+    const MAX_RETRY = enableRetry ? 3 : 0;
+    // turnsSlice from=start：取前 N 轮，从历史开头压缩
+    let firstTurns = totalTurns;
 
-    let lastContent = "";
-    fork.events.on("llm:content", ({ content }) => {
-      lastContent = content;
-    });
+    for (let attempt = 0; attempt <= MAX_RETRY; attempt++) {
+      if (attempt > 0) {
+        onRetry?.(attempt);
+      }
 
-    await fork.requestAI({
-      message: COMPACT_PROMPT + EXAMPLE_PROMPT
-    });
+      // 游标 = fork 实际看到的最后一条 turn 的 id（与 fork 视野严格对齐）
+      const forkTurns = this.turns.slice(0, firstTurns);
+      const upToTurnId = forkTurns[forkTurns.length - 1].id;
 
-    if (!lastContent) throw new Error("compact fork 返回空内容");
+      const fork = this.createFork({ tools: [], mask: false, retry: { maxRetries: 0 }, turnsSlice: { from: "start", count: firstTurns } });
 
-    // 解析 <compact>...</compact> 标签内容，未命中则抛错
-    const match = lastContent.match(/<compact>([\s\S]*?)<\/compact>/);
-    if (!match) throw new Error("compact fork 返回内容不含 <compact> 标签");
-    const compactText = match[1].trim();
-    if (!compactText) throw new Error("compact fork 返回 <compact> 标签内容为空");
+      // 监听 signal，取消时同步中断 fork
+      let abortHandler: (() => void) | undefined;
+      if (signal) {
+        abortHandler = () => fork.abort();
+        signal.addEventListener("abort", abortHandler);
+      }
 
-    const compactRecord: CompactRecord = {
-      upToTurnId: lastSuccessTurn.id,
-      content: compactText,
-      createdAt: Date.now(),
-    };
+      let lastContent = "";
+      fork.events.on("llm:content", ({ content }) => { lastContent = content; });
 
-    // 写入内存缓存
-    this.compactRecord = compactRecord;
+      let apiOk = true;
+      try {
+        await fork.requestAI({ message: COMPACT_PROMPT + EXAMPLE_PROMPT });
+      } catch (e) {
+        apiOk = false;
+        console.warn(`[Agent] autoCompact requestAI failed (attempt ${attempt}):`, e);
+      } finally {
+        if (abortHandler && signal) signal.removeEventListener("abort", abortHandler);
+      }
 
-    // 持久化到 History 的独立存储槽
-    const { history, key } = this.options;
-    if (history && key) {
-      await history.saveCompact(key, compactRecord);
+      if (signal?.aborted) return false;
+
+      if (!apiOk || !lastContent) {
+        // 场景A：接口报错或空返回 → 二分缩减 firstTurns，下次历史更短
+        firstTurns = Math.max(1, Math.floor(firstTurns / 2));
+        continue;
+      }
+
+      // 解析 <compact>...</compact> 标签内容
+      const match = lastContent.match(/<compact>([\s\S]*?)<\/compact>/);
+      const compactText = match?.[1]?.trim();
+      if (!compactText) {
+        // 场景B：未按标签返回 → 保持相同 firstTurns 重试
+        console.warn(`[Agent] autoCompact missing/empty <compact> tag (attempt ${attempt})`);
+        continue;
+      }
+
+      // 成功，写 compactRecord（upToTurnId 与本次 fork 视野严格对齐）
+      const compactRecord: CompactRecord = {
+        upToTurnId,
+        content: compactText,
+        createdAt: Date.now(),
+      };
+
+      this.compactRecord = compactRecord;
+
+      // 持久化到 History 的独立存储槽
+      const { history, key } = this.options;
+      if (history && key) {
+        try {
+          await history.saveCompact(key, compactRecord);
+        } catch (e) {
+          console.warn("[Agent] autoCompact saveCompact failed:", e);
+          // 持久化失败不影响内存缓存，继续
+        }
+      }
+
+      return true;
     }
+
+    return false;
   }
 }
 

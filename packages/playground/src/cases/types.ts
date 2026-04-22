@@ -27,6 +27,9 @@ export interface TestCase {
     maxTurns?: number;
     contextWindow?: number;
   };
+  summaryOptions?: {
+    enabled?: boolean;
+  };
   /** 覆盖 CodeAgent 的其他配置（maxSteps、doomLoopThreshold 等） */
   agentOptions?: {
     maxSteps?: number;

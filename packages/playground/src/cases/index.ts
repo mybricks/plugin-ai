@@ -41,7 +41,7 @@ import {
   retrySuccessCase,
   maxStepsCase,
 } from "./edge-cases";
-import { compactTriggerCase, compactWithToolsCase, compactWarmupByUsageCase, compactErrorCase, compactEmptyResponseCase, compactNoContentCase } from "./compact";
+import { compactTriggerCase, compactWithToolsCase, compactWarmupByUsageCase, compactErrorCase, compactEmptyResponseCase, compactNoContentCase, compactInfiniteCase, compactRetrySuccessErrorCase, compactRetrySuccessTagCase } from "./compact";
 import { markdownRichCase, userMessageWithLinksCase, streamingMarkdownCase, toolThenEmptyContentCase } from "./ui-render";
 import {
   initProjectSingleFileCase,
@@ -57,6 +57,7 @@ import {
 import { multiEditSameFileCase } from "./multi-edit";
 import { editDoomLoopCase, editNoDoomLoopCase } from "./edit-doom-loop";
 import { editFewLinesCase } from "./edit-few-lines";
+import { summaryBasicCase, summaryEmptyResponseCase } from "./summary";
 
 export type { TestCase } from "./types";
 
@@ -110,6 +111,12 @@ export const ALL_CASES: TestCase[] = [
   compactErrorCase,
   compactEmptyResponseCase,
   compactNoContentCase,
+  compactInfiniteCase,
+  compactRetrySuccessErrorCase,
+  compactRetrySuccessTagCase,
+  // Summary
+  summaryBasicCase,
+  summaryEmptyResponseCase,
   // UI 渲染
   markdownRichCase,
   userMessageWithLinksCase,
