@@ -58,6 +58,13 @@ import { multiEditSameFileCase } from "./multi-edit";
 import { editDoomLoopCase, editNoDoomLoopCase } from "./edit-doom-loop";
 import { editFewLinesCase } from "./edit-few-lines";
 import { summaryBasicCase, summaryEmptyResponseCase } from "./summary";
+import {
+  webFetchBasicCase,
+  webFetchFormatCase,
+  webFetchAuthCase,
+  webFetchImageCase,
+  webFetchErrorCase,
+} from "./web-fetch";
 
 export type { TestCase } from "./types";
 
@@ -117,6 +124,12 @@ export const ALL_CASES: TestCase[] = [
   // Summary
   summaryBasicCase,
   summaryEmptyResponseCase,
+  // WebFetch
+  webFetchBasicCase,
+  webFetchFormatCase,
+  webFetchAuthCase,
+  webFetchImageCase,
+  webFetchErrorCase,
   // UI 渲染
   markdownRichCase,
   userMessageWithLinksCase,

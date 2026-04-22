@@ -6,6 +6,7 @@ import type { TestCase } from "./cases";
 import { usePlaygroundAgent } from "./lib/use-playground-agent";
 import { useRequestInspector, type RequestSnapshot } from "./lib/use-request-inspector";
 import type { MemFS } from "./lib/mem-fs";
+import { getWebFetchUrl, setWebFetchUrl, getDefaultUrlForCase } from "./lib/web-fetch-state";
 import "./app.css";
 
 // ─── Theme Toggle ─────────────────────────────────────────────────────────────
@@ -44,6 +45,7 @@ const GROUP_ICONS: Record<string, string> = {
   "消息遮蔽": "🎭",
   "异常检测": "⚠️",
   "Compact": "🗜️",
+  "WebFetch": "🔗",
   "UI 渲染": "🎨",
 };
 
@@ -187,6 +189,7 @@ export default function App() {
   const initialCase = ALL_CASES.find(c => c.id === initialCaseId) ?? ALL_CASES[0] ?? null;
 
   const [activeCase] = useState<TestCase | null>(initialCase);
+  const [webFetchUrl, setWebFetchUrlState] = useState(() => getDefaultUrlForCase(initialCase?.id ?? ""));
 
   const { wrappedRequest, snapshots } = useRequestInspector(
     activeCase?.request ?? null
@@ -206,6 +209,24 @@ export default function App() {
     window.location.reload();
   }, []);
 
+  // 是否显示 URL 输入框（WebFetch 分组）
+  const showWebFetchInput = activeCase?.group === "WebFetch";
+
+  const handleWebFetchUrlChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const url = e.target.value;
+    setWebFetchUrlState(url);
+    setWebFetchUrl(url);
+  }, []);
+
+  // 当切换 case 时更新默认 URL
+  useEffect(() => {
+    if (activeCase?.group === "WebFetch") {
+      const defaultUrl = getDefaultUrlForCase(activeCase.id);
+      setWebFetchUrlState(defaultUrl);
+      setWebFetchUrl(defaultUrl);
+    }
+  }, [activeCase]);
+
   return (
     <div className="pg-layout">
       {/* 顶栏：主题切换 */}
@@ -222,6 +243,19 @@ export default function App() {
             <span className="pg-sidebar-title">🧪 Test Cases</span>
             <span className="pg-case-count">{ALL_CASES.length}</span>
           </div>
+          {/* WebFetch URL 输入框 */}
+          {showWebFetchInput && (
+            <div className="pg-webfetch-input-wrap">
+              <label className="pg-webfetch-label">🔗 URL</label>
+              <input
+                type="url"
+                className="pg-webfetch-input"
+                placeholder="https://example.com"
+                value={webFetchUrl}
+                onChange={handleWebFetchUrlChange}
+              />
+            </div>
+          )}
           <div className="pg-sidebar-body">
             {Object.entries(GROUPS).map(([group, cases]) => (
               <div key={group} className="pg-group">

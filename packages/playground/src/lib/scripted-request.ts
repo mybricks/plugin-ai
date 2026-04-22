@@ -39,6 +39,14 @@ export type MockStep =
       /** 既不 complete 也不 error，Promise 永不 resolve（mock 无限 pending） */
       type: "pending";
       delayMs?: number;
+    }
+  | {
+      /** 动态 tool_calls：从请求参数中解析 tool call（如从用户消息提取 URL） */
+      type: "dynamic_tool_calls";
+      /** 解析函数，返回要调用的 tool calls 列表 */
+      resolve: (params: { messages: any[] }) => ToolCallSpec[];
+      /** 返回前的延迟（ms） */
+      delayMs?: number;
     };
 
 // ─── 脚本化 request ───────────────────────────────────────────────────────────
@@ -125,6 +133,35 @@ export function makeScriptedRequest(
       params.emits.onToolCalls?.(step.calls);
       params.emits.onFinishReason?.("tool_calls");
       params.emits.complete?.("");
+      return;
+    }
+
+    if (step.type === "dynamic_tool_calls") {
+      await delay(step.delayMs ?? 0);
+
+      // 从请求参数中动态解析 tool calls
+      const calls = step.resolve({ messages: params.messages ?? [] });
+      if (calls.length === 0) {
+        // 如果解析失败，返回空回复
+        params.emits.onFinishReason?.("stop");
+        params.emits.complete?.("");
+        return;
+      }
+
+      // 模拟流式 tool_call 输出（逐字符展示参数）
+      for (const call of calls) {
+        const argsStr = JSON.stringify(call.args);
+        params.emits.onToolCallStream?.({ index: 0, id: call.id, name: call.name, argsChunk: "" });
+        for (let i = 0; i < argsStr.length; i += 4) {
+          await delay(20);
+          params.emits.onToolCallStream?.({ index: 0, argsChunk: argsStr.slice(i, i + 4) });
+        }
+      }
+
+      params.emits.onToolCalls?.(calls);
+      params.emits.onFinishReason?.("tool_calls");
+      params.emits.complete?.("");
+      return;
     }
   };
 }
