@@ -529,5 +529,6 @@ export function turnsToMessages(
       });
     }
   }
+
   return messages;
 }

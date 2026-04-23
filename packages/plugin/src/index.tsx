@@ -130,6 +130,9 @@ export default function pluginAI(params: PluginAIParams): any {
         
         const history = new IDBHistory({ dbName: "@plugin-ai/plugin/messages" });
         await history.import(currentAgentKey, data.turns);
+        if (data.compactRecord) {
+          await history.saveCompact(currentAgentKey, data.compactRecord);
+        }
         alert(`导入成功！agentKey: ${currentAgentKey}, turns: ${data.turns.length}`);
       } catch (err) {
         console.error("导入失败:", err);

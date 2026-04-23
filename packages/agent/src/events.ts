@@ -280,4 +280,8 @@ export class AgentEvents {
   emit<K extends keyof AgentEventMap>(event: K, data: AgentEventMap[K]) {
     (this.listeners[event] ?? []).forEach((h: any) => h(data));
   }
+
+  removeAllListeners() {
+    this.listeners = {};
+  }
 }

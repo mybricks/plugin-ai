@@ -1225,14 +1225,24 @@ export class Agent {
   createFork(forkOptions?: ForkAgentOptions): ForkAgent {
     const { turnsSlice, tools, aiRole, mask, retry } = forkOptions ?? {};
 
-    // turns 快照：根据 turnsSlice 截取，不传则全量
+    // turns + compactRecord 联动截取：
+    // turnsSlice 截取后，compactRecord 游标若仍在截取范围内则保留，否则置 null
     let snapshotTurns: TurnRecord[];
+    let snapshotCompactRecord: CompactRecord | null;
+
     if (turnsSlice != null) {
       snapshotTurns = turnsSlice.from === "start"
         ? this.turns.slice(0, turnsSlice.count)
         : this.turns.slice(-turnsSlice.count);
+
+      // compactRecord 游标 turn 必须存在于截取后的 turns 中才有效
+      const compactStillValid =
+        this.compactRecord != null &&
+        snapshotTurns.some((t) => t.id === this.compactRecord!.upToTurnId);
+      snapshotCompactRecord = compactStillValid ? this.compactRecord : null;
     } else {
       snapshotTurns = [...this.turns];
+      snapshotCompactRecord = this.compactRecord; // 全量继承
     }
 
     // options 继承 + 覆盖
@@ -1259,6 +1269,7 @@ export class Agent {
     // 使用 ForkAgent 构造，传入 aiRole
     const fork = new ForkAgent(forkAgentOptions, aiRole);
     fork.turns = snapshotTurns;
+    fork.compactRecord = snapshotCompactRecord;
     return fork;
   }
 
@@ -1376,13 +1387,20 @@ IMPORTANT: 不要调用工具！
 `;
     const fork = this.createFork({ tools: [], turnsSlice: { from: "end", count: 1 }, retry: { maxRetries: 0 } });
     (fork as any).options.getUserContextMessages = undefined;
+    (fork as any).options.formatUserMessage = undefined;
 
     let lastContent = "";
     fork.events.on("llm:content", ({ content }) => {
       lastContent = content;
     });
 
-    await fork.requestAI({ message: SUMMARY_PROMPT });
+    try {
+      await fork.requestAI({ message: SUMMARY_PROMPT });
+    } finally {
+      // 清除 fork 引用，释放 turns / events 等资源
+      fork.turns = [];
+      fork.events.removeAllListeners();
+    }
 
     if (!lastContent) return;
 
@@ -1606,20 +1624,36 @@ IMPORTANT: 不要调用工具！
     if (totalTurns === 0) return false;
 
     const MAX_RETRY = enableRetry ? 3 : 0;
-    // turnsSlice from=start：取前 N 轮，从历史开头压缩
-    let firstTurns = totalTurns;
+
+    // 从 compactRecord 游标之后开始，只压缩尚未压缩的新增 turns。
+    // compactedIndex：游标 turn 在 this.turns 中的索引；-1 表示无 compactRecord。
+    const compactedIndex = this.compactRecord
+      ? this.turns.findIndex((t) => t.id === this.compactRecord!.upToTurnId)
+      : -1;
+    // startFromIndex：新增部分的起始索引（游标之后第一个 turn）
+    const startFromIndex = compactedIndex + 1;
+    // newTurnsCount：待压缩的 turn 数量（二分在此区间内收缩）
+    const newTurnsCount = totalTurns - startFromIndex;
+    if (newTurnsCount <= 0) return false;
+
+    // firstTurns：传给 turnsSlice 的绝对数量（含游标前），二分时只缩减新增部分
+    let firstNewTurns = newTurnsCount;
 
     for (let attempt = 0; attempt <= MAX_RETRY; attempt++) {
       if (attempt > 0) {
         onRetry?.(attempt);
       }
 
+      // turnsSlice 绝对数量 = 游标前已有部分 + 本次要压缩的新增部分
+      const sliceCount = startFromIndex + firstNewTurns;
       // 游标 = fork 实际看到的最后一条 turn 的 id（与 fork 视野严格对齐）
-      const forkTurns = this.turns.slice(0, firstTurns);
+      const forkTurns = this.turns.slice(0, sliceCount);
       const upToTurnId = forkTurns[forkTurns.length - 1].id;
 
-      const fork = this.createFork({ tools: [], mask: false, retry: { maxRetries: 0 }, turnsSlice: { from: "start", count: firstTurns } });
+      // fork 继承 compactRecord（由 createFork 联动处理：游标在截取范围内则保留）
+      const fork = this.createFork({ tools: [], mask: false, retry: { maxRetries: 0 }, turnsSlice: { from: "start", count: sliceCount } });
       (fork as any).options.getUserContextMessages = undefined;
+      (fork as any).options.formatUserMessage = undefined;
 
       // 监听 signal，取消时同步中断 fork
       let abortHandler: (() => void) | undefined;
@@ -1639,13 +1673,16 @@ IMPORTANT: 不要调用工具！
         console.warn(`[Agent] autoCompact requestAI failed (attempt ${attempt}):`, e);
       } finally {
         if (abortHandler && signal) signal.removeEventListener("abort", abortHandler);
+        // 清除 fork 引用，释放 turns / events 等资源
+        fork.turns = [];
+        fork.events.removeAllListeners();
       }
 
       if (signal?.aborted) return false;
 
       if (!apiOk || !lastContent) {
-        // 场景A：接口报错或空返回 → 二分缩减 firstTurns，下次历史更短
-        firstTurns = Math.max(1, Math.floor(firstTurns / 2));
+        // 场景A：接口报错或空返回 → 二分缩减新增区间，下次历史更短
+        firstNewTurns = Math.max(1, Math.floor(firstNewTurns / 2));
         continue;
       }
 
