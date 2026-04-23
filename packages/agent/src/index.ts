@@ -3,7 +3,7 @@ export type { AgentOptions, AgentHooks, RequestAIOptions, MaskOptions, ForkOptio
 export { maskMessages } from "./mask";
 
 export type { AgentEventMap } from "./events";
-export type { Message, History, Tool, TurnRecord, ToolCallRecord, ToolResult, VersionFile, VersionRecord, BoundHistory } from "./types";
+export type { Message, History, Tool, TurnRecord, TurnSender, ToolCallRecord, ToolResult, VersionFile, VersionRecord, BoundHistory } from "./types";
 export { ToolValidationError, bindHistory } from "./types";
 
 export { CodeAgent } from "./code-agent";

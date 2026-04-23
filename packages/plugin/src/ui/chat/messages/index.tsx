@@ -113,10 +113,10 @@ const MessageBubble = ({ record, user, copilot, toolRendererMap, renderUserMessa
       {/* 用户消息 —— 靠右 */}
       <div className={classNames(css["chat-bubble"], css["user-bubble"])}>
         <header className={css["chat-bubble-header"]}>
-          <span className={css["chat-bubble-header-name"]}>{user?.name ?? "用户"}</span>
-          {user?.avatar && (
+          <span className={css["chat-bubble-header-name"]}>{record.sender?.name ?? user?.name ?? "用户"}</span>
+          {(record.sender?.avatar ?? user?.avatar) && (
             <div className={css["chat-bubble-header-avatar"]}>
-              <img className={css["user-avatar"]} src={user.avatar} />
+              <img className={css["user-avatar"]} src={record.sender?.avatar ?? user?.avatar} />
             </div>
           )}
         </header>

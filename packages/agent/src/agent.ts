@@ -1,7 +1,7 @@
 import { randomUUID } from "./uuid";
 import type { RequestAsStreamFn, ToolDescriptor } from "../../request/src";
 import { AgentEvents } from "./events";
-import type { CompactRecord, Message, History, Tool, TurnRecord, ToolCallRecord, BoundHistory, TokenUsage, WarmupIter } from "./types";
+import type { CompactRecord, Message, History, Tool, TurnRecord, ToolCallRecord, BoundHistory, TokenUsage, WarmupIter, TurnSender } from "./types";
 import { turnsToMessages, bindHistory, getLLMIterations } from "./types";
 import { maskMessages, computeHandoffTurnIds, type MaskOptions } from "./mask";
 import { wrapRequestWithRetry, type RetryOptions } from "./retry";
@@ -196,6 +196,7 @@ export interface FormatUserMessageResult {
   message: string;
   attachments?: any[];
   meta?: Record<string, any>;
+  sender?: TurnSender;
 }
 
 // ─── ForkOptions ─────────────────────────────────────────────────────────────
@@ -1131,6 +1132,7 @@ export class Agent {
           message: result.message,
           ...(result.attachments !== undefined ? { attachments: result.attachments } : {}),
           ...(result.meta !== undefined ? { meta: { ...params.meta, ...result.meta } } : {}),
+          ...(result.sender !== undefined ? { sender: result.sender } : {}),
         };
       } catch (e) {
         console.warn("[Agent] options.formatUserMessage failed:", e);
@@ -1153,6 +1155,7 @@ export class Agent {
       ...(formattedParams.message !== message ? { userFormattedText: formattedParams.message } : {}),
       userAttachments,
       ...(formattedMeta ? { meta: formattedMeta } : {}),
+      ...(formattedParams.sender ? { sender: formattedParams.sender } : {}),
       content: "",
       thinkingContent: "",
       iterations: [],
@@ -1164,6 +1167,7 @@ export class Agent {
       message,
       attachments: formattedParams.attachments ?? attachments,
       meta: formattedMeta,
+      ...(formattedParams.sender ? { sender: formattedParams.sender } : {}),
       ...(formattedParams.message !== message ? { userFormattedText: formattedParams.message } : {}),
     });
 
