@@ -330,7 +330,7 @@ const BubbleMessage = ({ message }: { message: string }) => {
   useEffect(() => {
     if (ref.current) ref.current.innerHTML = md.render(message);
   }, [message]);
-  return <span ref={ref} />;
+  return <div className={css['message-content']} ref={ref} />;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

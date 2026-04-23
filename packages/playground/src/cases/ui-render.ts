@@ -242,3 +242,55 @@ export const streamingMarkdownCase: TestCase = {
     },
   ]),
 };
+
+// ─── LLM 返回超链接的 Markdown 内容 ──────────────────────────────────────────────
+
+const LINKS_MARKDOWN = `以下是常用的技术文档和工具链接：
+
+## 官方文档
+
+- [React 官方文档](https://react.dev) - React 19 新特性与最佳实践
+- [Vue.js 官方文档](https://vuejs.org) - Vue 3 Composition API 指南
+- [TypeScript 手册](https://www.typescriptlang.org/docs/) - 类型系统详解
+
+## 学习资源
+
+1. [MDN Web Docs](https://developer.mozilla.org) - Web 开发权威参考
+2. [JavaScript Info](https://javascript.info) - 现代 JS 教程
+3. [CSS Tricks](https://css-tricks.com) - CSS 技巧与实战
+
+## 工具平台
+
+| 名称 | 用途 | 链接 |
+|------|------|------|
+| [GitHub](https://github.com) | 代码托管 | https://github.com |
+| [Stack Overflow](https://stackoverflow.com) | 技术问答 | https://stackoverflow.com |
+| [CodeSandbox](https://codesandbox.io) | 在线编辑器 | https://codesandbox.io |
+
+## 推荐阅读
+
+想深入了解 React 性能优化，可以阅读 [React 官方性能优化指南](https://react.dev/learn/render-and-commit) 和这篇 [Stack Overflow 高赞回答](https://stackoverflow.com/questions/53074551)。
+
+> 💡 提示：点击链接即可跳转到对应页面。
+`;
+
+const LINKS_CHUNKS = LINKS_MARKDOWN.match(/[\s\S]{1,25}/g) ?? [LINKS_MARKDOWN];
+
+/** LLM 返回超链接：验证 markdown 链接正确渲染为可点击的 <a> 标签 */
+export const assistantMessageWithLinksCase: TestCase = {
+  id: "ui-assistant-links",
+  name: "助手消息含超链接",
+  group: "UI 渲染",
+  description: "LLM 返回包含 Markdown 超链接的文本，验证链接是否正确渲染为可点击元素。",
+  expectedBehavior:
+    "助手气泡中的 [text](url) 格式渲染为蓝色可点击链接；表格内的链接也可点击；链接 target=_blank 在新标签打开。",
+  initialTurns: [],
+  request: makeScriptedRequest([
+    {
+      type: "content",
+      chunks: LINKS_CHUNKS,
+      ttftMs: 150,
+      chunkDelayMs: 20,
+    },
+  ]),
+};

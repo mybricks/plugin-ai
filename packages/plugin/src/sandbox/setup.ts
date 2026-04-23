@@ -199,12 +199,26 @@ function connectToAI(
     getContext: async () => {
       return designerRef.current?.exportToMessage() ?? null;
     },
-    getRealtime: async () => {
-      const resourcesCode = await designerRef.current?.exportResourceCode()
-      return resourcesCode ? `已读取当前所有代码，你可以从这里确认代码现状确认需求是否完成、代码是否生效。
-> 注意：读取文件是让你更好理解和确认之前的工具是否调用成功，请勿认为是要对全局进行重构和优化。
+    getUserContext: async () => {
+      const files = await sandbox.getFiles();
+      if (files.length === 0) {
+        return '这是一个空项目，没有任何代码文件。\n';
+      }
 
-${resourcesCode}` : null;
+      const fileSectionParts: string[] = [];
+      files.forEach((file) => {
+        const { path, content } = file;
+        const suffix = path.split('.').pop() ?? '';
+        fileSectionParts.push(`\n#### ${path}\n\n\`\`\`${suffix}\n${content}\n\`\`\`\n`);
+      });
+
+      const resourcesCode = [
+        '# 项目文件\n',
+        ...fileSectionParts,
+      ].join('');
+
+      return `这是发送这条消息时的各类环境信息，并不会实时更新。
+${resourcesCode}`;
     },
   };
 

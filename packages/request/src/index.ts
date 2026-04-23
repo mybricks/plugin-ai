@@ -1,11 +1,8 @@
 import { isProduction } from "./env";
-import { createCustomRequest } from "./custom";
+import { createCustomRequest, createKimiRequest } from "./custom";
 import {
-  createKimiCompatibleRequest,
   loadRequestInfraFromCDN,
-  requestAsStreamForDevelopment,
   requestAsStreamForDevelopmentSSE,
-  requestAsStreamForProduction,
   requestAsStreamForProductionSSE,
 } from "./base";
 import { createMyBricksAIRequest, createMyBricksAIRequestSSE } from "./mybricks";
@@ -25,54 +22,43 @@ export type {
   OnUploadFn,
 } from "./types";
 
-function createRequestAsSSE(): RequestAsStreamFn {
-  return async function (params) {
-    if (isProduction()) {
-      return requestAsStreamForProductionSSE()(params);
-    }
-    if (params.aiRole === "kimi") {
-      const kimiRequest = createKimiCompatibleRequest({
-        apiKey: "",
-        model: "kimi-k2.5",
-      });
-      return kimiRequest(params);
-    }
-    return requestAsStreamForDevelopmentSSE(params);
-  };
-}
+function createRequestAsStream(config?: { useInfra?: boolean }): RequestAsStreamFn {
+  const { useInfra = true } = config ?? {};
 
-function createRequestAsStream(): RequestAsStreamFn {
-  if (!isProduction()) {
+  if (useInfra && !isProduction()) {
     loadRequestInfraFromCDN().catch(() => {});
   }
 
   return async function (params) {
-
-    // return requestAsStreamInfra(params);
-
-    if (isProduction()) {
-      return requestAsStreamForProduction()(params);
+    // 开发环境
+    if (!isProduction()) {
+      // useInfra = true 时，尝试 CDN
+      if (useInfra) {
+        const cdnFn = await loadRequestInfraFromCDN();
+        if (cdnFn) return cdnFn(params);
+        // CDN 不存在，走 Development SSE
+      }
+      // useInfra = false 或 CDN 不存在，走 Development SSE
+      return requestAsStreamForDevelopmentSSE(params);
     }
-    const cdnFn = await loadRequestInfraFromCDN();
-    if (cdnFn) return cdnFn(params);
-    if (params.aiRole === "kimi") {
-      const kimiRequest = createKimiCompatibleRequest({
-        apiKey: "",
-        model: "kimi-k2.5",
-      });
-      return kimiRequest(params);
-    }
-    return requestAsStreamForDevelopment(params);
+
+    // 生产环境走 Production SSE
+    return requestAsStreamForProductionSSE()(params);
   };
 }
 
 export {
-  // 1. 聚合出口
+  // 1. 聚合出口: for mybricks / 本地开发
   createRequestAsStream,
-  createRequestAsSSE,
 
-  // 2. 指定 MyBricks
+  // 2. 指定 MyBricks: for vscode 别的地方指定渠道
+  /**
+   * @deprecated
+   */
   createMyBricksAIRequest,
+  /**
+   * @description mybricks sse 接口
+   */
   createMyBricksAIRequestSSE,
 
   // 3. Infra
@@ -85,5 +71,9 @@ export {
 
   // 4. 自定义
   createCustomRequest,
+
+  // 5. 特殊渠道对接: 基于custom封装
+  createKimiRequest,
 };
-export type { CustomRequestConfig } from "./custom";
+
+export type { CustomRequestConfig, KimiRequestConfig } from "./custom";

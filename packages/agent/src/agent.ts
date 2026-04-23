@@ -107,6 +107,14 @@ export interface AgentOptions {
    * 不参与 prompt cache，适合高频变化的状态（如当前资源代码、运行时快照等）。
    */
   getRealtimeMessages?: () => Promise<Message[]>;
+  /**
+   * @experimental
+   * 用户自定义上下文注入（异步）。
+   * 每个 turn 开始时调用，返回的消息列表插入在用户消息之前，
+   * 适合注入用户自定义的背景信息。
+   * - 返回字符串数组：每个元素构造为一条独立的 user 消息注入。
+   */
+  getUserContextMessages?: () => Promise<Message[]>;
   /** 工具列表（plugin 初始化时注册额外工具） */
   tools?: Tool[];
   /** 历史记录实现 */
@@ -340,7 +348,7 @@ async function buildMessages(
 
 /**
  * 每次 LLM 请求前组装完整 messages 列表：
- *   baseMessages（静态前缀 + 动态上下文 + 历史）+ 用户消息 + 本轮已积累的对话尾部 + 实时消息
+ *   baseMessages（静态前缀 + 动态上下文 + 历史）+ 用户上下文消息 + 用户消息 + 本轮已积累的对话尾部 + 实时消息
  *
  * @param baseMessages       assembleBaseMessages 返回的基础部分
  * @param historyStartIndex  assembled 数组中历史消息的起始索引（mask 时跳过静态前缀）
@@ -348,7 +356,8 @@ async function buildMessages(
  * @param turns              当前 turns 快照（用于 mask）
  * @param params             本轮用户请求参数
  * @param tail               本轮已积累的 assistant + tool 消息（step > 1 时非空）
- * @param realtimeMessages   每 step 实时获取的消息，插入在 userMessage 之前，确保用户消息始终在末尾（@experimental）
+ * @param userContextMessages  用户自定义上下文消息，插入在用户消息之前（@experimental）
+ * @param realtimeMessages   每 step 实时获取的消息，插入在 tail 末尾（@experimental）
  */
 function assembleMessages(
   baseMessages: Message[],
@@ -357,6 +366,7 @@ function assembleMessages(
   turns: TurnRecord[],
   params: RequestAIOptions,
   tail: Message[],
+  userContextMessages: Message[],
   realtimeMessages: Message[]
 ): Message[] {
   const { message, attachments } = params;
@@ -373,8 +383,9 @@ function assembleMessages(
   }
   const userMessage: Message = { role: "user", content: userContent };
 
+  // userContextMessages 放在 userMessage 之前
   // realtimeMessages 放在 tail 末尾，模拟工具调用返回最新代码仓库信息
-  const assembled = [...baseMessages, userMessage, ...tail, ...realtimeMessages];
+  const assembled = [...baseMessages, ...userContextMessages, userMessage, ...tail, ...realtimeMessages];
 
 
   // 应用遮蔽（默认开启，可通过 mask: false 显式关闭）
@@ -770,6 +781,11 @@ export class Agent {
     const tail = [...initialTail];
     const toolCallHistory: Array<{ name: string; argsKey: string }> = [];
 
+    // @experimental 用户上下文消息：每 turn 获取一次，放在用户消息之前
+    const userContextMessages: Message[] = this.options.getUserContextMessages
+      ? await this.options.getUserContextMessages()
+      : [];
+
     // 收集已有工具调用历史（用于 doom loop 检测）
     for (const iter of getLLMIterations(turn.iterations)) {
       for (const tc of iter.toolCalls) {
@@ -819,6 +835,7 @@ export class Agent {
           this.turns,
           formattedParams,
           tail,
+          userContextMessages,
           realtimeMessages
         );
 
@@ -1354,6 +1371,7 @@ export class Agent {
 IMPORTANT: 不要调用工具！
 `;
     const fork = this.createFork({ tools: [], turnsSlice: { from: "end", count: 1 }, retry: { maxRetries: 0 } });
+    (fork as any).options.getUserContextMessages = undefined;
 
     let lastContent = "";
     fork.events.on("llm:content", ({ content }) => {
@@ -1597,6 +1615,7 @@ IMPORTANT: 不要调用工具！
       const upToTurnId = forkTurns[forkTurns.length - 1].id;
 
       const fork = this.createFork({ tools: [], mask: false, retry: { maxRetries: 0 }, turnsSlice: { from: "start", count: firstTurns } });
+      (fork as any).options.getUserContextMessages = undefined;
 
       // 监听 signal，取消时同步中断 fork
       let abortHandler: (() => void) | undefined;

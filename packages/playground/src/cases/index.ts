@@ -42,7 +42,7 @@ import {
   maxStepsCase,
 } from "./edge-cases";
 import { compactTriggerCase, compactWithToolsCase, compactWarmupByUsageCase, compactErrorCase, compactEmptyResponseCase, compactNoContentCase, compactInfiniteCase, compactRetrySuccessErrorCase, compactRetrySuccessTagCase } from "./compact";
-import { markdownRichCase, userMessageWithLinksCase, streamingMarkdownCase, toolThenEmptyContentCase } from "./ui-render";
+import { markdownRichCase, userMessageWithLinksCase, streamingMarkdownCase, toolThenEmptyContentCase, assistantMessageWithLinksCase } from "./ui-render";
 import {
   initProjectSingleFileCase,
   initProjectMultiFileCase,
@@ -134,6 +134,7 @@ export const ALL_CASES: TestCase[] = [
   markdownRichCase,
   userMessageWithLinksCase,
   streamingMarkdownCase,
+  assistantMessageWithLinksCase,
   // 异常检测—工具后空 content
   toolThenEmptyContentCase,
   // 初始化项目 SubAgent

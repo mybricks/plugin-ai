@@ -1,27 +1,28 @@
 import type {
   RequestAsStreamFn,
   RequestAsStreamParams,
-  TokenUsage,
-  ToolCallSpec,
-  ToolCallStreamDelta,
   ToolDescriptor,
 } from "./types";
+import { readSSEStream } from "./sse-parser";
 
 export interface CustomRequestConfig {
   provider: () => "openai" | Promise<"openai">;
   apiUrl: () => string | Promise<string>;
   apiKey: () => string | Promise<string>;
   model?: () => string | undefined | Promise<string | undefined>;
+  /** 额外的请求参数，会合并到最终请求体中 */
+  extraParams?: () => Record<string, any> | Promise<Record<string, any>>;
 }
 
 async function resolveConfig(config: CustomRequestConfig) {
-  const [provider, apiUrl, apiKey, model] = await Promise.all([
+  const [provider, apiUrl, apiKey, model, extraParams] = await Promise.all([
     config.provider(),
     config.apiUrl(),
     config.apiKey(),
     config.model?.() ?? undefined,
+    config.extraParams?.() ?? undefined,
   ]);
-  return { provider, apiUrl, apiKey, model };
+  return { provider, apiUrl, apiKey, model, extraParams };
 }
 
 function validateResolved(resolved: Awaited<ReturnType<typeof resolveConfig>>): string | null {
@@ -51,19 +52,6 @@ async function readErrorText(response: Response): Promise<string> {
   }
 }
 
-type ParsedCustomSSEChunk = {
-  content?: string;
-  thinking?: string;
-  usage?: TokenUsage;
-  rawToolCallDeltas?: Array<{
-    index: number;
-    id?: string;
-    name?: string;
-    argumentsChunk?: string;
-  }>;
-  finishReason?: string | null;
-};
-
 /**
  * 创建自定义渠道请求函数（当前仅支持 OpenAI 兼容格式）
  * 配置项均为 getter，便于每次请求动态读取最新配置。
@@ -71,17 +59,7 @@ type ParsedCustomSSEChunk = {
 export function createCustomRequest(config: CustomRequestConfig): RequestAsStreamFn {
   return async function (params: RequestAsStreamParams) {
     const { messages, emits, tools } = params;
-    const {
-      cancel,
-      write,
-      complete,
-      error,
-      onUsage,
-      onThinking,
-      onToolCalls,
-      onToolCallStream,
-      onFinishReason,
-    } = emits;
+    const { cancel, write, complete, error, onUsage, onThinking, onToolCalls, onToolCallStream, onFinishReason } = emits;
 
     const resolved = await resolveConfig(config);
     const configError = validateResolved(resolved);
@@ -102,7 +80,7 @@ export function createCustomRequest(config: CustomRequestConfig): RequestAsStrea
 
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     try {
-      const requestBody = formatRequestBody(resolved.provider, messages, resolved.model, tools);
+      const requestBody = formatRequestBody(resolved.provider, messages, resolved.model, tools, resolved.extraParams);
       const response = await fetch(resolved.apiUrl, {
         signal: controller.signal,
         method: "POST",
@@ -120,87 +98,7 @@ export function createCustomRequest(config: CustomRequestConfig): RequestAsStrea
       if (!response.body) throw new Error("empty response body");
 
       reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      type ToolCallAccum = { id: string; name: string; argsRaw: string };
-      const toolCallsByIndex = new Map<number, ToolCallAccum>();
-      let finishReason: string | null = null;
-
-      const processParsedChunk = (parsed: ParsedCustomSSEChunk) => {
-        if (parsed.content) write(parsed.content);
-        if (parsed.thinking && onThinking) onThinking(parsed.thinking);
-        if (parsed.usage && onUsage) onUsage(parsed.usage);
-        if (parsed.finishReason !== undefined) finishReason = parsed.finishReason;
-        if (!parsed.rawToolCallDeltas?.length) return;
-
-        for (const delta of parsed.rawToolCallDeltas) {
-          const existing = toolCallsByIndex.get(delta.index);
-          if (existing) {
-            existing.argsRaw += delta.argumentsChunk ?? "";
-            if (onToolCallStream) {
-              onToolCallStream({ index: delta.index, argsChunk: delta.argumentsChunk ?? "" });
-            }
-          } else {
-            toolCallsByIndex.set(delta.index, {
-              id: delta.id ?? "",
-              name: delta.name ?? "",
-              argsRaw: delta.argumentsChunk ?? "",
-            });
-            if (onToolCallStream) {
-              onToolCallStream({
-                index: delta.index,
-                id: delta.id ?? "",
-                name: delta.name ?? "",
-                argsChunk: delta.argumentsChunk ?? "",
-              });
-            }
-          }
-        }
-      };
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split(/\n/);
-        buffer = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data:")) continue;
-          processParsedChunk(parseSSELine(line, resolved.provider));
-        }
-      }
-
-      if (buffer.trimStart().startsWith("data:")) {
-        processParsedChunk(parseSSELine(buffer, resolved.provider));
-      }
-
-      const hasToolCalls = toolCallsByIndex.size > 0;
-      const resolvedFinishReason = finishReason ?? (hasToolCalls ? "tool_calls" : "stop");
-      if (onFinishReason) onFinishReason(resolvedFinishReason);
-
-      const shouldTriggerToolCalls =
-        onToolCalls &&
-        hasToolCalls &&
-        (finishReason === "tool_calls" || finishReason === null || finishReason === undefined);
-
-      if (shouldTriggerToolCalls) {
-        const toolCalls: ToolCallSpec[] = [];
-        const indices = Array.from(toolCallsByIndex.keys()).sort((a, b) => a - b);
-        for (const idx of indices) {
-          const tc = toolCallsByIndex.get(idx)!;
-          if (!tc.id || !tc.name) continue;
-          let args: Record<string, any> = {};
-          try {
-            args = JSON.parse(tc.argsRaw);
-          } catch {
-            args = {};
-          }
-          toolCalls.push({ id: tc.id, name: tc.name, args });
-        }
-        if (toolCalls.length > 0) onToolCalls(toolCalls);
-      }
-
-      complete("");
+      await readSSEStream({ reader, write, complete, onUsage, onThinking, onToolCalls, onToolCallStream, onFinishReason });
     } catch (ex) {
       if (isAbortError(ex)) return;
       const err = ex instanceof Error ? ex : new Error(String(ex));
@@ -220,16 +118,17 @@ function formatRequestBody(
   provider: "openai",
   messages: any[],
   model?: string,
-  tools?: ToolDescriptor[]
+  tools?: ToolDescriptor[],
+  extraParams?: Record<string, any>
 ): any {
   const defaultModel = "gpt-4o";
   // 为没有 reasoning_content 的 assistant（含 tool_calls）/tool 消息自动添加
   const processedMessages = messages.map(msg => {
-    if ((msg.role === "assistant" && msg.tool_calls?.length) || msg.role === "tool") {
-      if (!msg.reasoning_content) {
-        return { ...msg, reasoning_content: "我思考一下" };
-      }
-    }
+    // if ((msg.role === "assistant" && msg.tool_calls?.length) || msg.role === "tool") {
+    //   if (!msg.reasoning_content) {
+    //     return { ...msg, reasoning_content: "我思考一下" };
+    //   }
+    // }
     return msg;
   });
   return {
@@ -248,65 +147,38 @@ function formatRequestBody(
           })),
         }
       : {}),
+    ...extraParams,
   };
 }
 
-function parseSSELine(
-  line: string,
-  provider: "openai"
-): ParsedCustomSSEChunk {
-  const data = line.replace(/^data:\s*/, "").trim();
-  if (data === "" || data === "[DONE]") return {};
 
-  let json: any;
-  try {
-    json = JSON.parse(data);
-  } catch {
-    return {};
-  }
+/**
+ * Kimi 官方平台请求配置
+ */
+export interface KimiRequestConfig {
+  apiKey: () => string | Promise<string>;
+  model?: () => string | undefined | Promise<string | undefined>;
+  /** 是否启用思考模式，默认 false */
+  thinking?: () => boolean | Promise<boolean>;
+}
 
-  const result: ParsedCustomSSEChunk = {};
-  const delta = json.choices?.[0]?.delta;
-  const choice = json.choices?.[0];
-  if (delta?.content != null) result.content = delta.content;
-  if (delta?.reasoning_content != null) result.thinking = delta.reasoning_content;
-  else if (delta?.reasoning != null) result.thinking = delta.reasoning;
-  if (Array.isArray(delta?.tool_calls) && delta.tool_calls.length > 0) {
-    result.rawToolCallDeltas = delta.tool_calls.map((tc: any) => ({
-      index: tc.index ?? 0,
-      id: tc.id,
-      name: tc.function?.name,
-      argumentsChunk: tc.function?.arguments,
-    }));
-  }
-
-  // token 用量
-  // Kimi 官方格式：usage 在 finish_reason 同级（choice.usage），例如：
-  // { "prompt_tokens": 15643, "completion_tokens": 262, "total_tokens": 15905,
-  //   "cached_tokens": 14592, "prompt_tokens_details": { "cached_tokens": 14592 } }
-  if (choice?.usage) {
-    result.usage = {
-      promptTokens: choice.usage.prompt_tokens ?? 0,
-      completionTokens: choice.usage.completion_tokens ?? 0,
-      totalTokens: choice.usage.total_tokens,
-      promptTokensDetails: {
-        cachedTokens: choice.usage.cached_tokens ?? choice.usage.prompt_tokens_details?.cached_tokens,
-      },
-    };
-  }
-  // OpenAI 格式：usage 在最外层，和 choices 同级
-  else if (json.usage) {
-    result.usage = {
-      promptTokens: json.usage.prompt_tokens ?? 0,
-      completionTokens: json.usage.completion_tokens ?? 0,
-      totalTokens: json.usage.total_tokens,
-      promptTokensDetails: {
-        cachedTokens: json.usage.prompt_tokens_details?.cached_tokens,
-      },
-    };
-  }
-  if (choice && "finish_reason" in choice) {
-    result.finishReason = choice.finish_reason ?? null;
-  }
-  return result;
+/**
+ * 创建 Kimi 官方平台请求函数
+ * 基于 createCustomRequest，预设了 Kimi 平台的配置，并支持 thinking 参数
+ */
+export function createKimiRequest(config: KimiRequestConfig): RequestAsStreamFn {
+  return createCustomRequest({
+    provider: () => "openai",
+    apiUrl: () => "https://api.moonshot.cn/v1/chat/completions",
+    apiKey: config.apiKey,
+    model: config.model,
+    extraParams: async () => {
+      const thinking = await config.thinking?.() ?? false;
+      return {
+        thinking: {
+          type: 'disabled',
+        }
+      };
+    },
+  });
 }

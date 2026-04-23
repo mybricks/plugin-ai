@@ -1,6 +1,7 @@
 import forge from "node-forge";
 import { isProduction } from "./env";
 import { createCustomRequest as createCustomOpenAIRequest } from "./custom";
+import { readSSEStream } from "./sse-parser";
 import type {
   ExtraHeadersInput,
   OnUploadFn,
@@ -163,26 +164,29 @@ const STREAM_SSE_URL_BY_TARGET: Record<FetchTarget, string> = {
 
 export const transfromExtendParams = (extendParams: { aiRole?: string }) => {
   const { aiRole } = extendParams;
-  let model = "moonshotai/kimi-k2.5";
+  let model = "moonshotai/kimi-k2.6";
   let role = "default";
 
   if (!aiRole) return { model, role };
 
   switch (true) {
     case ["image"].includes(aiRole):
-      model = "anthropic/claude-sonnet-4.6";
+      model = "moonshotai/kimi-k2.6";
+      // model = "anthropic/claude-sonnet-4.6";
       role = "image";
       break;
     case ["junior"].includes(aiRole):
-      model = "moonshotai/kimi-k2.5";
+      model = "moonshotai/kimi-k2.6";
       role = "junior";
       break;
     case ["architect"].includes(aiRole):
-      model = "google/gemini-3.1-pro-preview";
+      model = "moonshotai/kimi-k2.6";
+      // model = "google/gemini-3.1-pro-preview";
       role = "architect";
       break;
     case ["expert"].includes(aiRole):
-      model = "anthropic/claude-sonnet-4.6";
+      model = "moonshotai/kimi-k2.6";
+      // model = "anthropic/claude-sonnet-4.6";
       role = "expert";
       break;
     default:
@@ -291,86 +295,6 @@ async function doStreamFetch(opts: {
   complete("");
 }
 
-type ParsedSSEChunk = {
-  content?: string;
-  thinking?: string;
-  usage?: TokenUsage;
-  rawToolCallDeltas?: Array<{
-    index: number;
-    id?: string;
-    name?: string;
-    argumentsChunk?: string;
-  }>;
-  finishReason?: string | null;
-};
-
-function normalizeUsage(raw: Record<string, any> | undefined): TokenUsage | undefined {
-  if (!raw || typeof raw.prompt_tokens !== "number" || typeof raw.completion_tokens !== "number") return undefined;
-  const promptDetails = raw.prompt_tokens_details as Record<string, any> | undefined;
-  return {
-    promptTokens: raw.prompt_tokens,
-    completionTokens: raw.completion_tokens,
-    totalTokens: typeof raw.total_tokens === "number" ? raw.total_tokens : undefined,
-    promptTokensDetails: {
-      cachedTokens: typeof promptDetails?.cached_tokens === "number" ? promptDetails.cached_tokens : undefined,
-      cacheWriteTokens: typeof promptDetails?.cache_write_tokens === "number" ? promptDetails.cache_write_tokens : undefined,
-    },
-  };
-}
-
-function parseSSEChunkWithMeta(line: string): ParsedSSEChunk {
-  const data = line.replace(/^data:\s*/, "").trim();
-  if (data === "" || data === "[DONE]") return {};
-  try {
-    const json = JSON.parse(data) as {
-      usage?: Record<string, any>;
-      choices?: Array<{
-        delta?: {
-          content?: string;
-          reasoning_content?: string;
-          tool_calls?: Array<{
-            index?: number;
-            id?: string;
-            function?: { name?: string; arguments?: string };
-          }>;
-        };
-        finish_reason?: string;
-        usage?: Record<string, any>;
-      }>;
-    };
-    const result: ParsedSSEChunk = {};
-    const choice = json.choices?.[0];
-    const delta = choice?.delta;
-
-    if (delta) {
-      if (delta.content) result.content = delta.content;
-      if (delta.reasoning_content) result.thinking = delta.reasoning_content;
-      if (delta.tool_calls?.length) {
-        result.rawToolCallDeltas = delta.tool_calls.map((tc) => ({
-          index: tc.index ?? 0,
-          id: tc.id,
-          name: tc.function?.name,
-          argumentsChunk: tc.function?.arguments,
-        }));
-      }
-    }
-
-    if (choice && "finish_reason" in choice) {
-      result.finishReason = choice.finish_reason ?? null;
-    }
-
-    const rawUsage = json.usage ?? choice?.usage;
-    if (rawUsage) {
-      const usage = normalizeUsage(rawUsage);
-      if (usage) result.usage = usage;
-    }
-
-    return result;
-  } catch {
-    return {};
-  }
-}
-
 async function doSSEFetch(opts: {
   url: string;
   body: unknown;
@@ -410,77 +334,7 @@ async function doSSEFetch(opts: {
   }
 
   const reader = response.body!.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  type ToolCallAccum = { id: string; name: string; argsRaw: string };
-  const toolCallsByIndex: Map<number, ToolCallAccum> = new Map();
-  let finishReason: string | null = null;
-
-  const processParsedChunk = (parsed: ParsedSSEChunk) => {
-    if (parsed.content) write(parsed.content);
-    if (parsed.thinking && onThinking) onThinking(parsed.thinking);
-    if (parsed.usage && onUsage) onUsage(parsed.usage);
-    if (parsed.finishReason !== undefined) finishReason = parsed.finishReason;
-    if (parsed.rawToolCallDeltas) {
-      for (const delta of parsed.rawToolCallDeltas) {
-        const existing = toolCallsByIndex.get(delta.index);
-        if (existing) {
-          existing.argsRaw += delta.argumentsChunk ?? "";
-          if (onToolCallStream) onToolCallStream({ index: delta.index, argsChunk: delta.argumentsChunk ?? "" });
-        } else {
-          toolCallsByIndex.set(delta.index, {
-            id: delta.id ?? "",
-            name: delta.name ?? "",
-            argsRaw: delta.argumentsChunk ?? "",
-          });
-          if (onToolCallStream) {
-            onToolCallStream({
-              index: delta.index,
-              id: delta.id ?? "",
-              name: delta.name ?? "",
-              argsChunk: delta.argumentsChunk ?? "",
-            });
-          }
-        }
-      }
-    }
-  };
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split(/\n/);
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      if (line.startsWith("data:")) processParsedChunk(parseSSEChunkWithMeta(line));
-    }
-  }
-  if (buffer.trim() && buffer.startsWith("data:")) processParsedChunk(parseSSEChunkWithMeta(buffer));
-
-  const hasToolCalls = toolCallsByIndex.size > 0;
-  const resolvedFinishReason = finishReason ?? (hasToolCalls ? "tool_calls" : "stop");
-  if (onFinishReason) onFinishReason(resolvedFinishReason);
-
-  const shouldTriggerToolCalls = onToolCalls && hasToolCalls && (finishReason === "tool_calls" || finishReason === null || finishReason === undefined);
-  if (shouldTriggerToolCalls) {
-    const toolCalls: ToolCallSpec[] = [];
-    const indices = Array.from(toolCallsByIndex.keys()).sort((a, b) => a - b);
-    for (const idx of indices) {
-      const tc = toolCallsByIndex.get(idx)!;
-      if (!tc.id || !tc.name) continue;
-      let args: Record<string, any> = {};
-      try {
-        args = JSON.parse(tc.argsRaw);
-      } catch {
-        args = {};
-      }
-      toolCalls.push({ id: tc.id, name: tc.name, args });
-    }
-    if (toolCalls.length > 0) onToolCalls(toolCalls);
-  }
-
-  complete("");
+  await readSSEStream({ reader, write, complete, onUsage, onThinking, onToolCalls, onToolCallStream, onFinishReason });
 }
 
 export async function requestAsStreamForDevelopmentSSE(params: RequestAsStreamParams) {
@@ -494,6 +348,7 @@ export async function requestAsStreamForDevelopmentSSE(params: RequestAsStreamPa
     const controller = new AbortController();
     await doSSEFetch({
       url: "//ai.mybricks.world/sse-test",
+      // url: "//localhost:4000/sse-test",
       body,
       extendParams,
       controller,
@@ -510,18 +365,6 @@ export async function requestAsStreamForDevelopmentSSE(params: RequestAsStreamPa
   } catch (ex) {
     error(ex as any);
   }
-}
-
-export function createKimiCompatibleRequest(config: {
-  apiKey: string | (() => string | Promise<string>);
-  model?: string;
-}): RequestAsStreamFn {
-  return createCustomOpenAIRequest({
-    provider: () => "openai",
-    apiUrl: () => "https://api.moonshot.cn/v1/chat/completions",
-    apiKey: () => Promise.resolve(typeof config.apiKey === "function" ? config.apiKey() : config.apiKey),
-    model: () => config.model ?? "kimi-k2.5",
-  });
 }
 
 export function requestAsStreamForProductionSSE(extraHeadersInput?: ExtraHeadersInput): RequestAsStreamFn {

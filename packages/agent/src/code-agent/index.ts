@@ -41,13 +41,13 @@ export interface Sandbox {
   getContext?: () => Promise<string | null>;
   /**
    * @experimental
-   * 获取每个 step 的实时状态信息（如资源代码、运行时快照等）。
-   * 返回的文本内容会通过 getRealtimeMessages 注入到 LLM 上下文中，
-   * 追加在 tail 末尾，每次 step 前重新获取，不参与 prompt cache。
+   * 获取用户自定义上下文信息。
+   * 返回的文本内容会通过 getUserContextMessages 注入到 LLM 上下文中，
+   * 放置在用户消息之前。
    * - 返回字符串：构造为一条 user 消息注入。
    * - 返回字符串数组：每个元素构造为一条独立的 user 消息注入。
    */
-  getRealtime?: () => Promise<string | string[] | null>;
+  getUserContext?: () => Promise<string | string[] | null>;
 }
 
 // ─── CodeAgentOptions ────────────────────────────────────────────────────────
@@ -123,7 +123,7 @@ export class CodeAgent extends Agent {
           updateFiles: sandbox.updateFiles.bind(sandbox),
           deleteFiles: sandbox.deleteFiles.bind(sandbox),
           ...(sandbox.getContext ? { getContext: sandbox.getContext.bind(sandbox) } : {}),
-          ...(sandbox.getRealtime ? { getRealtime: sandbox.getRealtime.bind(sandbox) } : {}),
+          ...(sandbox.getUserContext ? { getUserContext: sandbox.getUserContext.bind(sandbox) } : {}),
         }
       : undefined;
 
@@ -138,32 +138,15 @@ export class CodeAgent extends Agent {
       return [{ role: "user", content: ctx }];
     };
 
-    // ── sandbox.getRealtime 作为 getRealtimeMessages（@experimental）──────────
-    // 返回模拟的工具调用序列：assistant 发起 viewCodeRepository 调用 → tool 返回结果
-    const getRealtimeMessages = wrappedSandbox?.getRealtime
-      ? async (): Promise<import("../types").Message[]> => {
-          const rt = await wrappedSandbox.getRealtime!() ?? null;
-          if (!rt) return [];
-          const content = Array.isArray(rt) ? rt.join("\n") : rt;
-          const toolCallId = `realtime_${Date.now()}`;
-          return [
-            {
-              role: "assistant",
-              content: "",
-              tool_calls: [{
-                id: toolCallId,
-                type: "function",
-                function: { name: "check_repository_files", arguments: "{}" }
-              }]
-            },
-            {
-              role: "tool",
-              tool_call_id: toolCallId,
-              content,
-            }
-          ];
-        }
-      : undefined;
+    // ── sandbox.getUserContext 作为 getUserContextMessages（@experimental）────
+    const getUserContextMessages = async (): Promise<import("../types").Message[]> => {
+      const uc = await wrappedSandbox?.getUserContext?.() ?? null;
+      if (!uc) return [];
+      if (Array.isArray(uc)) {
+        return uc.map(text => ({ role: "user", content: text }));
+      }
+      return [{ role: "user", content: uc }];
+    };
 
     const builtinSystem = getCodeAgentSystemPrompt(agentOptions.promptOptions, skills);
     const finalSystem = system ? `${builtinSystem}\n\n${system}` : builtinSystem;
@@ -172,7 +155,7 @@ export class CodeAgent extends Agent {
       ...agentOptions,
       system: finalSystem,
       getContextMessages,
-      getRealtimeMessages,
+      getUserContextMessages,
       // 内置沙箱工具在前，外部注入工具（如 check_design_status）在后
       tools: [...sandboxTools, ...(agentOptions.tools ?? [])],
     });
