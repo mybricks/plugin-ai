@@ -64,6 +64,18 @@ export interface WarmupIter {
   toolCalls: [];
 }
 
+// ─── TurnSender ───────────────────────────────────────────────────────────────
+
+/**
+ * 消息发送者信息，由 formatUserMessage 返回并写入 TurnRecord。
+ * UI 渲染时优先使用 sender，兜底使用 ChatPanel 传入的 user prop。
+ */
+export interface TurnSender {
+  userId?: string;
+  name?: string;
+  avatar?: string;
+}
+
 // ─── TurnRecord（SSE 事件粒度的完整调用记录） ─────────────────────────────────
 
 /**
@@ -118,6 +130,11 @@ export interface TurnRecord {
    * 可用于存储 focus 快照、mention 信息等，供消息列表渲染使用。
    */
   meta?: Record<string, any>;
+  /**
+   * 消息发送者信息（由 formatUserMessage 注入，UI 展示时优先使用）。
+   * 不传时 UI 兜底使用 ChatPanel 的 user prop。
+   */
+  sender?: TurnSender;
 
   /** LLM 最终输出的完整文本（最后一次迭代的文本） */
   content: string;
