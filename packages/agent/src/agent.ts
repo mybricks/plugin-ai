@@ -1150,6 +1150,7 @@ export class Agent {
       message,
       attachments: formattedParams.attachments ?? attachments,
       meta: formattedMeta,
+      ...(formattedParams.sender ? { sender: formattedParams.sender } : {}),
       ...(formattedParams.message !== message ? { userFormattedText: formattedParams.message } : {}),
     });
 
