@@ -90,7 +90,7 @@ export function maskMessages(
   options: MaskOptions
 ): Message[] {
   const {
-    maxTurns = 6,
+    maxTurns = 4,
     maxAgeMinutes = DEFAULT_MAX_AGE_MINUTES,
     minContentLength = DEFAULT_MIN_CONTENT_LENGTH,
     toolPlaceholder = DEFAULT_TOOL_PLACEHOLDER,
