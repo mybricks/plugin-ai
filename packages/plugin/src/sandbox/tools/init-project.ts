@@ -266,16 +266,21 @@ ${prompt}
   const missingFiles = expectedFiles.filter((file) => !successPaths.has(file));
   const extraFiles = Array.from(successPaths).filter((file) => !expectedFilesSet.has(file));
 
-  const successList = Array.from(successPaths)
-    .map((path) => `- ${path}`)
-    .join("\n");
+  // 构建带内容的文件列表
+  const successFilesWithContent = files
+    .filter((f) => successPaths.has(f.path))
+    .map((f) => {
+      const ext = f.path.split(".").pop() || "";
+      return `- ${f.path}\n\`\`\`${ext}\n${f.content}\n\`\`\``;
+    })
+    .join("\n\n");
 
   let output = `写入完成：成功 ${filesWritten} 个文件`;
   if (filesFailed > 0) {
     output += `，失败 ${filesFailed} 个文件（${Array.from(failedPaths).join(", ")}）`;
   }
-  if (successList) {
-    output += `\n\n已写入文件：\n${successList}`;
+  if (successFilesWithContent) {
+    output += `\n\n已写入文件：\n${successFilesWithContent}`;
   }
 
   // 提示缺失和额外的文件
