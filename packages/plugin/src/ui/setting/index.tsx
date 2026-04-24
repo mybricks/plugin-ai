@@ -51,4 +51,4 @@ export function closeSetting() {
 
 export { SettingModal };
 export type { SettingModalProps };
-export type { SettingValue, ChannelType, AboutItem } from "./Modal";
+export type { SettingValue, ChannelType, AboutItem, ProviderConfig, ModelConfig } from "./Modal";

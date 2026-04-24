@@ -5,8 +5,8 @@ console.log(`%c ${pkg.name} %c@${pkg.version}`, `color:#FFF;background:#fa6400`,
 
 import { CodeAgent, IDBHistory } from "../../agent/src";
 import type { SkillFile } from "../../agent/src";
-import { createRequestAsStream, createOnUpload } from "../../request/src";
-import type { RequestAsStreamFn } from "../../request/src";
+import { createRequestAsStream, createOnUpload, LLMProviders } from "../../request/src";
+import type { RequestAsStreamFn, ProviderConfig } from "../../request/src";
 import { resolvePromptOptions, type PromptSections } from "./prompts";
 
 import { context } from "./context";
@@ -19,11 +19,12 @@ import { ensureAIPanelOpen, ensureFocusComId } from "./utils/ensure-ai-panel-ope
 
 export { CodeAgent, IDBHistory } from "../../agent/src";
 export type { AgentEventMap, SkillFile } from "../../agent/src";
-export { createRequestAsStream, createOnUpload, createCustomRequest } from "../../request/src";
-export type { RequestAsStreamFn, CustomRequestConfig } from "../../request/src";
+export { createRequestAsStream, createOnUpload } from "../../request/src";
+export type { RequestAsStreamFn } from "../../request/src";
 export { openSetting, closeSetting, SettingModal } from "./ui/setting";
 export type { SettingModalProps } from "./ui/setting";
 export type { Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams } from "./sandbox";
+export type { SettingValue, ProviderConfig, ModelConfig } from "./ui/setting";
 export { ChatPanel, ChatPanelList, ChatStartView, ComChatStartView } from "./ui/chat";
 export type { ChatPanelProps, ChatPanelListProps, ChatStartViewProps, ComChatStartViewProps } from "./ui/chat";
 
@@ -65,6 +66,10 @@ export interface PluginAIParams {
       height?: number
     }
   }
+  /** LLM 配置（自定义渠道时使用） */
+  llm?: {
+    providers?: import("./ui/setting").ProviderConfig[];
+  };
 }
 
 export default function pluginAI(params: PluginAIParams): any {
@@ -80,12 +85,32 @@ export default function pluginAI(params: PluginAIParams): any {
     skills,
     promptSections,
     tools,
-    componentRuntime
+    componentRuntime,
+    llm
   } = params;
 
   const mergedPromptSections = resolvePromptOptions(promptSections);
 
-  const requestAsStream: RequestAsStreamFn = onRequest ?? createRequestAsStream();
+  // ─── 处理 LLMProviders 注入 ────────────────────────────────────────────────
+  let effectiveRequest: RequestAsStreamFn;
+
+  // 优先使用外部传入的 llm
+  if (llm?.providers?.length) {
+    // 如果提供了 llm.providers 配置，创建 LLMProviders 实例
+    const providers = llm.providers;
+    const llmProviders = new LLMProviders({
+      providers: providers as ProviderConfig[],
+      agentKey: pluginKey
+    });
+    context.setLLMProviders(llmProviders);
+    effectiveRequest = llmProviders.request;
+  } else if (onRequest) {
+    effectiveRequest = onRequest;
+  } else {
+    effectiveRequest = createRequestAsStream();
+  }
+
+  const requestAsStream: RequestAsStreamFn = effectiveRequest;
   const upload = onUpload ?? createOnUpload();
   const download = onDownload ?? (({ name, content }: { name: string; content: string }) => {
     const eleLink = document.createElement("a");

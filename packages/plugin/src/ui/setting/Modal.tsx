@@ -15,22 +15,44 @@ export function resolveChannel(saved: ChannelType | undefined, allowed?: Channel
 
 export function getChannelLabel(c: ChannelType): string {
   switch (c) {
+    case "infra":
+      return "默认";
     case "mybricks":
       return "MyBricks";
     case "custom":
       return "自定义";
     default:
-      return "默认渠道";
+      return "默认";
   }
+}
+
+export interface ModelConfig {
+  id: string;
+  name: string;
+}
+
+export interface ProviderConfig {
+  format: "openai" | "anthropic";
+  providerId: string;
+  baseUrl: string;
+  apiKey: string;
+  models: ModelConfig[];
+  logo?: string;
 }
 
 export interface SettingValue {
   channel?: ChannelType;
   mybricksAiToken?: string;
+  /** @deprecated 使用 providers 替代 */
   customProvider?: "openai" | "anthropic";
+  /** @deprecated 使用 providers 替代 */
   customApiUrl?: string;
+  /** @deprecated 使用 providers 替代 */
   customApiKey?: string;
+  /** @deprecated 使用 providers 替代 */
   customModel?: string;
+  /** 自定义渠道的多供应商配置 */
+  providers?: ProviderConfig[];
 }
 
 export interface AboutItem {
@@ -76,7 +98,6 @@ export const SettingModal: React.FC<SettingModalProps> = ({
   };
 
   const handleClose = () => {
-    onSave?.(localValueRef.current);
     onClose();
   };
 
@@ -93,7 +114,7 @@ export const SettingModal: React.FC<SettingModalProps> = ({
       onCancel={handleClose}
       afterClose={afterClose}
       footer={null}
-      width={700}
+      width={800}
       centered
       closable={false}
       destroyOnClose
@@ -129,7 +150,7 @@ export const SettingModal: React.FC<SettingModalProps> = ({
             />
           )}
           {activeTab === "model" && (
-            <ModelService value={localValue} onChange={handleValueChange} channels={channels} />
+            <ModelService value={localValue} onChange={handleValueChange} onSave={onSave} channels={channels} />
           )}
         </div>
       </div>

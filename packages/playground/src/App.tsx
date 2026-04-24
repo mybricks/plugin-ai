@@ -1,14 +1,13 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import JsonView from "@microlink/react-json-view";
 import { ChatPanel } from "@plugin/ui/chat/chat-panel";
-import { SettingModal } from "@plugin/ui/setting";
+import { openSetting } from "@plugin/ui/setting";
 import { ALL_CASES, groupCases } from "./cases";
 import type { TestCase } from "./cases";
 import { usePlaygroundAgent } from "./lib/use-playground-agent";
 import { useRequestInspector, type RequestSnapshot } from "./lib/use-request-inspector";
 import type { MemFS } from "./lib/mem-fs";
 import { getWebFetchUrl, setWebFetchUrl, getDefaultUrlForCase } from "./lib/web-fetch-state";
-import type { SettingValue } from "@plugin/ui/setting";
 import "./app.css";
 
 // ─── Theme Toggle ─────────────────────────────────────────────────────────────
@@ -193,8 +192,6 @@ export default function App() {
 
   const [activeCase] = useState<TestCase | null>(initialCase);
   const [webFetchUrl, setWebFetchUrlState] = useState(() => getDefaultUrlForCase(initialCase?.id ?? ""));
-  const [settingOpen, setSettingOpen] = useState(false);
-  const [settingValue, setSettingValue] = useState<SettingValue>({});
 
   const { wrappedRequest, snapshots } = useRequestInspector(
     activeCase?.request ?? null
@@ -244,7 +241,7 @@ export default function App() {
           {showSettingBtn && (
             <button
               className="pg-setting-btn"
-              onClick={() => setSettingOpen(true)}
+              onClick={() => openSetting()}
               title="打开设置"
             >
               ⚙️ 设置
@@ -333,15 +330,6 @@ export default function App() {
       </main>
       </div>
 
-      {/* 设置弹窗 */}
-      {showSettingBtn && (
-        <SettingModal
-          open={settingOpen}
-          onClose={() => setSettingOpen(false)}
-          value={settingValue}
-          onChange={setSettingValue}
-        />
-      )}
     </div>
   );
 }

@@ -1,5 +1,4 @@
 import { isProduction } from "./env";
-import { createCustomRequest, createKimiRequest } from "./custom";
 import {
   loadRequestInfraFromCDN,
   requestAsStreamForDevelopmentSSE,
@@ -8,6 +7,7 @@ import {
 import { createMyBricksAIRequest, createMyBricksAIRequestSSE } from "./mybricks";
 import { checkInfraAvailable, createInfraAIOnUpload, createInfraAIRequest, createOnUpload } from "./infra";
 import type { OnUploadFn, RequestAsStreamFn } from "./types";
+import { LLMProviders } from "./providers";
 
 // import { requestAsStreamInfra } from './cdzd'
 
@@ -21,6 +21,8 @@ export type {
   RequestAsStreamFn,
   OnUploadFn,
 } from "./types";
+
+export type { ModelConfig, ProviderConfig, ModelSelection, LLMProvidersOptions } from "./providers";
 
 function createRequestAsStream(config?: { useInfra?: boolean }): RequestAsStreamFn {
   const { useInfra = true } = config ?? {};
@@ -69,11 +71,6 @@ export {
   // 其他通用能力
   createOnUpload,
 
-  // 4. 自定义
-  createCustomRequest,
-
-  // 5. 特殊渠道对接: 基于custom封装
-  createKimiRequest,
+  // 4. LLMProviders 类
+  LLMProviders,
 };
-
-export type { CustomRequestConfig, KimiRequestConfig } from "./custom";

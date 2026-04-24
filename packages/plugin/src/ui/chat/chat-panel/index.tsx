@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
 import type { QueueItem } from "../../../context/queue";
 import type { CodeAgent } from "../../../../../agent/src";
+import type { LLMProviders, ModelSelection } from "../../../../../request/src/providers";
 import { useSession } from "../use-session";
 import { MessageList } from "../messages";
 import { Header } from "./header";
@@ -54,6 +55,21 @@ const ChatPanel = ({
   const senderRef = useRef<SenderRef>(null);
   const [loading, setLoading] = useState(() => context.aiQueue.isLoading(agentKey));
   const [pendingQueue, setPendingQueue] = useState<QueueItem[]>(() => context.aiQueue.getQueue(agentKey));
+
+  // 模型选择器状态
+  const modelSelector = useMemo(() => {
+    const llmProviders = context.llmProviders;
+    if (!llmProviders || !llmProviders.isValid()) return undefined;
+    const models = llmProviders.getValidModels();
+    const selected = llmProviders.getSelected();
+    return {
+      models,
+      selected,
+      onSelect: (selection: ModelSelection) => {
+        llmProviders.setSelected(selection.providerId, selection.modelId);
+      },
+    };
+  }, [context.llmProviders]);
 
   const { messages, syncAgent, subscribeSession, clearSession } = useSession(agent);
 
@@ -150,8 +166,9 @@ const ChatPanel = ({
         onUpload={onUpload ?? context.pluginParams.onUpload}
         onStop={() => context.aiQueue.stop(agentKey)}
         pendingQueue={pendingQueue}
-        onRemoveFromQueue={(id) => context.aiQueue.removeFromQueue(agentKey, id)}
+        onRemoveFromQueue={(id: string) => context.aiQueue.removeFromQueue(agentKey, id)}
         renderFocus={renderFocus}
+        modelSelector={modelSelector}
       />
     </div>
   );

@@ -1,6 +1,19 @@
 import type { CodeAgent, Sandbox } from "../../../agent/src";
 import type { Designer, Hooks } from "../sandbox/types";
 import { AIRequestQueue } from "./queue";
+import type { LLMProviders } from "../../../request/src";
+
+/** LLM 设置值类型（避免循环依赖） */
+export interface SettingValue {
+  channel?: "infra" | "mybricks" | "custom";
+  providers?: Array<{
+    format: "openai" | "anthropic";
+    providerId: string;
+    baseUrl: string;
+    apiKey: string;
+    models: Array<{ id: string; name: string }>;
+  }>;
+}
 
 /** 沙箱注册信息 */
 export interface SandboxEntry {
@@ -65,6 +78,17 @@ class Context {
 
   /** AI 请求队列（防并发 + loading 状态管理） */
   aiQueue = new AIRequestQueue();
+
+  /** LLM 配置值 */
+  settingValue?: SettingValue;
+
+  /** LLMProviders 实例（自定义渠道时使用） */
+  llmProviders?: LLMProviders;
+
+  /** 设置 LLMProviders 实例 */
+  setLLMProviders(providers: LLMProviders | undefined) {
+    this.llmProviders = providers;
+  }
 }
 
 export const context = new Context();

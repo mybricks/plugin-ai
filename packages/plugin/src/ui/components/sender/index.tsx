@@ -8,6 +8,7 @@ import type { Attachment as AttachmentItem } from "../attachments";
 import { Mention, Attachments } from "../types";
 import { ChatMode, type ChatModeType } from "../chat-mode";
 import type { QueueItem } from "../../context/queue";
+import type { ModelSelection } from "../../../../../request/src/providers";
 import css from "./index.less"
 
 const readFileToBase64 = (file: File): Promise<string> => {
@@ -65,6 +66,43 @@ const PendingQueue = ({ queue, onRemove }: { queue: QueueItem[]; onRemove?: (id:
   );
 };
 
+interface ModelSelectorProps {
+  modelSelector: NonNullable<SenderProps['modelSelector']>;
+  disabled?: boolean;
+}
+
+const ModelSelector = ({ modelSelector, disabled }: ModelSelectorProps) => {
+  const { models, selected: initialSelected, onSelect } = modelSelector;
+  
+  // 内部维护 selected 状态，实现响应式
+  const [selected, setSelected] = useState<ModelSelection | null | undefined>(initialSelected);
+
+  // 同步外部 initialSelected 的变化
+  useEffect(() => {
+    setSelected(initialSelected);
+  }, [initialSelected]);
+
+  return (
+    <select
+      className={css.modelSelect}
+      disabled={disabled}
+      value={selected ? `${selected.providerId}|${selected.modelId}` : ''}
+      onChange={(e) => {
+        const [providerId, modelId] = e.target.value.split('|');
+        const newSelected = { providerId, modelId };
+        setSelected(newSelected);
+        onSelect(newSelected);
+      }}
+    >
+      {models.map((m) => (
+        <option key={`${m.providerId}|${m.modelId}`} value={`${m.providerId}|${m.modelId}`}>
+          {m.modelName}
+        </option>
+      ))}
+    </select>
+  );
+};
+
 interface SenderProps {
   onSend: (message: {
     message: string;
@@ -90,6 +128,12 @@ interface SenderProps {
   onRemoveFromQueue?: (id: string) => void;
   /** 输入框上方的 focus 信息渲染（mention 区域展示） */
   renderFocus?: () => React.ReactNode;
+  /** 模型选择器配置 */
+  modelSelector?: {
+    models: Array<ModelSelection & { modelName: string }>;
+    selected?: ModelSelection | null;
+    onSelect: (selection: ModelSelection) => void;
+  };
 }
 
 interface SenderRef {
@@ -99,7 +143,7 @@ interface SenderRef {
 }
 
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
-  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue, renderFocus } = props;
+  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue, renderFocus, modelSelector } = props;
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [inputContent, setInputContent] = useState<string | null>(null);
@@ -355,11 +399,14 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           <div className={classNames(css.leftArea, {
             [css.disabled]: disabled || uploading
           })}>
-            {/* 模式切换，暂时去除 */}
-            {/* {chatMode ? <ChatMode disabled={disabled} chatMode={chatMode} onChange={onChatModeChange} /> : null} */}
             <div data-zone-type="ai-request" className={css.attachmentButton} onClick={uploadAttachment}>
               <Attachment />
             </div>
+            {/* 模式切换，暂时去除 */}
+            {/* {chatMode ? <ChatMode disabled={disabled} chatMode={chatMode} onChange={onChatModeChange} /> : null} */}
+            {modelSelector && modelSelector.models.length > 0 && (
+              <ModelSelector modelSelector={modelSelector} disabled={disabled || uploading || loading} />
+            )}
           </div>
           <div className={css.rightArea}>
             <div data-zone-type="ai-request" className={classNames(css.sendButtonContainer, {
