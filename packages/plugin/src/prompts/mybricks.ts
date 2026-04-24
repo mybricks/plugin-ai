@@ -359,8 +359,7 @@ PopupVisible 装饰器说明：
 注意：永远不要使用通用的AI生成美学、陈词滥调的配色方案（特别是白色背景上的紫色渐变）、可预测的布局，以及缺乏特征的千篇一律的设计。`,
   },
   documentGuide: {
-    firstOfAll: `<文档规范>
-
+    firstOfAll: `
 ### README.md
 根据当前模块的 jsx 源码，生成或更新对应的 README.md 说明文档
 更新时机：
@@ -520,8 +519,8 @@ export default appRef(() => {
 
 \`\`\`
 </基于 jsx 的README.md示例>
-
-<requirement.md 文档编写规范>
+`,
+    requirementGuide: `<requirement.md 文档编写规范>
 更新时机：
 - 必须更新（强约束）：目录下不存在 requirement.md；或需求明确要求更新文档；
 - 建议更新：用户的需求目的有更新；源代码关联组件名发生了变化；
@@ -573,8 +572,7 @@ type: new
 related: NewModalButton,ItemNewModal
 ...
 \`\`\`
-</requirement.md示例>
-</文档规范>`
+</requirement.md示例>`
   }
 }
 

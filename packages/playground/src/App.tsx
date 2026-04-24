@@ -1,12 +1,14 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import JsonView from "@microlink/react-json-view";
 import { ChatPanel } from "@plugin/ui/chat/chat-panel";
+import { SettingModal } from "@plugin/ui/setting";
 import { ALL_CASES, groupCases } from "./cases";
 import type { TestCase } from "./cases";
 import { usePlaygroundAgent } from "./lib/use-playground-agent";
 import { useRequestInspector, type RequestSnapshot } from "./lib/use-request-inspector";
 import type { MemFS } from "./lib/mem-fs";
 import { getWebFetchUrl, setWebFetchUrl, getDefaultUrlForCase } from "./lib/web-fetch-state";
+import type { SettingValue } from "@plugin/ui/setting";
 import "./app.css";
 
 // ─── Theme Toggle ─────────────────────────────────────────────────────────────
@@ -47,6 +49,7 @@ const GROUP_ICONS: Record<string, string> = {
   "Compact": "🗜️",
   "WebFetch": "🔗",
   "UI 渲染": "🎨",
+  "设置": "⚙️",
 };
 
 // ─── FS Viewer ────────────────────────────────────────────────────────────────
@@ -190,12 +193,17 @@ export default function App() {
 
   const [activeCase] = useState<TestCase | null>(initialCase);
   const [webFetchUrl, setWebFetchUrlState] = useState(() => getDefaultUrlForCase(initialCase?.id ?? ""));
+  const [settingOpen, setSettingOpen] = useState(false);
+  const [settingValue, setSettingValue] = useState<SettingValue>({});
 
   const { wrappedRequest, snapshots } = useRequestInspector(
     activeCase?.request ?? null
   );
 
   const { agent, memFS } = usePlaygroundAgent(activeCase, wrappedRequest);
+
+  // 是否显示设置按钮（设置分组）
+  const showSettingBtn = activeCase?.group === "设置";
 
   // 切换 case：更新 URL 并刷新页面
   const handleSelectCase = useCallback((c: TestCase) => {
@@ -232,7 +240,18 @@ export default function App() {
       {/* 顶栏：主题切换 */}
       <header className="pg-header">
         <span className="pg-header-title">Playground</span>
-        <ThemeToggle dark={dark} onToggle={toggleTheme} />
+        <div className="pg-header-actions">
+          {showSettingBtn && (
+            <button
+              className="pg-setting-btn"
+              onClick={() => setSettingOpen(true)}
+              title="打开设置"
+            >
+              ⚙️ 设置
+            </button>
+          )}
+          <ThemeToggle dark={dark} onToggle={toggleTheme} />
+        </div>
       </header>
 
       {/* Body: sidebar + main */}
@@ -313,6 +332,16 @@ export default function App() {
         </div>
       </main>
       </div>
+
+      {/* 设置弹窗 */}
+      {showSettingBtn && (
+        <SettingModal
+          open={settingOpen}
+          onClose={() => setSettingOpen(false)}
+          value={settingValue}
+          onChange={setSettingValue}
+        />
+      )}
     </div>
   );
 }

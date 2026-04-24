@@ -120,8 +120,38 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.1s, border-color 0.1s;
+  transition: background 0.15s;
 }
+
+.pg-theme-toggle:hover {
+  background: var(--bg-2);
+}
+
+.pg-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pg-setting-btn {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--bg-0);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-0);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.15s;
+}
+
+.pg-setting-btn:hover {
+  background: var(--bg-2);
+}
+
 .pg-theme-toggle:hover {
   background: var(--accent-bg);
   border-color: var(--accent);

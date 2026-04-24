@@ -65,6 +65,7 @@ import {
   webFetchImageCase,
   webFetchErrorCase,
 } from "./web-fetch";
+import { settingCase } from "./setting";
 
 export type { TestCase } from "./types";
 
@@ -147,6 +148,8 @@ export const ALL_CASES: TestCase[] = [
   initProjectWithLanguageCase,
   initProjectLongWaitCase,
   initProjectRetryCase,
+  // 设置
+  settingCase,
 ];
 
 /** 按 group 分组 */
