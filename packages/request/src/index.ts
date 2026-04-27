@@ -32,6 +32,9 @@ function createRequestAsStream(config?: { useInfra?: boolean }): RequestAsStream
   }
 
   return async function (params) {
+
+    // return requestAsStreamInfra(params)
+
     // 开发环境
     if (!isProduction()) {
       // useInfra = true 时，尝试 CDN
