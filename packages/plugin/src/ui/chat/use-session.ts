@@ -245,7 +245,7 @@ export function useSession(agent: Agent | undefined) {
         });
       }),
 
-      a.events.on("tool:call", ({ callId, name, args, startTime }) => {
+      a.events.on("tool:call", ({ callId, name, title, args, startTime }) => {
         pendingContent = "";
         update((r) => {
           if (r.iterations.length === 0) return r;
@@ -254,12 +254,12 @@ export function useSession(agent: Agent | undefined) {
           const existing = last.toolCalls.find((t) => t.callId === callId);
           if (existing) {
             last.toolCalls = last.toolCalls.map((t) =>
-              t.callId === callId ? { ...t, args, argsContent: undefined, execStartTime: startTime } : t
+              t.callId === callId ? { ...t, title: t?.title ?? title, args, argsContent: undefined, execStartTime: startTime } : t
             );
           } else {
             last.toolCalls = [
               ...last.toolCalls,
-              { callId, name, args, status: "pending" as const, execStartTime: startTime, execEndTime: 0 },
+              { callId, name, title, args, status: "pending" as const, execStartTime: startTime, execEndTime: 0 },
             ];
           }
           iters[iters.length - 1] = last;
