@@ -955,8 +955,7 @@ export class Agent {
             execEndTime: 0,
           };
           iterToolCallRecords.push(toolRecord);
-
-          this.events.emit("tool:call", { callId: tc.id, name: tc.name, args: tc.args, step, startTime: execStartTime });
+          this.events.emit("tool:call", { callId: tc.id, name: tc.name, title: tool?.title, args: tc.args, step, startTime: execStartTime });
 
           let toolResultContent: string;
           const toolContext: ToolExecutionContext = {
