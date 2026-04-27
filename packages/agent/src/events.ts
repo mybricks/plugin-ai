@@ -162,7 +162,6 @@ export type AgentEventMap = {
   "tool:call": {
     callId: string;
     name: string;
-    title?: string;
     args: any;
     step: number;
     startTime: number;
