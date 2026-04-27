@@ -155,6 +155,30 @@ ${prompt}
   // 记录已写入的文件路径，避免重复写入
   const writtenFiles = new Set<string>();
 
+  // 节流 emitProgress，800ms 内最多触发一次（leading + trailing）
+  let _emitTimer: ReturnType<typeof setTimeout> | null = null;
+  let _emitLastTime = 0;
+  let _emitLastArg: any = null;
+  const throttledEmitProgress = (data: any) => {
+    _emitLastArg = data;
+    const remaining = 800 - (Date.now() - _emitLastTime);
+    if (remaining <= 0) {
+      if (_emitTimer) { clearTimeout(_emitTimer); _emitTimer = null; }
+      _emitLastTime = Date.now();
+      ctx.emitProgress(data);
+    } else if (!_emitTimer) {
+      _emitTimer = setTimeout(() => {
+        _emitTimer = null;
+        _emitLastTime = Date.now();
+        ctx.emitProgress(_emitLastArg);
+      }, remaining);
+    }
+  };
+  const flushEmitProgress = () => {
+    if (_emitTimer) { clearTimeout(_emitTimer); _emitTimer = null; }
+    if (_emitLastArg) { ctx.emitProgress(_emitLastArg); }
+  };
+
   // 监听 llm:content 事件
   const unsubscribe = subAgent.events.on("llm:content", async ({ content, thinkingContent }) => {
     progressState.content = content || "";
@@ -202,7 +226,12 @@ ${prompt}
     }
 
     progressState.files = parsedFiles;
-    ctx.emitProgress({ ...progressState });
+    throttledEmitProgress({ ...progressState });
+  });
+
+  // llm:complete 时 flush，确保最终状态立即上报
+  const unsubFlush = subAgent.events.on("llm:complete", () => {
+    flushEmitProgress();
   });
 
   try {
@@ -213,6 +242,7 @@ ${prompt}
     });
   } finally {
     unsubscribe();
+    unsubFlush();
   }
 
   // 处理输出

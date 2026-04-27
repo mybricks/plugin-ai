@@ -7,7 +7,7 @@ import type { LLMProviders, ModelSelection } from "../../../../../request/src/pr
 import { useSession } from "../use-session";
 import { MessageList } from "../messages";
 import { Header } from "./header";
-import type { MessageRecord } from "../use-sessions";
+import type { MessageRecord } from "../use-session";
 import css from "./index.less";
 
 interface User {
@@ -77,8 +77,8 @@ const ChatPanel = ({
   useEffect(() => {
     if (!agent) return;
     syncAgent(agent).catch(console.error);
-    subscribeSession(agent);
-  }, [agent]);
+    return subscribeSession(agent);
+  }, [agent, syncAgent, subscribeSession]);
 
   // 监听 aiQueue loading / queue 状态
   useEffect(() => {

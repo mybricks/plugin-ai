@@ -89,22 +89,18 @@ export function getListFocusIndex(el: Element): { index: number; total: number }
  * 根据当前聚焦的 DOM 元素生成完整的选区信息文本（含组件名、列表序号、DOM 摘要），
  * 用于填入 agent 的上下文。
  * @param el 用户聚焦的 DOM 元素
- * @returns 格式化的 <选区信息>...</选区信息> 字符串
+ * @returns 格式化的字符串
  */
 export function buildFocusInfo(el: Element): string {
+  const title = el.getAttribute('data-zone-title') ?? '';
   const comName = el.closest(`[data-com-name]`)?.getAttribute('data-com-name') ?? '';
   const domSummary = extractDomSummary(el);
   const listInfo = getListFocusIndex(el);
   const listInfoLine = listInfo
-    ? `当前聚焦: 第 ${listInfo.index} 项 / 共 ${listInfo.total} 项\n`
+    ? `(第 ${listInfo.index} 项 / 共 ${listInfo.total} 项)`
     : '';
-  return `
-<选区信息>
-Component Name: ${comName}
-${listInfoLine}DOM 摘要（tag / class / role / 文本）:
+  return `注意：用户当前聚焦到了一个类名为${title}的dom上面${listInfoLine}，所属React组件为${comName}。
+对于这个dom节点，按照从此节点到子节点的顺序，列出以下摘要信息：
 ${domSummary}
-
-注意：选区消息是当前用户聚焦的组件，仅用于参考。
-</选区信息>
   `.trim();
 }

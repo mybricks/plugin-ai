@@ -256,7 +256,7 @@ ${resourcesCode}`;
         }
       } : {};
       return {
-        message: focusInfoText ? `${focusInfoText}\n\n${params.message}` : params.message,
+        message: focusInfoText ? `${params.message}\n\n${focusInfoText}` : params.message,
         attachments: params.attachments,
         meta: { ...params.meta, ...focusMeta },
       };

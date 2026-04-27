@@ -4,7 +4,7 @@ import markdownit from "markdown-it";
 import { TextShimmer } from "../../components/text-shimmer";
 import { AttachmentsList } from "../../components/attachments";
 import { ElapsedTime } from "../../components/elapsed-time";
-import type { MessageRecord } from "../use-sessions";
+import type { MessageRecord } from "../use-session";
 import type { ToolCallRecord, WarmupIter } from "../../../../../agent/src";
 import type { CodeAgent } from "../../../../../agent/src";
 import { getToolRenderer } from "./tool-renders/index";
