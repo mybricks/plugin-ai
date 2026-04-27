@@ -71,4 +71,4 @@ export const PrdRenderWithStyles = withShadowStyles<PrdRenderProps>(
   "__pluginAiPrdStyleInjected__"
 );
 
-export type { ChatStartViewProps, ComChatStartViewProps, PrdRenderProps };
+export type { LoadingViewProps, ChatStartViewProps, ComChatStartViewProps, PrdRenderProps };

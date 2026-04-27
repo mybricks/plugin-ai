@@ -8,7 +8,7 @@ import { createCheckStatusTool } from "./tools/check-status";
 import { createInitProjectTool } from "./tools/init-project";
 import { LoadingView, type ComChatStartViewProps, type LoadingViewProps } from "../ui/chat";
 import type { PrdRenderProps } from "../ui/renders/prd-render";
-import { ComChatStartViewWithStyles, PrdRenderWithStyles } from "../ui/renders/register";
+import { LoadingViewWithStyles, ComChatStartViewWithStyles, PrdRenderWithStyles } from "../ui/renders/register";
 import { context } from "../context";
 import { ensureAIPanelOpen, ensureFocusComId } from "../utils/ensure-ai-panel-open";
 import { buildFocusInfo } from "../utils/focus-dom-summary";
@@ -155,7 +155,7 @@ export function setupSandbox(params: SetupSandboxParams): void {
         renderPrdView: (props?: PrdRenderProps): React.ReactElement =>
           React.createElement(PrdRenderWithStyles, props ?? { content: "" }),
         renderLoadingView: (props: LoadingViewProps): React.ReactElement =>
-          React.createElement(LoadingView, props),
+          React.createElement(LoadingViewWithStyles, props),
       },
     },
 
