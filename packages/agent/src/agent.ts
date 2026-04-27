@@ -388,6 +388,15 @@ function assembleMessages(
   // realtimeMessages 放在 tail 末尾，模拟工具调用返回最新代码仓库信息
   const assembled = [...baseMessages, ...userContextMessages, userMessage, ...tail, ...realtimeMessages];
 
+  // ── prompt cache 断点 3：排除 realtimeMessages 后的最后一条消息 ──────────────
+  // tail 非空时最后一条为 role: "tool"，空时为 userMessage (role: "user")
+  // role: "assistant" 不加 cache（工具调用响应消息不是断点）
+  const cacheTargetIndex = baseMessages.length + userContextMessages.length + tail.length;
+  // 等价于 userMessage 在 assembled 中的索引 + tail.length（tail 为空则指向 userMessage 自身）
+  const cacheTarget = assembled[cacheTargetIndex];
+  if (cacheTarget && (cacheTarget.role === "user" || cacheTarget.role === "tool")) {
+    assembled[cacheTargetIndex] = { ...cacheTarget, cache: true };
+  }
 
   // 应用遮蔽（默认开启，可通过 mask: false 显式关闭）
   // 遮蔽时跳过前缀（system/agentsMd/context/compact，不在 turns 中，不应被遮蔽）
