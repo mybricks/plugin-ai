@@ -297,6 +297,9 @@
           height: 25px;
           border-radius: 50%;
           cursor: pointer !important;
+          * {
+            cursor: pointer !important;
+          }
           background: var(--mybricks-bg-color-main, #FFF);
           box-shadow: var(--mybricks-shadow-main, rgba(0, 0, 0, 0.2) 0 0 5px);
           
@@ -306,7 +309,6 @@
             height: 18px;
             // color: rgba(0, 0, 0, .6);
             color: var(--mybricks-text-color-main, #333);
-            // cursor: pointer !important;
 
             // * {
             //   cursor: pointer !important;
@@ -326,7 +328,10 @@
         &.disabled {
           opacity: 0.3;
           .attachmentButton {
-            cursor: default !important;
+            cursor: not-allowed !important;
+            * {
+              cursor: not-allowed !important;
+            }
             background: var(--mybricks-bg-color-main, #FFF) !important;
           }
         }
@@ -337,7 +342,11 @@
         align-items: center;
 
         .sendButtonContainer {
-          cursor: pointer;
+          cursor: pointer !important;
+          * {
+            cursor: pointer !important;
+          }
+
           background-color: var(--mybricks-color-primary, #FA6400);
           // border-radius: 12px;
           // border-radius: 6px;
@@ -373,6 +382,9 @@
         .disabled {
           cursor: not-allowed !important;
           opacity: 0.3;
+          * {
+            cursor: not-allowed !important;
+          }
         }
       }
     }
