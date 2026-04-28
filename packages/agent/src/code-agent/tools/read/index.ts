@@ -74,7 +74,7 @@ export function createReadTool(adapter: Sandbox): Tool {
 
       const file = files.find((f) => f.path === params.path);
       if (!file) {
-        throw new ToolValidationError(`File not found: ${params.path}. Available files: ${files.map((f) => f.path).join(", ")}`);
+        throw new ToolValidationError(`File not found: ${params.path}. Use \`${READ_TOOL_NAME}\` to list available files.`);
       }
 
       const allLines = file.content.split("\n");

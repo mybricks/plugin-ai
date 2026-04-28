@@ -2,6 +2,7 @@ import type { CodeAgentPromptOptions } from "../../../agent/src";
 import { MYBRICKS_PROMPT_SECTIONS } from "./mybricks";
 
 export type { MybricksPromptSections } from "./mybricks";
+export { CODE_SEARCH_USING_TOOLS_SECTION } from "./mybricks";
 
 /**
  * Agent 身份与工具使用相关提示词节，对应 CodeAgentPromptOptions。

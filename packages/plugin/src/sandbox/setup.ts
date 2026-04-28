@@ -11,6 +11,7 @@ import type { PrdRenderProps } from "../ui/renders/prd-render";
 import { LoadingViewWithStyles, ComChatStartViewWithStyles, PrdRenderWithStyles } from "../ui/renders/register";
 import { context } from "../context";
 import { ensureAIPanelOpen, ensureFocusComId } from "../utils/ensure-ai-panel-open";
+import { CODE_SEARCH_USING_TOOLS_SECTION, CODE_SEARCH_EXAMPLES_SECTION } from "../prompts/mybricks";
 import { buildFocusInfo } from "../utils/focus-dom-summary";
 
 // ─── 类型定义 ─────────────────────────────────────────────────────────────────
@@ -110,6 +111,12 @@ export interface SetupSandboxParams {
   availableLibraries?: any[];
   themes?: any[];
   componentRuntime?: any;
+  /**
+   * @experimental 是否开启代码搜索模式（默认 false）。此参数为过渡阶段配置，后续可能移除。
+   * - false（默认）：在 getUserContext 中展示全量代码文件内容。
+   * - true：仅注入文件路径列表，依赖 grep/glob 工具按需查找代码内容。
+   */
+  codeSearch?: boolean;
 }
 
 // ─── 主入口 ───────────────────────────────────────────────────────────────────
@@ -119,12 +126,12 @@ export interface SetupSandboxParams {
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
 export function setupSandbox(params: SetupSandboxParams): void {
-  const { requestAsStream, agentsMd, skills, promptSections, tools, availableLibraries, themes, componentRuntime } = params;
+  const { requestAsStream, agentsMd, skills, promptSections, tools, availableLibraries, themes, componentRuntime, codeSearch = false } = params;
 
   window._sandbox_ = {
     // ── sandbox → Plugin ──────────────────────────────────────────────────────
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
-      return connectToAI(comId, config, { requestAsStream, agentsMd, skills, promptOptions: promptSections?.agent, tools });
+      return connectToAI(comId, config, { requestAsStream, agentsMd, skills, promptOptions: promptSections?.agent, promptSections, tools, codeSearch });
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
@@ -176,13 +183,15 @@ interface PluginParams {
   agentsMd?: string;
   skills?: any[];
   promptOptions?: CodeAgentPromptOptions;
+  promptSections?: PromptSections;
   tools?: Tool[];
+  codeSearch?: boolean;
 }
 
 function connectToAI(
   comId: string,
   { designer, hooks }: RegistSandBoxConfig,
-  { requestAsStream, agentsMd, skills, promptOptions, tools }: PluginParams
+  { requestAsStream, agentsMd, skills, promptOptions, promptSections, tools, codeSearch = false }: PluginParams
 ): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
 
@@ -201,6 +210,17 @@ function connectToAI(
     },
     getUserContext: async () => {
       const files = await sandbox.getFiles();
+
+      if (codeSearch) {
+        // codeSearch 开启：仅提供文件路径列表，不含内容
+        if (files.length === 0) {
+          return '这是一个空项目，没有任何代码文件。\n';
+        }
+        const fileList = files.map((f) => `- ${f.path}`).join('\n');
+        return `这是发送这条消息时的各类环境信息，并不会实时更新。\n\n# 项目文件列表\n\n${fileList}\n`;
+      }
+
+      // codeSearch 关闭（默认）：提供全量代码内容
       if (files.length === 0) {
         return '这是一个空项目，没有任何代码文件。\n';
       }
@@ -237,11 +257,6 @@ ${resourcesCode}`;
     agentsMd,
     skills,
     subAgents: [],
-    retry: {
-      maxRetries: 3,      // 总共 4 次尝试（首次 + 3 次重试）
-      baseDelayMs: 1000,  // 初始延迟 1 秒
-      maxDelayMs: 10000,  // 最大延迟 10 秒
-    },
     formatUserMessage: (params) => {
       const focusSnapshot = context.currentFocus;
       const ele = focusSnapshot?.focusArea?.ele;

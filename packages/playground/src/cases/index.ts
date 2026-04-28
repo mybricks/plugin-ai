@@ -66,6 +66,22 @@ import {
   webFetchErrorCase,
 } from "./web-fetch";
 import { settingCase } from "./setting";
+import {
+  grepFilesWithMatchesCase,
+  grepContentModeCase,
+  grepCountModeCase,
+  grepGlobFilterCase,
+  grepGlobPathFilterCase,
+  grepCaseInsensitiveCase,
+  grepHeadLimitCase,
+  grepOffsetCase,
+  grepRegexPatternCase,
+  grepNoMatchCase,
+  grepInvalidRegexCase,
+  grepEmptyPatternCase,
+  grepMultiParamCase,
+  grepGlobNoMatchCase,
+} from "./grep-search";
 
 export type { TestCase } from "./types";
 
@@ -150,6 +166,21 @@ export const ALL_CASES: TestCase[] = [
   initProjectRetryCase,
   // 设置
   settingCase,
+  // Grep 搜索
+  grepFilesWithMatchesCase,
+  grepContentModeCase,
+  grepCountModeCase,
+  grepGlobFilterCase,
+  grepGlobPathFilterCase,
+  grepCaseInsensitiveCase,
+  grepHeadLimitCase,
+  grepOffsetCase,
+  grepRegexPatternCase,
+  grepNoMatchCase,
+  grepInvalidRegexCase,
+  grepEmptyPatternCase,
+  grepMultiParamCase,
+  grepGlobNoMatchCase,
 ];
 
 /** 按 group 分组 */

@@ -3,10 +3,11 @@ import type { ToolExecutionContext } from "../../../agent";
 import { ToolValidationError } from "../../../types";
 import type { Sandbox } from "../../index";
 import { READ_TOOL_NAME } from "../read";
+import { WRITE_TOOL_NAME } from "../write";
+import { EDIT_TOOL_NAME } from "../edit";
 import { replaceInContent } from "../edit/replace";
 
 export const MULTI_EDIT_TOOL_NAME = "multi_edit";
-const EDIT_TOOL_NAME = "edit_file";
 
 /**
  * 计算字符串的行数（不含末尾空行）
@@ -51,15 +52,15 @@ function appendActionHint(
 ): string {
   const prev = countPrevFailures(ctx, path, oldStr);
   if (prev === 0) {
-    return `${message} 同一 old_str 已连续失败 ${prev + 1} 次，请先通过 \`${READ_TOOL_NAME}\` 读取 ${path} 的最新内容，确认 old_str 后再编辑。`;
+    return `${message} Same old_str has failed ${prev + 1} time(s). Please read the latest content of ${path} via \`${READ_TOOL_NAME}\` and verify old_str before editing.`;
   }
-  return `${message} 同一 old_str 已连续失败 ${prev + 1} 次，再次编辑会造成重大失误，必须改用 \`write_file\` 直接重写该文件。`;
+  return `${message} Same old_str has failed ${prev + 1} time(s). Further edits may cause significant errors. Use \`${WRITE_TOOL_NAME}\` to rewrite the entire file instead.`;
 }
 
 export function createMultiEditTool(adapter: Sandbox): Tool {
   return {
     name: MULTI_EDIT_TOOL_NAME,
-    description: `批量编辑多个文件，对每个文件进行精确的字符串替换。一次调用可以对多个文件同时进行编辑，比多次调用 edit_file 更高效。
+    description: `批量编辑多个文件，对每个文件进行精确的字符串替换。一次调用可以对多个文件同时进行编辑，比多次调用 ${EDIT_TOOL_NAME} 更高效。
 警告：
 - 如果 old_str 与文件内容不完全匹配（包括空白），工具将失败
 - 如果 old_str 与 new_str 相同，工具将失败
@@ -105,7 +106,7 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
     },
     validate(params: { edits?: Array<{ path?: string; old_str?: string; new_str?: string; replace_all?: boolean }> }) {
       if (!Array.isArray(params.edits) || params.edits.length === 0) {
-        throw new ToolValidationError("现在拿不到edits参数，工具传参有问题。");
+        throw new ToolValidationError("edits is required and must be a non-empty array");
       }
       for (let i = 0; i < params.edits.length; i++) {
         const edit = params.edits[i];
@@ -138,7 +139,7 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
         if (content === undefined) {
           results.push({
             path: edit.path,
-            error: `File not found: ${edit.path}. Use \`${READ_TOOL_NAME}\` without path to list available files.`,
+            error: `File not found: ${edit.path}. Use \`${READ_TOOL_NAME}\` to list available files.`,
           });
           continue;
         }
@@ -184,7 +185,7 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
           const fileLines = countLines(fileContent);
           const oldStrLines = countLines(edit.old_str);
           if (fileLines >= 3 && oldStrLines < 3) {
-            warnings.push(`edits[${i}].old_str 只有 ${oldStrLines} 行`);
+            warnings.push(`edits[${i}].old_str has only ${oldStrLines} line(s) (recommended: 3+ lines)`);
           }
         }
       }
@@ -200,7 +201,7 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
       output = `Files edited:\n${output}`;
 
       if (warnings.length > 0) {
-        output = `${output}\n注意：${warnings.join("，")}，行数较少（推荐3行及以上），请确保修改内容准确，避免误操作周围其他代码。`;
+        output = `${output}\nWarning: ${warnings.join("; ")}. Make sure the replacement is accurate to avoid unintended changes.`;
       }
 
       return {

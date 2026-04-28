@@ -3,10 +3,12 @@ import type { ToolExecutionContext } from "../../../agent";
 import { ToolValidationError } from "../../../types";
 import type { Sandbox } from "../../index";
 import { READ_TOOL_NAME } from "../read";
+import { WRITE_TOOL_NAME } from "../write";
 import { replaceInContent } from "./replace";
 
 export const EDIT_TOOL_NAME = "edit_file";
-const MULTI_EDIT_TOOL_NAME = "multi_edit";
+/** Used by countPrevFailures to identify multi_edit tool calls (avoids circular import) */
+const MULTI_EDIT_TOOL_NAME_ALIAS = "multi_edit";
 
 /**
  * 计算字符串的行数（不含末尾空行）
@@ -38,7 +40,7 @@ function countPrevFailures(
         if (call.args?.path === path && call.args?.old_str === oldStr) count++;
         continue;
       }
-      if (call.name === MULTI_EDIT_TOOL_NAME) {
+      if (call.name === MULTI_EDIT_TOOL_NAME_ALIAS) {
         const edits: Array<{ path?: string; old_str?: string }> = Array.isArray(call.args?.edits) ? call.args.edits : [];
         if (edits.some((e: { path?: string; old_str?: string }) => e.path === path && e.old_str === oldStr)) count++;
       }
@@ -60,9 +62,9 @@ function appendActionHint(
 ): string {
   const prev = countPrevFailures(ctx, path, oldStr);
   if (prev === 0) {
-    return `${message} 同一 old_str 已连续失败 ${prev + 1} 次，请先通过 \`${READ_TOOL_NAME}\` 读取 ${path} 的最新内容，确认 old_str 后再编辑。`;
+    return `${message} Same old_str has failed ${prev + 1} time(s). Please read the latest content of ${path} via \`${READ_TOOL_NAME}\` and verify old_str before editing.`;
   }
-  return `${message} 同一 old_str 已连续失败 ${prev + 1} 次，再次编辑会造成重大失误，必须改用 \`write_file\` 直接重写该文件。`;
+  return `${message} Same old_str has failed ${prev + 1} time(s). Further edits may cause significant errors. Use \`${WRITE_TOOL_NAME}\` to rewrite the entire file instead.`;
 }
 
 export function createEditTool(adapter: Sandbox): Tool {
@@ -118,7 +120,7 @@ export function createEditTool(adapter: Sandbox): Tool {
       const file = files.find((f) => f.path === params.path);
       if (!file) {
         throw new ToolValidationError(
-          `File not found: ${params.path}. Use \`${READ_TOOL_NAME}\` without path to list available files.`
+          `File not found: ${params.path}. Use \`${READ_TOOL_NAME}\` to list available files.`
         );
       }
 
@@ -140,7 +142,7 @@ export function createEditTool(adapter: Sandbox): Tool {
       const oldStrLines = countLines(params.old_str);
       if (fileLines >= 3 && oldStrLines < 3 && params.old_str) {
         warnings.push(
-          `注意：当前 old_str 只有 ${oldStrLines} 行，行数较少（推荐3行及以上），请确保修改内容准确，避免误操作周围其他代码。`
+          `Warning: old_str has only ${oldStrLines} line(s) (recommended: 3+ lines). Make sure the replacement is accurate to avoid unintended changes.`
         );
       }
 

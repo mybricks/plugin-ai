@@ -80,6 +80,29 @@
   --mybricks-border-color-secondary: #444;
 }
 
+/* ── 默认值模式（不注入 CSS 变量，验证 fallback） ─────────────────────────── */
+.pg-none {
+  /* Playground 变量保持不变，只清除 mybricks 变量 */
+  --mybricks-color-primary: initial;
+  --mybricks-text-color-main: initial;
+  --mybricks-text-color-hover: initial;
+  --mybricks-text-color-active: initial;
+  --mybricks-text-color-disabled: initial;
+  --mybricks-text-color-secondary: initial;
+  --mybricks-bg-color-main: initial;
+  --mybricks-bg-color-main-transparent: initial;
+  --mybricks-bg-color-secondary: initial;
+  --mybricks-bg-color-hover: initial;
+  --mybricks-bg-color-active: initial;
+  --mybricks-bg-color-designer: initial;
+  --mybricks-menu-bg-color: initial;
+  --mybricks-shadow-main: initial;
+  --mybricks-shadow-main-left: initial;
+  --mybricks-shadow-for-border: initial;
+  --mybricks-border-color-main: initial;
+  --mybricks-border-color-secondary: initial;
+}
+
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 .pg-layout {
   display: flex;

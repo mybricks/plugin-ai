@@ -51,7 +51,7 @@ export function createDeleteTool(adapter: Sandbox): Tool {
 
       if (missingPaths.length > 0 && !params.force) {
         throw new ToolValidationError(
-          `File not found: ${missingPaths.join(", ")}. Use \`${READ_TOOL_NAME}\` to inspect available files, or pass force=true to ignore missing paths.`
+          `File not found: ${missingPaths.join(", ")}. Use \`${READ_TOOL_NAME}\` to list available files, or pass force=true to ignore missing paths.`
         );
       }
 

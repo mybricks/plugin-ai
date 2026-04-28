@@ -8,6 +8,7 @@ import type { SkillFile } from "../../agent/src";
 import { createRequestAsStream, createOnUpload, LLMProviders } from "../../request/src";
 import type { RequestAsStreamFn, ProviderConfig } from "../../request/src";
 import { resolvePromptOptions, type PromptSections } from "./prompts";
+import { CODE_SEARCH_USING_TOOLS_SECTION, CODE_SEARCH_EXAMPLES_SECTION } from "./prompts/mybricks";
 
 import { context } from "./context";
 import { setupSandbox } from "./sandbox";
@@ -70,6 +71,12 @@ export interface PluginAIParams {
   llm?: {
     providers?: import("./ui/setting").ProviderConfig[];
   };
+  /**
+   * @experimental 是否开启代码搜索模式（默认 false）。此参数为过渡阶段配置，后续可能移除。
+   * - false（默认）：每次发送消息时将全量代码文件内容注入上下文。
+   * - true：仅注入文件路径列表，LLM 通过 grep/glob 工具按需读取代码内容。
+   */
+  codeSearch?: boolean;
 }
 
 export default function pluginAI(params: PluginAIParams): any {
@@ -86,10 +93,20 @@ export default function pluginAI(params: PluginAIParams): any {
     promptSections,
     tools,
     componentRuntime,
-    llm
+    llm,
+    codeSearch = false
   } = params;
 
-  const mergedPromptSections = resolvePromptOptions(promptSections);
+  // TODO：以后 codeSearch配置 要删掉，开启全量，现在是过渡阶段，
+  const codeSearchPromptSections: PromptSections = {
+    agent: {
+      usingToolsSection: CODE_SEARCH_USING_TOOLS_SECTION,
+    },
+    developeGuide: {
+      examplesSection: CODE_SEARCH_EXAMPLES_SECTION,
+    }
+  };
+  const mergedPromptSections = resolvePromptOptions(promptSections ? promptSections : (codeSearch ? codeSearchPromptSections : {}));
 
   // ─── 处理 LLMProviders 注入 ────────────────────────────────────────────────
   let effectiveRequest: RequestAsStreamFn;
@@ -177,7 +194,8 @@ export default function pluginAI(params: PluginAIParams): any {
     tools,
     availableLibraries: codingConfig?.availableLibraries ?? [],
     themes: codingConfig?.themes ?? [],
-    componentRuntime
+    componentRuntime,
+    codeSearch
   });
 
   return {

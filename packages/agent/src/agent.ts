@@ -10,13 +10,23 @@ export { AgentEvents };
 export type { Message, History, Tool, TurnRecord, ToolCallRecord, WarmupIter };
 export type { CompactRecord, MaskOptions, BoundHistory };
 
-// ─── Compact 阈值常量 ────────────────────────────────────────────────────────
+// ─── 默认配置常量 ────────────────────────────────────────────────────────────
 /** 默认上下文窗口大小（token 数） */
 const DEFAULT_CONTEXT_WINDOW = 200_000;
 /** 预留给模型输出的 token 数 */
 const COMPACT_RESERVE_OUTPUT = 20_000;
 /** 缓冲区大小（防止精确边界触发） */
 const COMPACT_BUFFER = 13_000;
+/** 默认重试配置 */
+const DEFAULT_RETRY: Required<RetryOptions> = {
+  maxRetries: 3,
+  baseDelayMs: 1000,
+  maxDelayMs: 10000,
+};
+/** 默认摘要配置 */
+const DEFAULT_SUMMARY = { enabled: true as const };
+/** 默认 compact 配置 */
+const DEFAULT_COMPACT = { enabled: true as const, maxTurns: 15 };
 
 // ─── ToolExecutionContext ─────────────────────────────────────────────────────
 
@@ -603,17 +613,16 @@ export class Agent {
     // 若调用方显式传入 summary/compact（即便是 undefined），按原值保留。
     const hasSummary = Object.prototype.hasOwnProperty.call(options, "summary");
     const hasCompact = Object.prototype.hasOwnProperty.call(options, "compact");
+    const hasRetry = Object.prototype.hasOwnProperty.call(options, "retry");
 
-    // 如果配置了 retry，包装 request 函数
-    const wrappedRequest = options.retry
-      ? wrapRequestWithRetry(options.request, options.retry, this.events)
-      : options.request;
+    const retryOpts = hasRetry ? (options.retry ?? DEFAULT_RETRY) : DEFAULT_RETRY;
 
     this.options = {
       ...options,
-      request: wrappedRequest,
-      ...(hasSummary ? {} : { summary: { enabled: true } }),
-      ...(hasCompact ? {} : { compact: { enabled: true, maxTurns: 15 } }),
+      request: wrapRequestWithRetry(options.request, retryOpts, this.events),
+      ...(hasSummary ? {} : { summary: DEFAULT_SUMMARY }),
+      ...(hasCompact ? {} : { compact: DEFAULT_COMPACT }),
+      ...(hasRetry ? {} : { retry: retryOpts }),
     };
     this.key = options.key;
   }

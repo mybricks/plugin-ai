@@ -1,19 +1,22 @@
 import type { Tool, ToolResult } from "../../../types";
 import { ToolValidationError } from "../../../types";
 import type { Sandbox } from "../../index";
+import { WRITE_TOOL_NAME } from "../write";
+import { EDIT_TOOL_NAME } from "../edit";
+import { MULTI_EDIT_TOOL_NAME } from "../multi-edit";
 
 export const MULTI_WRITE_TOOL_NAME = "multi_write";
 
 export function createMultiWriteTool(adapter: Sandbox): Tool {
   return {
     name: MULTI_WRITE_TOOL_NAME,
-    description: `批量写入多个文件到项目中。一次调用写入多个文件，比多次调用 write_file 更高效。
+    description: `批量写入多个文件到项目中。一次调用写入多个文件，比多次调用 ${WRITE_TOOL_NAME} 更高效。
 特别适合空项目创建文件时使用，一次尽可能多创建文件，但不得超过6个。
 
 IMPORTANT: All string values must use raw Unicode characters. Never escape any character as \\uXXXX regardless of language
 
 使用前：
-1. 对于已有文件，优先使用 edit_file 或 multi_edit 进行局部修改
+1. 对于已有文件，优先使用 ${EDIT_TOOL_NAME} 或 ${MULTI_EDIT_TOOL_NAME} 进行局部修改
 `,
     parameters: {
       type: "object",

@@ -44,8 +44,9 @@ function getIdentitySection(identity?: string): string {
 
 function getDoingTasksSection(): string {
   return `# 工作原则
-- 不要使用 emoji，除非用户明确要求。
-注意：你是一个高效的工作者，对于工具使用，必须尽可能并行调用。
+不要妄下断言，不要直接工作，不要掩饰困惑，坦诚地权衡利弊。
+- 如果存在多种解释，请将它们提出来——不要默默地做出选择。
+- 如果有什么不清楚的地方，停下来。说出让你困惑的地方。然后提问。
 `;
 }
 
@@ -93,10 +94,9 @@ ${lines.join("\n\n")}`;
 
 function getToneAndStyleSection(): string {
   return `# 输出风格
- - 永远使用中文来回答问题；
- - 回答要简短直接；
- - 中文直接输出；
- - 禁止使用emoji、表情符号。`;
+- 在调用工具之前，务必用一句简洁明了的句子告诉用户你要做什么。这有助于他们理解你的操作及其原因；
+- 永远使用简体中文来告知、回答用户、输出总结；
+- 禁止使用emoji、表情符号。`;
 }
 
 

@@ -2,6 +2,7 @@ import type { Tool, ToolResult } from "../../../types";
 import { ToolValidationError } from "../../../types";
 import type { Sandbox } from "../../index";
 import { READ_TOOL_NAME } from "../read";
+import { EDIT_TOOL_NAME } from "../edit";
 
 export const WRITE_TOOL_NAME = "write_file";
 
@@ -13,7 +14,7 @@ export function createWriteTool(adapter: Sandbox): Tool {
 IMPORTANT: All string values must use raw Unicode characters. Never escape any character as \\uXXXX regardless of language
 
 用法：
-- 对已有文件优先使用 \`edit_file\` 进行局部修改——它只发送差异部分。只有新建文件或需要完整重写时才使用此工具
+- 对已有文件优先使用 \`${EDIT_TOOL_NAME}\` 进行局部修改——它只发送差异部分。只有新建文件或需要完整重写时才使用此工具
 - 可并行调用此工具同时创建多个文件`,
     parameters: {
       type: "object",

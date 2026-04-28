@@ -167,7 +167,7 @@ export function replaceInContent(content: string, oldStr: string, newStr: string
     return {
       ok: false,
       error: "NO_CHANGE",
-      message: "old_str 与 new_str 相同，修改失败。",
+      message: "old_str and new_str are identical, no change would be made.",
     };
   }
 
@@ -212,7 +212,7 @@ export function replaceInContent(content: string, oldStr: string, newStr: string
     return {
       ok: false,
       error: "MULTIPLE_MATCH",
-      message: "old_str 在文件中出现多次，请提供更多上下文使匹配唯一",
+      message: "old_str appears multiple times in the file. Provide more context to make the match unique",
     };
   }
 
@@ -222,14 +222,14 @@ export function replaceInContent(content: string, oldStr: string, newStr: string
     return {
       ok: false,
       error: "NOT_FOUND",
-      message: `未在文件中找到 old_str。检测到源文件中包含中文全角符号：${punctuationList}，注意检查引号类型是否一致。`,
+      message: `old_str not found in file. Detected Chinese full-width punctuation: ${punctuationList}. Check if quotation marks match.`,
     };
   }
 
   return {
     ok: false,
     error: "NOT_FOUND",
-    message: "未在文件中找到 old_str，请确认内容与当前文件一致（包括缩进）。",
+    message: "old_str not found in file. Make sure the content matches exactly (including indentation).",
   };
 }
 

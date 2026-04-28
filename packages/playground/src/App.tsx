@@ -12,28 +12,44 @@ import "./app.css";
 
 // ─── Theme Toggle ─────────────────────────────────────────────────────────────
 
+type ThemeMode = "light" | "dark" | "none";
+
 const THEME_KEY = "pg-theme";
+const THEME_ORDER: ThemeMode[] = ["light", "dark", "none"];
+const THEME_ICONS: Record<ThemeMode, string> = { light: "☀️", dark: "🌙", none: "🔍" };
+const THEME_TIPS: Record<ThemeMode, string> = {
+  light: "浅色模式（CSS 变量已注入）",
+  dark: "暗黑模式（CSS 变量已注入）",
+  none: "默认值模式（无 CSS 变量注入，验证 fallback）",
+};
 
 function useTheme() {
-  const [dark, setDark] = useState(() => {
+  const [mode, setMode] = useState<ThemeMode>(() => {
     const saved = localStorage.getItem(THEME_KEY);
-    if (saved !== null) return saved === "dark";
-    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+    if (saved !== null && THEME_ORDER.includes(saved as ThemeMode)) return saved as ThemeMode;
+    return "light";
   });
 
   useEffect(() => {
-    document.documentElement.classList.toggle("pg-dark", dark);
-    localStorage.setItem(THEME_KEY, dark ? "dark" : "light");
-  }, [dark]);
+    const el = document.documentElement;
+    el.classList.toggle("pg-dark", mode === "dark");
+    el.classList.toggle("pg-none", mode === "none");
+    localStorage.setItem(THEME_KEY, mode);
+  }, [mode]);
 
-  const toggle = useCallback(() => setDark((d) => !d), []);
-  return { dark, toggle };
+  const cycle = useCallback(() => {
+    setMode((m) => {
+      const idx = THEME_ORDER.indexOf(m);
+      return THEME_ORDER[(idx + 1) % THEME_ORDER.length];
+    });
+  }, []);
+  return { mode, cycle };
 }
 
-function ThemeToggle({ dark, onToggle }: { dark: boolean; onToggle: () => void }) {
+function ThemeToggle({ mode, onCycle }: { mode: ThemeMode; onCycle: () => void }) {
   return (
-    <button className="pg-theme-toggle" onClick={onToggle} title={dark ? "切换到浅色模式" : "切换到暗黑模式"}>
-      {dark ? "☀️" : "🌙"}
+    <button className="pg-theme-toggle" onClick={onCycle} title={THEME_TIPS[mode]}>
+      {THEME_ICONS[mode]}
     </button>
   );
 }
@@ -184,7 +200,7 @@ function InspectorPanel({ snapshots }: { snapshots: RequestSnapshot[] }) {
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const { dark, toggle: toggleTheme } = useTheme();
+  const { mode, cycle: cycleTheme } = useTheme();
 
   // 从 URL 读取初始 case（?case=xxx）
   const initialCaseId = new URLSearchParams(window.location.search).get("case");
@@ -247,7 +263,7 @@ export default function App() {
               ⚙️ 设置
             </button>
           )}
-          <ThemeToggle dark={dark} onToggle={toggleTheme} />
+          <ThemeToggle mode={mode} onCycle={cycleTheme} />
         </div>
       </header>
 
