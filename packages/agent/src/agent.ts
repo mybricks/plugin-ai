@@ -1146,6 +1146,9 @@ export class Agent {
     if (attachments?.length) {
       rest.aiRole = "image";
     }
+
+    // TODO: 临时：强制所有请求使用 aiRole=image
+    rest.aiRole = "image";
     
     // ── 提前创建 AbortController（确保 warmup 阶段也能取消）
     this._abortController = new AbortController();
