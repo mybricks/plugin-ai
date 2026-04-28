@@ -531,8 +531,8 @@ function callLLM(
                   return result;
                 });
                 return { ...call, args: JSON.parse(fixed) };
-              } catch {
-                return call;
+              } catch (parseErr) {
+                return { ...call, args: { _argsParseError: true, _argsRaw: raw, _parseErrMsg: String((parseErr as any)?.message ?? parseErr) } };
               }
             });
           } else {
@@ -1007,7 +1007,21 @@ export class Agent {
           //   toolResultContent = `Error: ${err.message}`;
           //   this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: err, step, endTime: toolRecord.execEndTime });
           // } else
-          if (!tool) {
+          if (tc.args?._argsParseError) {
+            const raw: string = tc.args._argsRaw ?? "";
+            const parseErrMsg: string = tc.args._parseErrMsg ?? "unknown parse error";
+            const err = new Error(
+              `Tool "${tc.name}" received invalid JSON arguments: ${parseErrMsg}. ` +
+              `Raw content: ${raw} ` +
+              `Please re-issue the tool call with valid JSON arguments.`
+            );
+            toolRecord.args = { _argsRaw: raw };
+            toolRecord.status = "error";
+            toolRecord.error = err.message;
+            toolRecord.execEndTime = Date.now();
+            toolResultContent = `Error: ${err.message}`;
+            this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: err, step, endTime: toolRecord.execEndTime });
+          } else if (!tool) {
             const err = new Error(`Tool not found: ${tc.name}`);
             toolRecord.status = "error";
             toolRecord.error = err.message;
