@@ -72,12 +72,15 @@ const ChatPanel = ({
   }, [context.llmProviders]);
 
   const { messages, syncAgent, subscribeSession, clearSession } = useSession(agent);
+  const messageListRef = useRef<{ scrollToBottom: () => void }>(null);
 
-  // 同步历史 + 订阅事件
+  // 同步历史 + 订阅事件 + turn 滚底
   useEffect(() => {
     if (!agent) return;
     syncAgent(agent).catch(console.error);
-    return subscribeSession(agent);
+    const scrollToBottom = () => messageListRef.current?.scrollToBottom();
+    const unsubSession = subscribeSession(agent, { onTurnStart: scrollToBottom, onTurnEnd: scrollToBottom });
+    return unsubSession;
   }, [agent, syncAgent, subscribeSession]);
 
   // 监听 aiQueue loading / queue 状态
@@ -134,6 +137,7 @@ const ChatPanel = ({
 
       <div className={css["messages-area"]}>
         <MessageList
+          ref={messageListRef}
           messages={messages}
           user={user}
           copilot={copilot}

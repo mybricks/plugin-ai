@@ -29,8 +29,12 @@ export interface MessageListProps {
   onRetry?: (turnId: string) => void;
 }
 
-const MessageList = ({ messages, user, copilot, agent, renderUserMessage, onRetry }: MessageListProps) => {
+type MessageListRef = { scrollToBottom: () => void };
+
+const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
+  function MessageListInner({ messages, user, copilot, agent, renderUserMessage, onRetry }, ref) {
   const mainRef = useRef<HTMLElement>(null);
+  const scrollerRef = useRef<AutoScroller | null>(null);
 
   // 缓存工具渲染器映射，避免流式渲染时重复计算
   const toolRendererMap = useMemo(() => {
@@ -50,9 +54,14 @@ const MessageList = ({ messages, user, copilot, agent, renderUserMessage, onRetr
   }, [agent]);
 
   useEffect(() => {
-    const autoScroller = new AutoScroller(mainRef.current!);
-    return () => autoScroller.destroy();
+    const s = new AutoScroller(mainRef.current!);
+    scrollerRef.current = s;
+    return () => s.destroy();
   }, []);
+
+  React.useImperativeHandle(ref, () => ({
+    scrollToBottom: () => scrollerRef.current?.forceScrollToBottom(),
+  }), []);
 
   return (
     <main ref={mainRef} className={css["message-list"]}>
@@ -70,7 +79,7 @@ const MessageList = ({ messages, user, copilot, agent, renderUserMessage, onRetr
       ))}
     </main>
   );
-};
+  });
 
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
@@ -377,6 +386,12 @@ class AutoScroller {
 
   scrollToBottom() {
     this.container.scrollTop = this.container.scrollHeight;
+  }
+
+  /** 强制锁底并立即滚到底（用于 turn:start / turn:end） */
+  forceScrollToBottom() {
+    this.isLockedToBottom = true;
+    this.scrollToBottom();
   }
 
   destroy() {

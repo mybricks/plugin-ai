@@ -60,7 +60,7 @@ export function useSession(agent: Agent | undefined) {
    *
    * 每次调用都会先清除上一次注册的监听器（同一个组件切换 agent 时安全）。
    */
-  const subscribeSession = useCallback((a: Agent) => {
+  const subscribeSession = useCallback((a: Agent, opts?: { onTurnStart?: () => void; onTurnEnd?: () => void }) => {
     unsubsRef.current.forEach((u) => u());
     unsubsRef.current = [];
     pendingIdRef.current = null;
@@ -119,6 +119,7 @@ export function useSession(agent: Agent | undefined) {
           usage: undefined,
         };
         setMessages((prev) => [...prev, record]);
+        opts?.onTurnStart?.();
       }),
 
       a.events.on("turn:resume", ({ turnId }) => {
@@ -165,6 +166,7 @@ export function useSession(agent: Agent | undefined) {
             return { ...r, status: "success", content: finalContent, iterations: iters };
           });
           pendingIdRef.current = null;
+          opts?.onTurnEnd?.();
         } else {
           updateLastIter((iter) => ({ ...iter, endTime }));
           pendingContent = "";
@@ -175,6 +177,7 @@ export function useSession(agent: Agent | undefined) {
       a.events.on("turn:abort", () => {
         pendingContent = "";
         pendingThinking = "";
+        opts?.onTurnEnd?.();
         update((r) => {
           const now = Date.now();
           const iters = r.iterations.map((iter, i) => {
@@ -201,6 +204,7 @@ export function useSession(agent: Agent | undefined) {
       a.events.on("turn:error", ({ error }) => {
         pendingContent = "";
         pendingThinking = "";
+        opts?.onTurnEnd?.();
         update((r) => {
           const now = Date.now();
           const errorMsg = String((error as any)?.message ?? error);
@@ -313,6 +317,11 @@ export function useSession(agent: Agent | undefined) {
         });
       })
     );
+
+    return () => {
+      unsubsRef.current.forEach((u) => u());
+      unsubsRef.current = [];
+    };
   }, []);
 
   /** 清空消息列表（配合 agent.clearHistory 使用） */
