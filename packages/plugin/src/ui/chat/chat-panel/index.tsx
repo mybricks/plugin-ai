@@ -36,6 +36,8 @@ export interface ChatPanelProps {
    * 返回 ReactNode，展示当前聚焦的组件 / 区域信息。
    */
   renderFocus?: () => React.ReactNode;
+  /** 是否禁用发送输入框 */
+  disabled?: boolean;
 }
 
 // ─── ChatPanel ────────────────────────────────────────────────────────────────
@@ -49,6 +51,7 @@ const ChatPanel = ({
   title,
   renderUserMessage,
   renderFocus,
+  disabled = false,
 }: ChatPanelProps) => {
   const agentKey = agent?.key ?? "";
 
@@ -162,7 +165,7 @@ const ChatPanel = ({
         ref={senderRef}
         loading={loading}
         placeholder={`您好，我是${context.name}，请详细描述您的需求`}
-        disabled={!agent}
+        disabled={!agent || disabled}
         mode="mention"
         chatMode={null}
         onSend={onSend}
