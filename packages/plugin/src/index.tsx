@@ -77,6 +77,8 @@ export interface PluginAIParams {
    * - true：仅注入文件路径列表，LLM 通过 grep/glob 工具按需读取代码内容。
    */
   codeSearch?: boolean;
+  /** 透传给 CodeAgent 的历史记录实现，不传时使用内置 IDBHistory */
+  history?: import("../../agent/src").History;
 }
 
 export default function pluginAI(params: PluginAIParams): any {
@@ -94,7 +96,8 @@ export default function pluginAI(params: PluginAIParams): any {
     tools,
     componentRuntime,
     llm,
-    codeSearch = false
+    codeSearch = false,
+    history
   } = params;
 
   // TODO：以后 codeSearch配置 要删掉，开启全量，现在是过渡阶段，
@@ -195,7 +198,8 @@ export default function pluginAI(params: PluginAIParams): any {
     availableLibraries: codingConfig?.availableLibraries ?? [],
     themes: codingConfig?.themes ?? [],
     componentRuntime,
-    codeSearch
+    codeSearch,
+    history
   });
 
   return {

@@ -117,6 +117,8 @@ export interface SetupSandboxParams {
    * - true：仅注入文件路径列表，依赖 grep/glob 工具按需查找代码内容。
    */
   codeSearch?: boolean;
+  /** 透传给 CodeAgent 的历史记录实现，不传时使用内置 IDBHistory */
+  history?: History;
 }
 
 // ─── 主入口 ───────────────────────────────────────────────────────────────────
@@ -126,12 +128,12 @@ export interface SetupSandboxParams {
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
 export function setupSandbox(params: SetupSandboxParams): void {
-  const { requestAsStream, agentsMd, skills, promptSections, tools, availableLibraries, themes, componentRuntime, codeSearch = false } = params;
+  const { requestAsStream, agentsMd, skills, promptSections, tools, availableLibraries, themes, componentRuntime, codeSearch = false, history } = params;
 
   window._sandbox_ = {
     // ── sandbox → Plugin ──────────────────────────────────────────────────────
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
-      return connectToAI(comId, config, { requestAsStream, agentsMd, skills, promptOptions: promptSections?.agent, promptSections, tools, codeSearch });
+      return connectToAI(comId, config, { requestAsStream, agentsMd, skills, promptOptions: promptSections?.agent, promptSections, tools, codeSearch, history });
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
@@ -186,12 +188,13 @@ interface PluginParams {
   promptSections?: PromptSections;
   tools?: Tool[];
   codeSearch?: boolean;
+  history?: History;
 }
 
 function connectToAI(
   comId: string,
   { designer, hooks }: RegistSandBoxConfig,
-  { requestAsStream, agentsMd, skills, promptOptions, promptSections, tools, codeSearch = false }: PluginParams
+  { requestAsStream, agentsMd, skills, promptOptions, promptSections, tools, codeSearch = false, history }: PluginParams
 ): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
 
@@ -248,7 +251,7 @@ ${resourcesCode}`;
 
   const agent = new CodeAgent({
     key: agentKey,
-    history: new IDBHistory({ dbName: "@plugin-ai/plugin/messages" }),
+    history: history ?? new IDBHistory({ dbName: "@plugin-ai/plugin/messages" }),
     request: requestAsStream,
     sandbox,
     tools: [checkStatusTool, initProjectTool, ...(tools ?? [])],
