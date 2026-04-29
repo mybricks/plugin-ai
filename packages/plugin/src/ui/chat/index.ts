@@ -11,4 +11,5 @@ export { MessageList } from "./messages";
 export type { MessageListProps } from "./messages";
 
 export { useSession } from "./use-session";
-export type { MessageRecord, ToolRecord, Session } from "./use-session";
+export type { MessageRecord, Session } from "./use-session";
+export type { ToolRecord } from "./messages/tool-renders/index";

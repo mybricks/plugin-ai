@@ -1345,7 +1345,7 @@ export class Agent {
 
     const { summary, compact } = this.options;
 
-    if (summary?.enabled) {
+    if (summary?.enabled && getLLMIterations(turn.iterations).length > 0) {
       void this._runAutoSummary(turn).catch((e) => {
         console.warn("[Agent] summary failed:", e);
       });

@@ -479,6 +479,12 @@ export function turnsToMessages(
       : userText;
     messages.push({ role: "user", content: userContent });
 
+    // ── abort 且无 LLM iter：插入中断提示，让 LLM 知道该轮被用户取消 ──
+    if (turn.status === "abort" && getLLMIterations(turn.iterations).length === 0) {
+      messages.push({ role: "user", content: "[Request interrupted by user]" });
+      continue;
+    }
+
     // 用 iterations 重建 ReAct 序列（向后兼容：无 iterations 时降级到简单 assistant 消息）
     if (turn.iterations?.length) {
       for (const iter of getLLMIterations(turn.iterations)) {
