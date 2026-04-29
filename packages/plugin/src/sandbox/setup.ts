@@ -217,15 +217,15 @@ function connectToAI(
       if (codeSearch) {
         // codeSearch 开启：仅提供文件路径列表，不含内容
         if (files.length === 0) {
-          return '这是一个空项目，没有任何代码文件。\n';
+          return '项目空间为空，没有任何代码文件。\n';
         }
         const fileList = files.map((f) => `- ${f.path}`).join('\n');
-        return `这是发送这条消息时的各类环境信息，并不会实时更新。\n\n# 项目文件列表\n\n${fileList}\n`;
+        return `这是发送这条消息时的各类环境信息，并不会实时更新。\n\n# 项目空间\\n\n${fileList}\n`;
       }
 
       // codeSearch 关闭（默认）：提供全量代码内容
       if (files.length === 0) {
-        return '这是一个空项目，没有任何代码文件。\n';
+        return '项目空间为空，没有任何代码文件。\n';
       }
 
       const fileSectionParts: string[] = [];
@@ -236,7 +236,7 @@ function connectToAI(
       });
 
       const resourcesCode = [
-        '# 项目文件\n',
+        '# 项目空间\n',
         ...fileSectionParts,
       ].join('');
 

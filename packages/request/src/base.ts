@@ -159,8 +159,8 @@ const STREAM_URL_BY_TARGET: Record<FetchTarget, string> = {
 const STREAM_SSE_URL_BY_TARGET: Record<FetchTarget, string> = {
   [FetchTarget.CustomApp]: "/api/ai-service/sse",
   [FetchTarget.Platform]: "/api/assistant/sse",
-  // [FetchTarget.Center]: "//ai.mybricks.world/sse",
-  [FetchTarget.Center]: "//localhost:4000/sse",
+  [FetchTarget.Center]: "//ai.mybricks.world/sse",
+  // [FetchTarget.Center]: "//localhost:4000/sse",
 };
 
 export const transfromExtendParams = (extendParams: { aiRole?: string; turnId?: string }) => {

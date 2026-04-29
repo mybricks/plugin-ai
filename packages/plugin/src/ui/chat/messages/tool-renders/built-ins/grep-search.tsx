@@ -5,7 +5,7 @@ import { PendingCodeCard, CodeCard } from "../shared";
 
 export const GrepSearchRenderer = ({ tool }: { tool: ToolRecord }) => {
   const pattern: string = tool.args?.pattern ?? "";
-  const title = pattern ? `搜索 ${pattern}` : "搜索文件内容";
+  const title = pattern ? `内容搜索 ${pattern}` : "内容搜索中";
 
   if (tool.status === "pending") {
     return <PendingCodeCard tool={tool} icon={<Eye />} title={`${title}...`} />;

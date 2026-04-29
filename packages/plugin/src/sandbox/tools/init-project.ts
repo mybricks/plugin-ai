@@ -81,7 +81,7 @@ function parseFilesFromStreamingContent(content: string): Array<{
  * SubAgent 的系统 prompt
  */
 const SUB_AGENT_SYSTEM_PROMPT = `你是一个是一名资深的前端开发专家、架构师，技术资深、逻辑严谨、实事求是，同时具备专业的审美和设计能力。
-根据用户的需求，输出完整的项目文件代码。
+根据用户的需求，输出完整的项目代码。
 
 !IMPORTANT: 生成内容中不允许包含md文档文件（非代码文件），这个应该由后续步骤写入。
 
@@ -356,7 +356,7 @@ export function createInitProjectTool(sandbox: Sandbox): Tool {
     name: INIT_PROJECT_TOOL_NAME,
     title: "初始化项目",
     description:
-      "对空项目进行快速开发，根据需求生成所需的所有代码文件开发（不包括md文档），根据需求内容和项目文件结构，从零开始完成项目开发",
+      "对空项目进行快速开发，根据需求生成并写入所需的所有代码文件（不包括md文档）",
     parameters: {
       type: "object",
       properties: {
