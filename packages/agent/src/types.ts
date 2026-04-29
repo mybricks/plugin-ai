@@ -412,10 +412,24 @@ export interface Tool {
 export function getLLMIterations(
   iterations: TurnRecord["iterations"]
 ): Array<Extract<TurnRecord["iterations"][number], { content: string; toolCalls: ToolCallRecord[] }>> {
-  return iterations.filter(
+  return (iterations ?? []).filter(
     (iter): iter is Extract<TurnRecord["iterations"][number], { content: string; toolCalls: ToolCallRecord[] }> =>
-      iter.type !== "warmup"
+      iter?.type !== "warmup"
   );
+}
+
+/**
+ * 判断本轮是否"没有进行任何工具调用"：
+ *   - LLM iter 为空，或
+ *   - 只有一条 LLM iter 且该 iter 没有 toolCalls（纯文本回复即结束）
+ *
+ * 用于 autoSummary 跳过判断 和 abort 中断提示插入。
+ */
+export function hasNoToolCalls(iterations: TurnRecord["iterations"]): boolean {
+  const llmIters = getLLMIterations(iterations);
+  if (llmIters.length === 0) return true;
+  if (llmIters.length === 1 && (!llmIters[0].toolCalls || llmIters[0].toolCalls.length === 0)) return true;
+  return false;
 }
 
 // ─── 从 TurnRecord[] 重建 LLM messages ───────────────────────────────────────
@@ -479,8 +493,8 @@ export function turnsToMessages(
       : userText;
     messages.push({ role: "user", content: userContent });
 
-    // ── abort 且无 LLM iter：插入中断提示，让 LLM 知道该轮被用户取消 ──
-    if (turn.status === "abort" && getLLMIterations(turn.iterations).length === 0) {
+    // ── abort 且无工具调用：插入中断提示，让 LLM 知道该轮被用户取消 ──
+    if (turn.status === "abort" && hasNoToolCalls(turn.iterations)) {
       messages.push({ role: "user", content: "[Request interrupted by user]" });
       continue;
     }

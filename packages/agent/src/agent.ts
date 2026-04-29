@@ -2,7 +2,7 @@ import { randomUUID } from "./uuid";
 import type { RequestAsStreamFn, ToolDescriptor } from "../../request/src";
 import { AgentEvents } from "./events";
 import type { CompactRecord, Message, History, Tool, TurnRecord, ToolCallRecord, BoundHistory, TokenUsage, WarmupIter, TurnSender } from "./types";
-import { turnsToMessages, bindHistory, getLLMIterations } from "./types";
+import { turnsToMessages, bindHistory, getLLMIterations, hasNoToolCalls } from "./types";
 import { maskMessages, computeHandoffTurnIds, type MaskOptions } from "./mask";
 import { wrapRequestWithRetry, type RetryOptions } from "./retry";
 
@@ -1345,7 +1345,7 @@ export class Agent {
 
     const { summary, compact } = this.options;
 
-    if (summary?.enabled && getLLMIterations(turn.iterations).length > 0) {
+    if (summary?.enabled && !hasNoToolCalls(turn.iterations)) {
       void this._runAutoSummary(turn).catch((e) => {
         console.warn("[Agent] summary failed:", e);
       });
