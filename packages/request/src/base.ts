@@ -159,15 +159,16 @@ const STREAM_URL_BY_TARGET: Record<FetchTarget, string> = {
 const STREAM_SSE_URL_BY_TARGET: Record<FetchTarget, string> = {
   [FetchTarget.CustomApp]: "/api/ai-service/sse",
   [FetchTarget.Platform]: "/api/assistant/sse",
-  [FetchTarget.Center]: "//ai.mybricks.world/sse",
+  // [FetchTarget.Center]: "//ai.mybricks.world/sse",
+  [FetchTarget.Center]: "//localhost:4000/sse",
 };
 
-export const transfromExtendParams = (extendParams: { aiRole?: string }) => {
-  const { aiRole } = extendParams;
+export const transfromExtendParams = (extendParams: { aiRole?: string; turnId?: string }) => {
+  const { aiRole, turnId } = extendParams;
   let model = "moonshotai/kimi-k2.6";
   let role = "default";
 
-  if (!aiRole) return { model, role };
+  if (!aiRole) return { model, role, turnId };
 
   switch (true) {
     case ["image"].includes(aiRole):
@@ -194,13 +195,13 @@ export const transfromExtendParams = (extendParams: { aiRole?: string }) => {
       break;
   }
 
-  return { model, role };
+  return { model, role, turnId };
 };
 
 export async function requestAsStreamForDevelopment(params: RequestAsStreamParams) {
-  const { messages, emits, aiRole } = params;
+  const { messages, emits, aiRole, turnId } = params;
   const { cancel, write, complete, error } = emits;
-  const extendParams = transfromExtendParams({ aiRole });
+  const extendParams = transfromExtendParams({ aiRole, turnId });
   const body = { messages, ...extendParams };
 
   try {
@@ -259,7 +260,7 @@ export function requestAsStreamForProduction(extraHeadersInput?: ExtraHeadersInp
 async function doStreamFetch(opts: {
   url: string;
   body: unknown;
-  extendParams: { role?: string };
+  extendParams: { role?: string; turnId?: string };
   controller: AbortController;
   cancel: (fn: () => void) => void;
   write: (chunk: string) => void;
@@ -295,10 +296,20 @@ async function doStreamFetch(opts: {
   complete("");
 }
 
+/** 从当前页面 URL 的 query 参数中读取 id 作为 fileId */
+function getFileIdFromUrl(): string | undefined {
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get("id") || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function doSSEFetch(opts: {
   url: string;
   body: unknown;
-  extendParams: { role?: string };
+  extendParams: { role?: string; turnId?: string };
   controller: AbortController;
   cancel: (fn: () => void) => void;
   write: (chunk: string) => void;
@@ -313,6 +324,8 @@ async function doSSEFetch(opts: {
 }) {
   const { url, body, extendParams, controller, cancel, write, complete, error, extraHeaders, onUsage, onThinking, onToolCalls, onToolCallStream, onFinishReason } = opts;
 
+  const fileId = getFileIdFromUrl();
+
   const response = await fetch(toAbsoluteHttpsUrl(url), {
     signal: controller.signal,
     method: "POST",
@@ -320,6 +333,8 @@ async function doSSEFetch(opts: {
     headers: {
       "Content-Type": "application/json",
       ...(extendParams.role ? { "M-Request-Role": extendParams.role } : {}),
+      ...(extendParams.turnId ? { "m-request-turn": extendParams.turnId } : {}),
+      ...(fileId ? { "m-request-fileId": fileId } : {}),
       ...(extraHeaders ?? {}),
     },
     body: JSON.stringify(body),
@@ -338,9 +353,9 @@ async function doSSEFetch(opts: {
 }
 
 export async function requestAsStreamForDevelopmentSSE(params: RequestAsStreamParams) {
-  const { messages, emits, aiRole, tools } = params;
+  const { messages, emits, aiRole, tools, turnId } = params;
   const { cancel, write, complete, error, onUsage, onThinking, onToolCalls, onToolCallStream, onFinishReason } = emits;
-  const extendParams = transfromExtendParams({ aiRole });
+  const extendParams = transfromExtendParams({ aiRole, turnId });
   const body: Record<string, any> = { messages, ...extendParams };
   if (tools?.length) body.tools = tools;
 
@@ -369,7 +384,7 @@ export async function requestAsStreamForDevelopmentSSE(params: RequestAsStreamPa
 
 export function requestAsStreamForProductionSSE(extraHeadersInput?: ExtraHeadersInput): RequestAsStreamFn {
   return async function (params: RequestAsStreamParams) {
-    const { messages, emits, aiRole, tools } = params;
+    const { messages, emits, aiRole, tools, turnId } = params;
     const { cancel, write, complete, error, onUsage, onThinking, onToolCalls, onToolCallStream, onFinishReason } = emits;
 
     await checkFetchTarget();
@@ -379,7 +394,7 @@ export function requestAsStreamForProductionSSE(extraHeadersInput?: ExtraHeaders
         ? await Promise.resolve(extraHeadersInput())
         : extraHeadersInput;
 
-    const extendParams = transfromExtendParams({ aiRole });
+    const extendParams = transfromExtendParams({ aiRole, turnId });
     const payload: Record<string, any> = { messages, ...extendParams };
     if (tools?.length) payload.tools = tools;
     const sseUrl = STREAM_SSE_URL_BY_TARGET[fetchTaget] ?? STREAM_SSE_URL_BY_TARGET[FetchTarget.Center];

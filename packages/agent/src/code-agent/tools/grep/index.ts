@@ -149,15 +149,31 @@ export function createGrepTool(adapter: Sandbox): Tool {
           })
           .join("\n\n");
       } else {
-        output = paged.map((r) => `${r.path}: ${r.count}`).join("\n");
+        output = paged.map((r) => `${r.path}:${r.count}`).join("\n");
       }
 
       if (output === "") {
         output = "No matches found";
-      } else if (hasMore) {
-        output += `\n\n(Showing ${offset + 1}-${offset + paged.length} of ${totalCount}. Use offset=${offset + headLimit} to see more)`;
       } else {
-        output += `\n\n(${totalCount} results in total)`;
+        if (outputMode === "files_with_matches") {
+          const header = `Found ${paged.length} file${paged.length !== 1 ? "s" : ""}`;
+          output = `${header}\n${output}`;
+          if (hasMore) {
+            output += `\n\n(Showing ${offset + 1}-${offset + paged.length} of ${totalCount}. Use offset=${offset + headLimit} to see more)`;
+          }
+        } else if (outputMode === "count") {
+          const totalOccurrences = paged.reduce((sum, r) => sum + (r.count ?? 0), 0);
+          output += `\n\nFound ${totalOccurrences} total occurrence${totalOccurrences !== 1 ? "s" : ""} across ${paged.length} file${paged.length !== 1 ? "s" : ""}.`;
+          if (hasMore) {
+            output += `\n(Showing ${offset + 1}-${offset + paged.length} of ${totalCount}. Use offset=${offset + headLimit} to see more)`;
+          }
+        } else {
+          if (hasMore) {
+            output += `\n\n(Showing ${offset + 1}-${offset + paged.length} of ${totalCount}. Use offset=${offset + headLimit} to see more)`;
+          } else {
+            output += `\n\n(${totalCount} results in total)`;
+          }
+        }
       }
 
       return {

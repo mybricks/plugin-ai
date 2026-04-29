@@ -44,7 +44,8 @@ function createRequestAsStream(config?: { useInfra?: boolean }): RequestAsStream
         // CDN 不存在，走 Development SSE
       }
       // useInfra = false 或 CDN 不存在，走 Development SSE
-      return requestAsStreamForDevelopmentSSE(params);
+      // TODO：测试接口已下线
+      return requestAsStreamForProductionSSE()(params);
     }
 
     // 生产环境走 Production SSE

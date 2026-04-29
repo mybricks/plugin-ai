@@ -866,7 +866,7 @@ export class Agent {
             this.options,
             messages,
             signal,
-            { ...stepLLMRest, _step: step }, // 传递 step 用于 retry 事件
+            { ...stepLLMRest, _step: step, turnId: turn?.id }, // 传递 step 用于 retry 事件，turnId 用于 SSE 请求头
             step,
             (delta, content, thinkingDelta, thinkingContent) => {
               this.events.emit("llm:content", { delta, content, thinkingDelta, thinkingContent, step });
@@ -1148,7 +1148,7 @@ export class Agent {
     }
 
     // TODO: 临时：强制所有请求使用 aiRole=image
-    rest.aiRole = "image";
+    // rest.aiRole = "image";
     
     // ── 提前创建 AbortController（确保 warmup 阶段也能取消）
     this._abortController = new AbortController();

@@ -259,16 +259,18 @@ const MessageBubble = ({ record, user, copilot, toolRendererMap, renderUserMessa
             {/* 错误 */}
             {record.status === "error" && record.error && (
               <div className={css["ai-chat-error-code-block"]}>
-                <span>{record.error}</span>
+                <div className={css["ai-chat-error-content"]}>{record.error}</div>
                 {onRetry && (
-                  <button
-                    className={css["retry-button"]}
-                    onClick={() => {
-                      onRetry(record.id)
-                    }}
-                  >
-                    重试
-                  </button>
+                  <div className={css["ai-chat-error-actions"]}>
+                    <button
+                      className={css["retry-button"]}
+                      onClick={() => {
+                        onRetry(record.id)
+                      }}
+                    >
+                      重试
+                    </button>
+                  </div>
                 )}
               </div>
             )}

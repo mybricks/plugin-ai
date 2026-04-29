@@ -38,6 +38,8 @@ export type RequestAsStreamParams = {
   emits: RequestAsStreamEmits;
   aiRole?: any;
   tools?: ToolDescriptor[];
+  /** 当前 turn 的唯一 ID，用于 SSE 请求头 m-request-turn */
+  turnId?: string;
 };
 
 export type RequestAsStreamFn = (params: RequestAsStreamParams) => Promise<void>;

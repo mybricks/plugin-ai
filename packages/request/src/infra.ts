@@ -4,7 +4,6 @@ import {
   createInfraAIOnUpload,
   createOnUpload,
   loadRequestInfraFromCDN,
-  requestAsStreamForProduction,
 } from "./base";
 
 
@@ -13,7 +12,6 @@ export { checkInfraAvailable, createInfraAIOnUpload, createOnUpload };
 export function createInfraAIRequest(): RequestAsStreamFn {
   return async function (params) {
     const cdnFn = await loadRequestInfraFromCDN();
-    if (cdnFn) return cdnFn(params);
-    return requestAsStreamForProduction()(params);
+    return cdnFn!(params);
   };
 }

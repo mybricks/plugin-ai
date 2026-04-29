@@ -331,36 +331,47 @@
 
 .ai-chat-error-code-block {
   border-radius: 6px;
-  background-color: #fff2f2;
-  border: 1px solid #fd9696;
-  padding: 4px 8px;
+  background: #fff7f7;
+  border: 1px solid #ffccc7;
+  padding: 6px 8px;
   font-size: 12px;
-  color: #f44;
+  color: #cf3434;
   margin: 4px 0;
-  display: flex;
+  min-height: 28px;
 
-  > span {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .ai-chat-error-content {
+    max-height: 60px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
     line-height: 20px;
+
+    &::-webkit-scrollbar { display: none; }
+    scrollbar-width: none;
+  }
+
+  .ai-chat-error-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 6px;
   }
 
   .retry-button {
     flex-shrink: 0;
     width: 32px;
-    height: 20px;
+    height: 22px;
     font-size: 11px;
-    color: #f44;
+    line-height: 20px;
+    color: #cf3434;
     background: transparent;
-    border: 1px solid #fd9696;
+    border: 1px solid #ffccc7;
     border-radius: 4px;
     cursor: pointer;
     transition: all 0.2s;
+    padding: 0;
 
     &:hover {
-      background: #ffe6e6;
+      background: #fff1f0;
     }
   }
 }
