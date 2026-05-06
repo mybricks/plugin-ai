@@ -260,7 +260,7 @@ const MessageBubble = ({ record, user, copilot, toolRendererMap, renderUserMessa
             {record.status === "error" && record.error && (
               <div className={css["ai-chat-error-code-block"]}>
                 <div className={css["ai-chat-error-content"]}>{record.error}</div>
-                {onRetry && (
+                {onRetry && !record.error.includes("连续调用，已自动中断") && (
                   <div className={css["ai-chat-error-actions"]}>
                     <button
                       className={css["retry-button"]}

@@ -5,6 +5,25 @@ import type { Sandbox } from "../../index";
 export const READ_TOOL_NAME = "read_file";
 
 const DEFAULT_LINE_LIMIT = 2000;
+const MAX_BYTES = 50 * 1024;
+const MAX_BYTES_LABEL = `${MAX_BYTES / 1024} KB`;
+
+/** Browser-compatible UTF-8 byte length calculation */
+function byteLength(str: string): number {
+  if (typeof TextEncoder !== "undefined") {
+    return new TextEncoder().encode(str).length;
+  }
+  // Fallback: manual UTF-8 byte counting
+  let len = 0;
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    if (code <= 0x7f) len += 1;
+    else if (code <= 0x7ff) len += 2;
+    else if (code <= 0xffff) len += 3;
+    else len += 4;
+  }
+  return len;
+}
 
 export function createReadTool(adapter: Sandbox): Tool {
   return {
@@ -81,25 +100,50 @@ export function createReadTool(adapter: Sandbox): Tool {
       const totalLines = allLines.length;
 
       const startLine = Math.max(1, params.startLine ?? 1);
-      const maxEnd = startLine + DEFAULT_LINE_LIMIT - 1;
-      const endLine = params.endLine
-        ? Math.min(params.endLine, totalLines)
-        : Math.min(maxEnd, totalLines);
 
       if (startLine > totalLines) {
         throw new ToolValidationError(`startLine ${startLine} is out of range (file has ${totalLines} lines)`);
       }
 
-      const sliced = allLines.slice(startLine - 1, endLine);
-      const truncated = endLine < totalLines && !params.endLine;
+      // Determine the upper bound requested by the caller
+      const requestedEnd = params.endLine
+        ? Math.min(params.endLine, totalLines)
+        : Math.min(startLine + DEFAULT_LINE_LIMIT - 1, totalLines);
 
-      const content = sliced.map((line, i) => `${startLine + i}: ${line}`).join("\n");
+      // Apply both line-limit and byte-limit, whichever triggers first
+      const raw: string[] = [];
+      let bytes = 0;
+      let truncatedByBytes = false;
+      let lastReadLine = startLine - 1;
+
+      for (let i = startLine - 1; i < requestedEnd; i++) {
+        const line = allLines[i];
+
+        const size = byteLength(line) + (raw.length > 0 ? 1 : 0); // +1 for newline separator
+        if (bytes + size > MAX_BYTES) {
+          truncatedByBytes = true;
+          break;
+        }
+
+        raw.push(line);
+        bytes += size;
+        lastReadLine = i + 1; // 1-indexed
+      }
+
+      const hasMoreLines = lastReadLine < totalLines && (truncatedByBytes || lastReadLine < requestedEnd);
+      const truncated = truncatedByBytes || (lastReadLine < totalLines && !params.endLine);
+
+      const content = raw.map((line, i) => `${startLine + i}: ${line}`).join("\n");
 
       let output = content;
-      if (truncated) {
-        output += `\n\n(Showing lines ${startLine}-${endLine} of ${totalLines}. Use startLine=${endLine + 1} to continue.)`;
+      const nextOffset = lastReadLine + 1;
+
+      if (truncatedByBytes) {
+        output += `\n\n(Output capped at ${MAX_BYTES_LABEL}. Showing lines ${startLine}-${lastReadLine} of ${totalLines}. Use startLine=${nextOffset} to continue.)`;
+      } else if (hasMoreLines) {
+        output += `\n\n(Showing lines ${startLine}-${lastReadLine} of ${totalLines}. Use startLine=${nextOffset} to continue.)`;
       } else {
-        output += `\n\n(Lines ${startLine}-${endLine} of ${totalLines})`;
+        output += `\n\n(Lines ${startLine}-${lastReadLine} of ${totalLines})`;
       }
 
       return {
@@ -107,7 +151,7 @@ export function createReadTool(adapter: Sandbox): Tool {
         metadata: {
           path: file.path,
           startLine,
-          endLine,
+          endLine: lastReadLine,
           totalLines,
           truncated,
         },

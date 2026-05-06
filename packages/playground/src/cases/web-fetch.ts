@@ -4,209 +4,145 @@ import { makeScriptedRequest } from "../lib/scripted-request";
 import { getWebFetchUrl } from "../lib/web-fetch-state";
 
 /**
- * WebFetch 测试用例
- *
- * 特点：
- * - 用户通过 URL 输入框提供地址（在 sidebar 顶部）
- * - LLM 调用 web_fetch 工具
- * - 工具真实执行网络请求（不是 mock）
- * - URL 从 web-fetch-state 模块读取
+ * web_fetch 是外部注入工具，不属于 CodeAgent 默认沙盒工具。
+ * 这里按 packages/agent/src/tools/web-fetch 的真实分支维护少量代表 case：
+ * - 默认 markdown
+ * - 指定 text/html format
+ * - 图片 metadata.dataUrl
+ * - validate 失败
+ * - 非 2xx HTTP 抛错
  */
 
+function webFetchCall(id: string, args: Record<string, unknown>) {
+  return {
+    id,
+    name: WEB_FETCH_TOOL_NAME,
+    args,
+  };
+}
+
 export const webFetchBasicCase: TestCase = {
-  id: "web-fetch-basic",
-  name: "WebFetch 基础请求",
+  id: "web-fetch-markdown",
+  name: "WebFetch 默认 Markdown",
   group: "WebFetch",
-  description: "在左侧 URL 输入框填写地址，发送任意消息后 LLM 调用 web_fetch 工具获取内容。",
+  description: "使用左侧 URL 输入框中的地址，默认以 markdown 获取网页内容。",
   expectedBehavior:
-    "用户填写 URL 后发送消息，LLM 返回 tool_calls，web_fetch 工具执行真实的网络请求，返回网页内容。",
+    "工具卡片绿色；HTML 会转成 Markdown，metadata 包含 url、title、mime、format、size、status。",
   initialTurns: [],
   tools: [Tools.createWebFetch()],
-  request: makeScriptedRequest(
-    [
-      {
-        type: "dynamic_tool_calls",
-        delayMs: 400,
-        resolve: () => {
-          const url = getWebFetchUrl();
-          return [
-            {
-              id: "call_webfetch_001",
-              name: WEB_FETCH_TOOL_NAME,
-              args: { url, format: "markdown" },
-            },
-          ];
-        },
-      },
-      {
-        type: "content",
-        chunks: [
-          "已成功获取网页内容。",
-          "内容已转换为 Markdown 格式。",
-        ],
-        ttftMs: 300,
-        chunkDelayMs: 50,
-      },
-    ],
-    { loop: false }
-  ),
+  request: makeScriptedRequest([
+    {
+      type: "dynamic_tool_calls",
+      delayMs: 300,
+      resolve: () => [webFetchCall("call_webfetch_markdown_001", { url: getWebFetchUrl() })],
+    },
+    {
+      type: "content",
+      chunks: ["已按默认 Markdown 格式获取并解析网页内容。"],
+      ttftMs: 250,
+      chunkDelayMs: 50,
+    },
+  ]),
 };
 
 export const webFetchFormatCase: TestCase = {
   id: "web-fetch-format",
-  name: "WebFetch 指定返回格式",
+  name: "WebFetch 指定格式",
   group: "WebFetch",
-  description: "测试 format 参数（text），使用 URL 输入框中的地址。",
+  description: "连续调用 text 和 html 两种 format，覆盖 HTML 转纯文本和原始 HTML 返回。",
   expectedBehavior:
-    "用户可指定 format 参数，web_fetch 按指定格式返回内容。",
+    "两张工具卡片绿色；text 会剥离 HTML 标签，html 会保留原始 HTML。",
   initialTurns: [],
   tools: [Tools.createWebFetch()],
-  request: makeScriptedRequest(
-    [
-      {
-        type: "dynamic_tool_calls",
-        delayMs: 400,
-        resolve: () => {
-          const url = getWebFetchUrl();
-          return [
-            {
-              id: "call_webfetch_002",
-              name: WEB_FETCH_TOOL_NAME,
-              args: { url, format: "text" },
-            },
-          ];
-        },
+  request: makeScriptedRequest([
+    {
+      type: "dynamic_tool_calls",
+      delayMs: 300,
+      resolve: () => {
+        const url = getWebFetchUrl();
+        return [
+          webFetchCall("call_webfetch_text_001", { url, format: "text" }),
+          webFetchCall("call_webfetch_html_001", { url, format: "html" }),
+        ];
       },
-      {
-        type: "content",
-        chunks: ["纯文本格式已获取，所有 HTML 标签已剥离。"],
-        ttftMs: 300,
-        chunkDelayMs: 50,
-      },
-    ],
-    { loop: false }
-  ),
-};
-
-export const webFetchAuthCase: TestCase = {
-  id: "web-fetch-auth",
-  name: "WebFetch 带 Authorization",
-  group: "WebFetch",
-  description: "测试自定义 headers，使用 URL 输入框中的地址。",
-  expectedBehavior:
-    "web_fetch 工具携带 Authorization header 发起请求。",
-  initialTurns: [],
-  tools: [
-    Tools.createWebFetch({
-      headers: {
-        Authorization: "Bearer test-token-12345",
-      },
-    }),
-  ],
-  request: makeScriptedRequest(
-    [
-      {
-        type: "dynamic_tool_calls",
-        delayMs: 400,
-        resolve: () => {
-          const url = getWebFetchUrl();
-          return [
-            {
-              id: "call_webfetch_003",
-              name: WEB_FETCH_TOOL_NAME,
-              args: { url },
-            },
-          ];
-        },
-      },
-      {
-        type: "content",
-        chunks: ["已携带鉴权信息请求接口。"],
-        ttftMs: 300,
-        chunkDelayMs: 50,
-      },
-    ],
-    { loop: false }
-  ),
+    },
+    {
+      type: "content",
+      chunks: ["text 和 html 两种格式都已请求完成。"],
+      ttftMs: 250,
+      chunkDelayMs: 50,
+    },
+  ]),
 };
 
 export const webFetchImageCase: TestCase = {
   id: "web-fetch-image",
-  name: "WebFetch 获取图片",
+  name: "WebFetch 图片",
   group: "WebFetch",
-  description: "获取图片类型资源，返回 base64 Data URL。",
+  description: "输入图片 URL，覆盖 image/* 响应转换为 base64 Data URL。",
   expectedBehavior:
-    "web_fetch 识别图片 MIME 类型，返回 dataUrl 字段。",
+    "工具卡片绿色，输出 Image fetched successfully，metadata.format 为 image，并包含 dataUrl。",
   initialTurns: [],
   tools: [Tools.createWebFetch()],
-  request: makeScriptedRequest(
-    [
-      {
-        type: "dynamic_tool_calls",
-        delayMs: 400,
-        resolve: () => {
-          const url = getWebFetchUrl();
-          return [
-            {
-              id: "call_webfetch_004",
-              name: WEB_FETCH_TOOL_NAME,
-              args: { url },
-            },
-          ];
-        },
-      },
-      {
-        type: "content",
-        chunks: ["图片已获取，返回 base64 Data URL。"],
-        ttftMs: 300,
-        chunkDelayMs: 50,
-      },
-    ],
-    { loop: false }
-  ),
+  request: makeScriptedRequest([
+    {
+      type: "dynamic_tool_calls",
+      delayMs: 300,
+      resolve: () => [webFetchCall("call_webfetch_image_001", { url: getWebFetchUrl() })],
+    },
+    {
+      type: "content",
+      chunks: ["图片内容已获取，工具 metadata 中包含 base64 dataUrl。"],
+      ttftMs: 250,
+      chunkDelayMs: 50,
+    },
+  ]),
 };
 
-/**
- * WebFetch 错误页场景
- *
- * 演示服务器返回 HTML 错误页（如 403/404/500 页面）的情况
- */
-export const webFetchErrorCase: TestCase = {
-  id: "web-fetch-error",
-  name: "WebFetch 错误页",
+export const webFetchValidationCase: TestCase = {
+  id: "web-fetch-validation",
+  name: "WebFetch 参数校验",
   group: "WebFetch",
-  description: "测试服务器返回 HTML 错误页（如 403 Forbidden）的场景。",
+  description: "传入不支持的 file:// URL，覆盖 URL 协议校验失败。",
   expectedBehavior:
-    "web_fetch 返回错误页的 HTML 内容，LLM 可识别并告知用户请求失败。",
+    "工具卡片红色，显示 URL must use http or https protocol。",
   initialTurns: [],
   tools: [Tools.createWebFetch()],
-  request: makeScriptedRequest(
-    [
-      {
-        type: "dynamic_tool_calls",
-        delayMs: 400,
-        resolve: () => {
-          const url = getWebFetchUrl();
-          return [
-            {
-              id: "call_webfetch_005",
-              name: WEB_FETCH_TOOL_NAME,
-              args: { url, format: "html" },
-            },
-          ];
-        },
-      },
-      {
-        type: "content",
-        chunks: [
-          "请求返回了错误页面。",
-          "服务器可能拒绝了访问请求（如 403 Forbidden）。",
-          "请检查 URL 是否正确，或是否需要鉴权信息。",
-        ],
-        ttftMs: 300,
-        chunkDelayMs: 50,
-      },
-    ],
-    { loop: false }
-  ),
+  request: makeScriptedRequest([
+    {
+      type: "tool_calls",
+      delayMs: 300,
+      calls: [webFetchCall("call_webfetch_validation_001", { url: "file:///tmp/index.html" })],
+    },
+    {
+      type: "content",
+      chunks: ["web_fetch 只允许 http 或 https URL。"],
+      ttftMs: 250,
+      chunkDelayMs: 50,
+    },
+  ]),
+};
+
+export const webFetchHttpErrorCase: TestCase = {
+  id: "web-fetch-http-error",
+  name: "WebFetch HTTP 错误",
+  group: "WebFetch",
+  description: "使用左侧 URL 输入框中的 404/500 地址，覆盖 response.ok=false 时抛错。",
+  expectedBehavior:
+    "工具卡片红色，显示 HTTP 状态码和 URL；实现不会把非 2xx 错误页当作成功内容返回。",
+  initialTurns: [],
+  tools: [Tools.createWebFetch()],
+  request: makeScriptedRequest([
+    {
+      type: "dynamic_tool_calls",
+      delayMs: 300,
+      resolve: () => [webFetchCall("call_webfetch_http_error_001", { url: getWebFetchUrl(), format: "html" })],
+    },
+    {
+      type: "content",
+      chunks: ["请求返回非 2xx 状态，web_fetch 按错误处理。"],
+      ttftMs: 250,
+      chunkDelayMs: 50,
+    },
+  ]),
 };

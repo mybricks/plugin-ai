@@ -22,7 +22,7 @@ import {
   toolWriteUnicodeMidStreamCase,
   toolWriteLongFilenameCase,
 } from "./tool-error";
-import { customSlowToolCase } from "./custom-tool";
+import { customSlowToolCase, customToolValidationErrorThenSlowStreamCase } from "./custom-tool";
 import {
   maskByTurnsCase,
   maskByAgeCase,
@@ -61,26 +61,17 @@ import { summaryBasicCase, summaryEmptyResponseCase } from "./summary";
 import {
   webFetchBasicCase,
   webFetchFormatCase,
-  webFetchAuthCase,
   webFetchImageCase,
-  webFetchErrorCase,
+  webFetchValidationCase,
+  webFetchHttpErrorCase,
 } from "./web-fetch";
 import { settingCase } from "./setting";
 import {
-  grepFilesWithMatchesCase,
-  grepContentModeCase,
-  grepCountModeCase,
-  grepGlobFilterCase,
-  grepGlobPathFilterCase,
-  grepCaseInsensitiveCase,
-  grepHeadLimitCase,
-  grepOffsetCase,
-  grepRegexPatternCase,
+  grepDefaultFilesCase,
+  grepContentGlobCase,
+  grepCountPaginationCase,
   grepNoMatchCase,
-  grepInvalidRegexCase,
-  grepEmptyPatternCase,
-  grepMultiParamCase,
-  grepGlobNoMatchCase,
+  grepValidationCase,
 } from "./grep-search";
 
 export type { TestCase } from "./types";
@@ -109,6 +100,7 @@ export const ALL_CASES: TestCase[] = [
   toolWriteUnicodeMidStreamCase,
   toolWriteLongFilenameCase,
   customSlowToolCase,
+  customToolValidationErrorThenSlowStreamCase,
   multiEditSameFileCase,
   editDoomLoopCase,
   editNoDoomLoopCase,
@@ -144,9 +136,9 @@ export const ALL_CASES: TestCase[] = [
   // WebFetch
   webFetchBasicCase,
   webFetchFormatCase,
-  webFetchAuthCase,
   webFetchImageCase,
-  webFetchErrorCase,
+  webFetchValidationCase,
+  webFetchHttpErrorCase,
   // UI 渲染
   markdownRichCase,
   userMessageWithLinksCase,
@@ -167,20 +159,11 @@ export const ALL_CASES: TestCase[] = [
   // 设置
   settingCase,
   // Grep 搜索
-  grepFilesWithMatchesCase,
-  grepContentModeCase,
-  grepCountModeCase,
-  grepGlobFilterCase,
-  grepGlobPathFilterCase,
-  grepCaseInsensitiveCase,
-  grepHeadLimitCase,
-  grepOffsetCase,
-  grepRegexPatternCase,
+  grepDefaultFilesCase,
+  grepContentGlobCase,
+  grepCountPaginationCase,
   grepNoMatchCase,
-  grepInvalidRegexCase,
-  grepEmptyPatternCase,
-  grepMultiParamCase,
-  grepGlobNoMatchCase,
+  grepValidationCase,
 ];
 
 /** 按 group 分组 */

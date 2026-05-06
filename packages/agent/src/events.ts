@@ -55,8 +55,8 @@ export type AgentEventMap = {
   };
 
   /**
-   * Doom loop 警告：检测到连续 N 次完全相同的工具调用（相同 name + args）。
-   * 触发后循环将中断并以当前状态 complete。
+   * Doom loop 警告：检测到连续 N 次完全相同的工具调用序列（相同 name + args，且顺序一致）。
+   * 触发后循环将中断并进入 turn:error。
    *   - `toolName`  重复的工具名
    *   - `args`      重复的参数
    *   - `count`     连续重复次数

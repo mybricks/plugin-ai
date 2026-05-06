@@ -142,7 +142,7 @@ export interface AgentOptions {
   /**
    * Doom loop 检测阈值：连续多少次相同工具+参数视为死循环，触发 turn:doom 事件。
    * 默认 3，对标 opencode 的 DOOM_LOOP_THRESHOLD。
-   * 触发后中断循环，以当前状态 complete。
+   * 当前 iter 执行完成后，如果此前已有阈值次数的连续相同工具调用序列，则中断为 error。
    */
   doomLoopThreshold?: number;
   /**
@@ -1031,7 +1031,7 @@ export class Agent {
         if (iterCallHistory.length > doomLoopThreshold) {
           iterCallHistory.shift();
         }
-        if (doomCount > doomLoopThreshold) {
+        if (doomCount >= doomLoopThreshold) {
           const firstTc = llmResult.toolCalls[0];
           this.events.emit("turn:doom", { toolName: firstTc?.name ?? "", args: firstTc?.args, count: doomCount });
           doomLoopTriggered = true;
@@ -1522,15 +1522,26 @@ IMPORTANT: 不要调用工具！
   /**
    * 判断是否需要触发 autoCompact。
    * 优先通过 token 阈值（promptTokens）判断；usage 缺失时降级为轮次判断。
+   * 注意 turnsToMessages 会保留 error / abort 轮次，失败轮次同样可能携带大量上下文。
    */
   private _shouldAutoCompact(): boolean {
     const cfg = this.options.compact;
     if (!cfg || cfg.enabled === false) return false;
 
-    const successTurns = this.turns.filter((t) => t.status === "success");
+    let contextTurnCount = 0;
+    let lastUsage: TokenUsage | undefined;
+    for (let i = this.turns.length - 1; i >= 0; i--) {
+      const turn = this.turns[i];
+      if (this.compactRecord && turn.id === this.compactRecord.upToTurnId) break;
+      if (turn.retried) continue;
+      contextTurnCount++;
+      if (!lastUsage && turn.usage) {
+        lastUsage = turn.usage;
+      }
+    }
+    if (contextTurnCount === 0) return false;
 
     // 优先：token 阈值判断
-    const lastUsage = [...successTurns].reverse().find((t) => t.usage)?.usage;
     const rawPromptTokens = lastUsage?.promptTokens;
     const promptTokens = rawPromptTokens != null ? Number(rawPromptTokens) : NaN;
     if (!isNaN(promptTokens) && promptTokens > 0) {
@@ -1547,12 +1558,12 @@ IMPORTANT: 不要调用工具！
 
     // 降级：轮次判断
     const maxTurns = cfg.maxTurns ?? 15;
-    return successTurns.length > maxTurns;
+    return contextTurnCount > maxTurns;
   }
 
   /**
-   * 判断 compactRecord 是否已覆盖当前所有 success turns（即后置已压缩好）。
-   * 依据：compactRecord.upToTurnId === 最新 success turn 的 id
+   * 判断 compactRecord 是否已覆盖当前所有会进入上下文的 turns（即后置已压缩好）。
+   * 依据：compactRecord.upToTurnId === 最新 turn 的 id
    */
   private _isAlreadyCompacted(): boolean {
     if (!this.compactRecord) return false;

@@ -1,12 +1,18 @@
 import type { TestCase } from "./types";
 import { makeScriptedRequest } from "../lib/scripted-request";
 
-// doom loop：连续 3 次相同工具+相同参数 → 触发 turn:doom → 循环中断
+// doom loop：连续重复同一组 tool_calls 序列。
+// 新逻辑以每个 iter 的全部工具调用序列为 key，并在工具执行完成后检测。
 const doomRequest = makeScriptedRequest(
   [
     {
       type: "tool_calls",
       calls: [
+        {
+          id: "doom_read",
+          name: "read_file",
+          args: { path: "src/App.tsx" },
+        },
         {
           id: "doom_call",
           name: "write_file",
@@ -21,12 +27,12 @@ const doomRequest = makeScriptedRequest(
 
 export const doomLoopCase: TestCase = {
   id: "doom-loop",
-  name: "Doom Loop 检测（阈值 3）",
+  name: "Doom Loop 序列检测（阈值 3）",
   group: "异常检测",
   description:
-    "LLM 每次都返回完全相同的 write_file 调用（相同路径+内容），触发 doom loop 检测。默认阈值为 3 次。",
+    "LLM 每次都返回同一组 read_file + write_file 调用，覆盖按 iter 全量工具序列检测 doom loop。",
   expectedBehavior:
-    "第 3 次相同调用时，turn:doom 事件触发，循环中断，turn 以当前状态完成（turn:complete）。",
+    "前 3 轮相同序列正常执行；第 4 轮相同序列执行完成后触发 turn:doom，turn 以 error 结束并显示“连续调用，已自动中断”。",
   initialTurns: [],
   request: doomRequest,
 };
@@ -36,7 +42,7 @@ export const doomLoopThreshold5Case: TestCase = {
   name: "Doom Loop（阈值 5）",
   group: "异常检测",
   description: "与上一个 case 相同，但将 doomLoopThreshold 设置为 5。",
-  expectedBehavior: "第 5 次相同调用时才中断，前 4 次正常执行。",
+  expectedBehavior: "前 5 轮相同序列正常执行；第 6 轮相同序列执行完成后才触发 doom loop 并以 error 结束。",
   initialTurns: [],
   request: doomRequest,
   agentOptions: { doomLoopThreshold: 5 },
