@@ -563,19 +563,17 @@ function callLLM(
 // ─── Doom loop 检测辅助 ────────────────────────────────────────────────────────
 
 /**
- * 检查最近 N 次工具调用历史中是否有连续相同的调用。
- * 遍历整个历史（所有 steps），找出针对某个工具的最近连续相同 args 序列长度。
+ * 检查最近 N 个 iter 的工具调用集合是否连续相同。
+ * 每个 iter 的 tool calls 被序列化为一个 key（按调用顺序），
+ * 从最新 iter 往前找连续匹配的 iter 数量（不含当前 iter 本身）。
  */
 function getDoomLoopCount(
-  toolHistory: Array<{ name: string; argsKey: string }>,
-  toolName: string,
-  argsKey: string
+  iterHistory: Array<string>,
+  currentIterKey: string
 ): number {
   let count = 0;
-  // 从最新往前找连续匹配
-  for (let i = toolHistory.length - 1; i >= 0; i--) {
-    const entry = toolHistory[i];
-    if (entry.name === toolName && entry.argsKey === argsKey) {
+  for (let i = iterHistory.length - 1; i >= 0; i--) {
+    if (iterHistory[i] === currentIterKey) {
       count++;
     } else {
       break;
@@ -790,18 +788,20 @@ export class Agent {
       : userParams;
 
     const tail = [...initialTail];
-    const toolCallHistory: Array<{ name: string; argsKey: string }> = [];
+    // 每个元素代表一个 iter 的全部 tool calls 的序列化 key，用于 doom loop 检测
+    const iterCallHistory: Array<string> = [];
 
     // @experimental 用户上下文消息：每 turn 获取一次，放在用户消息之前
     const userContextMessages: Message[] = this.options.getUserContextMessages
       ? await this.options.getUserContextMessages()
       : [];
 
-    // 收集已有工具调用历史（用于 doom loop 检测）
-    for (const iter of getLLMIterations(turn.iterations)) {
-      for (const tc of iter.toolCalls) {
-        toolCallHistory.push({ name: tc.name, argsKey: JSON.stringify(tc.args) });
-      }
+    // 收集已有 iter 调用历史（用于 doom loop 检测，_continueFromError 续跑时需要）
+    // 只保留最近 doomLoopThreshold 条，超出部分无意义
+    const existingIters = getLLMIterations(turn.iterations);
+    for (const iter of existingIters.slice(-doomLoopThreshold)) {
+      const iterKey = iter.toolCalls.map(tc => `${tc.name}:${JSON.stringify(tc.args)}`).join("|");
+      iterCallHistory.push(iterKey);
     }
 
     try {
@@ -943,17 +943,6 @@ export class Agent {
           const tc = llmResult.toolCalls[tcIdx];
           if (signal.aborted) break;
 
-          // Doom loop 检测
-          const argsKey = JSON.stringify(tc.args);
-          toolCallHistory.push({ name: tc.name, argsKey });
-          const doomCount = getDoomLoopCount(toolCallHistory, tc.name, argsKey);
-          if (doomCount > doomLoopThreshold) {
-            this.events.emit("turn:doom", { toolName: tc.name, args: tc.args, count: doomCount });
-            doomLoopTriggered = true;
-            doomLoopInfo = { toolName: tc.name, count: doomCount };
-            break;
-          }
-
           const tool = this.options.tools?.find(t => t.name === tc.name);
           const execStartTime = Date.now();
           const toolRecord: ToolCallRecord = {
@@ -1030,6 +1019,23 @@ export class Agent {
             tool_call_id: tc.id,
             content: toolResultContent,
           });
+
+        }
+
+        // Doom loop 检测：以本次 iter 的全部 tool calls 为单位，在所有工具执行完后检测
+        const currentIterKey = llmResult.toolCalls
+          .map(tc => `${tc.name}:${JSON.stringify(tc.args)}`)
+          .join("|");
+        const doomCount = getDoomLoopCount(iterCallHistory, currentIterKey);
+        iterCallHistory.push(currentIterKey);
+        if (iterCallHistory.length > doomLoopThreshold) {
+          iterCallHistory.shift();
+        }
+        if (doomCount > doomLoopThreshold) {
+          const firstTc = llmResult.toolCalls[0];
+          this.events.emit("turn:doom", { toolName: firstTc?.name ?? "", args: firstTc?.args, count: doomCount });
+          doomLoopTriggered = true;
+          doomLoopInfo = { toolName: firstTc?.name ?? "", count: doomCount };
         }
 
         if (signal.aborted) {
