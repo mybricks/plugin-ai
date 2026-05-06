@@ -513,7 +513,8 @@ export function turnsToMessages(
               type: "function" as const,
               function: {
                 name: tc.name,
-                arguments: JSON.stringify(tc.args),
+                // 兼容旧版持久化数据：args 可能含 _argsRaw（旧 parse 失败格式）
+                arguments: tc.args?._argsRaw ?? JSON.stringify(tc.args),
               },
             })),
           };

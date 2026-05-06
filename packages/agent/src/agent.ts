@@ -436,7 +436,7 @@ function buildToolDescriptors(tools?: Tool[]): ToolDescriptor[] | undefined {
 interface LLMCallResult {
   content: string;
   thinkingContent: string;
-  toolCalls: Array<{ id: string; name: string; args: any }>;
+  toolCalls: Array<{ id: string; name: string; args: any; argsRaw?: string }>;
   /**
    * LLM 本次停止原因（来自 finish_reason）。
    * - "stop"       正常结束
@@ -462,7 +462,7 @@ function callLLM(
   return new Promise<LLMCallResult>((resolve, reject) => {
     let content = "";
     let thinkingContent = "";
-    let toolCalls: Array<{ id: string; name: string; args: any }> = [];
+    let toolCalls: Array<{ id: string; name: string; args: any; argsRaw?: string }> = [];
     let finishReason = "unknown";
     let aborted = false;
     let usageFromCallback: TokenUsage | undefined = undefined;
@@ -512,10 +512,8 @@ function callLLM(
         },
         onToolCalls: (calls) => {
           if (aborted) return;
-          // 流式接口：indexToCallInfo 已累积完整参数字符串，用它作为主路径：
-          //   先将字面量 \\uXXXX 还原为真正的 Unicode 字符，再 JSON.parse。
-          //   无参数工具（累积串为空/空白/"{}"）直接给 {}。
-          //   parse 失败则回退用网络层已解析的 args。
+          // 流式接口：indexToCallInfo 已累积完整参数字符串，透传 argsRaw 到执行阶段，由 try/catch 统一处理 parse。
+          // 无参数工具（累积串为空/空白/"{}"）直接给 {}。
           // 非流式接口：indexToCallInfo 为空，直接沿用网络层已解析好的 args。
           if (indexToCallInfo.size > 0) {
             toolCalls = calls.map((call) => {
@@ -524,16 +522,9 @@ function callLLM(
               );
               if (!info) return call;
               const raw = info.argsRaw.trim();
-              if (!raw || raw === "{}") return { ...call, args: {} };
-              try {
-                const fixed = raw.replace(/\\\\u([0-9a-fA-F]{4})/g, (_, hex) => {
-                  const result = String.fromCharCode(parseInt(hex, 16));
-                  return result;
-                });
-                return { ...call, args: JSON.parse(fixed) };
-              } catch (parseErr) {
-                return { ...call, args: { _argsParseError: true, _argsRaw: raw, _parseErrMsg: String((parseErr as any)?.message ?? parseErr) } };
-              }
+              if (!raw || raw === "{}") return { ...call, args: {}, argsRaw: raw };
+              // 不在此处 parse，将 raw 透传到执行阶段，由 try/catch 统一处理
+              return { ...call, args: null, argsRaw: raw };
             });
           } else {
             toolCalls = calls;
@@ -724,7 +715,8 @@ export class Agent {
         tool_calls: iter.toolCalls.map(tc => ({
           id: tc.callId,
           type: "function" as const,
-          function: { name: tc.name, arguments: JSON.stringify(tc.args) },
+          // 兼容旧版持久化数据：args 可能含 _argsRaw（旧 parse 失败格式），取 raw 还原原始字符串
+          function: { name: tc.name, arguments: tc.args?._argsRaw ?? JSON.stringify(tc.args) },
         })),
       };
       initialTail.push(assistantMsg);
@@ -936,7 +928,8 @@ export class Agent {
           tool_calls: llmResult.toolCalls.map(tc => ({
             id: tc.id,
             type: "function" as const,
-            function: { name: tc.name, arguments: JSON.stringify(tc.args) },
+            // 优先使用 argsRaw 还原 LLM 原始字符串（含未解析时）；已解析的工具调用序列化 args
+            function: { name: tc.name, arguments: tc.argsRaw ?? JSON.stringify(tc.args) },
           })),
         };
         tail.push(assistantMsg);
@@ -993,35 +986,7 @@ export class Agent {
             },
           };
 
-          // TODO: 兼容 LLM 返回未解码 \uXXXX 字面量或无效 JSON 的情况
-          // if (tc.args?._argsParseError) {
-          //   const raw = tc.args._argsRaw ?? "";
-          //   const err = new Error(
-          //     `Invalid JSON in tool arguments for "${tc.name}". ` +
-          //     `Raw content: ${raw.slice(0, 200)}${raw.length > 200 ? "…" : ""}. ` +
-          //     `Please re-issue the tool call with valid JSON arguments.`
-          //   );
-          //   toolRecord.status = "error";
-          //   toolRecord.error = err.message;
-          //   toolRecord.execEndTime = Date.now();
-          //   toolResultContent = `Error: ${err.message}`;
-          //   this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: err, step, endTime: toolRecord.execEndTime });
-          // } else
-          if (tc.args?._argsParseError) {
-            const raw: string = tc.args._argsRaw ?? "";
-            const parseErrMsg: string = tc.args._parseErrMsg ?? "unknown parse error";
-            const err = new Error(
-              `Tool "${tc.name}" received invalid JSON arguments: ${parseErrMsg}. ` +
-              `Raw content: ${raw} ` +
-              `Please re-issue the tool call with valid JSON arguments.`
-            );
-            toolRecord.args = { _argsRaw: raw };
-            toolRecord.status = "error";
-            toolRecord.error = err.message;
-            toolRecord.execEndTime = Date.now();
-            toolResultContent = `Error: ${err.message}`;
-            this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: err, step, endTime: toolRecord.execEndTime });
-          } else if (!tool) {
+          if (!tool) {
             const err = new Error(`Tool not found: ${tc.name}`);
             toolRecord.status = "error";
             toolRecord.error = err.message;
@@ -1030,6 +995,12 @@ export class Agent {
             this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: err, step, endTime: toolRecord.execEndTime });
           } else {
             try {
+              // 若 callLLM 阶段未解析（argsRaw 存在且 args 为 null），在此处解析
+              // 解析失败直接 throw，由下方 catch 统一处理
+              if (tc.argsRaw != null && tc.args === null) {
+                tc.args = JSON.parse(tc.argsRaw);
+                toolRecord.args = tc.args;
+              }
               tool.validate?.(tc.args, toolContext);
               const result = await tool.execute(tc.args, toolContext);
               if (signal.aborted) {

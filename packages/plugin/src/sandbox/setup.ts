@@ -219,7 +219,10 @@ function connectToAI(
         if (files.length === 0) {
           return '项目空间为空，没有任何代码文件。\n';
         }
-        const fileList = files.map((f) => `- ${f.path}`).join('\n');
+        const fileList = files.map((f) => {
+          const lineCount = f.content.split('\n').length;
+          return `- ${f.path} (${lineCount} lines)`;
+        }).join('\n');
         return `这是发送这条消息时的各类环境信息，并不会实时更新。\n\n# 项目空间\\n\n${fileList}\n`;
       }
 
