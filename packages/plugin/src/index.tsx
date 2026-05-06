@@ -96,7 +96,7 @@ export default function pluginAI(params: PluginAIParams): any {
     tools,
     componentRuntime,
     llm,
-    codeSearch = false,
+    codeSearch = true,
     history
   } = params;
 
