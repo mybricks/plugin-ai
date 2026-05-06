@@ -720,8 +720,7 @@ export class Agent {
         tool_calls: iter.toolCalls.map(tc => ({
           id: tc.callId,
           type: "function" as const,
-          // 兼容旧版持久化数据：args 可能含 _argsRaw（旧 parse 失败格式），取 raw 还原原始字符串
-          function: { name: tc.name, arguments: tc.args?._argsRaw ?? JSON.stringify(tc.args) },
+          function: { name: tc.name, arguments: tc.args?._argsRaw ?? JSON.stringify(tc.args ?? {}) },
         })),
       };
       initialTail.push(assistantMsg);
@@ -952,6 +951,15 @@ export class Agent {
 
           const tool = this.options.tools?.find(t => t.name === tc.name);
           const execStartTime = Date.now();
+          let argsParseError: unknown = null;
+          if (tc.argsRaw != null && tc.args === null) {
+            try {
+              tc.args = JSON.parse(tc.argsRaw);
+            } catch (e) {
+              argsParseError = e;
+              tc.args = { _argsRaw: tc.argsRaw };
+            }
+          }
           const toolRecord: ToolCallRecord = {
             callId: tc.id,
             name: tc.name,
@@ -962,7 +970,7 @@ export class Agent {
             execEndTime: 0,
           };
           iterToolCallRecords.push(toolRecord);
-          this.events.emit("tool:call", { callId: tc.id, name: tc.name, args: tc.args, step, startTime: execStartTime });
+          this.events.emit("tool:call", { callId: tc.id, name: tc.name, args: tc.args ?? undefined, step, startTime: execStartTime });
 
           let toolResultContent: string;
           const toolContext: ToolExecutionContext = {
@@ -982,43 +990,30 @@ export class Agent {
             },
           };
 
-          if (!tool) {
-            const err = new Error(`Tool not found: ${tc.name}`);
-            toolRecord.status = "error";
-            toolRecord.error = err.message;
-            toolRecord.execEndTime = Date.now();
-            toolResultContent = `Error: ${err.message}`;
-            this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: err, step, endTime: toolRecord.execEndTime });
-          } else {
-            try {
-              // 若 callLLM 阶段未解析（argsRaw 存在且 args 为 null），在此处解析
-              // 解析失败直接 throw，由下方 catch 统一处理
-              if (tc.argsRaw != null && tc.args === null) {
-                tc.args = JSON.parse(tc.argsRaw);
-                toolRecord.args = tc.args;
-              }
-              tool.validate?.(tc.args, toolContext);
-              const result = await tool.execute(tc.args, toolContext);
-              if (signal.aborted) {
-                toolRecord.status = "error";
-                toolRecord.error = "用户已取消";
-                toolRecord.execEndTime = Date.now();
-                toolResultContent = `Error: 用户已取消`;
-                this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: "用户已取消", step, endTime: toolRecord.execEndTime });
-              } else {
-                toolRecord.result = { output: result.output, metadata: result.metadata };
-                toolRecord.status = "success";
-                toolRecord.execEndTime = Date.now();
-                toolResultContent = result.output;
-                this.events.emit("tool:result", { callId: tc.id, name: tc.name, result: toolRecord.result, step, endTime: toolRecord.execEndTime });
-              }
-            } catch (e) {
+          try {
+            if (!tool) throw new Error(`Tool not found: ${tc.name}`);
+            if (argsParseError) throw argsParseError;
+            tool.validate?.(tc.args, toolContext);
+            const result = await tool.execute(tc.args, toolContext);
+            if (signal.aborted) {
               toolRecord.status = "error";
-              toolRecord.error = signal.aborted ? "用户已取消" : String((e as any)?.message ?? e);
+              toolRecord.error = "用户已取消";
               toolRecord.execEndTime = Date.now();
-              toolResultContent = `Error: ${toolRecord.error}`;
-              this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: e, step, endTime: toolRecord.execEndTime });
+              toolResultContent = `Error: 用户已取消`;
+              this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: "用户已取消", step, endTime: toolRecord.execEndTime });
+            } else {
+              toolRecord.result = { output: result.output, metadata: result.metadata };
+              toolRecord.status = "success";
+              toolRecord.execEndTime = Date.now();
+              toolResultContent = result.output;
+              this.events.emit("tool:result", { callId: tc.id, name: tc.name, result: toolRecord.result, step, endTime: toolRecord.execEndTime });
             }
+          } catch (e) {
+            toolRecord.status = "error";
+            toolRecord.error = signal.aborted ? "用户已取消" : String((e as any)?.message ?? e);
+            toolRecord.execEndTime = Date.now();
+            toolResultContent = `Error: ${toolRecord.error}`;
+            this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: e, step, endTime: toolRecord.execEndTime });
           }
 
           toolResultMessages.push({

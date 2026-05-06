@@ -20,6 +20,7 @@ import {
   toolNotFoundCase,
   toolWriteUnicodeEscapeCase,
   toolWriteUnicodeMidStreamCase,
+  toolArgsJsonParseErrorCase,
   toolWriteLongFilenameCase,
 } from "./tool-error";
 import { customSlowToolCase, customToolValidationErrorThenSlowStreamCase } from "./custom-tool";
@@ -98,6 +99,7 @@ export const ALL_CASES: TestCase[] = [
   toolNotFoundCase,
   toolWriteUnicodeEscapeCase,
   toolWriteUnicodeMidStreamCase,
+  toolArgsJsonParseErrorCase,
   toolWriteLongFilenameCase,
   customSlowToolCase,
   customToolValidationErrorThenSlowStreamCase,

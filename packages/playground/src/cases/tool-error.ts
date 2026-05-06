@@ -371,6 +371,48 @@ export const toolWriteUnicodeMidStreamCase: TestCase = {
 };
 
 /**
+ * 工具参数 JSON 传输完成但内容本身不可解析。
+ *
+ * 和 network-error 里的“参数流中途接口报错”不同，这里 LLM 正常返回 tool_calls，
+ * 但 arguments 是坏 JSON，agent 应该在工具执行阶段标记 tool:error。
+ */
+export const toolArgsJsonParseErrorCase: TestCase = {
+  id: "tool-args-json-parse-error",
+  name: "工具参数 JSON 解析失败",
+  group: "工具调用",
+  description: "LLM 流式返回 write_file 的坏 JSON 参数，onToolCalls 正常结束，触发 agent 内部 JSON.parse 失败。",
+  expectedBehavior:
+    "工具卡片保留流式展示的原始参数内容，随后进入红色错误态；args 不应被 _argsRaw 污染，也不应被 tool:call 清空。",
+  initialTurns: [],
+  request: async (params) => {
+    const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+    const badArgs = `{"path":"src/Broken.tsx","content":"export const broken = true;"`;
+
+    await delay(300);
+    params.emits.onToolCallStream?.({
+      index: 0,
+      id: "c_bad_json_1",
+      name: "write_file",
+      argsChunk: "",
+    });
+
+    for (let i = 0; i < badArgs.length; i += 5) {
+      await delay(25);
+      params.emits.onToolCallStream?.({
+        index: 0,
+        argsChunk: badArgs.slice(i, i + 5),
+      });
+    }
+
+    params.emits.onToolCalls?.([
+      { id: "c_bad_json_1", name: "write_file", args: null as any },
+    ]);
+    params.emits.onFinishReason?.("tool_calls");
+    params.emits.complete?.("");
+  },
+};
+
+/**
  * write_file 超长文件名测试
  *
  * 复现场景：LLM 返回一个超长文件名（超过 200 字符），验证 UI 渲染不会溢出或截断异常。

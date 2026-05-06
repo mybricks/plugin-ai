@@ -253,6 +253,9 @@ export function useSession(agent: Agent | undefined) {
       a.events.on("tool:call", ({ callId, name, args, startTime }) => {
         pendingContent = "";
         const toolTitle = a.getTools().find(t => t.name === name)?.title;
+        const argsRaw = args && typeof args === "object" && "_argsRaw" in args
+          ? String((args as any)._argsRaw)
+          : undefined;
         update((r) => {
           if (r.iterations.length === 0) return r;
           const iters = [...r.iterations];
@@ -260,12 +263,23 @@ export function useSession(agent: Agent | undefined) {
           const existing = last.toolCalls.find((t) => t.callId === callId);
           if (existing) {
             last.toolCalls = last.toolCalls.map((t) =>
-              t.callId === callId ? { ...t, title: toolTitle, args, argsContent: undefined, execStartTime: startTime } : t
+              t.callId === callId
+                ? {
+                    ...t,
+                    title: toolTitle,
+                    ...(argsRaw !== undefined
+                      ? { argsContent: t.argsContent ?? argsRaw }
+                      : args !== undefined
+                        ? { args, argsContent: undefined }
+                        : {}),
+                    execStartTime: startTime,
+                  }
+                : t
             );
           } else {
             last.toolCalls = [
               ...last.toolCalls,
-              { callId, name, title: toolTitle, args, status: "pending" as const, execStartTime: startTime, execEndTime: 0 },
+              { callId, name, title: toolTitle, args: argsRaw !== undefined ? {} : args ?? {}, status: "pending" as const, execStartTime: startTime, execEndTime: 0, ...(argsRaw !== undefined ? { argsContent: argsRaw } : {}) },
             ];
           }
           iters[iters.length - 1] = last;

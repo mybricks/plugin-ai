@@ -513,8 +513,8 @@ export function turnsToMessages(
               type: "function" as const,
               function: {
                 name: tc.name,
-                // 兼容旧版持久化数据：args 可能含 _argsRaw（旧 parse 失败格式）
-                arguments: tc.args?._argsRaw ?? JSON.stringify(tc.args),
+                // JSON parse 失败时，args 只存 _argsRaw，用于还原 LLM 原始 tool arguments。
+                arguments: tc.args?._argsRaw ?? JSON.stringify(tc.args ?? {}),
               },
             })),
           };
