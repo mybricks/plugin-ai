@@ -41,7 +41,7 @@ import {
   retrySuccessCase,
   maxStepsCase,
 } from "./edge-cases";
-import { compactTriggerCase, compactWithToolsCase, compactWarmupByUsageCase, compactErrorCase, compactEmptyResponseCase, compactNoContentCase, compactInfiniteCase, compactRetrySuccessErrorCase, compactRetrySuccessTagCase } from "./compact";
+import { compactTriggerCase, compactWithToolsCase, compactWarmupByUsageCase, compactErrorCase, compactEmptyResponseCase, compactNoContentCase, compactInfiniteCase, compactRetrySuccessErrorCase, compactRetrySuccessTagCase, compactBinaryExpandSuccessCase } from "./compact";
 import { markdownRichCase, userMessageWithLinksCase, streamingMarkdownCase, toolThenEmptyContentCase, assistantMessageWithLinksCase } from "./ui-render";
 import {
   initProjectSingleFileCase,
@@ -130,6 +130,7 @@ export const ALL_CASES: TestCase[] = [
   compactInfiniteCase,
   compactRetrySuccessErrorCase,
   compactRetrySuccessTagCase,
+  compactBinaryExpandSuccessCase,
   // Summary
   summaryBasicCase,
   summaryEmptyResponseCase,

@@ -588,6 +588,12 @@ export class Agent {
   readonly events = new AgentEvents();
   readonly key: string | undefined;
   protected options: AgentOptions;
+  /**
+   * 调用方传入的原始 request。
+   * options.request 会在构造时包一层 retry；fork 时必须回到 rawRequest，
+   * 否则父 Agent 的 retry wrapper 会和 fork 自己的 retry 配置叠套。
+   */
+  protected readonly rawRequest: AgentOptions["request"];
   /** 历史调用记录（SSE 事件粒度），从 History 加载，每轮 complete/abort/error 后 append */
   protected turns: TurnRecord[] = [];
   /**
@@ -605,10 +611,11 @@ export class Agent {
     const hasRetry = Object.prototype.hasOwnProperty.call(options, "retry");
 
     const retryOpts = hasRetry ? (options.retry ?? DEFAULT_RETRY) : DEFAULT_RETRY;
+    this.rawRequest = options.request;
 
     this.options = {
       ...options,
-      request: wrapRequestWithRetry(options.request, retryOpts, this.events),
+      request: wrapRequestWithRetry(this.rawRequest, retryOpts, this.events),
       ...(hasSummary ? {} : { summary: DEFAULT_SUMMARY }),
       ...(hasCompact ? {} : { compact: DEFAULT_COMPACT }),
       ...(hasRetry ? {} : { retry: retryOpts }),
@@ -1260,6 +1267,8 @@ export class Agent {
     const { system } = forkOptions ?? {};
     const forkAgentOptions: AgentOptions = {
       ...this.options,
+      // 使用原始 request，让 fork 的 retry 覆盖真正生效，避免继承父 Agent 已包装的 retry。
+      request: this.rawRequest,
       key: randomUUID(),     // 随机隔离 key
       history: undefined,    // fork 不写历史
       // tools：不传=继承父；传了（含 []）则覆盖
@@ -1270,10 +1279,10 @@ export class Agent {
       ...(mask !== undefined ? { mask } : {}),
       // retry：不传=继承父；传了则覆盖（false 或具体配置）
       ...(retry !== undefined ? { retry: retry === false ? { maxRetries: 0 } : retry } : {}),
-      // fork 强制关闭 summary/compact，防止递归 fork
+      // fork 强制关闭 summary/compact，防止 summary fork / compact fork 再递归创建 fork。
       summary: { enabled: false },
       compact: { enabled: false },
-      // fork 不继承 beforeTurn / beforeRequest hook（快照启动，无需初始化）
+      // fork 不继承 hooks，避免父级 beforeTurn / afterTurn 在快照任务中重复执行。
       hooks: undefined,
     };
 
@@ -1658,8 +1667,11 @@ IMPORTANT: 不要调用工具！
     const newTurnsCount = totalTurns - startFromIndex;
     if (newTurnsCount <= 0) return false;
 
-    // firstTurns：传给 turnsSlice 的绝对数量（含游标前），二分时只缩减新增部分
+    let low = 1;
+    let high = newTurnsCount;
+    // 优先尝试全量；若失败，再在可行区间内二分寻找最大可压缩范围。
     let firstNewTurns = newTurnsCount;
+    let bestCompactRecord: CompactRecord | null = null;
 
     for (let attempt = 0; attempt <= MAX_RETRY; attempt++) {
       if (attempt > 0) {
@@ -1702,9 +1714,17 @@ IMPORTANT: 不要调用工具！
 
       if (signal?.aborted) return false;
 
+      const shrinkRange = () => {
+        high = firstNewTurns - 1;
+        if (low > high) return false;
+        firstNewTurns = Math.floor((low + high) / 2);
+        return true;
+      };
+
       if (!apiOk || !lastContent) {
-        // 场景A：接口报错或空返回 → 二分缩减新增区间，下次历史更短
-        firstNewTurns = Math.max(1, Math.floor(firstNewTurns / 2));
+        // 场景A：接口报错或空返回 → 缩小右边界，下次尝试更短历史
+        const canContinue = shrinkRange();
+        if (!canContinue) break;
         continue;
       }
 
@@ -1712,31 +1732,38 @@ IMPORTANT: 不要调用工具！
       const match = lastContent.match(/<compact>([\s\S]*?)<\/compact>/);
       const compactText = match?.[1]?.trim();
       if (!compactText) {
-        // 场景B：未按标签返回 → 保持相同 firstTurns 重试
+        // 场景B：未按标签返回。可能不是长度问题，保持相同 firstTurns 重试。
         console.warn(`[Agent] autoCompact missing/empty <compact> tag (attempt ${attempt})`);
         continue;
       }
 
-      // 成功，写 compactRecord（upToTurnId 与本次 fork 视野严格对齐）
-      const compactRecord: CompactRecord = {
+      // 成功，先记录当前最大成功结果；若还不是全量，继续向右扩大尝试。
+      bestCompactRecord = {
         upToTurnId,
         content: compactText,
         createdAt: Date.now(),
       };
 
-      this.compactRecord = compactRecord;
+      if (firstNewTurns >= newTurnsCount) break;
+
+      low = firstNewTurns + 1;
+      if (low > high) break;
+      firstNewTurns = Math.floor((low + high) / 2);
+    }
+
+    if (bestCompactRecord) {
+      this.compactRecord = bestCompactRecord;
 
       // 持久化到 History 的独立存储槽
       const { history, key } = this.options;
       if (history && key) {
         try {
-          await history.saveCompact(key, compactRecord);
+          await history.saveCompact(key, bestCompactRecord);
         } catch (e) {
           console.warn("[Agent] autoCompact saveCompact failed:", e);
           // 持久化失败不影响内存缓存，继续
         }
       }
-
       return true;
     }
 

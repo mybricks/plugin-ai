@@ -5,9 +5,10 @@ import { makeTextHistory, makeTextHistoryWithUsage } from "../lib/fixtures";
 /**
  * Compact case。
  *
- * compact 触发条件：successTurns.length > maxTurns（默认 30）。
+ * compact 触发条件：compact 游标之后的上下文轮次 > maxTurns（默认 15），
+ * 或最新 usage.promptTokens 超过阈值。
  * 为方便测试，case 里设 maxTurns: 2，预设 2 轮历史，
- * 再发一条消息就满足 successTurns > 2，触发 compact。
+ * 再发一条消息就满足 context turns > 2，触发 compact。
  *
  * compact 触发后，Agent 内部 fork 一个 Agent 调用 requestAI，
  * mock request 需要能响应这个 compact 摘要请求。
@@ -24,6 +25,13 @@ const COMPACT_RESPONSE_CONTENT = `<compact>
 2. Agent 触发 compact，fork 生成摘要
 当前状态：compact 摘要已生成并存入 compactRecord，后续 buildMessages 时会用摘要替代历史消息。
 </compact>`;
+
+const COMPACT_RETRY_HISTORY = makeTextHistory(
+  Array.from({ length: 8 }, (_, i) => ({
+    user: `历史消息 ${i + 1}`,
+    assistant: `历史回复 ${i + 1}`,
+  }))
+);
 
 /**
  * mock request 逻辑：
@@ -69,7 +77,7 @@ export const compactTriggerCase: TestCase = {
   id: "compact-trigger",
   name: "compact 触发（maxTurns=2）",
   group: "Compact",
-  description: "预设 2 轮历史，maxTurns=2，发第 3 条消息后 successTurns > 2，触发 compact。compact fork 会额外发起一次 requestAI 请求。",
+  description: "预设 2 轮历史，maxTurns=2，发第 3 条消息后上下文轮次 > 2，触发 compact。compact fork 会额外发起一次 requestAI 请求。",
   expectedBehavior: "Inspector 里会出现额外的 Step（compact fork 请求），其 messages 末尾是摘要 prompt。主 Agent 继续正常回复。",
   initialTurns: makeTextHistory([
     { user: "你好", assistant: "你好！有什么可以帮你的？" },
@@ -176,11 +184,8 @@ export const compactErrorCase: TestCase = {
   name: "compact 接口报错（重试 3 次后失败）",
   group: "Compact",
   description: "compact fork 请求每次都返回 error 事件，重试 3 次后仍失败，WarmupIter 变为 error 态，触发 turn:error。",
-  expectedBehavior: "发送消息后，WarmupIter 显示'启动中...'，compact fork 报错并触发 3 次重试（content 会更新为'正在尝试不同策略进行压缩'），最终 WarmupIter 变为 error 态，底部显示错误'上下文压缩失败，请重试或者点击上方清空历史记录'。",
-  initialTurns: makeTextHistory([
-    { user: "你好", assistant: "你好！有什么可以帮你的？" },
-    { user: "帮我读一下 App.tsx", assistant: "好的，我来读取 App.tsx 文件。" },
-  ]),
+  expectedBehavior: "发送消息后，WarmupIter 显示'启动中...'，compact fork 报错并触发 3 次重试（content 会更新为'正在尝试其他策略进行压缩，第 N 次重试…'），最终 WarmupIter 变为 error 态，底部显示错误'上下文压缩失败，请重试或者点击上方清空历史记录'。",
+  initialTurns: COMPACT_RETRY_HISTORY,
   request: makeCompactErrorRequest(),
   compactOptions: { enabled: true, maxTurns: 1 },
 };
@@ -211,12 +216,9 @@ export const compactNoContentCase: TestCase = {
   id: "compact-no-content",
   name: "compact 无返回内容（重试 3 次后失败）",
   group: "Compact",
-  description: "compact fork 每次直接返回空字符串，触发场景A重试（二分缩减历史轮数），3 次重试后仍失败，WarmupIter 变为 error 态，触发 turn:error。",
-  expectedBehavior: "发送消息后，WarmupIter 显示'启动中...'，compact fork 3 次均空返回（历史逐次减半），content 更新显示重试进度，最终 WarmupIter 变为 error 态，底部显示错误'上下文压缩失败，请重试或者点击上方清空历史记录'。",
-  initialTurns: makeTextHistory([
-    { user: "你好", assistant: "你好！有什么可以帮你的？" },
-    { user: "帮我读一下 App.tsx", assistant: "好的，我来读取 App.tsx 文件。" },
-  ]),
+  description: "compact fork 每次直接返回空字符串，触发场景A重试（二分缩减历史轮数：8→4→2→1），3 次重试后仍失败，WarmupIter 变为 error 态，触发 turn:error。",
+  expectedBehavior: "发送消息后，WarmupIter 显示'启动中...'，compact fork 4 次均空返回（初次 + 3 次重试），content 更新显示重试进度，最终 WarmupIter 变为 error 态，底部显示错误'上下文压缩失败，请重试或者点击上方清空历史记录'。",
+  initialTurns: COMPACT_RETRY_HISTORY,
   request: makeCompactNoContentRequest(),
   compactOptions: { enabled: true, maxTurns: 1 },
 };
@@ -375,8 +377,8 @@ export const compactRetrySuccessErrorCase: TestCase = {
   id: "compact-retry-success-error",
   name: "compact 接口报错 → 重试后成功",
   group: "Compact",
-  description: "compact fork 前 2 次请求报错，第 3 次（copyTurns 缩至 1/4）成功返回摘要。WarmupIter content 会更新重试进度。",
-  expectedBehavior: "WarmupIter 显示'启动中...'后两次更新为'正在尝试不同策略进行压缩（第 N 次重试）…'，最终变为 success，主 Agent 正常回复。",
+  description: "compact fork 前 2 次请求报错，第 3 次缩小上下文后成功返回摘要。WarmupIter content 会更新重试进度。",
+  expectedBehavior: "WarmupIter 显示'启动中...'后两次更新为'正在尝试其他策略进行压缩，第 N 次重试…'，第 3 次成功后变为 success，主 Agent 正常回复。",
   initialTurns: makeTextHistoryWithUsage([
     { user: "你好", assistant: "你好！有什么可以帮你的？", usage: { promptTokens: 50000, completionTokens: 1000 } },
     { user: "帮我读一下文件", assistant: "好的，文件内容如下...", usage: { promptTokens: 100000, completionTokens: 2000 } },
@@ -395,13 +397,33 @@ export const compactRetrySuccessTagCase: TestCase = {
   name: "compact 无标签返回 → 重试后成功",
   group: "Compact",
   description: "compact fork 前 2 次返回无 <compact> 标签的内容，第 3 次成功返回合法摘要。WarmupIter content 会更新重试进度。",
-  expectedBehavior: "WarmupIter 两次更新'正在尝试不同策略进行压缩（第 N 次重试）…'，第 3 次成功，WarmupIter 变为 success，主 Agent 正常回复。",
+  expectedBehavior: "WarmupIter 两次更新'正在尝试其他策略进行压缩，第 N 次重试…'，第 3 次成功，WarmupIter 变为 success，主 Agent 正常回复。",
   initialTurns: makeTextHistoryWithUsage([
     { user: "你好", assistant: "你好！有什么可以帮你的？", usage: { promptTokens: 50000, completionTokens: 1000 } },
     { user: "帮我读一下文件", assistant: "好的，文件内容如下...", usage: { promptTokens: 100000, completionTokens: 2000 } },
     { user: "继续分析", assistant: "分析结果如下...", usage: { promptTokens: 170000, completionTokens: 3000 } },
   ]),
   request: makeCompactRetrySuccessTagRequest(),
+  compactOptions: { enabled: true, contextWindow: 200_000 },
+};
+
+/**
+ * compact 全量失败后缩小，缩小成功后继续向右扩大，最终写入最大成功范围。
+ * 4 条历史：第 1 次全量失败，第 2 次半量成功，第 3 次扩大到 3/4 成功。
+ */
+export const compactBinaryExpandSuccessCase: TestCase = {
+  id: "compact-binary-expand-success",
+  name: "compact 二分扩大成功范围",
+  group: "Compact",
+  description: "compact fork 按实际历史轮次数判断：4 轮全量失败，2 轮成功，随后扩大到 3 轮成功，用于验证不会在半量成功后立即停止。",
+  expectedBehavior: "Inspector 中 compact fork 应出现 3 次请求，历史用户消息数依次为 4、2、3；最终 compact 内容写入第 3 次的最大成功结果，主 Agent 正常回复。",
+  initialTurns: makeTextHistoryWithUsage([
+    { user: "历史 1", assistant: "回复 1", usage: { promptTokens: 50000, completionTokens: 1000 } },
+    { user: "历史 2", assistant: "回复 2", usage: { promptTokens: 80000, completionTokens: 1000 } },
+    { user: "历史 3", assistant: "回复 3", usage: { promptTokens: 120000, completionTokens: 1000 } },
+    { user: "历史 4", assistant: "回复 4", usage: { promptTokens: 170000, completionTokens: 1000 } },
+  ]),
+  request: makeCompactBinaryExpandSuccessRequest(),
   compactOptions: { enabled: true, contextWindow: 200_000 },
 };
 
@@ -483,6 +505,55 @@ function makeCompactRetrySuccessTagRequest(): TestCase["request"] {
 
     await new Promise(r => setTimeout(r, 300));
     const reply = "compact 重试成功后的正常回复。";
+    for (const chunk of reply.match(/.{1,8}/g) ?? []) {
+      await new Promise(r => setTimeout(r, 30));
+      params.emits.write(chunk);
+    }
+    params.emits.onFinishReason?.("stop");
+    params.emits.onUsage?.({ promptTokens: 5000, completionTokens: 20, totalTokens: 5020 });
+    params.emits.complete?.("");
+  };
+}
+
+/** compact 根据实际历史轮次数决定失败/成功，用于验证二分收缩和成功后扩大范围 */
+function makeCompactBinaryExpandSuccessRequest(): TestCase["request"] {
+  let compactAttempt = 0;
+  return async (params: any) => {
+    const msgs = params.messages ?? [];
+    const lastUserMsg = [...msgs].reverse().find((m: any) => m.role === "user");
+    const isCompactFork =
+      typeof lastUserMsg?.content === "string" &&
+      lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
+
+    if (isCompactFork) {
+      compactAttempt++;
+      const historyUserCount = msgs.filter((m: any) =>
+        m.role === "user" &&
+        typeof m.content === "string" &&
+        m.content.startsWith("历史 ")
+      ).length;
+      await new Promise(r => setTimeout(r, 800));
+      if (historyUserCount >= 4) {
+        params.emits.error?.(new Error(`compact history count ${historyUserCount} failed: context too large`));
+        return;
+      }
+
+      const compact = `<compact>
+compact 第 ${compactAttempt} 次成功。
+本次 compact fork 看到 ${historyUserCount} 条历史用户消息。
+预期路径为 4 条失败、2 条成功、3 条成功。
+</compact>`;
+      for (const chunk of compact.match(/.{1,20}/g) ?? []) {
+        await new Promise(r => setTimeout(r, 25));
+        params.emits.write(chunk);
+      }
+      params.emits.onFinishReason?.("stop");
+      params.emits.complete?.("");
+      return;
+    }
+
+    await new Promise(r => setTimeout(r, 300));
+    const reply = "compact 二分扩大测试完成后的正常回复。";
     for (const chunk of reply.match(/.{1,8}/g) ?? []) {
       await new Promise(r => setTimeout(r, 30));
       params.emits.write(chunk);
