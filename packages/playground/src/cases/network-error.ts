@@ -1,6 +1,7 @@
 import type { TestCase } from "./types";
 import { makeScriptedRequest } from "../lib/scripted-request";
 import type { RequestAsStreamParams } from "@request/types";
+import { makeTurn } from "../lib/fixtures";
 
 export const networkErrorCase: TestCase = {
   id: "network-error-immediate",
@@ -35,25 +36,47 @@ export const networkErrorDelayedCase: TestCase = {
   ]),
 };
 
+/**
+ * 工具调用后第二次请求报错（内置历史，可直接点重试）
+ *
+ * 历史中已有 1 轮对话：
+ *   - 第 1 步：LLM 返回 read_file 工具调用，工具执行成功
+ *   - 第 2 步：LLM 请求报错（500），turn 以 error 结束
+ *
+ * request 仅处理重试成功的情况（点击重试后返回正常内容）。
+ */
+const toolThenErrorHistory = [
+  makeTurn({
+    userText: "帮我读一下 src/App.tsx",
+    content: "", // error turn 没有 content
+    iterations: [
+      // 第 1 步：工具调用成功
+      {
+        content: "",
+        toolCalls: [{ name: "read_file", args: { path: "src/App.tsx" }, result: "export default function App() { return <div>Hello</div>; }" }],
+      },
+      // 第 2 步：error（iterations 中没有这一步，因为请求直接报错了）
+    ],
+    status: "error",
+    error: "Request failed with status 500: Internal Server Error",
+  }),
+];
+
 export const networkErrorAfterStreamCase: TestCase = {
-  id: "network-error-mid-stream",
-  name: "流式输出中途断开",
+  id: "network-error-after-tool-call",
+  name: "工具调用后第二次请求报错",
   group: "网络中断",
-  description: "LLM 已经开始流式输出内容，但在输出中途网络断开",
+  description:
+    "已预设历史：第 1 步工具调用成功，第 2 步 LLM 请求报错。可直接点击重试，重试后成功返回内容。",
   expectedBehavior:
-    "消息气泡先显示部分内容，随后出现错误提示，重试按钮可见。",
-  initialTurns: [],
+    "ChatPanel 显示一个 error 气泡（含成功的工具卡片 + error 提示），点击重试按钮后正常返回内容。",
+  initialTurns: toolThenErrorHistory,
   request: makeScriptedRequest([
     {
       type: "content",
-      chunks: ["好的，我来帮你", "分析一下这个问题", "首先我们需要", "考虑以下几点"],
-      chunkDelayMs: 200,
+      chunks: ["重试成功！文件内容如下：", "export default function App() { return <div>Hello</div>; }", "这是一个简单的 React 组件。"],
       ttftMs: 400,
-    },
-    {
-      type: "error",
-      error: new Error("Stream interrupted: connection reset by peer"),
-      delayMs: 0,
+      chunkDelayMs: 60,
     },
   ]),
 };

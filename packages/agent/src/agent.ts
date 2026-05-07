@@ -603,6 +603,14 @@ export class Agent {
   protected compactRecord: CompactRecord | null = null;
   private _abortController: AbortController | null = null;
 
+  /** 确保 _abortController 存在且可用；如已失效或不存在则新建 */
+  private _ensureAbortController(): AbortController {
+    if (!this._abortController || this._abortController.signal.aborted) {
+      this._abortController = new AbortController();
+    }
+    return this._abortController;
+  }
+
   constructor(options: AgentOptions) {
     // 仅在调用方”未声明该字段”时注入默认值；
     // 若调用方显式传入 summary/compact（即便是 undefined），按原值保留。
@@ -682,8 +690,8 @@ export class Agent {
    * - 中途失败（有 iterations）：从失败点继续执行
    */
   async retry(turnId: string): Promise<void> {
-    const turn = this.turns.find(t => t.id === turnId);
-    if (!turn || turn.status !== "error") {
+    const turn = this.turns[this.turns.length - 1];
+    if (!turn || turn.id !== turnId || turn.status !== "error") {
       return;
     }
 
@@ -766,8 +774,8 @@ export class Agent {
     llmRest?: Record<string, any>;
   }): Promise<void> {
     const { context: { baseMessages, historyStartIndex }, initialTail, startStep, turn, userParams, llmRest = {} } = opts;
-    // 复用 requestAI 中创建的 AbortController（已确保 warmup 阶段也能取消）
-    const signal = this._abortController!.signal;
+    // 确保 AbortController 可用（retry 续跑时 _abortController 可能为 null 或已 abort）
+    const signal = this._ensureAbortController().signal;
     // 每次进入 ReAct 循环都从入口参数初始化一份 turn 级 aiRole，
     // 循环结束后自然销毁，不污染下一次 request/retry。
     const baseLlmRest: Record<string, any> = { ...llmRest };
@@ -826,9 +834,12 @@ export class Agent {
           ? turn.startTime
           : Date.now();
 
-        if (step > startStep || llmIterations.length === 0) {
-          this.events.emit("llm:start", { step, startTime: stepLLMStartTime });
-        }
+        // 暂时不知道这个条件有什么用，先不删除了，注释掉
+        // if (step > startStep || llmIterations.length === 0) {
+        //   this.events.emit("llm:start", { step, startTime: stepLLMStartTime });
+        // }
+
+        this.events.emit("llm:start", { step, startTime: stepLLMStartTime });
 
         // 执行 beforeRequest hook
         try {
@@ -1139,9 +1150,8 @@ export class Agent {
     // TODO: 临时：强制所有请求使用 aiRole=image
     // rest.aiRole = "image";
     
-    // ── 提前创建 AbortController（确保 warmup 阶段也能取消）
-    this._abortController = new AbortController();
-    const signal = this._abortController.signal;
+    // ── 确保 AbortController 可用（首次创建，或上次已 abort 则重建）
+    const signal = this._ensureAbortController().signal;
     
     // ── 格式化用户消息（在构建 TurnRecord 之前执行，格式化结果写入 turn）
     // formatUserMessage 返回 { message, attachments?, meta? }，可覆盖原始参数
