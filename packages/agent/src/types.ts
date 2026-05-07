@@ -37,6 +37,17 @@ export interface Message {
    *   - Claude: cache_control: { type: 'ephemeral' }
    */
   cache?: boolean;
+  /**
+   * 工具调用结果状态（仅 role === "tool" 时有意义）。
+   * 供服务端感知工具执行是否成功，发送请求前由 sanitizeMessages 移除。
+   */
+  status?: "success" | "error";
+  /**
+   * 工具调用错误类型（仅 status === "error" 时出现）。
+   * - "invalid_args"：工具参数校验失败
+   * - "normal"：工具执行过程中的普通错误
+   */
+  errorType?: "invalid_args" | "normal";
 }
 
 // ─── WarmupIter（warmup 阶段特殊 iter） ──────────────────────────────────────
@@ -95,6 +106,12 @@ export interface ToolCallRecord {
   result?: { output: string; metadata?: any };
   error?: any;
   status: "pending" | "success" | "error";
+  /**
+   * 工具调用错误类型（仅 status === "error" 时出现）。
+   * - "invalid_args"：JSON 参数解析失败或工具参数校验失败（ToolValidationError）
+   * - "normal"：工具执行过程中的其他错误
+   */
+  errorType?: "invalid_args" | "normal";
   /** 工具开始执行的时间（Unix ms） */
   execStartTime: number;
   /** 工具执行完成的时间（Unix ms），执行中为 0 */
@@ -528,6 +545,8 @@ export function turnsToMessages(
               role: "tool",
               content: toolResult,
               tool_call_id: tc.callId,
+              ...(tc.status !== "pending" ? { status: tc.status } : {}),
+              ...(tc.errorType ? { errorType: tc.errorType } : {}),
             });
           }
         } else {

@@ -992,11 +992,15 @@ export class Agent {
 
           try {
             if (!tool) throw new Error(`Tool not found: ${tc.name}`);
-            if (argsParseError) throw argsParseError;
+            if (argsParseError) {
+              toolRecord.errorType = "invalid_args";
+              throw argsParseError;
+            }
             tool.validate?.(tc.args, toolContext);
             const result = await tool.execute(tc.args, toolContext);
             if (signal.aborted) {
               toolRecord.status = "error";
+              toolRecord.errorType = "normal";
               toolRecord.error = "用户已取消";
               toolRecord.execEndTime = Date.now();
               toolResultContent = `Error: 用户已取消`;
@@ -1010,6 +1014,10 @@ export class Agent {
             }
           } catch (e) {
             toolRecord.status = "error";
+            if (!toolRecord.errorType) {
+              // ToolValidationError 或 validate 抛出的错误视为 invalid_args
+              toolRecord.errorType = (e as any)?.name === "ToolValidationError" ? "invalid_args" : "normal";
+            }
             toolRecord.error = signal.aborted ? "用户已取消" : String((e as any)?.message ?? e);
             toolRecord.execEndTime = Date.now();
             toolResultContent = `Error: ${toolRecord.error}`;
@@ -1020,6 +1028,8 @@ export class Agent {
             role: "tool",
             tool_call_id: tc.id,
             content: toolResultContent,
+            ...(toolRecord.status !== "pending" ? { status: toolRecord.status } : {}),
+            ...(toolRecord.errorType ? { errorType: toolRecord.errorType } : {}),
           });
 
         }

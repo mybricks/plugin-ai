@@ -163,6 +163,17 @@ const STREAM_SSE_URL_BY_TARGET: Record<FetchTarget, string> = {
   // [FetchTarget.Center]: "//localhost:4000/sse",
 };
 
+/**
+ * 发送给 LLM 前清理 messages 中的内部扩展字段（status、errorType、cache 等），
+ * 这些字段仅供 agent 内部使用，不是标准 OpenAI / Anthropic 消息格式的一部分。
+ */
+export function sanitizeMessages(messages: any[]): any[] {
+  return messages.map((msg) => {
+    const { status, errorType, cache, ...rest } = msg;
+    return rest;
+  });
+}
+
 export const transfromExtendParams = (extendParams: { aiRole?: string; turnId?: string }) => {
   const { aiRole, turnId } = extendParams;
   let model = "moonshotai/kimi-k2.6";
@@ -202,7 +213,7 @@ export async function requestAsStreamForDevelopment(params: RequestAsStreamParam
   const { messages, emits, aiRole, turnId } = params;
   const { cancel, write, complete, error } = emits;
   const extendParams = transfromExtendParams({ aiRole, turnId });
-  const body = { messages, ...extendParams };
+  const body = { messages: sanitizeMessages(messages), ...extendParams };
 
   try {
     const controller = new AbortController();
@@ -234,7 +245,7 @@ export function requestAsStreamForProduction(extraHeadersInput?: ExtraHeadersInp
         : extraHeadersInput;
 
     const extendParams = transfromExtendParams({ aiRole });
-    const payload = { messages, ...extendParams };
+    const payload = { messages: sanitizeMessages(messages), ...extendParams };
     const streamUrl = STREAM_URL_BY_TARGET[fetchTaget] ?? STREAM_URL_BY_TARGET[FetchTarget.Center];
     const body = getAiEncryptData(payload);
 
@@ -356,7 +367,7 @@ export async function requestAsStreamForDevelopmentSSE(params: RequestAsStreamPa
   const { messages, emits, aiRole, tools, turnId } = params;
   const { cancel, write, complete, error, onUsage, onThinking, onToolCalls, onToolCallStream, onFinishReason } = emits;
   const extendParams = transfromExtendParams({ aiRole, turnId });
-  const body: Record<string, any> = { messages, ...extendParams };
+  const body: Record<string, any> = { messages: sanitizeMessages(messages), ...extendParams };
   if (tools?.length) body.tools = tools;
 
   try {
@@ -395,7 +406,7 @@ export function requestAsStreamForProductionSSE(extraHeadersInput?: ExtraHeaders
         : extraHeadersInput;
 
     const extendParams = transfromExtendParams({ aiRole, turnId });
-    const payload: Record<string, any> = { messages, ...extendParams };
+    const payload: Record<string, any> = { messages: sanitizeMessages(messages), ...extendParams };
     if (tools?.length) payload.tools = tools;
     const sseUrl = STREAM_SSE_URL_BY_TARGET[fetchTaget] ?? STREAM_SSE_URL_BY_TARGET[FetchTarget.Center];
     const body = getAiEncryptData(payload);

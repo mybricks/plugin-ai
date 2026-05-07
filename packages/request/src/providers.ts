@@ -1,5 +1,6 @@
 import type { RequestAsStreamFn, RequestAsStreamParams, ToolDescriptor } from "./types";
 import { readSSEStream } from "./sse-parser";
+import { sanitizeMessages } from "./base";
 
 export interface ModelConfig {
   id: string;
@@ -182,7 +183,7 @@ export class LLMProviders {
       // kimi 渠道固定 providerId 为 'kimi'，自动添加 thinking 参数关闭思考
       const isKimi = provider.providerId === 'kimi';
       const extraParams = isKimi ? { thinking: { type: 'disabled' } } : undefined;
-      const requestBody = formatRequestBody(provider.format, messages, model, tools, extraParams);
+      const requestBody = formatRequestBody(provider.format, sanitizeMessages(messages), model, tools, extraParams);
       const response = await fetch(provider.baseUrl, {
         signal: controller.signal,
         method: "POST",
