@@ -1,8 +1,9 @@
-import type { TestCase } from "./types";
+import type { TestCase, Priority } from "./types";
 import {
   networkErrorCase,
   networkErrorDelayedCase,
   networkErrorAfterStreamCase,
+  networkErrorAfterToolCallNoHistoryCase,
   toolCallArgsMidErrorCase,
   networkErrorRetrySuccessCase,
   networkErrorMultiRetrySuccessCase,
@@ -42,7 +43,7 @@ import {
   retrySuccessCase,
   maxStepsCase,
 } from "./edge-cases";
-import { compactTriggerCase, compactWithToolsCase, compactWarmupByUsageCase, compactErrorCase, compactEmptyResponseCase, compactNoContentCase, compactInfiniteCase, compactRetrySuccessErrorCase, compactRetrySuccessTagCase, compactBinaryExpandSuccessCase } from "./compact";
+import { compactTriggerCase, compactWithToolsCase, compactWarmupByUsageCase, compactErrorCase, compactEmptyResponseCase, compactNoContentCase, compactInfiniteCase, compactRetrySuccessErrorCase, compactRetrySuccessTagCase, compactBinaryExpandSuccessCase, compactMidTurnErrorRetryCase } from "./compact";
 import { markdownRichCase, userMessageWithLinksCase, streamingMarkdownCase, toolThenEmptyContentCase, assistantMessageWithLinksCase } from "./ui-render";
 import {
   initProjectSingleFileCase,
@@ -75,13 +76,16 @@ import {
   grepValidationCase,
 } from "./grep-search";
 
-export type { TestCase } from "./types";
+export type { TestCase, Priority } from "./types";
 
 export const ALL_CASES: TestCase[] = [
-  // 网络中断
+  // ─── P0 核心场景 ───────────────────────────────
   networkErrorCase,
-  networkErrorDelayedCase,
   networkErrorAfterStreamCase,
+  networkErrorAfterToolCallNoHistoryCase,
+  compactMidTurnErrorRetryCase,
+  // ─── 网络中断 ───────────────────────────────────
+  networkErrorDelayedCase,
   toolCallArgsMidErrorCase,
   // 网络中断（带重试）
   networkErrorRetrySuccessCase,

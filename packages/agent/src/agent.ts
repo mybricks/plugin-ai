@@ -2,7 +2,7 @@ import { randomUUID } from "./uuid";
 import type { RequestAsStreamFn, ToolDescriptor } from "../../request/src";
 import { AgentEvents } from "./events";
 import type { CompactRecord, Message, History, Tool, TurnRecord, ToolCallRecord, BoundHistory, TokenUsage, WarmupIter, TurnSender } from "./types";
-import { turnsToMessages, bindHistory, getLLMIterations, hasNoToolCalls } from "./types";
+import { turnsToMessages, bindHistory, getLLMIterations, hasNoToolCalls, serializeToolCallArguments } from "./types";
 import { maskMessages, computeHandoffTurnIds, type MaskOptions } from "./mask";
 import { wrapRequestWithRetry, type RetryOptions } from "./retry";
 
@@ -695,32 +695,85 @@ export class Agent {
       return;
     }
 
-    // 第一步失败（无 LLM iter）：打 retried 标记，不再参与消息构建，重新发起请求
+    // 无 LLM iter：清空 iterations，复用 turn，从头重跑（含 beforeTurn/warmup）
     if (getLLMIterations(turn.iterations).length === 0) {
-      turn.retried = true;
-      await this._persistTurn(turn);
-      await this.requestAI({
-        message: turn.userText,
-        attachments: turn.userAttachments,
-        meta: turn.meta,
-      });
-      return;
+      turn.iterations = [];
     }
 
-    // 中途失败：从失败点继续执行
-    await this._continueFromError(turn);
+    this.events.emit("turn:resume", { turnId: turn.id });
+
+    // 统一走 _runTurn，由它根据 turn.iterations 决定是否跑 beforeTurn/warmup
+    await this._runTurn(turn, {
+      userParams: { message: turn.userText, attachments: turn.userAttachments, meta: turn.meta },
+    });
   }
 
-  /** 从失败的 turn 继续执行 */
-  private async _continueFromError(turn: TurnRecord): Promise<void> {
-    // retry 续跑：把当前失败 turn 从历史中排除（它将被续跑替代，不能带入上下文）
-    const turnsWithoutRetried = this.turns.filter(t => t.id !== turn.id);
-    const context = await buildMessages(this.options, turnsWithoutRetried, this.compactRecord);
+  /**
+   * 统一 turn 执行入口（requestAI 和 retry 共用）。
+   * - getLLMIterations(turn.iterations).length === 0：从头执行，跑 beforeTurn
+   * - getLLMIterations(turn.iterations).length > 0：续跑，跳过 beforeTurn
+   * warmup（compact 等）统一由 _runReActLoop 在每次 llm:start 之前判断执行。
+   */
+  private async _runTurn(
+    turn: TurnRecord,
+    opts: {
+      userParams: { message: string; attachments?: any[]; meta?: any };
+      llmRest?: Record<string, any>;
+    }
+  ): Promise<void> {
+    const { userParams, llmRest } = opts;
+    const isFromStart = getLLMIterations(turn.iterations).length === 0;
 
-    // 从 iterations 重建 tail，跳过 warmup iter（无 LLM 内容，不参与消息重建）
+    // 重置 turn 状态
+    turn.status = "success";
+    turn.error = undefined;
+
+    const signal = this._ensureAbortController().signal;
+
+    if (isFromStart) {
+      // 执行 beforeTurn hook
+      try {
+        await this.options.hooks?.beforeTurn?.({ message: userParams.message, attachments: userParams.attachments ?? [] });
+      } catch (e) {
+        console.warn("[Agent] hooks.beforeTurn failed:", e);
+      }
+    }
+
+    // 构建基础 messages（排除当前 turn，避免带入上下文）
+    const turnsWithoutCurrent = this.turns.filter(t => t.id !== turn.id);
+    let context: { baseMessages: Message[]; historyStartIndex: number };
+    try {
+      context = await buildMessages(this.options, turnsWithoutCurrent, this.compactRecord);
+    } catch (e) {
+      turn.endTime = Date.now();
+      turn.status = "error";
+      turn.error = String((e as any)?.message ?? e);
+      await this._persistTurn(turn);
+      this.events.emit("turn:error", { error: e });
+      this._onTurnEnd(turn);
+      throw e;
+    }
+
+    await this._runReActLoop({ context, turn, userParams, llmRest });
+  }
+
+  /** ReAct 循环核心逻辑（requestAI 和 retry 共用） */
+  private async _runReActLoop(opts: {
+    /** buildMessages 的返回值，包含基础消息和前缀数量 */
+    context: { baseMessages: Message[]; historyStartIndex: number };
+    /** 当前 turn 记录（用于写入迭代结果、持久化） */
+    turn: TurnRecord;
+    /** 用户侧消息参数（message、attachments、meta），用于组装消息和 turn:start 事件 */
+    userParams: { message: string; attachments?: any[]; meta?: any };
+    /** 透传给 callLLM 的其余参数（aiRole 等） */
+    llmRest?: Record<string, any>;
+  }): Promise<void> {
+    const { context: { baseMessages, historyStartIndex }, turn, userParams, llmRest = {} } = opts;
+
+    // 从 turn.iterations 自动推导 initialTail 和 startStep
+    const llmItersOnEntry = getLLMIterations(turn.iterations);
     const initialTail: Message[] = [];
-    const llmIters = getLLMIterations(turn.iterations);
-    for (const iter of llmIters) {
+    for (const iter of llmItersOnEntry) {
       const assistantMsg: Message = {
         role: "assistant",
         content: iter.content,
@@ -728,11 +781,10 @@ export class Agent {
         tool_calls: iter.toolCalls.map(tc => ({
           id: tc.callId,
           type: "function" as const,
-          function: { name: tc.name, arguments: tc.args?._argsRaw ?? JSON.stringify(tc.args ?? {}) },
+          function: { name: tc.name, arguments: serializeToolCallArguments(tc) },
         })),
       };
       initialTail.push(assistantMsg);
-
       for (const tc of iter.toolCalls) {
         initialTail.push({
           role: "tool",
@@ -741,39 +793,7 @@ export class Agent {
         });
       }
     }
-
-    // 重置状态
-    turn.status = "success";
-    turn.error = undefined;
-
-    this.events.emit("turn:resume", { turnId: turn.id });
-
-    // 从失败点继续执行（startStep 只计 LLM iter 数量，不含 warmup iter）
-    await this._runReActLoop({
-      context,
-      initialTail,
-      startStep: llmIters.length + 1,
-      turn,
-      userParams: { message: turn.userText, attachments: turn.userAttachments, meta: turn.meta },
-    });
-  }
-
-  /** ReAct 循环核心逻辑（requestAI 和 retry 共用） */
-  private async _runReActLoop(opts: {
-    /** buildMessages 的返回值，包含基础消息和前缀数量 */
-    context: { baseMessages: Message[]; historyStartIndex: number };
-    /** 初始 tail：从已有 iterations 重建的 assistant+tool 消息序列（全新请求传 []） */
-    initialTail: Message[];
-    /** 本次循环从第几步开始（全新请求传 1，retry 续传则传失败前的步数 + 1） */
-    startStep: number;
-    /** 当前 turn 记录（用于写入迭代结果、持久化） */
-    turn: TurnRecord;
-    /** 用户侧消息参数（message、attachments、meta），用于组装消息和 turn:start 事件 */
-    userParams: { message: string; attachments?: any[]; meta?: any };
-    /** 透传给 callLLM 的其余参数（aiRole 等） */
-    llmRest?: Record<string, any>;
-  }): Promise<void> {
-    const { context: { baseMessages, historyStartIndex }, initialTail, startStep, turn, userParams, llmRest = {} } = opts;
+    const startStep = llmItersOnEntry.length + 1;
     // 确保 AbortController 可用（retry 续跑时 _abortController 可能为 null 或已 abort）
     const signal = this._ensureAbortController().signal;
     // 每次进入 ReAct 循环都从入口参数初始化一份 turn 级 aiRole，
@@ -829,15 +849,16 @@ export class Agent {
           return;
         }
 
+        // 每次 LLM 请求之前判断是否需要 warmup（compact 等预处理）
+        if (this._shouldAutoCompact() && !this._isAlreadyCompacted()) {
+          const warmupAborted = await this._runWarmup(turn, signal);
+          if (warmupAborted) return;
+        }
+
         const llmIterations = getLLMIterations(turn.iterations);
         const stepLLMStartTime = step === startStep && llmIterations.length === 0
           ? turn.startTime
           : Date.now();
-
-        // 暂时不知道这个条件有什么用，先不删除了，注释掉
-        // if (step > startStep || llmIterations.length === 0) {
-        //   this.events.emit("llm:start", { step, startTime: stepLLMStartTime });
-        // }
 
         this.events.emit("llm:start", { step, startTime: stepLLMStartTime });
 
@@ -916,19 +937,15 @@ export class Agent {
           ...(llmResult.usage ? { usage: llmResult.usage } : {}),
         };
         turn.iterations.push(currentIter);
-        turn.thinkingContent += llmResult.thinkingContent;
-        if (llmResult.usage) turn.usage = llmResult.usage;
-
         // 判断是否终止：只有存在实际工具调用时才继续循环
         const hasToolCalls = llmResult.toolCalls.length > 0;
         const shouldContinueWithTools = hasToolCalls;
         const modelFinished = !shouldContinueWithTools;
         if (modelFinished) {
-          turn.content = llmResult.content;
           turn.endTime = iterEndTime;
           turn.status = "success";
           await this._persistTurn(turn);
-          this.events.emit("llm:complete", { step, finishReason: llmResult.finishReason, usage: turn.usage, done: true, endTime: turn.endTime });
+          this.events.emit("llm:complete", { step, finishReason: llmResult.finishReason, usage: llmResult.usage, done: true, endTime: turn.endTime });
           this.events.emit("turn:complete", {});
           this._onTurnEnd(turn);
           return;
@@ -945,8 +962,7 @@ export class Agent {
           tool_calls: llmResult.toolCalls.map(tc => ({
             id: tc.id,
             type: "function" as const,
-            // 优先使用 argsRaw 还原 LLM 原始字符串（含未解析时）；已解析的工具调用序列化 args
-            function: { name: tc.name, arguments: tc.argsRaw ?? JSON.stringify(tc.args) },
+            function: { name: tc.name, arguments: serializeToolCallArguments(tc) },
           })),
         };
         tail.push(assistantMsg);
@@ -1071,8 +1087,6 @@ export class Agent {
         }
 
         if (doomLoopTriggered && doomLoopInfo) {
-          const lastIter = turn.iterations[turn.iterations.length - 1];
-          turn.content = lastIter?.content ?? "";
           turn.endTime = Date.now();
           turn.status = "error";
           turn.error = `连续调用，已自动中断，可重新发起消息`;
@@ -1087,11 +1101,11 @@ export class Agent {
 
       // 超出 maxSteps
       const lastIter = turn.iterations[turn.iterations.length - 1];
-      turn.content = lastIter?.content ?? "";
+      const lastIterUsage = lastIter && !("type" in lastIter) ? (lastIter as any).usage : undefined;
       turn.endTime = Date.now();
       turn.status = "success";
       await this._persistTurn(turn);
-      this.events.emit("llm:complete", { step: maxSteps, finishReason: "length", usage: turn.usage, done: true, endTime: turn.endTime });
+      this.events.emit("llm:complete", { step: maxSteps, finishReason: "length", usage: lastIterUsage, done: true, endTime: turn.endTime });
       this.events.emit("turn:complete", {});
       this._onTurnEnd(turn);
     } catch (e) {
@@ -1150,9 +1164,6 @@ export class Agent {
     // TODO: 临时：强制所有请求使用 aiRole=image
     // rest.aiRole = "image";
     
-    // ── 确保 AbortController 可用（首次创建，或上次已 abort 则重建）
-    const signal = this._ensureAbortController().signal;
-    
     // ── 格式化用户消息（在构建 TurnRecord 之前执行，格式化结果写入 turn）
     // formatUserMessage 返回 { message, attachments?, meta? }，可覆盖原始参数
     // 注意：turn.userText 保留原始 message（UI 展示用），LLM 收到的是 formattedParams.message
@@ -1189,8 +1200,6 @@ export class Agent {
       userAttachments,
       ...(formattedMeta ? { meta: formattedMeta } : {}),
       ...(formattedParams.sender ? { sender: formattedParams.sender } : {}),
-      content: "",
-      thinkingContent: "",
       iterations: [],
       status: "success",
     };
@@ -1204,38 +1213,10 @@ export class Agent {
       ...(formattedParams.message !== message ? { userFormattedText: formattedParams.message } : {}),
     });
 
-    // ── 执行 beforeTurn hook（在 buildMessages 之前，确保快照时机正确）
-    try {
-      await this.options.hooks?.beforeTurn?.({ message, attachments: attachments ?? [] });
-    } catch (e) {
-      console.warn("[Agent] hooks.beforeTurn failed:", e);
-    }
+    // 将 turn 加入内存（_runTurn 内的 buildMessages 需要排除它，_persistTurn 会更新它）
+    this.turns.push(turn);
 
-    // ── warmup 阶段（buildMessages 之前执行）
-    const warmupAborted = await this._runWarmup(turn, signal);
-    if (warmupAborted) return;
-
-    // 构建基础 messages（system + agentsMd + context + compact + history），每轮 turn 只算一次
-    let context: { baseMessages: Message[]; historyStartIndex: number };
-    try {
-      context = await buildMessages(this.options, this.turns, this.compactRecord);
-    } catch (e) {
-      // buildMessages 失败时也要持久化 turn
-      turn.endTime = Date.now();
-      turn.status = "error";
-      turn.error = String((e as any)?.message ?? e);
-      await this._persistTurn(turn);
-      this.events.emit("turn:error", { error: e });
-      this._onTurnEnd(turn);
-      throw e;
-    }
-
-    // 调用共用的 ReAct 循环逻辑
-    await this._runReActLoop({
-      context,
-      initialTail: [],
-      startStep: 1,
-      turn,
+    await this._runTurn(turn, {
       userParams: { message, attachments: formattedParams.attachments ?? attachments, meta: formattedMeta },
       llmRest: rest,
     });
@@ -1484,7 +1465,7 @@ IMPORTANT: 不要调用工具！
     const warmupIter: WarmupIter = {
       type: "warmup",
       status: "loading",
-      content: "启动中，当前正在压缩上下文...",
+      content: "当前正在压缩上下文...",
       startTime: warmupStartTime,
       toolCalls: [],
     };
@@ -1559,8 +1540,15 @@ IMPORTANT: 不要调用工具！
       if (this.compactRecord && turn.id === this.compactRecord.upToTurnId) break;
       if (turn.retried) continue;
       contextTurnCount++;
-      if (!lastUsage && turn.usage) {
-        lastUsage = turn.usage;
+      if (!lastUsage) {
+        // 从最后一个有效 LLM iter 取 usage（跳过 warmup、无 usage 的 iter）
+        for (let j = turn.iterations.length - 1; j >= 0; j--) {
+          const iter = turn.iterations[j];
+          if (!("type" in iter) && (iter as any).usage) {
+            lastUsage = (iter as any).usage;
+            break;
+          }
+        }
       }
     }
     if (contextTurnCount === 0) return false;
@@ -1586,14 +1574,16 @@ IMPORTANT: 不要调用工具！
   }
 
   /**
-   * 判断 compactRecord 是否已覆盖当前所有会进入上下文的 turns（即后置已压缩好）。
-   * 依据：compactRecord.upToTurnId === 最新 turn 的 id
+   * 判断 compactRecord 是否已覆盖了本 turn 之前的所有 turns（即前置无需重复压缩）。
+   * compact 永远不压缩当前正在执行的 turn（this.turns 最后一项），
+   * 因此判据是：compactRecord.upToTurnId === 倒数第二个 turn 的 id。
    */
   private _isAlreadyCompacted(): boolean {
     if (!this.compactRecord) return false;
-    const lastTurn = this.turns[this.turns.length - 1];
-    if (!lastTurn) return false;
-    return this.compactRecord.upToTurnId === lastTurn.id;
+    // this.turns 最后一个是当前正在执行的 turn，倒数第二个才是上一轮
+    const prevTurn = this.turns[this.turns.length - 2];
+    if (!prevTurn) return true; // 没有历史 turn，无需 compact
+    return this.compactRecord.upToTurnId === prevTurn.id;
   }
 
   /**

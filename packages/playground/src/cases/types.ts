@@ -4,10 +4,14 @@ import type { Tool } from "@agent/types";
 import type { SubAgentConfig, Sandbox } from "@agent/code-agent";
 import type { FsFile } from "../lib/mem-fs";
 
+export type Priority = "P0" | "P1" | "P2";
+
 export interface TestCase {
   id: string;
   name: string;
   group: string;
+  /** 优先级，P0 最高，排序时 P0 排在最前 */
+  priority?: Priority;
   description: string;
   expectedBehavior: string;
   /** 预设历史轮次 */

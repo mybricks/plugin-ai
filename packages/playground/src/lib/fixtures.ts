@@ -33,13 +33,14 @@ export function makeToolCall(input: ToolCallInput): ToolCallRecord {
 
 interface TurnInput {
   userText: string;
-  /** LLM 最终回复文本 */
+  /** LLM 最终回复文本（无 iterations 时自动创建一个纯文本 iter） */
   content?: string;
   /** 每次 LLM step 的工具调用（ReAct 迭代） */
   iterations?: Array<{
     content?: string;
     toolCalls?: ToolCallInput[];
     thinkingContent?: string;
+    usage?: TokenUsage;
   }>;
   status?: TurnRecord["status"];
   error?: string;
@@ -63,6 +64,7 @@ export function makeTurn(input: TurnInput): TurnRecord {
       toolCalls: (iter.toolCalls ?? []).map(makeToolCall),
       startTime: iterStart,
       endTime: iterStart + 800,
+      ...(iter.usage ? { usage: iter.usage } : {}),
     };
   });
 
@@ -83,8 +85,6 @@ export function makeTurn(input: TurnInput): TurnRecord {
     userText: input.userText,
     userFormattedText: input.userText,
     userAttachments: input.attachments ?? [],
-    content: input.content ?? "",
-    thinkingContent: "",
     iterations,
     status: input.status ?? "success",
     error: input.error,
@@ -131,10 +131,8 @@ export function makeTextHistoryWithUsage(
     if (p.usage) {
       // 给 iteration 添加 usage
       if (turn.iterations.length > 0) {
-        turn.iterations[0].usage = p.usage;
+        (turn.iterations[0] as any).usage = p.usage;
       }
-      // 给 turn 添加 usage（汇总）
-      turn.usage = p.usage;
     }
     return turn;
   });

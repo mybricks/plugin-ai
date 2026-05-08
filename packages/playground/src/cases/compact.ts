@@ -262,6 +262,101 @@ function makeCompactWarmupRequest(): TestCase["request"] {
   };
 }
 
+/** 中途压缩报错并恢复的 mock request
+ *
+ * 调用时序：
+ *   1. 主 Agent step=1 → write_file 工具调用 + usage 超阈值
+ *   2. compact fork → 返回 compact 摘要
+ *   3. 主 Agent step=2 → write_file 工具调用（成功）
+ *   4. 主 Agent step=3（原始+重试）→ 全部 error（重试耗尽后 turn:error）
+ *   5. 用户 retry → 主 Agent step=3 → 正常返回内容
+ */
+function makeCompactMidTurnErrorRetryRequest(): TestCase["request"] {
+  let hasSeenStep1 = false;
+  let hasSeenStep2 = false;
+  let step3Attempts = 0;
+
+  return async (params: any) => {
+    const msgs = params.messages ?? [];
+    const lastUserMsg = [...msgs].reverse().find((m: any) => m.role === "user");
+    const isCompactFork =
+      typeof lastUserMsg?.content === "string" &&
+      lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
+
+    // ── compact fork 请求 ──
+    if (isCompactFork) {
+      await new Promise(r => setTimeout(r, 1500));
+      for (const chunk of COMPACT_RESPONSE_CONTENT.match(/.{1,20}/g) ?? []) {
+        await new Promise(r => setTimeout(r, 30));
+        params.emits.write(chunk);
+      }
+      params.emits.onFinishReason?.("stop");
+      params.emits.complete?.("");
+      return;
+    }
+
+    // ── step=1：write_file 工具调用 + usage 超阈值 ──
+    if (!hasSeenStep1) {
+      hasSeenStep1 = true;
+      await new Promise(r => setTimeout(r, 300));
+      params.emits.onToolCallStream?.({ index: 0, id: "call_mid_1", name: "write_file", argsChunk: "" });
+      const args = JSON.stringify({
+        path: "src/utils.ts",
+        content: "export function midTurnTest() { return 'success'; }",
+      });
+      for (let i = 0; i < args.length; i += 4) {
+        await new Promise(r => setTimeout(r, 15));
+        params.emits.onToolCallStream?.({ index: 0, argsChunk: args.slice(i, i + 4) });
+      }
+      params.emits.onToolCalls?.([{ id: "call_mid_1", name: "write_file", args: JSON.parse(args) }]);
+      params.emits.onFinishReason?.("tool_calls");
+      // usage 超阈值，step=2 之前将触发 warmup/compact
+      params.emits.onUsage?.({ promptTokens: 170000, completionTokens: 200, totalTokens: 170200 });
+      params.emits.complete?.("");
+      return;
+    }
+
+    // ── step=2（compact 之后）：再写一个文件，成功 ──
+    if (!hasSeenStep2) {
+      hasSeenStep2 = true;
+      await new Promise(r => setTimeout(r, 300));
+      params.emits.onToolCallStream?.({ index: 0, id: "call_mid_2", name: "write_file", argsChunk: "" });
+      const args2 = JSON.stringify({
+        path: "src/helper.ts",
+        content: "export function helper() { return 'helper'; }",
+      });
+      for (let i = 0; i < args2.length; i += 4) {
+        await new Promise(r => setTimeout(r, 15));
+        params.emits.onToolCallStream?.({ index: 0, argsChunk: args2.slice(i, i + 4) });
+      }
+      params.emits.onToolCalls?.([{ id: "call_mid_2", name: "write_file", args: JSON.parse(args2) }]);
+      params.emits.onFinishReason?.("tool_calls");
+      params.emits.onUsage?.({ promptTokens: 5000, completionTokens: 100, totalTokens: 5100 });
+      params.emits.complete?.("");
+      return;
+    }
+
+    // ── step=3：第二个工具完成后，LLM 请求报错（含重试），turn:error ──
+    if (step3Attempts < 3) {
+      step3Attempts++;
+      await new Promise(r => setTimeout(r, 200));
+      params.emits.error?.(new Error(`Request failed: 503 Service Unavailable (step=3 attempt ${step3Attempts})`));
+      return;
+    }
+
+    // ── 用户 retry 后的 step=3：正常返回内容 ──
+    await new Promise(r => setTimeout(r, 400));
+    const reply = "两个文件均已成功写入，操作完成！";
+    for (const chunk of reply.match(/.{1,8}/g) ?? []) {
+      await new Promise(r => setTimeout(r, 30));
+      params.emits.write(chunk);
+    }
+    params.emits.onFinishReason?.("stop");
+    params.emits.onUsage?.({ promptTokens: 5000, completionTokens: 50, totalTokens: 5050 });
+    params.emits.complete?.("");
+  };
+}
+
 /** 生成 compact 错误请求的 mock */
 function makeCompactErrorRequest(): TestCase["request"] {
   return async (params) => {
@@ -425,6 +520,42 @@ export const compactBinaryExpandSuccessCase: TestCase = {
   ]),
   request: makeCompactBinaryExpandSuccessRequest(),
   compactOptions: { enabled: true, contextWindow: 200_000 },
+};
+
+// ─── 中途压缩报错并恢复 ──────────────────────────────────────────────────────
+
+/**
+ * 中途压缩报错并恢复：
+ *
+ * 流程：
+ *   1. 第 1 步 LLM 返回 write_file 工具调用，工具执行成功
+ *      → usage.promptTokens = 170000（超过阈值 167000）
+ *   2. 第 2 步 llm:start 之前触发 warmup/compact → compact 成功
+ *   3. 第 2 步 LLM 请求报错，自动重试也失败（maxRetries=2）
+ *      → turn:error，底部显示重试按钮
+ *   4. 用户点击重试，从 step=2 续跑
+ *      → compact 已完成不再触发
+ *      → LLM 正常返回内容，turn 成功结束
+ */
+export const compactMidTurnErrorRetryCase: TestCase = {
+  id: "compact-mid-turn-error-retry",
+  name: "中途压缩报错并恢复",
+  group: "Compact",
+  priority: "P0",
+  description:
+    "进来是空白状态，发消息后：第 1 步 write_file 成功，返回的 usage 超限 → 第 2 步之前触发 compact（WarmupIter），compact 成功后再写入第二个文件成功 → 第 3 步 LLM 请求失败（含重试），最终显示重试按钮。点击重试后从 step=3 续跑成功。",
+  expectedBehavior:
+    "发消息后先显示 write_file 工具卡片（src/utils.ts），然后 WarmupIter（compact），compact 成功后第二个 write_file 工具卡片（src/helper.ts），随后 LLM 报错进入 error 状态显示重试按钮。点击重试从 step=3 续跑成功返回内容。",
+  initialTurns: [],
+  request: makeCompactMidTurnErrorRetryRequest(),
+  compactOptions: { enabled: true, contextWindow: 200_000 },
+  agentOptions: {
+    retry: {
+      maxRetries: 2,
+      baseDelayMs: 100,
+      maxDelayMs: 500,
+    },
+  },
 };
 
 /** compact fork 前 2 次报错，第 3 次成功 */

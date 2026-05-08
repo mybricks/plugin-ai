@@ -10,6 +10,7 @@ import type { OnUploadFn, RequestAsStreamFn } from "./types";
 import { LLMProviders } from "./providers";
 
 // import { requestAsStreamInfra } from './cdzd'
+// import { createCustomRequest } from './custom';
 
 export type {
   TokenUsage,
@@ -34,7 +35,7 @@ function createRequestAsStream(config?: { useInfra?: boolean }): RequestAsStream
   return async function (params) {
 
     // return requestAsStreamInfra(params)
-
+  
     // 开发环境
     if (!isProduction()) {
       // useInfra = true 时，尝试 CDN
