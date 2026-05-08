@@ -125,6 +125,46 @@ CRITICAL: 尽量在同一个响应中同时并行调用多个代码工具；
 11. 各类动效、动画等，尽量使用 css3 的方式在 less 中实现，不要为此引入任何的额外类库；
 12. 禁止出现直接引用标签的写法，例如 \`<Tags[XX] property={'aa'}/>\`，正确的写法是先定义 \`const XX = Tag[XX]; <XX property={'aa'}/>\`；
 13. 所有列表中的组件，必须通过 key 属性做唯一标识，不要使用 index 作为 key；
+14. 元素或组件接口调用相关注释：
+  - 说明：调用接口即调用 datasource 提供的api
+  - 判断依据：
+    1. 当 JSX 标签内事件直接或间接调用 datasource 提供的api时，添加注释
+  - 注释格式：「/** datasource:唯一key */」，key必须全局唯一
+  - 示例：\`<Button /** datasource:clickToLogin */ onClick={() => store.login()}>登录</Button>\`
+  - 注意：
+    1. 当接口调用在函数体或 React hooks（如 useEffect）内时，禁止编写注释
+15. 元素或组件消费、使用 store 数据相关注释：
+  - 判断依据：
+    1. 当 JSX 内使用 store 数据时，添加注释
+  - 注释格式：「/** store:唯一key */」，key必须全局唯一
+  - 示例：
+    1. 简单引用
+    \`\`\`jsx
+    <div /** store:userName */>{store.user.name}</div>
+    \`\`\`
+
+    2. 间接引用或消费一个对象下的多个深层字段时
+    \`\`\`jsx
+    <div /** store:userCard */>
+      <div>{store.user.name}</div>
+      <div>{store.user.age}</div>
+    </div>
+    \`\`\`
+    \`\`\`jsx
+    const { user } = store
+    <div /** store:userCard */>
+      <div>{user.name}</div>
+      <div>{user.age}</div>
+    </div>
+    \`\`\`
+
+    3. 数组遍历渲染
+    \`\`\`
+    <div /** store:userList */>{store.users.map(user => <div key={user.id}>{user.name}</div>)}</div>
+    \`\`\`
+  - 注意：
+    1. 当没有合适的JSX标签编写注释时，通常可能是外层使用空标签\`<>\`或\`<Fragment>\`，此时不需要写注释
+    2. 当外层容器和内部子元素消费同一个store字段时，应将注释写在最外层容器上，避免重复注释
 
 保留字段（禁止通过 props 传递）：
 - \`_env\`：环境变量，\`_env.mode\` 表示运行环境（design | runtime）；
@@ -356,7 +396,7 @@ PopupVisible 装饰器说明：
 ### README.md
 根据当前模块的 jsx 源码，生成或更新对应的 README.md 说明文档
 更新时机：
-- 必须更新（强约束）：目录下不存在 README.md；或现有文档内容与上述规范不符；或需求明确要求更新文档；
+- 必须更新（强约束）：目录下不存在 README.md；或当前文档内容与「文档编写规范」不符；或需求明确要求更新文档；
 - 建议更新（结构或内容变化）：在 jsx 中新增、删除或重命名了 appRef/comRef 节点，或 Route 中注册的页面组件发生变化；export default 的根节点类型或子节点类型组合发生变化导致标题层级需调整；JSX 中新增、删除或修改了带 /** onXXX:事件名 */ 注释的事件；某节点的 UI 结构、交互或业务含义发生明显变化；
 - 无需更新：jsx、store.js 未被修改，且现有 README.md 已正确反映当前源码的节点结构、事件与说明；仅修改了 style.less、service.js 等与节点行为无关的文件；
 <README.md 文档编写规范>
@@ -409,6 +449,27 @@ PopupVisible 装饰器说明：
         - 流程图须真实完整：严格依据事件处理函数内的代码逻辑，以及所调用的 store 方法内部实现来绘制，不省略、不捏造。
         - 分支流程必须完整表达：代码中的 if/else、三元判断、early return、请求成功/失败等所有分支，都必须在流程图中用条件节点 {} 和 |分支标注| 画出；每个分支（如「通过」「不通过」「成功」「失败」）及其后续步骤都须独立延伸，不得只写主流程而省略条件分支。
     3. 无事件可省略 events
+  - datasource：该组件内调用的接口列表（找最近的组件，而不是页面）
+    1. 从源码识别：JSX 块注释如 /** datasource:唯一key */
+    2. 每条接口调用用结构化格式描述，包含以下字段：
+      - 唯一key
+        - api（真实方法名，对应 datasource 中的方法）
+          - desc: 用途说明
+    3. 特殊情况：当接口调用在函数体或 React hooks（如 useEffect）内时，使用「root」作为唯一key
+    4. 无接口调用可省略 datasource
+  - store：该组件内消费的store数据列表（找最近的组件，而不是页面）
+    1. 从源码识别：JSX块注释如 /** store:唯一key */
+    2. 每个唯一key下是一个数组，支持描述多个字段的消费（可能来自不同store或同一store的不同字段）：
+      - 唯一key
+        - 对应store文件的绝对路径
+          - field: 对应store的属性路径
+          - desc: 用途说明
+        - 对应store文件的绝对路径
+          - field: ...
+          - desc: ...
+    3. 特殊情况：当容器本身即为组件时（如 Fragment），使用「root」作为唯一key，path/field 正常填写
+    4. 每一个组件，如果在代码层面没有读取 store 的字段来做ui以及视觉的渲染，禁止编写store信息；即使子组件使用了，也不应该使用root，以实际代码情况为准；
+    5. 无store数据消费可省略 store
   </节点说明>
 </README.md 文档编写规范>
 
@@ -424,6 +485,7 @@ const StepRegisterForm = comRef(({}) => {
       <form />
       <button
         /** onClick:signUp */
+        /** datasource:clickToSignUp */
         onClick={() => {
           store.signUp();
         }}
@@ -445,8 +507,12 @@ const SignIn = comRef(({}) => {
   return (
     <div>
       <h1>登录</h1>
+      <div /** store:loginInfo */>
+        {store.welcomeMsg} - {store.userType}
+      </div>
       <button
         /** onClick:signIn */
+        /** datasource:clickToSignIn */
         onClick={() => {
           store.signIn();
         }}
@@ -485,6 +551,18 @@ export default appRef(() => {
   - signIn
     - title: 登录
     - mermaid: flowchart LR; A["校验登录参数"] --> B{"参数是否有效"} -->|有效| C["设置loading状态"] --> D["请求登录接口"] --> E{"请求是否成功"} -->|成功| F["更新用户状态"] --> G["取消loading状态"]; E -->|失败| H["提示错误信息"] --> G; B -->|无效| I["提示参数错误"]
+- datasource:
+  - clickToSignIn
+    - signIn
+      - desc: 点击登录按钮调用登录接口
+- store:
+  - loginInfo
+    - /store.js
+      - field: welcomeMsg
+      - desc: 展示欢迎语
+    - /store.js
+      - field: userType
+      - desc: 展示用户类型
 
 （SignIn 是通过 Route index 注册的页面组件，因此 type 为 page）
 
@@ -509,6 +587,10 @@ export default appRef(() => {
   - signUp
     - title: 注册
     - mermaid: flowchart LR; A["校验表单参数"] --> B{"参数是否有效"} -->|有效| C["设置loading状态"] --> D["请求注册接口"] --> E{"请求是否成功"} -->|成功| F["跳转登录页"] --> G["取消loading状态"]; E -->|失败| H["提示错误信息"] --> G; B -->|无效| I["提示参数错误"]
+- datasource:
+  - clickToSignUp
+    - signUp
+      - desc: 点击注册按钮调用注册接口
 
 \`\`\`
 </基于 jsx 的README.md示例>
