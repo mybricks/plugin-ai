@@ -14,6 +14,7 @@ export type TokenUsage = {
     cachedTokens?: number;
     cacheWriteTokens?: number;
   };
+  model?: string;
 };
 
 // ─── Message（LLM 请求格式） ──────────────────────────────────────────────────
