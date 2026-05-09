@@ -2,7 +2,7 @@ import { randomUUID } from "./uuid";
 import type { RequestAsStreamFn, ToolDescriptor } from "../../request/src";
 import { AgentEvents } from "./events";
 import type { CompactRecord, Message, History, Tool, TurnRecord, ToolCallRecord, BoundHistory, TokenUsage, WarmupIter, TurnSender } from "./types";
-import { turnsToMessages, bindHistory, getLLMIterations, hasNoToolCalls, serializeToolCallArguments } from "./types";
+import { turnsToMessages, bindHistory, getLLMIterations, hasNoToolCalls, serializeToolCallArgumentsFromIter, serializeToolCallArgumentsFromLLMResult } from "./types";
 import { maskMessages, computeHandoffTurnIds, type MaskOptions } from "./mask";
 import { wrapRequestWithRetry, type RetryOptions } from "./retry";
 
@@ -784,7 +784,7 @@ export class Agent {
         tool_calls: iter.toolCalls.map(tc => ({
           id: tc.callId,
           type: "function" as const,
-          function: { name: tc.name, arguments: serializeToolCallArguments(tc) },
+          function: { name: tc.name, arguments: serializeToolCallArgumentsFromIter(tc) },
         })),
       };
       initialTail.push(assistantMsg);
@@ -965,7 +965,7 @@ export class Agent {
           tool_calls: llmResult.toolCalls.map(tc => ({
             id: tc.id,
             type: "function" as const,
-            function: { name: tc.name, arguments: serializeToolCallArguments(tc) },
+            function: { name: tc.name, arguments: serializeToolCallArgumentsFromLLMResult(tc) },
           })),
         };
         tail.push(assistantMsg);
@@ -1031,9 +1031,9 @@ export class Agent {
             if (signal.aborted) {
               toolRecord.status = "error";
               toolRecord.errorType = "normal";
-              toolRecord.error = "用户已取消";
+              toolRecord.error = `Error: 用户已取消`;
+              toolResultContent = toolRecord.error
               toolRecord.execEndTime = Date.now();
-              toolResultContent = `Error: 用户已取消`;
               this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: "用户已取消", step, endTime: toolRecord.execEndTime });
             } else {
               toolRecord.result = { output: result.output, metadata: result.metadata };
@@ -1048,9 +1048,14 @@ export class Agent {
               // ToolValidationError 或 validate 抛出的错误视为 invalid_args
               toolRecord.errorType = (e as any)?.name === "ToolValidationError" ? "invalid_args" : "normal";
             }
-            toolRecord.error = signal.aborted ? "用户已取消" : String((e as any)?.message ?? e);
+            toolRecord.error = signal.aborted ? "Error: 用户已取消" : String((e as any)?.message ?? e);
+
+            if (argsParseError && tc?.args?._argsRaw) {
+              toolRecord.error += `\nrawContent: ${tc.args._argsRaw}`
+            }
+
+            toolResultContent = toolRecord.error;
             toolRecord.execEndTime = Date.now();
-            toolResultContent = `Error: ${toolRecord.error}`;
             this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: e, step, endTime: toolRecord.execEndTime });
           }
 

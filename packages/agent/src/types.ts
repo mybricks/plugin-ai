@@ -419,11 +419,24 @@ export interface Tool {
 /**
  * 将工具调用的参数序列化为 arguments 字符串（OpenAI function calling 格式）。
  * 重点：一定要保证不能传空字符串，不然有些厂商会挂
+ * Iter 中 tc 只有args 字段
+ * TODO: 两个函数合并
  */
-export function serializeToolCallArguments(tc: { args?: any; argsRaw?: string }): string {
+export function serializeToolCallArgumentsFromIter(tc: any): string {
   // 有 _argsRaw 代表解析失败了，错误的Json到了部分供应商，会直接报错，服了，所以需要用空对象替代，反正我会在role=assistant那里提供原始内容
   if (tc?.args?._argsRaw) return JSON.stringify({});
   return JSON.stringify(tc.args ?? {});
+}
+
+/**
+ * 将工具调用的参数序列化为 arguments 字符串（OpenAI function calling 格式）。
+ * 重点：一定要保证不能传空字符串，不然有些厂商会挂
+ * LLMResult 中 args 是 null，有 argsRaw 字段
+ * TODO: 两个函数合并
+ */
+export function serializeToolCallArgumentsFromLLMResult(tc: any): string {
+  if (!!tc.argsRaw) return tc.argsRaw;
+  return JSON.stringify(tc.args || {});
 }
 
 /**
@@ -534,7 +547,7 @@ export function turnsToMessages(
               type: "function" as const,
               function: {
                 name: tc.name,
-                arguments: serializeToolCallArguments(tc),
+                arguments: serializeToolCallArgumentsFromIter(tc),
               },
             })),
           };
