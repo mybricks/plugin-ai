@@ -1092,7 +1092,7 @@ export class Agent {
         if (doomLoopTriggered && doomLoopInfo) {
           turn.endTime = Date.now();
           turn.status = "error";
-          turn.error = `连续调用，已自动中断，可重新发起消息`;
+          turn.error = `模型异常，已自动中断，可以发送消息让大模型继续`;
           await this._persistTurn(turn);
           this.events.emit("turn:error", { error: new Error(turn.error) });
           this._onTurnEnd(turn);

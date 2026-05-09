@@ -175,6 +175,30 @@
 }
 .providerSidebarLabel { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .providerLogo { width: 14px; height: 14px; border-radius: 2px; flex-shrink: 0; object-fit: contain; }
+.providerDeleteBtn {
+  flex-shrink: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #bbb;
+  cursor: pointer;
+  transition: all 0.15s;
+
+  &:hover {
+    color: #ff4d4f;
+    background: #fff1f0;
+  }
+}
+.providerSidebarItem:hover .providerDeleteBtn,
+.providerSidebarItem.active .providerDeleteBtn {
+  display: inline-flex;
+}
 
 // 供应商配置内容 - 独立滚动
 .providerContent {
@@ -295,8 +319,9 @@
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
 }
 .modalDialogTitle { font-size: 14px; font-weight: 600; color: #1a1a1a; margin-bottom: 12px; }
+.deleteConfirmText { font-size: 12px; color: #666; line-height: 1.6; }
 .modalDialogActions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
-.cancelBtn, .confirmBtn {
+.cancelBtn, .confirmBtn, .dangerBtn {
   padding: 6px 16px; border-radius: 4px; font-size: 12px; cursor: pointer; transition: all 0.15s;
 }
 .cancelBtn { border: 1px solid #ddd; background: #fff; color: #666;
@@ -305,5 +330,12 @@
 .confirmBtn { border: none; background: @primary; color: #fff;
   &:hover { background: darken(@primary, 8%); }
   &:disabled { background: #ccc; cursor: not-allowed; }
+}
+.dangerBtn {
+  border: none;
+  background: #ff4d4f;
+  color: #fff;
+
+  &:hover { background: darken(#ff4d4f, 8%); }
 }
 .presetProviders { margin-top: 8px; }

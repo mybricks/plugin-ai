@@ -421,9 +421,8 @@ export interface Tool {
  * 重点：一定要保证不能传空字符串，不然有些厂商会挂
  */
 export function serializeToolCallArguments(tc: { args?: any; argsRaw?: string }): string {
-  const raw = tc?.argsRaw ?? tc?.args?._argsRaw;
   // 有 _argsRaw 代表解析失败了，错误的Json到了部分供应商，会直接报错，服了，所以需要用空对象替代，反正我会在role=assistant那里提供原始内容
-  if (raw) return JSON.stringify({});
+  if (tc?.args?._argsRaw) return JSON.stringify({});
   return JSON.stringify(tc.args ?? {});
 }
 

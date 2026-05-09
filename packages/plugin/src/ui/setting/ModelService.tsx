@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { DeleteOutlined } from "@ant-design/icons";
 import {
   ALL_CHANNEL_TYPES,
   ChannelType,
@@ -272,6 +273,7 @@ export const ModelService: React.FC<ModelServiceProps> = ({ value, onChange, onS
   const [editProviderData, setEditProviderData] = useState<ProviderConfig | undefined>();
   const [editModelOpen, setEditModelOpen] = useState(false);
   const [editModelIndex, setEditModelIndex] = useState<number | undefined>();
+  const [deleteProviderId, setDeleteProviderId] = useState<string | undefined>();
 
   // 同步外部 value 变化
   useEffect(() => {
@@ -311,14 +313,23 @@ export const ModelService: React.FC<ModelServiceProps> = ({ value, onChange, onS
     setActiveProviderId(provider.providerId);
   };
 
-  const handleDeleteProvider = (providerId: string) => {
+  const requestDeleteProvider = (providerId: string) => {
+    if (PRESET_PROVIDERS.some((provider) => provider.key === providerId)) return;
+    setDeleteProviderId(providerId);
+  };
+
+  const handleDeleteProvider = () => {
+    if (!deleteProviderId) return;
+    if (PRESET_PROVIDERS.some((provider) => provider.key === deleteProviderId)) return;
+
     setLocalValue((prev: SettingValue) => {
-      const providers = (prev.providers || []).filter((p: ProviderConfig) => p.providerId !== providerId);
+      const providers = (prev.providers || []).filter((p: ProviderConfig) => p.providerId !== deleteProviderId);
       return { ...prev, providers };
     });
-    if (activeProviderId === providerId) {
+    if (activeProviderId === deleteProviderId) {
       setActiveProviderId("openrouter");
     }
+    setDeleteProviderId(undefined);
   };
 
   const handleAddModel = () => {
@@ -556,6 +567,19 @@ export const ModelService: React.FC<ModelServiceProps> = ({ value, onChange, onS
                     <span className={css.providerSidebarLabel}>
                       {provider.label}
                     </span>
+                    {provider.isCustom && (
+                      <button
+                        type="button"
+                        className={css.providerDeleteBtn}
+                        title="删除供应商"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          requestDeleteProvider(provider.key);
+                        }}
+                      >
+                        <DeleteOutlined />
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -686,6 +710,20 @@ export const ModelService: React.FC<ModelServiceProps> = ({ value, onChange, onS
         onSave={handleSaveModel}
         onCancel={() => setEditModelOpen(false)}
       />
+      {deleteProviderId && (
+        <div className={css.modalOverlay} onClick={() => setDeleteProviderId(undefined)}>
+          <div className={css.modalDialog} onClick={(e) => e.stopPropagation()}>
+            <div className={css.modalDialogTitle}>删除供应商</div>
+            <div className={css.deleteConfirmText}>
+              确定删除供应商「{deleteProviderId}」吗？删除后需要保存才会生效。
+            </div>
+            <div className={css.modalDialogActions}>
+              <button className={css.cancelBtn} onClick={() => setDeleteProviderId(undefined)}>取消</button>
+              <button className={css.dangerBtn} onClick={handleDeleteProvider}>删除</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

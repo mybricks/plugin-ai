@@ -28,16 +28,19 @@ export function extractDomSummary(
       .filter(Boolean)
       .join(' ')
       .slice(0, singleTextMax);
-    const role = node.getAttribute('role') || '';
-    const cls = (node.className || '')
-      .toString()
-      .split(' ')
-      .filter((c) => c && c.length < 20)
-      .slice(0, 3)
-      .join(' ');
-    const desc = [tag, cls && `(.${cls})`, role && `[role=${role}]`, text && `"${text}"`]
-      .filter(Boolean)
-      .join(' ');
+    let cls = '';
+    try {
+      const parsed: string[] = JSON.parse(node.getAttribute('data-zone-selector') ?? '[]');
+      cls = parsed.slice(0, 3).join(' ');
+    } catch (_) {
+      // ignore
+    }
+    const comName = node.getAttribute('data-com-name') || '';
+    const parts: string[] = [tag];
+    if (cls) parts.push(`(${cls})`);
+    if (comName) parts.push(` 组件: ${comName}`);
+    if (text) parts.push(`文本: "${text}"`);
+    const desc = parts.join('');
     lines.push('  '.repeat(indent) + desc);
     if (indent < 3) {
       Array.from(node.children)
@@ -92,15 +95,31 @@ export function getListFocusIndex(el: Element): { index: number; total: number }
  * @returns 格式化的字符串
  */
 export function buildFocusInfo(el: Element): string {
-  const title = el.getAttribute('data-zone-title') ?? '';
+  const type = el.getAttribute('data-zone-type') ?? '';
+  let typeDesc = '区域'
+  if (type === 'page') {
+    typeDesc = '页面'
+  } else if (type === 'com') {
+    typeDesc = '组件'
+  } else if (type === 'popup') {
+    typeDesc = '弹层'
+  }
   const comName = el.closest(`[data-com-name]`)?.getAttribute('data-com-name') ?? '';
+  let selectors: string[] = [];
+  try {
+    selectors = JSON.parse(el.getAttribute('data-zone-selector') ?? '[]');
+  } catch (error) {
+    // ignore parse error
+  }
   const domSummary = extractDomSummary(el);
   const listInfo = getListFocusIndex(el);
-  const listInfoLine = listInfo
-    ? `(第 ${listInfo.index} 项 / 共 ${listInfo.total} 项)`
-    : '';
-  return `注意：用户当前聚焦到了一个类名为${title}的dom上面${listInfoLine}，所属React组件为${comName}。
-对于这个dom节点，按照从此节点到子节点的顺序，列出以下摘要信息：
+  const listInfoLine = listInfo ? `（第 ${listInfo.index} 项 / 共 ${listInfo.total} 项）` : '';
+  const metaLines: string[] = [];
+  if (comName) metaLines.push(`所属组件:${comName}`);
+  if (selectors.length > 0) metaLines.push(`(${selectors.join(' ')})`);
+  const metaStr = metaLines.length > 0 ? `\n${metaLines.join('；')}` : '';
+  return `注意：用户当前聚焦到了一个${typeDesc}${listInfoLine}。${metaStr}
+以下是该区域到子节点的 DOM 结构摘要：
 ${domSummary}
   `.trim();
 }
