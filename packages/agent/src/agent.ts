@@ -423,8 +423,11 @@ function assembleMessages(
 
 // ─── 构建工具描述列表 ──────────────────────────────────────────────────────────
 
-function buildToolDescriptors(tools?: Tool[]): ToolDescriptor[] | undefined {
-  return tools?.map(({ name, description, parameters }) => ({
+function buildToolDescriptors(tools?: Tool[]): ToolDescriptor[] {
+  // 即使没有工具也必须返回空数组而非 undefined，
+  // 否则某些大模型 API 会因缺少 tools 字段而报错。
+  if (!tools || tools.length === 0) return [];
+  return tools.map(({ name, description, parameters }) => ({
     name,
     description,
     parameters,
