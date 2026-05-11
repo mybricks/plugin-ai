@@ -9,6 +9,7 @@ import {
   createDeleteTool, DELETE_TOOL_NAME,
   createGrepTool,
   createGlobTool,
+  createSkillTool, USE_SKILL_TOOL_NAME,
 } from "./tools";
 import { getCodeAgentSystemPrompt, type CodeAgentPromptOptions } from "./prompt";
 export type { CodeAgentPromptOptions };
@@ -17,7 +18,7 @@ import { createSubAgentTool, type SubAgentConfig } from "../sub-agent";
 export type { SubAgentConfig };
 
 export type { SkillFile };
-export { resolveSkillMeta };
+export { resolveSkillMeta, USE_SKILL_TOOL_NAME };
 
 // ─── 沙箱接口 ─────────────────────────────────────────────────────────────────
 
@@ -68,9 +69,11 @@ export interface CodeAgentOptions extends Omit<AgentOptions, 'system'> {
    * 技能文件列表（Skills）。
    *
    * 对标 claude-code 的 .claude/skills/ 目录机制：
-   *   - 每个 SkillFile 挂载为虚拟文件（路径前缀 .skills/）
+   *   - 每个 SkillFile.name 作为虚拟目录名（.agent/skills/<name>/）
+   *   - SKILL.md 为必填入口文件
    *   - system prompt 中列出 skills 目录（name + description）
-   *   - LLM 按需通过 read_file 工具读取完整内容
+   *   - LLM 通过 use_skill 工具按需加载 SKILL.md 内容
+   *   - 支持文件可通过 read_file 工具读取（.agent/skills/<name>/<path>）
    *   - 不全量注入，避免 token 浪费
    */
   skills?: SkillFile[];
@@ -87,8 +90,10 @@ export interface CodeAgentOptions extends Omit<AgentOptions, 'system'> {
   subAgents?: SubAgentConfig[];
 }
 
+/** 虚拟 agent 资源路径前缀 */
+const AGENT_PREFIX = ".agent/";
 /** 虚拟 skills 路径前缀 */
-const SKILLS_PREFIX = ".skills/";
+const SKILLS_PREFIX = `${AGENT_PREFIX}skills/`;
 
 // ─── CodeAgent ────────────────────────────────────────────────────────────────
 
@@ -116,10 +121,12 @@ export class CodeAgent extends Agent {
       ? {
           getFiles: async () => {
             const realFiles = await sandbox.getFiles();
-            const skillFiles = (skills ?? []).map((s) => ({
-              path: `${SKILLS_PREFIX}${s.path}`,
-              content: s.content,
-            }));
+            const skillFiles = (skills ?? []).flatMap((s) =>
+              s.files.map((f) => ({
+                path: `${SKILLS_PREFIX}${s.name}/${f.path}`,
+                content: f.content,
+              }))
+            );
             return [...realFiles, ...skillFiles];
           },
           updateFiles: sandbox.updateFiles.bind(sandbox),
@@ -161,6 +168,12 @@ export class CodeAgent extends Agent {
       // 内置沙箱工具在前，外部注入工具（如 check_design_status）在后
       tools: [...sandboxTools, ...(agentOptions.tools ?? [])],
     });
+
+    // ── 注册 use_skill 工具（需要 skills 列表，在 super() 之后处理）───────────────
+    if (skills?.length) {
+      const skillTool = createSkillTool(skills);
+      this.options.tools = [...(this.options.tools ?? []), skillTool];
+    }
 
     // ── 注册 call-sub-agent 工具（需要 this，在 super() 之后处理）─────────────────
     // 用懒引用 () => this 避免在 super() 前访问 this

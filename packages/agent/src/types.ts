@@ -86,6 +86,7 @@ export interface TurnSender {
   userId?: string;
   name?: string;
   avatar?: string;
+  [key: string]: any;
 }
 
 // ─── TurnRecord（SSE 事件粒度的完整调用记录） ─────────────────────────────────

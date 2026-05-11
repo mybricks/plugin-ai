@@ -3,6 +3,7 @@ import { WRITE_TOOL_NAME } from "./tools/write";
 import { MULTI_WRITE_TOOL_NAME } from './tools/multi-write';
 import { EDIT_TOOL_NAME } from "./tools/edit";
 import { MULTI_EDIT_TOOL_NAME } from "./tools/multi-edit";
+import { USE_SKILL_TOOL_NAME } from "./tools/skill";
 import type { SkillFile } from "./skills";
 import { resolveSkillMeta } from "./skills";
 
@@ -68,26 +69,33 @@ function getUsingToolsSection(usingTools?: string): string {
 /**
  * 生成 skills 目录节。
  *
- * 对标 claude-code SkillTool/prompt.ts 的格式：
- *   - 只列出 name + description（+ whenToUse）
- *   - 不全量注入内容，LLM 按需通过 read_file 读取
- *   - 格式：`- .skills/<path>：<name> — <description> - <whenToUse>`
+ * 格式：每条 skill 结构化列出 name（SkillFile.name，作为索引 key）+ description + whenToUse。
+ * 不全量注入内容，LLM 按需通过 use_skill 工具加载。
  */
 function getSkillsSection(skills?: SkillFile[]): string {
   if (!skills || skills.length === 0) return "";
 
   const lines = skills.map((s) => {
-    const { name, description, whenToUse } = resolveSkillMeta(s);
-    const virtualPath = `.skills/${s.path}`;
-    const descPart = whenToUse ? `${description} - ${whenToUse}` : description;
-    return ` - \`${virtualPath}\`\n   名称：${name}\n   说明：${descPart}`;
+    const skillMd = s.files.find((f) => f.path === "SKILL.md");
+    if (!skillMd) {
+      return `- name: ${s.name}`;
+    }
+    const { description, whenToUse } = resolveSkillMeta(skillMd.content, s.name);
+    let line = `- name: ${s.name}\n  description: ${description}`;
+    if (whenToUse) {
+      line += `\n  when_to_use: ${whenToUse}`;
+    }
+    return line;
   });
 
   return `# 可用技能文件 (Skills)
+以下是可用的技能列表。当任务涉及相关场景时，使用 \`${USE_SKILL_TOOL_NAME}\` 工具调用指定技能获取完整指导：
 
-以下技能文件提供了项目规范和工作流指导。当任务涉及相关场景时，使用 \`${READ_TOOL_NAME}\` 工具读取对应文件获取完整指导：
+${lines.join("\n")}
 
-${lines.join("\n\n")}`;
+重要：
+- When a skill matches the user's request, this is a BLOCKING REQUIREMENT...
+- NEVER mention a skill without actually calling this tool`;
 }
 
 // ─── 输出风格 ─────────────────────────────────────────────────────────────────
