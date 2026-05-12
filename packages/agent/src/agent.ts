@@ -5,6 +5,7 @@ import type { CompactRecord, Message, History, Tool, TurnRecord, ToolCallRecord,
 import { turnsToMessages, bindHistory, getLLMIterations, hasNoToolCalls, serializeToolCallArgumentsFromIter, serializeToolCallArgumentsFromLLMResult } from "./types";
 import { maskMessages, computeHandoffTurnIds, type MaskOptions } from "./mask";
 import { wrapRequestWithRetry, type RetryOptions } from "./retry";
+import { CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
 
 export { AgentEvents };
 export type { Message, History, Tool, TurnRecord, ToolCallRecord, WarmupIter };
@@ -1307,13 +1308,13 @@ export class Agent {
    *   - 全量继承父 turns 历史
    */
   createSubAgent(config: import("./sub-agent").SubAgentConfig): ForkAgent {
-    const fork = this.createFork({
-      tools: [],
+    const baseTools = config.tools ?? (this.options.tools ?? []);
+    const tools = baseTools.filter((t: Tool) => t.name !== CALL_SUB_AGENT_TOOL_NAME);
+    return this.createFork({
+      tools,
       ...(config.system !== undefined ? { system: config.system } : {}),
       ...(config.aiRole !== undefined ? { aiRole: config.aiRole } : {}),
     });
-    (fork as any).options.maxSteps = 1;
-    return fork;
   }
 
   // ─── 内部 after-turn 钩子 ────────────────────────────────────────────────
