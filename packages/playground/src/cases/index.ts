@@ -56,7 +56,7 @@ import {
   initProjectLongWaitCase,
   initProjectRetryCase,
 } from "./init-project";
-import { multiEditSameFileCase } from "./multi-edit";
+import { multiEditSameFileCase, multiEditPartialSuccessCase } from "./multi-edit";
 import { editDoomLoopCase, editNoDoomLoopCase } from "./edit-doom-loop";
 import { editFewLinesCase } from "./edit-few-lines";
 import { summaryBasicCase, summaryEmptyResponseCase } from "./summary";
@@ -84,6 +84,7 @@ export const ALL_CASES: TestCase[] = [
   networkErrorAfterStreamCase,
   networkErrorAfterToolCallNoHistoryCase,
   compactMidTurnErrorRetryCase,
+  multiEditPartialSuccessCase,
   // ─── 网络中断 ───────────────────────────────────
   networkErrorDelayedCase,
   toolCallArgsMidErrorCase,

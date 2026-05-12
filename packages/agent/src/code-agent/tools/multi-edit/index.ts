@@ -159,27 +159,23 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
         results.push({ path: edit.path, strategy: result.strategy });
       }
 
-      // 检查是否有失败
-      const errors = results.filter((r) => r.error);
-      if (errors.length > 0) {
-        const errorMessages = errors.map((e) => `${e.path}: ${e.error}`).join("\n");
-        throw new ToolValidationError(`Some edits failed:\n${errorMessages}`);
+      // 批量写入成功的编辑（部分成功也写入）
+      if (updates.size > 0) {
+        const filesToWrite = Array.from(updates.entries()).map(([path, content]) => ({ path, content }));
+        try {
+          await adapter.updateFiles(filesToWrite);
+        } catch (err) {
+          throw new ToolValidationError(
+            `Failed to apply edits: ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
       }
 
-      // 批量写入更新后的文件（去重后）
-      const filesToWrite = Array.from(updates.entries()).map(([path, content]) => ({ path, content }));
-      try {
-        await adapter.updateFiles(filesToWrite);
-      } catch (err) {
-        throw new ToolValidationError(
-          `Failed to write files: ${err instanceof Error ? err.message : String(err)}`
-        );
-      }
-
-      // 检查每个 old_str 行数是否过少
+      // 检查每个 old_str 行数是否过少（仅对成功的编辑）
       const warnings: string[] = [];
       for (let i = 0; i < params.edits.length; i++) {
         const edit = params.edits[i];
+        if (results[i]?.error) continue;
         const fileContent = fileMap.get(edit.path);
         if (fileContent && edit.old_str) {
           const fileLines = countLines(fileContent);
@@ -190,23 +186,36 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
         }
       }
 
-      const summaries = results.map((r) => ({
-        path: r.path,
-        strategy: r.strategy,
-      }));
+      const succeeded = results.filter((r) => !r.error);
+      const errors = results.filter((r) => r.error);
 
-      let output = summaries
-        .map((s) => `${s.path} (${s.strategy ?? "unknown"})`)
-        .join("\n");
-      output = `Files edited:\n${output}`;
+      const lines: string[] = [];
+
+      if (succeeded.length > 0) {
+        lines.push("Succeeded:");
+        for (const r of succeeded) {
+          lines.push(r.path);
+        }
+      }
+
+      if (errors.length > 0) {
+        lines.push("Failed:");
+        for (const r of errors) {
+          lines.push(`${r.path}: ${r.error}`);
+        }
+      }
 
       if (warnings.length > 0) {
-        output = `${output}\nWarning: ${warnings.join("; ")}. Make sure the replacement is accurate to avoid unintended changes.`;
+        lines.push(`Warning: ${warnings.join("; ")}. Make sure the replacement is accurate to avoid unintended changes.`);
       }
+
+      const output = lines.join("\n");
 
       return {
         output,
-        metadata: { edits: summaries },
+        metadata: {
+          edits: results.map((r) => ({ path: r.path, error: r.error })),
+        },
       };
     },
   };
