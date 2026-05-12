@@ -268,18 +268,19 @@ export interface BatchItemProps {
   content?: string;
   diffMode?: { oldStr: string; newStr: string };
   streaming?: boolean;
+  error?: string;
 }
 
-export const BatchItem = ({ tool, path, name, content, diffMode, streaming }: BatchItemProps) => {
+export const BatchItem = ({ tool, path, name, content, diffMode, streaming, error }: BatchItemProps) => {
   const [collapsed, setCollapsed] = useState(false);
   const [diffBroken, setDiffBroken] = useState(false);
   const lang = detectLang(path);
   const lineCount = content ? content.split("\n").length : 0;
   const isError = tool.status === "error";
 
-  const hasBody = !!(diffMode || content);
-  const isCollapsed = streaming ? false : (collapsed || diffBroken);
-  const canToggle = hasBody && !streaming && !diffBroken;
+  const hasBody = !!(diffMode || content) && !error;
+  const isCollapsed = streaming ? false : (collapsed || diffBroken || !!error);
+  const canToggle = hasBody && !streaming && !diffBroken && !error;
 
   const headerCls = [
     css["batch-item-header"],
@@ -293,11 +294,11 @@ export const BatchItem = ({ tool, path, name, content, diffMode, streaming }: Ba
         onClick={() => canToggle && setCollapsed((prev: boolean) => !prev)}
       >
         <span className={css["batch-item-icon"]}>
-          {streaming ? <Loading /> : <Success />}
+          {streaming ? <Loading /> : error ? <ErrorIcon /> : <Success />}
         </span>
         {streaming
           ? <span className={css["batch-item-filename"]}><TextShimmer>{name + "..."}</TextShimmer></span>
-          : <span className={css["batch-item-filename"]}>{name}</span>}
+          : <span className={css["batch-item-filename"]} style={error ? { color: "#c0392b" } : undefined}>{name}</span>}
         {lineCount > 0 && (
           <span className={css["batch-item-lines"]}>{lineCount} 行</span>
         )}
@@ -329,9 +330,10 @@ export interface BatchGroupProps {
   verb: string;
   items: React.ReactNode;
   count: number;
+  hasPartialError?: boolean;
 }
 
-export const BatchGroup = ({ tool, icon, verb, items, count }: BatchGroupProps) => {
+export const BatchGroup = ({ tool, icon, verb, items, count, hasPartialError }: BatchGroupProps) => {
   const isError = tool.status === "error";
   const isPending = tool.status === "pending";
 
@@ -345,7 +347,7 @@ export const BatchGroup = ({ tool, icon, verb, items, count }: BatchGroupProps) 
     <div className={css["batch-group"]}>
       <div className={css["batch-group-header"]}>
         <span className={css["batch-group-header-icon"]}>
-          {isPending ? <Loading /> : isError ? <ErrorIcon /> : icon}
+          {isPending ? <Loading /> : isError ? <ErrorIcon /> : hasPartialError ? <ErrorIcon /> : icon}
         </span>
         {isPending
           ? <span className={css["batch-group-header-title"]}><TextShimmer>{headerTitle}</TextShimmer></span>
@@ -353,7 +355,7 @@ export const BatchGroup = ({ tool, icon, verb, items, count }: BatchGroupProps) 
         {metaLabel && <span className={css["batch-group-header-meta"]}>{metaLabel}</span>}
         <Duration tool={tool} />
       </div>
-      {!isError && (
+      {(hasPartialError || !isError) && (
         <div className={css["batch-group-body"]}>
           {items}
         </div>

@@ -42,6 +42,13 @@ export interface SubAgentConfig {
   aiRole?: string;
 
   /**
+   * 该 SubAgent 的工具列表。
+   * 不传则继承父 Agent 的工具列表（自动过滤掉 call-sub-agent 工具本身）。
+   * 传入则使用指定工具列表（同样会过滤掉 call-sub-agent）。
+   */
+  tools?: Tool[];
+
+  /**
    * 自定义执行逻辑。
    * 子Agent完全控制执行流程，包括进度发送、事件监听、结果格式化。
    *
