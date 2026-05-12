@@ -45,6 +45,8 @@
   .chat-bubble-time {
     display: flex;
     justify-content: center;
+    user-select: none;
+    cursor: default;
     font-size: 11px;
     color: var(--mybricks-text-color-main, #333);
     opacity: 0.45;
@@ -56,6 +58,8 @@
     align-items: center;
     gap: 4px;
     padding-bottom: 3px;
+    user-select: none;
+    cursor: default;
 
     .chat-bubble-header-avatar {
       display: inline-flex;
@@ -80,7 +84,7 @@
   }
 
   .chat-message-container {
-    user-select: text;
+    cursor: default;
     font-size: 12px;
     border-radius: 6px;
     padding: 0;
@@ -94,17 +98,22 @@
 
   // 用户消息气泡样式
   .user-message {
+    user-select: text;
+    cursor: text;
     margin-top: 6px;
     max-width: calc(100% - 32px);
     background: var(--mybricks-bg-color-main, #FFF);
     color: var(--mybricks-text-color-main, #333);
     border-radius: 12px 2px 12px 12px;
     padding: 8px 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
 
     span {
       font-size: 12px;
       line-height: 20px;
       white-space: pre-wrap;
+      word-break: break-word;
       color: var(--mybricks-text-color-main, #333);
     }
 
@@ -284,6 +293,8 @@
 .message-content {
   width: 100%;
   overflow: hidden;
+  user-select: text;
+  cursor: text;
 }
 
 .planning-elapsed {

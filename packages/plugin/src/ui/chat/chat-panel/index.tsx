@@ -87,6 +87,16 @@ const ChatPanel = ({
     return unsubSession;
   }, [agent, syncAgent, subscribeSession]);
 
+  // aiViewDisplay 时自动聚焦输入框
+  useEffect(() => {
+    if (!agent || disabled) return;
+    senderRef.current?.focus()
+    const unDisplay = context.events.on("aiViewDisplay", () => {
+      setTimeout(() => senderRef.current?.focus());
+    });
+    return unDisplay;
+  }, [agent, disabled]);
+
   // 监听 aiQueue loading / queue 状态
   useEffect(() => {
     const unL = context.aiQueue.events.on("loading", (d) => {

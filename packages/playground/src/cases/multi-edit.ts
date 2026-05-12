@@ -89,6 +89,72 @@ export default function HomePage() {
   },
 ];
 
+/**
+ * 部分编辑成功场景：multi_edit 中部分编辑匹配成功，部分匹配失败。
+ * 测试工具在混合结果下的输出格式和文件写入行为。
+ */
+export const multiEditPartialSuccessCase: TestCase = {
+  id: "multi-edit-partial-success",
+  name: "multi_edit 部分编辑成功",
+  group: "工具调用",
+  priority: "P0",
+  description: "LLM 调用 multi_edit 对多个文件进行编辑，其中部分 old_str 匹配成功，部分匹配失败，模拟部分编辑成功的混合结果场景",
+  expectedBehavior: "工具卡片显示 Succeeded/Failed 混合结果，FS Viewer 中仅成功编辑的文件内容已更新，失败编辑的文件保持原样。LLM 后续可根据失败信息修正重试。",
+  initialFiles,
+  initialTurns: [],
+  request: makeScriptedRequest([
+    {
+      type: "tool_calls",
+      calls: [
+        {
+          id: "toolu_bdrk_partial_success_001",
+          name: "multi_edit",
+          args: {
+            edits: [
+              {
+                // ✅ 成功：old_str 完全匹配 index.less 中的 .toolbar 样式
+                path: "pages/HomePage/index.less",
+                old_str: ".toolbar {\n  display: flex;\n  gap: 8px;\n}",
+                new_str: ".toolbar {\n  display: flex;\n  gap: 12px;\n  align-items: center;\n}",
+              },
+              {
+                // ❌ 失败：old_str 不匹配（.container padding 值被改错）
+                path: "pages/HomePage/index.less",
+                old_str: ".container {\n  padding: 20px;\n}",
+                new_str: ".container {\n  padding: 24px;\n}",
+              },
+              {
+                // ✅ 成功：old_str 完全匹配 index.jsx 中的标题
+                path: "pages/HomePage/index.jsx",
+                old_str: "        <h1>首页</h1>",
+                new_str: "        <h1>首页标题</h1>",
+              },
+              {
+                // ❌ 失败：文件不存在
+                path: "pages/HomePage/notExist.jsx",
+                old_str: "import React from 'react';",
+                new_str: "import React from 'react';\nimport styles from './index.less';",
+              },
+            ],
+          },
+        },
+      ],
+      delayMs: 400,
+    },
+    {
+      type: "content",
+      chunks: [
+        "部分编辑已完成：",
+        "\n\n✅ 成功：.toolbar 样式更新、首页标题修改",
+        "\n❌ 失败：.container padding 不匹配、notExist.jsx 文件不存在",
+        "\n\n需要重新读取文件确认内容后再修正失败的编辑。",
+      ],
+      ttftMs: 300,
+      chunkDelayMs: 60,
+    },
+  ], { loop: true }),
+};
+
 export const multiEditSameFileCase: TestCase = {
   id: "multi-edit-same-file",
   name: "multi_edit 同文件多编辑",

@@ -4,11 +4,11 @@ import pkg from "../../../package.json";
 console.log(`%c ${pkg.name} %c@${pkg.version}`, `color:#FFF;background:#fa6400`, ``, ``);
 
 import { CodeAgent, IDBHistory } from "../../agent/src";
-import type { SkillFile } from "../../agent/src";
+import type { SkillFile, TurnSender } from "../../agent/src";
 import { createRequestAsStream, createOnUpload, LLMProviders } from "../../request/src";
 import type { RequestAsStreamFn, ProviderConfig } from "../../request/src";
 import { resolvePromptOptions, type PromptSections } from "./prompts";
-import { CODE_SEARCH_USING_TOOLS_SECTION, CODE_SEARCH_EXAMPLES_SECTION } from "./prompts/mybricks";
+import { DEFAULT_PLUGIN_SKILLS } from "./skills/default";
 
 import { context } from "./context";
 import { setupSandbox } from "./sandbox";
@@ -65,7 +65,7 @@ export interface PluginAIParams {
   };
   /** agents.md 内容，对标 CLAUDE.md，注入到系统 prompt 末尾 */
   agentsMd?: string;
-  /** 技能文件列表，挂载为虚拟 .skills/ 文件，LLM 按需读取 */
+  /** 技能文件列表，挂载为虚拟 .agent/skills/ 目录，LLM 通过 use_skill 工具按需加载 */
   skills?: SkillFile[];
   /** 覆盖内置系统提示词各节，按 key 深度合并，未提供的 key 保留 MYBRICKS_PROMPT_SECTIONS 默认值 */
   promptSections?: PromptSections;
@@ -89,14 +89,10 @@ export interface PluginAIParams {
   llm?: {
     providers?: import("./ui/setting").ProviderConfig[];
   };
-  /**
-   * @experimental 是否开启代码搜索模式（默认 false）。此参数为过渡阶段配置，后续可能移除。
-   * - false（默认）：每次发送消息时将全量代码文件内容注入上下文。
-   * - true：仅注入文件路径列表，LLM 通过 grep/glob 工具按需读取代码内容。
-   */
-  codeSearch?: boolean;
   /** 透传给 CodeAgent 的历史记录实现，不传时使用内置 IDBHistory */
   history?: import("../../agent/src").History;
+  /** 消息发送者信息，注入到每条用户消息中，UI 展示时优先使用 */
+  sender?: TurnSender;
 }
 
 export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<string, any> {
@@ -114,20 +110,12 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     tools,
     componentRuntime,
     llm,
-    codeSearch = true,
-    history
+    history,
+    sender
   } = params;
 
-  // TODO：以后 codeSearch配置 要删掉，开启全量，现在是过渡阶段，
-  const codeSearchPromptSections: PromptSections = {
-    agent: {
-      usingToolsSection: CODE_SEARCH_USING_TOOLS_SECTION,
-    },
-    developeGuide: {
-      examplesSection: CODE_SEARCH_EXAMPLES_SECTION,
-    }
-  };
-  const mergedPromptSections = resolvePromptOptions(promptSections ? promptSections : (codeSearch ? codeSearchPromptSections : {}));
+  const mergedPromptSections = resolvePromptOptions(promptSections);
+  const mergedSkills = [...DEFAULT_PLUGIN_SKILLS, ...(skills ?? [])];
 
   // ─── 处理 LLMProviders 注入 ────────────────────────────────────────────────
   let effectiveRequest: RequestAsStreamFn;
@@ -210,14 +198,14 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
   setupSandbox({
     requestAsStream,
     agentsMd,
-    skills,
+    skills: mergedSkills,
     promptSections: mergedPromptSections,
     tools,
     availableLibraries: codingConfig?.availableLibraries ?? [],
     themes: codingConfig?.themes ?? [],
     componentRuntime,
-    codeSearch,
-    history
+    history,
+    sender
   });
 
   return {

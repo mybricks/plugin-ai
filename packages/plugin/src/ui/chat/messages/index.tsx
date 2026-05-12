@@ -348,7 +348,24 @@ const BubbleMessage = ({ message }: { message: string }) => {
 
 function formatTime(ts: number): string {
   const d = new Date(ts);
-  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+  const now = new Date();
+  const time = `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+  const isSameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+
+  if (isSameDay) {
+    return time;
+  }
+
+  const date = `${d.getMonth() + 1}月${d.getDate()}日`;
+
+  if (d.getFullYear() === now.getFullYear()) {
+    return `${date} ${time}`;
+  }
+
+  return `${d.getFullYear()}年${date} ${time}`;
 }
 
 // ─── AutoScroller ─────────────────────────────────────────────────────────────

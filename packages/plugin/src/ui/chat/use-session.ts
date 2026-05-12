@@ -75,21 +75,36 @@ export function useSession(agent: Agent | undefined) {
       setMessages((prev) => prev.map((r) => (r.id === id ? updater(r) : r)));
     };
 
-    const updateLastIter = (
+    /** 当前 LLM iter 数量（不含 WarmupIter） */
+    const countLLMIters = (iters: MessageRecord["iterations"]): number =>
+      iters.filter((it) => (it as any).type !== "warmup").length;
+
+    /** 从后往前找最后一个 LLM iter 的真实 index（跳过 WarmupIter），返回 -1 表示不存在 */
+    const findLastLLMIterIndex = (iters: MessageRecord["iterations"]): number => {
+      for (let i = iters.length - 1; i >= 0; i--) {
+        if ((iters[i] as any).type !== "warmup") return i;
+      }
+      return -1;
+    };
+
+    /** 更新最后一个 LLM iter */
+    const updateLastLLMIter = (
       updater: (iter: MessageRecord["iterations"][number]) => MessageRecord["iterations"][number]
     ) =>
       update((r) => {
-        if (r.iterations.length === 0) return r;
+        const idx = findLastLLMIterIndex(r.iterations);
+        if (idx < 0) return r;
         const iters = [...r.iterations];
-        iters[iters.length - 1] = updater(iters[iters.length - 1]);
+        iters[idx] = updater(iters[idx]);
         return { ...r, iterations: iters };
       });
 
-    const updateLastIterTool = (
+    /** 更新最后一个 LLM iter 中指定 callId 的 tool */
+    const updateLastLLMIterTool = (
       callId: string,
       toolUpdater: (t: MessageRecord["iterations"][number]["toolCalls"][number]) => MessageRecord["iterations"][number]["toolCalls"][number]
     ) =>
-      updateLastIter((iter) => ({
+      updateLastLLMIter((iter) => ({
         ...iter,
         toolCalls: iter.toolCalls.map((t) => (t.callId === callId ? toolUpdater(t) : t)),
       }));
@@ -112,11 +127,8 @@ export function useSession(agent: Agent | undefined) {
           userAttachments,
           ...(meta ? { meta } : {}),
           ...(sender ? { sender } : {}),
-          content: "",
-          thinkingContent: "",
           status: "pending",
           iterations: [],
-          usage: undefined,
         };
         setMessages((prev) => [...prev, record]);
         opts?.onTurnStart?.();
@@ -133,22 +145,26 @@ export function useSession(agent: Agent | undefined) {
         );
       }),
 
-      a.events.on("llm:start", ({ startTime }) => {
+      a.events.on("llm:start", ({ step, startTime }) => {
         pendingContent = "";
         pendingThinking = "";
-        update((r) => ({
-          ...r,
-          iterations: [...r.iterations, { content: "", toolCalls: [], startTime }],
-        }));
+        update((r) => {
+          // 续跑场景：第 step 个 LLM iter 已存在（从历史恢复），不重复 push
+          if (countLLMIters(r.iterations) >= step) return r;
+          return {
+            ...r,
+            iterations: [...r.iterations, { content: "", toolCalls: [], startTime }],
+          };
+        });
       }),
 
       a.events.on("llm:content", ({ content, thinkingContent }) => {
         pendingContent = content;
         if (thinkingContent !== undefined) pendingThinking = thinkingContent;
-        updateLastIter((iter) => ({
+        updateLastLLMIter((iter) => ({
           ...iter,
           content: pendingContent,
-          responseTime: iter.responseTime ?? Date.now(),
+          responseTime: (iter as any).responseTime ?? Date.now(),
           ...(thinkingContent !== undefined ? { thinkingContent: pendingThinking } : {}),
         }));
       }),
@@ -159,16 +175,17 @@ export function useSession(agent: Agent | undefined) {
           pendingContent = "";
           pendingThinking = "";
           update((r) => {
+            const idx = findLastLLMIterIndex(r.iterations);
             const iters = [...r.iterations];
-            if (iters.length > 0) {
-              iters[iters.length - 1] = { ...iters[iters.length - 1], endTime, content: finalContent };
+            if (idx >= 0) {
+              iters[idx] = { ...iters[idx], endTime, content: finalContent };
             }
-            return { ...r, status: "success", content: finalContent, iterations: iters };
+            return { ...r, status: "success", iterations: iters };
           });
           pendingIdRef.current = null;
           opts?.onTurnEnd?.();
         } else {
-          updateLastIter((iter) => ({ ...iter, endTime }));
+          updateLastLLMIter((iter) => ({ ...iter, endTime }));
           pendingContent = "";
           pendingThinking = "";
         }
@@ -228,25 +245,25 @@ export function useSession(agent: Agent | undefined) {
 
       a.events.on("tool:args", ({ callId, name, content }) => {
         const toolTitle = a.getTools().find(t => t.name === name)?.title;
-        update((r) => {
-          if (r.iterations.length === 0) return r;
-          const iters = [...r.iterations];
-          const last = { ...iters[iters.length - 1] };
-          const existing = last.toolCalls.find((t) => t.callId === callId);
+        updateLastLLMIter((iter) => {
+          const existing = iter.toolCalls.find((t) => t.callId === callId);
           if (existing) {
-            last.toolCalls = last.toolCalls.map((t) => {
-              if (t.callId !== callId) return t;
-              const partialArgs = tryParsePartialArgs(content);
-              return { ...t, argsContent: content, ...(partialArgs ? { args: partialArgs } : {}) };
-            });
-          } else {
-            last.toolCalls = [
-              ...last.toolCalls,
-              { callId, name, title: toolTitle, args: {}, status: "pending" as const, execStartTime: Date.now(), execEndTime: 0, argsContent: content },
-            ];
+            return {
+              ...iter,
+              toolCalls: iter.toolCalls.map((t) => {
+                if (t.callId !== callId) return t;
+                const partialArgs = tryParsePartialArgs(content);
+                return { ...t, argsContent: content, ...(partialArgs ? { args: partialArgs } : {}) };
+              }),
+            };
           }
-          iters[iters.length - 1] = last;
-          return { ...r, iterations: iters };
+          return {
+            ...iter,
+            toolCalls: [
+              ...iter.toolCalls,
+              { callId, name, title: toolTitle, args: {}, status: "pending" as const, execStartTime: Date.now(), execEndTime: 0, argsContent: content },
+            ],
+          };
         });
       }),
 
@@ -256,47 +273,47 @@ export function useSession(agent: Agent | undefined) {
         const argsRaw = args && typeof args === "object" && "_argsRaw" in args
           ? String((args as any)._argsRaw)
           : undefined;
-        update((r) => {
-          if (r.iterations.length === 0) return r;
-          const iters = [...r.iterations];
-          const last = { ...iters[iters.length - 1] };
-          const existing = last.toolCalls.find((t) => t.callId === callId);
+        updateLastLLMIter((iter) => {
+          const existing = iter.toolCalls.find((t) => t.callId === callId);
           if (existing) {
-            last.toolCalls = last.toolCalls.map((t) =>
-              t.callId === callId
-                ? {
-                    ...t,
-                    title: toolTitle,
-                    ...(argsRaw !== undefined
-                      ? { argsContent: t.argsContent ?? argsRaw }
-                      : args !== undefined
-                        ? { args, argsContent: undefined }
-                        : {}),
-                    execStartTime: startTime,
-                  }
-                : t
-            );
-          } else {
-            last.toolCalls = [
-              ...last.toolCalls,
-              { callId, name, title: toolTitle, args: argsRaw !== undefined ? {} : args ?? {}, status: "pending" as const, execStartTime: startTime, execEndTime: 0, ...(argsRaw !== undefined ? { argsContent: argsRaw } : {}) },
-            ];
+            return {
+              ...iter,
+              toolCalls: iter.toolCalls.map((t) =>
+                t.callId === callId
+                  ? {
+                      ...t,
+                      title: toolTitle,
+                      ...(argsRaw !== undefined
+                        ? { argsContent: t.argsContent ?? argsRaw }
+                        : args !== undefined
+                          ? { args, argsContent: undefined }
+                          : {}),
+                      execStartTime: startTime,
+                    }
+                  : t
+              ),
+            };
           }
-          iters[iters.length - 1] = last;
-          return { ...r, iterations: iters };
+          return {
+            ...iter,
+            toolCalls: [
+              ...iter.toolCalls,
+              { callId, name, title: toolTitle, args: argsRaw !== undefined ? {} : args ?? {}, status: "pending" as const, execStartTime: startTime, execEndTime: 0, ...(argsRaw !== undefined ? { argsContent: argsRaw } : {}) },
+            ],
+          };
         });
       }),
 
       a.events.on("tool:result", ({ callId, result, endTime }) => {
-        updateLastIterTool(callId, (t) => ({ ...t, status: "success", execEndTime: endTime, result }));
+        updateLastLLMIterTool(callId, (t) => ({ ...t, status: "success", execEndTime: endTime, result }));
       }),
 
       a.events.on("tool:error", ({ callId, error, endTime }) => {
-        updateLastIterTool(callId, (t) => ({ ...t, status: "error", execEndTime: endTime, error }));
+        updateLastLLMIterTool(callId, (t) => ({ ...t, status: "error", execEndTime: endTime, error }));
       }),
 
       a.events.on("tool:progress", ({ callId, data }) => {
-        updateLastIterTool(callId, (t) => ({ ...t, progress: data }));
+        updateLastLLMIterTool(callId, (t) => ({ ...t, progress: data }));
       }),
 
       // warmup:start → push WarmupIter（status: loading）到 iterations

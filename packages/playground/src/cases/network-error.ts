@@ -7,6 +7,7 @@ export const networkErrorCase: TestCase = {
   id: "network-error-immediate",
   name: "立即报错",
   group: "网络中断",
+  priority: "P0",
   description: "模拟发送消息后立刻收到网络错误（如接口 500 / DNS 解析失败）",
   expectedBehavior:
     "消息气泡进入 error 状态，显示错误信息，出现重试按钮。turn:error 事件触发。",
@@ -64,14 +65,52 @@ const toolThenErrorHistory = [
 
 export const networkErrorAfterStreamCase: TestCase = {
   id: "network-error-after-tool-call",
-  name: "工具调用后第二次请求报错",
+  name: "工具调用第二次请求报错（从历史记录里读取）",
   group: "网络中断",
+  priority: "P0",
   description:
     "已预设历史：第 1 步工具调用成功，第 2 步 LLM 请求报错。可直接点击重试，重试后成功返回内容。",
   expectedBehavior:
     "ChatPanel 显示一个 error 气泡（含成功的工具卡片 + error 提示），点击重试按钮后正常返回内容。",
   initialTurns: toolThenErrorHistory,
   request: makeScriptedRequest([
+    {
+      type: "content",
+      chunks: ["重试成功！文件内容如下：", "export default function App() { return <div>Hello</div>; }", "这是一个简单的 React 组件。"],
+      ttftMs: 400,
+      chunkDelayMs: 60,
+    },
+  ]),
+};
+
+/**
+ * 工具调用第二次请求报错（不从历史记录里读取）
+ *
+ * 流程：
+ *   1. 第一次 LLM 调用返回工具调用（read_file），工具执行成功
+ *   2. 第二次 LLM 调用报错（500）
+ */
+export const networkErrorAfterToolCallNoHistoryCase: TestCase = {
+  id: "network-error-after-tool-call-no-history",
+  name: "工具调用第二次请求报错",
+  group: "网络中断",
+  priority: "P0",
+  description:
+    "完整流程：第 1 步 LLM 返回 read_file 工具调用并执行成功，第 2 步 LLM 请求报错。需要从头开始运行。",
+  expectedBehavior:
+    "先显示 read_file 工具卡片并成功执行，随后消息气泡进入 error 状态，显示错误信息和重试按钮。",
+  initialTurns: [],
+  request: makeScriptedRequest([
+    {
+      type: "tool_calls",
+      calls: [{ id: "call_read_1", name: "read_file", args: { path: "src/App.tsx" } }],
+      delayMs: 300,
+    },
+    {
+      type: "error",
+      error: new Error("Request failed with status 500: Internal Server Error"),
+      delayMs: 200,
+    },
     {
       type: "content",
       chunks: ["重试成功！文件内容如下：", "export default function App() { return <div>Hello</div>; }", "这是一个简单的 React 组件。"],

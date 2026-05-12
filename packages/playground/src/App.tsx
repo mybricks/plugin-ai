@@ -54,8 +54,12 @@ function ThemeToggle({ mode, onCycle }: { mode: ThemeMode; onCycle: () => void }
   );
 }
 
-const GROUPS = groupCases(ALL_CASES);
+const P0_CASES = ALL_CASES.filter(c => c.priority === "P0");
+const P0_GROUPS = groupCases(P0_CASES);
+const OTHER_CASES = ALL_CASES.filter(c => c.priority !== "P0");
+const OTHER_GROUPS = groupCases(OTHER_CASES);
 const GROUP_ICONS: Record<string, string> = {
+  "P0 核心场景": "🔴",
   "网络中断": "🌐",
   "工具调用": "🔧",
   "多轮 ReAct": "🔁",
@@ -289,7 +293,10 @@ export default function App() {
             </div>
           )}
           <div className="pg-sidebar-body">
-            {Object.entries(GROUPS).map(([group, cases]) => (
+            {[
+              ...Object.entries(P0_GROUPS),
+              ...Object.entries(OTHER_GROUPS),
+            ].map(([group, cases]) => (
               <div key={group} className="pg-group">
                 <div className="pg-group-label">
                   {GROUP_ICONS[group] ?? "📁"} {group}
@@ -297,9 +304,10 @@ export default function App() {
                 {cases.map((c) => (
                   <button
                     key={c.id}
-                    className={`pg-case-btn${activeCase?.id === c.id ? " active" : ""}`}
+                    className={`pg-case-btn${activeCase?.id === c.id ? " active" : ""}${c.priority === "P0" ? " pg-p0" : ""}`}
                     onClick={() => handleSelectCase(c)}
                   >
+                    {c.priority === "P0" && <span className="pg-priority-badge">{c.priority}</span>}
                     {c.name}
                   </button>
                 ))}
