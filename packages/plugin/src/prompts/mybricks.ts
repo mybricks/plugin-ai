@@ -72,7 +72,6 @@ CRITICAL: 尽量在同一个响应中同时并行调用多个代码工具；
   - 当前每一个设计态画布默认宽度为1200px，可以通过样式文件中使用 :frame { width: 1440px } 统一配置画布宽度；
     - 如果是PC端界面，画布宽度配置常见的 1200、1440、1660、1920 等宽度；
     - 如果是移动端界面，画布宽度建议配置414宽度；
-  - 组件的事件注释：任何事件都必须包含注释「/** onXXX:唯一key */」注释；
 - 拆分逻辑
   - 精准识别到底是页面还是弹窗，对其进行拆分，如果是页面，需要使用Route渲染，如果是弹窗，需要使用popupRef；
   - 我们特别希望在设计态能够展示所有页面和弹窗，方便用户进行调试；`,
@@ -129,54 +128,16 @@ CRITICAL: 尽量在同一个响应中同时并行调用多个代码工具；
 3. 禁止编写未实现的事件函数；
 4. 业务逻辑封装在 store 中（例如：登录态校验、数据查询等）；
 5. 组件各类状态控制维护在 store 中（例如：loading、选中态、状态切换等）；
-6. 包含事件props（例如 onClick、onChange、onBlur 等）的标签内必须包含注释「/** onXXX:唯一key */」，注释与事件props同级，而不是在事件函数内；
 7. 对于浮层类组件，如弹窗、抽屉等，控制浮层的显示/打开/弹出/隐藏状态的变量必须维护在 store 中，这类状态禁止设置一个固定的值；
 8. 严格遵守 jsx 语法规范，不允许使用 typescript 语法；
-9. 所有来自三方库的组件必须带有 className 属性，值需语义化明确且唯一，无论是否需要样式，以便通过 CSS 选择器选中；
-10. 所有与样式相关的内容都要写在 less 文件中，避免在 jsx 中通过 style 编写；
-11. 各类动效、动画等，尽量使用 css3 的方式在 less 中实现，不要为此引入任何的额外类库；
-12. 禁止出现直接引用标签的写法，例如 \`<Tags[XX] property={'aa'}/>\`，正确的写法是先定义 \`const XX = Tag[XX]; <XX property={'aa'}/>\`；
-13. 所有列表中的组件，必须通过 key 属性做唯一标识，不要使用 index 作为 key；
-14. 元素或组件接口调用相关注释：
-  - 说明：调用接口即调用 datasource 提供的api
-  - 判断依据：
-    1. 当 JSX 标签内事件直接或间接调用 datasource 提供的api时，添加注释
-  - 注释格式：「/** datasource:唯一key */」，key必须全局唯一
-  - 示例：\`<Button /** datasource:clickToLogin */ onClick={() => store.login()}>登录</Button>\`
-  - 注意：
-    1. 当接口调用在函数体或 React hooks（如 useEffect）内时，禁止编写注释
-15. 元素或组件消费、使用 store 数据相关注释：
-  - 判断依据：
-    1. 当 JSX 内使用 store 数据时，添加注释
-  - 注释格式：「/** store:唯一key */」，key必须全局唯一
-  - 示例：
-    1. 简单引用
-    \`\`\`jsx
-    <div /** store:userName */>{store.user.name}</div>
-    \`\`\`
-
-    2. 间接引用或消费一个对象下的多个深层字段时
-    \`\`\`jsx
-    <div /** store:userCard */>
-      <div>{store.user.name}</div>
-      <div>{store.user.age}</div>
-    </div>
-    \`\`\`
-    \`\`\`jsx
-    const { user } = store
-    <div /** store:userCard */>
-      <div>{user.name}</div>
-      <div>{user.age}</div>
-    </div>
-    \`\`\`
-
-    3. 数组遍历渲染
-    \`\`\`
-    <div /** store:userList */>{store.users.map(user => <div key={user.id}>{user.name}</div>)}</div>
-    \`\`\`
-  - 注意：
-    1. 当没有合适的JSX标签编写注释时，通常可能是外层使用空标签\`<>\`或\`<Fragment>\`，此时不需要写注释
-    2. 当外层容器和内部子元素消费同一个store字段时，应将注释写在最外层容器上，避免重复注释
+9. 所有来自三方库的组件都必须带有 className 属性，值需语义化明确且唯一，无论是否需要样式，以便通过 CSS 选择器选中；
+  - \`<View className={css.xxx}/>\`
+10. 所有html元素都必须具有语义化的 className，无论是否需要样式，以便通过 CSS 选择器选中；
+  - \`<div className={css.xxx}/>\`
+11. 所有与样式相关的内容都要写在 less 文件中，避免在 jsx 中通过 style 编写；
+12. 各类动效、动画等，尽量使用 css3 的方式在 less 中实现，不要为此引入任何的额外类库；
+13. 禁止出现直接引用标签的写法，例如 \`<Tags[XX] property={'aa'}/>\`，正确的写法是先定义 \`const XX = Tag[XX]; <XX property={'aa'}/>\`；
+14. 所有列表中的组件，必须通过 key 属性做唯一标识，不要使用 index 作为 key；
 
 保留字段（禁止通过 props 传递）：
 - \`_env\`：环境变量，\`_env.mode\` 表示运行环境（design | runtime）；
@@ -326,14 +287,14 @@ PopupVisible 装饰器说明：
       <div className={css.operationBar}>
         <Button
           type="primary"
-          /** onClick:open */
+          className={css.openBtn}
           onClick={() => 
             logger.info('[OperationBar/onClick] 点击打开弹窗');
             store.detailModalVisible = true;
           }
         >查看</Button>
         <Button
-          /** onClick:close */
+          className={css.closeBtn}
           onClick={() => 
             logger.info('[OperationBar/onClick] 点击关闭弹窗');
             store.detailModalVisible = false;
@@ -412,8 +373,8 @@ PopupVisible 装饰器说明：
 ### README.md
 根据当前模块的 jsx 源码，生成或更新对应的 README.md 说明文档
 更新时机：
-- 必须更新（强约束）：目录下不存在 README.md；或当前文档内容与「文档编写规范」不符；或需求明确要求更新文档；
-- 建议更新（结构或内容变化）：在 jsx 中新增、删除或重命名了 appRef/comRef 节点，或 Route 中注册的页面组件发生变化；export default 的根节点类型或子节点类型组合发生变化导致标题层级需调整；JSX 中新增、删除或修改了带 /** onXXX:唯一key */ 注释的事件；某节点的 UI 结构、交互或业务含义发生明显变化；
+- 必须更新（强约束）：目录下不存在 README.md；或当前文档内容与「文档编写规范」不符；或需求明确要求更新文档（此时必须重新逐行审查源码与文档的差异，确保文档完全对齐当前源码，包括 events/datasource/store 的 className 标识、字段、流程图等）；
+- 建议更新（结构或内容变化）：在 jsx 中新增、删除或重命名了 appRef/comRef 节点，或 Route 中注册的页面组件发生变化；export default 的根节点类型或子节点类型组合发生变化导致标题层级需调整；JSX 中新增、删除或修改了带事件 props（onClick 等）的元素，或其 className 发生变化；JSX 中新增、删除或修改了消费 store 数据（通过子节点渲染或 prop 传入）的元素，或其 className 发生变化；JSX 中新增、删除或修改了触发 datasource 调用的元素，或其 className 发生变化；某节点的 UI 结构、交互或业务含义发生明显变化；
 - 无需更新：jsx、store.js 未被修改，且现有 README.md 已正确反映当前源码的节点结构、事件与说明；仅修改了 style.less、service.js 等与节点行为无关的文件；
 <README.md 文档编写规范>
   <节点>
@@ -441,14 +402,15 @@ PopupVisible 装饰器说明：
   - summary：对节点的用途、场景或关键行为做简短说明，补充 title 未涵盖的信息，避免与 title 重复或仅罗列 UI 元素；
   - type：app | page | com，其中 app 对应 appRef，page 对应通过 Route 注册的 comRef（页面组件），com 对应 comRef（非路由页面）。
   - events：该组件内声明的事件列表（找最近的组件，而不是页面）
-    1. 从源码识别：JSX 块注释如 /** onClick:唯一key */（或其它 onXXX:唯一key）
-    2. 每条事件用结构化格式描述，包含以下字段：
-        - 唯一key(只允许英文字符)
-          - title: 简短中文说明（如 登录）
-          - mermaid: 根据事件内容生成对应的 Mermaid 语法流程图（以 flowchart LR; 开头，单行书写）
-          - relation:
-            - type: 关系类型（page，popup），打开弹窗使用popup，跳转页面使用page
-            - name: 关联的弹窗或页面的名称，即对应的节点名称
+    1. 从源码识别：找出 JSX 中带有事件 props（onClick、onChange、onBlur 等）的标签，用该标签的 className 作为标识；【强制前提】带事件的元素必须有 className，如果源码中缺少，必须先在代码中补上 className，再写文档
+    2. 按 className 分组，每个 className 下列出该元素的所有事件，用结构化格式描述：
+        - className（对应触发事件的元素 className）
+          - 事件名（如 onClick、onChange、onBlur 等）
+            - title: 简短中文说明（如 登录）
+            - mermaid: 根据事件内容生成对应的 Mermaid 语法流程图（以 flowchart LR; 开头，单行书写）
+            - relation:
+              - type: 关系类型（page，popup），打开弹窗使用popup，跳转页面使用page
+              - name: 关联的弹窗或页面的名称，即对应的节点名称
       注意格式要严格保持一致；
       关于relation，只有一条对应关系，事件如果涉及到打开弹窗、跳转页面，则需要relation说明；
       关于 Mermaid 语法流程图需关注以下规则和要求：
@@ -464,28 +426,33 @@ PopupVisible 装饰器说明：
         - 禁止出现用户动作类流程节点（如「点击按钮」）、空洞节点（如「开始」「结束」「执行业务操作」）；
         - 流程图须真实完整：严格依据事件处理函数内的代码逻辑，以及所调用的 store 方法内部实现来绘制，不省略、不捏造。
         - 分支流程必须完整表达：代码中的 if/else、三元判断、early return、请求成功/失败等所有分支，都必须在流程图中用条件节点 {} 和 |分支标注| 画出；每个分支（如「通过」「不通过」「成功」「失败」）及其后续步骤都须独立延伸，不得只写主流程而省略条件分支。
-    3. 无事件可省略 events
+    3. 【严禁重复】events 文档必须以 com 节点为最小单位归属：事件发生在哪个 comRef/popupRef 的 JSX 作用域内，就只写在该节点文档中，其父节点禁止重复声明。
+    4. 无事件直接省略 events 字段，禁止出现「(无事件)」或空列表，不写即代表无事件
   - datasource：该组件内调用的接口列表（找最近的组件，而不是页面）
-    1. 从源码识别：JSX 块注释如 /** datasource:唯一key */
+    1. 从源码识别：找出 JSX 中事件直接或间接调用 datasource 方法的标签，用该标签的 className 作为标识
     2. 每条接口调用用结构化格式描述，包含以下字段：
-      - 唯一key(只允许英文字符)
+      - className（对应触发接口调用的元素 className）
         - api（真实方法名，对应 datasource 中的方法）
           - desc: 用途说明
-    3. 特殊情况：当接口调用在函数体或 React hooks（如 useEffect）内时，使用「root」作为唯一key
-    4. 无接口调用可省略 datasource
+    3. 特殊情况：当接口调用在函数体或 React hooks（如 useEffect）内、不属于某个具体元素时，使用「root」作为标识
+    4. 【严禁重复】datasource 文档必须以 com 节点为最小单位归属：接口调用发生在哪个 comRef/popupRef 的 JSX 作用域内，就只写在该节点文档中，其父节点禁止重复声明。
+    5. 无接口调用直接省略 datasource 字段，禁止出现「(无接口调用)」或空列表，不写即代表无调用
   - store：该组件内消费的store数据列表（找最近的组件，而不是页面）
-    1. 从源码识别：JSX块注释如 /** store:唯一key */
-    2. 每个唯一key下是一个数组，支持描述多个字段的消费（可能来自不同store或同一store的不同字段）：
-      - 唯一key(只允许英文字符)
+    1. 从源码识别：找出 JSX 中直接或间接使用 store 数据做 UI、视觉 渲染的标签，用该标签的 className 作为标识；【强制前提】渲染 store 数据的元素必须有 className，如果源码中缺少，必须先在代码中补上 className，再写文档
+      - 在子节点中直接渲染：\`<div className={css.xxx}>{store.xxx}</div>\`
+      - 通过 prop 传入：\`<img className={css.xxx} src={store.xxx} />\`
+    2. 每个 className 下是一个数组，支持描述多个字段的消费（可能来自不同store或同一store的不同字段）：
+      - className（对应消费 store 数据的元素 className）
         - 对应store文件的绝对路径
           - field: 对应store的属性路径
           - desc: 用途说明
         - 对应store文件的绝对路径
           - field: ...
           - desc: ...
-    3. 特殊情况：当容器本身即为组件时（如 Fragment），使用「root」作为唯一key，path/field 正常填写
+    3. 「root」使用条件（严格限制）：只有当消费 store 数据的元素自身没有 className 且上层元素都没有 className 时，才允许使用「root」作为标识，应尽可能避免使用root；
     4. 每一个组件，如果在代码层面没有读取 store 的字段来做ui以及视觉的渲染，禁止编写store信息；即使子组件使用了，也不应该使用root，以实际代码情况为准；
-    5. 无store数据消费可省略 store
+    5. 【严禁重复】store 文档必须以 com 节点为最小单位归属：如果 store 数据是在某个子 com 节点内消费的，则 store 条目只能写在该 com 节点文档中，其父节点（page 或上层 com）禁止重复声明相同的 store 条目。判断标准：store 数据的实际消费发生在哪个 comRef/popupRef 的 JSX 作用域内，就归属于哪个节点，不随层级向上传递。
+    6. 无store数据消费直接省略 store 字段，禁止出现「(无store消费)」或空列表，不写即代表无消费
   </节点说明>
 </README.md 文档编写规范>
 
@@ -500,8 +467,7 @@ const StepRegisterForm = comRef(({}) => {
     <div>
       <form />
       <button
-        /** onClick:signUp */
-        /** datasource:clickToSignUp */
+        className={css.signUpBtn}
         onClick={() => {
           store.signUp();
         }}
@@ -523,12 +489,11 @@ const SignIn = comRef(({}) => {
   return (
     <div>
       <h1>登录</h1>
-      <div /** store:loginInfo */>
+      <div className={css.loginInfo}>
         {store.welcomeMsg} - {store.userType}
       </div>
       <button
-        /** onClick:signIn */
-        /** datasource:clickToSignIn */
+        className={css.signInBtn}
         onClick={() => {
           store.signIn();
         }}
@@ -564,11 +529,12 @@ export default appRef(() => {
 - summary: 用户登录入口页，提供登录按钮并触发 signIn 完成登录。
 - type: page
 - events:
-  - signIn
-    - title: 登录
-    - mermaid: flowchart LR; A["校验登录参数"] --> B{"参数是否有效"} -->|有效| C["设置loading状态"] --> D["请求登录接口"] --> E{"请求是否成功"} -->|成功| F["更新用户状态"] --> G["取消loading状态"]; E -->|失败| H["提示错误信息"] --> G; B -->|无效| I["提示参数错误"]
+  - signInBtn
+    - onClick
+      - title: 登录
+      - mermaid: flowchart LR; A["校验登录参数"] --> B{"参数是否有效"} -->|有效| C["设置loading状态"] --> D["请求登录接口"] --> E{"请求是否成功"} -->|成功| F["更新用户状态"] --> G["取消loading状态"]; E -->|失败| H["提示错误信息"] --> G; B -->|无效| I["提示参数错误"]
 - datasource:
-  - clickToSignIn
+  - signInBtn
     - signIn
       - desc: 点击登录按钮调用登录接口
 - store:
@@ -600,11 +566,12 @@ export default appRef(() => {
 - summary: 注册表单容器，包含表单与注册按钮，提交时触发 signUp。
 - type: com
 - events:
-  - signUp
-    - title: 注册
-    - mermaid: flowchart LR; A["校验表单参数"] --> B{"参数是否有效"} -->|有效| C["设置loading状态"] --> D["请求注册接口"] --> E{"请求是否成功"} -->|成功| F["跳转登录页"] --> G["取消loading状态"]; E -->|失败| H["提示错误信息"] --> G; B -->|无效| I["提示参数错误"]
+  - signUpBtn
+    - onClick
+      - title: 注册
+      - mermaid: flowchart LR; A["校验表单参数"] --> B{"参数是否有效"} -->|有效| C["设置loading状态"] --> D["请求注册接口"] --> E{"请求是否成功"} -->|成功| F["跳转登录页"] --> G["取消loading状态"]; E -->|失败| H["提示错误信息"] --> G; B -->|无效| I["提示参数错误"]
 - datasource:
-  - clickToSignUp
+  - signUpBtn
     - signUp
       - desc: 点击注册按钮调用注册接口
 
