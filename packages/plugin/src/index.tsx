@@ -29,6 +29,24 @@ export type { SettingValue, ProviderConfig, ModelConfig } from "./ui/setting";
 export { ChatPanel, ChatPanelList, ChatStartView, ComChatStartView } from "./ui/chat";
 export type { ChatPanelProps, ChatPanelListProps, ChatStartViewProps, ComChatStartViewProps } from "./ui/chat";
 
+// ─── PluginAI 实例 API ────────────────────────────────────────────────────────
+
+/** pluginAI() 返回的 controller 控制方法集合，与 Mybricks 插件属性隔离 */
+export interface PluginAIController {
+  /** 禁用输入框发送，等同于 setDisabled(true) */
+  disable(): void;
+  /** 启用输入框发送，等同于 setDisabled(false) */
+  enable(): void;
+  /** 动态设置禁用状态 */
+  setDisabled(value: boolean): void;
+}
+
+/** pluginAI() 返回值，顶层为 Mybricks 插件标准属性，controller 为扩展控制接口 */
+export interface PluginAIAPI {
+  /** 扩展控制接口，非 Mybricks 设计器属性，与插件数据结构隔离 */
+  controller: PluginAIController;
+}
+
 // ─── plugin 主入口 ────────────────────────────────────────────────────────────
 
 export interface PluginAIParams {
@@ -81,7 +99,7 @@ export interface PluginAIParams {
   history?: import("../../agent/src").History;
 }
 
-export default function pluginAI(params: PluginAIParams): any {
+export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<string, any> {
   const {
     name = "智能助手",
     user,
@@ -208,6 +226,18 @@ export default function pluginAI(params: PluginAIParams): any {
     author: "MyBricks",
     ["author.zh"]: "MyBricks",
     version: "0.0.1",
+    // ─── 外部控制接口，与 Mybricks 插件属性隔离 ────────────────────────────
+    controller: {
+      disable() {
+        context.setDisabled(true);
+      },
+      enable() {
+        context.setDisabled(false);
+      },
+      setDisabled(value: boolean) {
+        context.setDisabled(value);
+      },
+    },
     contributes: {
       aiService: {
         init(_api: any) {

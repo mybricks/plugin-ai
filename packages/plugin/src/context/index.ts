@@ -89,6 +89,15 @@ class Context {
   setLLMProviders(providers: LLMProviders | undefined) {
     this.llmProviders = providers;
   }
+
+  /** 全局禁用输入框发送 */
+  disabled: boolean = false;
+
+  /** 设置全局禁用状态，并通过事件总线通知所有订阅组件 */
+  setDisabled(value: boolean) {
+    this.disabled = value;
+    this.events.emit("disabled", value);
+  }
 }
 
 export const context = new Context();
