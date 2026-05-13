@@ -543,10 +543,13 @@ export const compactMidTurnErrorRetryCase: TestCase = {
   group: "Compact",
   priority: "P0",
   description:
-    "进来是空白状态，发消息后：第 1 步 write_file 成功，返回的 usage 超限 → 第 2 步之前触发 compact（WarmupIter），compact 成功后再写入第二个文件成功 → 第 3 步 LLM 请求失败（含重试），最终显示重试按钮。点击重试后从 step=3 续跑成功。",
+    "预置 2 轮低 usage 历史（不触发 compact），发消息后：第 1 步 write_file 成功，返回的 usage 超限 → 第 2 步之前触发 compact（WarmupIter），compact 成功后再写入第二个文件成功 → 第 3 步 LLM 请求失败（含重试），最终显示重试按钮。点击重试后从 step=3 续跑成功。",
   expectedBehavior:
-    "发消息后先显示 write_file 工具卡片（src/utils.ts），然后 WarmupIter（compact），compact 成功后第二个 write_file 工具卡片（src/helper.ts），随后 LLM 报错进入 error 状态显示重试按钮。点击重试从 step=3 续跑成功返回内容。",
-  initialTurns: [],
+    "进来即看到 2 条预置消息（usage 很低，不会触发 compact），发消息后先显示 write_file 工具卡片（src/utils.ts），然后 WarmupIter（compact），compact 成功后第二个 write_file 工具卡片（src/helper.ts），随后 LLM 报错进入 error 状态显示重试按钮。点击重试从 step=3 续跑成功返回内容。",
+  initialTurns: makeTextHistoryWithUsage([
+    { user: "帮我分析一下这个项目的整体架构，包括目录结构、核心模块、数据流和依赖关系", assistant: "好的，我来分析这个项目的架构。项目采用 monorepo 结构，主要包含以下模块...\n\n核心模块：\n1. plugin - 主插件模块\n2. playground - 测试操场\n3. shared - 共享工具库\n\n数据流：用户输入 → Agent → LLM → 工具调用 → 结果返回", usage: { promptTokens: 3000, completionTokens: 800 } },
+    { user: "继续详细分析，把每个模块的职责、入口文件、关键类和方法都列出来，越详细越好", assistant: "非常详细的模块分析如下：\n\n## plugin 模块\n- 入口: index.ts\n- ChatPanel: 聊天面板主组件\n- Agent: 核心 agent 逻辑\n\n## playground 模块\n- 入口: App.tsx\n- TestCase: 测试用例定义\n\n## shared 模块\n- 类型定义\n- 工具函数", usage: { promptTokens: 5000, completionTokens: 1500 } },
+  ]),
   request: makeCompactMidTurnErrorRetryRequest(),
   compactOptions: { enabled: true, contextWindow: 200_000 },
   agentOptions: {
@@ -557,6 +560,7 @@ export const compactMidTurnErrorRetryCase: TestCase = {
     },
   },
 };
+
 
 /** compact fork 前 2 次报错，第 3 次成功 */
 function makeCompactRetrySuccessErrorRequest(): TestCase["request"] {

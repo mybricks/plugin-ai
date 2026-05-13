@@ -58,6 +58,7 @@ const ChatPanel = ({
   const senderRef = useRef<SenderRef>(null);
   const [loading, setLoading] = useState(() => context.aiQueue.isLoading(agentKey));
   const [pendingQueue, setPendingQueue] = useState<QueueItem[]>(() => context.aiQueue.getQueue(agentKey));
+  const [contextDisabled, setContextDisabled] = useState(() => context.disabled);
 
   // 模型选择器状态
   const modelSelector = useMemo(() => {
@@ -104,7 +105,8 @@ const ChatPanel = ({
     const unQ = context.aiQueue.events.on("queue", (d) => {
       if (d.key === agentKey) setPendingQueue([...d.queue]);
     });
-    return () => { unL(); unQ(); };
+    const unD = context.events.on("disabled", (v: boolean) => setContextDisabled(v));
+    return () => { unL(); unQ(); unD(); };
   }, [agentKey]);
 
   const onClear = async () => {
@@ -175,7 +177,7 @@ const ChatPanel = ({
         ref={senderRef}
         loading={loading}
         placeholder={`您好，我是${context.name}，请详细描述您的需求`}
-        disabled={!agent || disabled}
+        disabled={!agent || disabled || contextDisabled}
         mode="mention"
         chatMode={null}
         onSend={onSend}

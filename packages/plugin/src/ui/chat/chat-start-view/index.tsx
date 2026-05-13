@@ -51,6 +51,7 @@ const ChatStartView = ({
   const agentKey = agent?.key ?? "";
   const [loading, setLoading] = useState(() => context.aiQueue.isLoading(agentKey));
   const [empty, setEmpty] = useState(true);
+  const [contextDisabled, setContextDisabled] = useState(() => context.disabled);
 
   const { syncAgent, subscribeSession } = useSession(agent);
 
@@ -63,10 +64,11 @@ const ChatStartView = ({
   // 与 ChatPanel 保持同步：通过 aiQueue 事件驱动 loading，而非本地管理
   useEffect(() => {
     if (!agentKey) return;
-    const un = context.aiQueue.events.on("loading", (d) => {
+    const unL = context.aiQueue.events.on("loading", (d) => {
       if (d.key === agentKey) setLoading(d.loading);
     });
-    return un;
+    const unD = context.events.on("disabled", (v: boolean) => setContextDisabled(v));
+    return () => { unL(); unD(); };
   }, [agentKey]);
 
   const onSend = (params: Parameters<SenderProps["onSend"]>[0]) => {
@@ -99,7 +101,7 @@ const ChatStartView = ({
         <Sender
           ref={senderRef}
           loading={loading}
-          disabled={loading}
+          disabled={loading || contextDisabled}
           onSend={onSend}
           variant="loose"
           placeholder={placeholder}

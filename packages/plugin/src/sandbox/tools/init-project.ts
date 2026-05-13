@@ -83,8 +83,6 @@ function parseFilesFromStreamingContent(content: string): Array<{
 const SUB_AGENT_SYSTEM_PROMPT = `你是一个是一名资深的前端开发专家、架构师，技术资深、逻辑严谨、实事求是，同时具备专业的审美和设计能力。
 根据用户的需求，输出完整的项目代码。
 
-!IMPORTANT: 生成内容中不允许包含md文档文件（非代码文件），这个应该由后续步骤写入。
-
 <输出规则>
 1. 每个文件必须用带文件路径的代码块格式输出，格式如下：
 \`\`\`文件路径
@@ -192,12 +190,6 @@ ${prompt}
     // 检测新完成的文件并立即写入
     for (const file of parsedFiles) {
       if (file.status === "complete" && !writtenFiles.has(file.path)) {
-        // 跳过 md 文件
-        if (file.path.toLowerCase().endsWith(".md")) {
-          writtenFiles.add(file.path);
-          continue;
-        }
-
         // 解析文件内容
         const fileBlocks = parseFileBlocks(content || "");
         const fileData = fileBlocks.find((f) => f.path === file.path);
@@ -252,9 +244,7 @@ ${prompt}
   const content = (lastLLMIter as any)?.content ?? "";
 
   const allFiles = parseFileBlocks(content);
-
-  // 过滤掉 md 文件
-  const files = allFiles.filter((file) => !file.path.toLowerCase().endsWith(".md"));
+  const files = allFiles;
 
   if (files.length === 0) {
     return {
@@ -268,9 +258,6 @@ ${prompt}
   const failedPaths = new Set<string>();
 
   for (const file of progressState.files) {
-    // 跳过 md 文件
-    if (file.path.toLowerCase().endsWith(".md")) continue;
-
     if (file.status === "success") {
       successPaths.add(file.path);
     } else if (file.status === "error") {
@@ -358,7 +345,7 @@ export function createInitProjectTool(sandbox: Sandbox): Tool {
     name: INIT_PROJECT_TOOL_NAME,
     title: "初始化项目",
     description:
-      "对空项目进行快速开发，根据需求生成并写入所需的所有代码文件（不包括md文档）",
+      "对空项目进行快速开发，根据需求生成并写入所需的所有文件",
     parameters: {
       type: "object",
       properties: {
@@ -373,7 +360,7 @@ export function createInitProjectTool(sandbox: Sandbox): Tool {
           items: {
             type: "string",
           },
-          description: "要生成的文件路径列表（不包含md文档文件）",
+          description: "要生成的文件路径列表",
         },
       },
       required: ["filesToGenerate"],

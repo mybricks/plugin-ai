@@ -210,6 +210,8 @@ export interface TurnRecord {
 
 }
 
+export type LLMIteration = Exclude<TurnRecord["iterations"][number], WarmupIter>;
+
 // ─── VersionRecord ───────────────────────────────────────────────────────────
 
 /**
@@ -446,10 +448,9 @@ export function serializeToolCallArgumentsFromLLMResult(tc: any): string {
  */
 export function getLLMIterations(
   iterations: TurnRecord["iterations"]
-): Array<Extract<TurnRecord["iterations"][number], { content: string; toolCalls: ToolCallRecord[] }>> {
+): LLMIteration[] {
   return (iterations ?? []).filter(
-    (iter): iter is Extract<TurnRecord["iterations"][number], { content: string; toolCalls: ToolCallRecord[] }> =>
-      iter?.type !== "warmup"
+    (iter): iter is LLMIteration => !("type" in iter)
   );
 }
 

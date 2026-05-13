@@ -67,7 +67,7 @@ export interface ToolExecutionContext {
 
 export interface AgentHooks {
   /**
-   * 用户发送消息后、一轮 turn 开始时的钩子，在 buildMessages 之前调用。
+   * 用户发送消息后、一轮 turn 开始时的钩子，在构建 turn 级消息快照之前调用。
    * 可用于初始化快照、收集日志等准备工作。
    */
   beforeTurn?: (params: { message: string; attachments: any[] }) => Promise<void> | void;
@@ -110,14 +110,6 @@ export interface AgentOptions {
    * 每次请求前调用，返回的消息列表会插入到对话历史末尾、用户消息之前。
    */
   getContextMessages?: () => Promise<Message[]>;
-  /**
-   * @experimental
-   * 实时上下文注入（异步）。
-  * 每个 step 请求前调用，返回的消息列表插入在用户消息之后、本轮已积累的
-  * assistant/tool 消息（tail）之前，使 LLM 在每次推理前都能感知到最新的运行时状态。
-   * 不参与 prompt cache，适合高频变化的状态（如当前资源代码、运行时快照等）。
-   */
-  getRealtimeMessages?: () => Promise<Message[]>;
   /**
    * @experimental
    * 用户自定义上下文注入（异步）。
@@ -170,7 +162,7 @@ export interface AgentOptions {
    * 触发条件：优先通过 token 阈值判断（需 usage 字段有值）；usage 缺失时降级为轮次判断。
    * 触发时机：双时机策略——
    *   1. turn 结束后异步（fire-and-forget），尽早完成压缩
-   *   2. requestAI 前同步阻塞（buildMessages 之前），确保 compactRecord 最新
+   *   2. requestAI 前同步阻塞（iter 级 messages 构建之前），确保 compactRecord 最新
    *      若后置已压缩好（compactRecord 游标覆盖最新 success turn），前置直接跳过
    */
   compact?: {
@@ -265,22 +257,63 @@ export interface RequestAIOptions {
 
 // ─── 构建消息列表 ──────────────────────────────────────────────────────────────
 
+interface TurnMessageSnapshot {
+  /** 当前 turn 可见的历史 turns 快照 */
+  historyTurns: TurnRecord[];
+  /** turn 级动态上下文：每轮开始时获取一次，后续 iter 复用 */
+  contextMessages: Message[];
+  /** 用户自定义上下文：每轮开始时获取一次，插入在当前用户消息之前 */
+  userContextMessages: Message[];
+}
+
 /**
- * 构建本轮请求的基础 messages（在 turn 开始时调用一次）：
+ * 构建 turn 级消息快照（在 turn 开始时调用一次）：
+ *   [snapshot.historyTurns]         历史 turns 快照
+ *   [snapshot.contextMessages]      动态上下文（getContextMessages，仅获取一次）
+ *   [snapshot.userContextMessages]  用户自定义上下文（getUserContextMessages，仅获取一次）
+ *
+ * 注意：compact 摘要和历史 messages 不在此处固化。
+ * 它们依赖 compactRecord，必须在每个 iter 请求前用最新 compactRecord 重新构建。
+ */
+async function buildTurnMessageSnapshot(
+  options: AgentOptions,
+  historyTurns: TurnRecord[]
+): Promise<TurnMessageSnapshot> {
+  const contextMessages: Message[] = options.getContextMessages
+    ? await options.getContextMessages()
+    : [];
+
+  const userContextMessages: Message[] = options.getUserContextMessages
+    ? await options.getUserContextMessages()
+    : [];
+
+  return {
+    historyTurns,
+    contextMessages,
+    userContextMessages,
+  };
+}
+
+/**
+ * 构建单次 iter 请求的基础 messages（每个 iter 请求前调用一次）：
  *   [0]       system message（仅包含内置系统提示词）
  *   [1]       agentsMd user message（仅当 agentsMd 非空时存在）
- *   [2]       动态上下文（getContextMessages，仅在 turn 开始时调用一次）
- *   [3..4]    compact 摘要消息对（仅当有 compactRecord 时）
- *   [5..N]    历史对话（从 TurnRecord[] 重建，compact 游标后的部分）
+ *   [2..A]    turn 级动态上下文（snapshot.contextMessages）
+ *   [A..B]    compact 摘要消息（仅当当前 compactRecord 非空时存在）
+ *   [B..N]    历史对话（从 snapshot.historyTurns 重建，compact 游标后的部分）
  *
- * 后续每个 step 会在这些基础上追加用户消息和本轮对话尾部（assistant + tool）。
+ * 每个 iter 会在这些基础上追加：
+ *   [N+1..C]  用户自定义上下文（snapshot.userContextMessages）
+ *   [C+1]     当前用户消息
+ *   [C+2..D]  本轮已积累的 tail（assistant/tool）
  */
-async function buildMessages(
+function buildIterationBaseMessages(
   options: AgentOptions,
-  turns: TurnRecord[],
+  snapshot: TurnMessageSnapshot,
   compactRecord?: CompactRecord | null
-): Promise<{ baseMessages: Message[]; historyStartIndex: number }> {
-  const { system, agentsMd, getContextMessages } = options;
+): { baseMessages: Message[]; historyStartIndex: number } {
+  const { system, agentsMd } = options;
+  const { historyTurns, contextMessages } = snapshot;
 
   const systemMessage: Message | null = system
     ? { role: "system", content: system }
@@ -300,11 +333,6 @@ async function buildMessages(
       }
     : null;
 
-  // 动态上下文（仅在 turn 开始时调用一次，放在静态前缀之后、历史对话之前）
-  const contextMessages: Message[] = getContextMessages
-    ? await getContextMessages()
-    : [];
-
   // compact 摘要消息对（放在历史对话之前，游标后的 turns 正常展开）
   const compactMessages: Message[] = compactRecord
     ? [
@@ -317,10 +345,12 @@ async function buildMessages(
 
   // 计算命中 handoff 条件的 turn id 集合（未启用或 turn 无 handoff 内容时不加入）
   const handoffTurnIds = options.mask
-    ? computeHandoffTurnIds(turns, options.mask)
+    ? computeHandoffTurnIds(historyTurns, options.mask)
     : new Set<string>();
 
-  const historyMessages = turnsToMessages(turns, compactRecord, handoffTurnIds);
+  console.log('historyTurns, compactRecord', historyTurns, compactRecord)
+
+  const historyMessages = turnsToMessages(historyTurns, compactRecord, handoffTurnIds);
 
   // ── prompt cache 断点 ────────────────────────────────────────────────────
   // 断点 1：system message 单独打 cache（几乎不变，命中率最高）
@@ -360,7 +390,7 @@ async function buildMessages(
 
 /**
  * 每次 LLM 请求前组装完整 messages 列表：
- *   baseMessages（静态前缀 + 动态上下文 + 历史）+ 用户上下文消息 + 用户消息 + 本轮已积累的对话尾部 + 实时消息
+ *   baseMessages（静态前缀 + 动态上下文 + 历史）+ 用户上下文消息 + 用户消息 + 本轮已积累的对话尾部
  *
  * @param baseMessages       assembleBaseMessages 返回的基础部分
  * @param historyStartIndex  assembled 数组中历史消息的起始索引（mask 时跳过静态前缀）
@@ -369,7 +399,6 @@ async function buildMessages(
  * @param params             本轮用户请求参数
  * @param tail               本轮已积累的 assistant + tool 消息（step > 1 时非空）
  * @param userContextMessages  用户自定义上下文消息，插入在用户消息之前（@experimental）
- * @param realtimeMessages   每 step 实时获取的消息，插入在 tail 末尾（@experimental）
  */
 function assembleMessages(
   baseMessages: Message[],
@@ -378,8 +407,7 @@ function assembleMessages(
   turns: TurnRecord[],
   params: RequestAIOptions,
   tail: Message[],
-  userContextMessages: Message[],
-  realtimeMessages: Message[]
+  userContextMessages: Message[]
 ): Message[] {
   const { message, attachments } = params;
 
@@ -396,10 +424,9 @@ function assembleMessages(
   const userMessage: Message = { role: "user", content: userContent };
 
   // userContextMessages 放在 userMessage 之前
-  // realtimeMessages 放在 tail 末尾，模拟工具调用返回最新代码仓库信息
-  const assembled = [...baseMessages, ...userContextMessages, userMessage, ...tail, ...realtimeMessages];
+  const assembled = [...baseMessages, ...userContextMessages, userMessage, ...tail];
 
-  // ── prompt cache 断点 3：排除 realtimeMessages 后的最后一条消息 ──────────────
+  // ── prompt cache 断点 3：当前请求尾部最后一条消息 ──────────────
   // tail 非空时最后一条为 role: "tool"，空时为 userMessage (role: "user")
   // role: "assistant" 不加 cache（工具调用响应消息不是断点）
   const cacheTargetIndex = baseMessages.length + userContextMessages.length + tail.length;
@@ -602,7 +629,7 @@ export class Agent {
   protected turns: TurnRecord[] = [];
   /**
    * compact 记录缓存（从 History 加载）。
-   * buildMessages 时传给 turnsToMessages，用于游标分割历史。
+   * 每个 iter 构建 messages 时传给 turnsToMessages，用于游标分割历史。
    */
   protected compactRecord: CompactRecord | null = null;
   private _abortController: AbortController | null = null;
@@ -743,11 +770,11 @@ export class Agent {
       }
     }
 
-    // 构建基础 messages（排除当前 turn，避免带入上下文）
-    const turnsWithoutCurrent = this.turns.filter(t => t.id !== turn.id);
-    let context: { baseMessages: Message[]; historyStartIndex: number };
+    // 构建 turn 级消息快照：historyTurns 是当前 turn 可见的历史上下文
+    const historyTurns = this.turns.filter(t => t.id !== turn.id);
+    let messageSnapshot: TurnMessageSnapshot;
     try {
-      context = await buildMessages(this.options, turnsWithoutCurrent, this.compactRecord);
+      messageSnapshot = await buildTurnMessageSnapshot(this.options, historyTurns);
     } catch (e) {
       turn.endTime = Date.now();
       turn.status = "error";
@@ -758,13 +785,13 @@ export class Agent {
       throw e;
     }
 
-    await this._runReActLoop({ context, turn, userParams, llmRest });
+    await this._runReActLoop({ messageSnapshot, turn, userParams, llmRest });
   }
 
   /** ReAct 循环核心逻辑（requestAI 和 retry 共用） */
   private async _runReActLoop(opts: {
-    /** buildMessages 的返回值，包含基础消息和前缀数量 */
-    context: { baseMessages: Message[]; historyStartIndex: number };
+    /** turn 级消息快照；每个 iter 会基于它和最新 compactRecord 重新构建 messages */
+    messageSnapshot: TurnMessageSnapshot;
     /** 当前 turn 记录（用于写入迭代结果、持久化） */
     turn: TurnRecord;
     /** 用户侧消息参数（message、attachments、meta），用于组装消息和 turn:start 事件 */
@@ -772,7 +799,7 @@ export class Agent {
     /** 透传给 callLLM 的其余参数（aiRole 等） */
     llmRest?: Record<string, any>;
   }): Promise<void> {
-    const { context: { baseMessages, historyStartIndex }, turn, userParams, llmRest = {} } = opts;
+    const { messageSnapshot, turn, userParams, llmRest = {} } = opts;
 
     // 从 turn.iterations 自动推导 initialTail 和 startStep
     const llmItersOnEntry = getLLMIterations(turn.iterations);
@@ -816,7 +843,6 @@ export class Agent {
       return { rest, effectiveAiRole };
     };
 
-    const { key, history } = this.options;
     const maxSteps = this.options.maxSteps ?? 50;
     const doomLoopThreshold = this.options.doomLoopThreshold ?? 3;
 
@@ -828,11 +854,6 @@ export class Agent {
     const tail = [...initialTail];
     // 每个元素代表一个 iter 的全部 tool calls 的序列化 key，用于 doom loop 检测
     const iterCallHistory: Array<string> = [];
-
-    // @experimental 用户上下文消息：每 turn 获取一次，放在用户消息之前
-    const userContextMessages: Message[] = this.options.getUserContextMessages
-      ? await this.options.getUserContextMessages()
-      : [];
 
     // 收集已有 iter 调用历史（用于 doom loop 检测，_continueFromError 续跑时需要）
     // 只保留最近 doomLoopThreshold 条，超出部分无意义
@@ -875,21 +896,23 @@ export class Agent {
           console.warn("[Agent] hooks.beforeRequest failed:", e);
         }
 
-        // @experimental 实时消息：每 step 获取最新值，追加在 tail 末尾
-        const realtimeMessages: Message[] = this.options.getRealtimeMessages
-          ? await this.options.getRealtimeMessages()
-          : [];
+        // 每个 iter 都使用最新 compactRecord 重新构建基础 messages。
+        // 若 warmup 刚完成 compact，这里会立即使用新的 compact 摘要和游标。
+        const { baseMessages, historyStartIndex } = buildIterationBaseMessages(
+          this.options,
+          messageSnapshot,
+          this.compactRecord
+        );
 
         // 组装 messages
         const messages = assembleMessages(
           baseMessages,
           historyStartIndex,
           this.options,
-          this.turns,
+          messageSnapshot.historyTurns,
           formattedParams,
           tail,
-          userContextMessages,
-          realtimeMessages
+          messageSnapshot.userContextMessages
         );
 
         // 调用 LLM
@@ -1064,7 +1087,7 @@ export class Agent {
             role: "tool",
             tool_call_id: tc.id,
             content: toolResultContent,
-            ...(toolRecord.status !== "pending" ? { status: toolRecord.status } : {}),
+            status: toolRecord.status,
             ...(toolRecord.errorType ? { errorType: toolRecord.errorType } : {}),
           });
 
@@ -1119,7 +1142,7 @@ export class Agent {
       this._onTurnEnd(turn);
     } catch (e) {
       if (turn.status === "success") {
-        // 未被内层 catch 处理（如 buildMessages、hook 等抛出的异常）
+        // 未被内层 catch 处理（如 iter 级 messages 构建、hook 等抛出的异常）
         turn.endTime = Date.now();
         turn.status = "error";
         turn.error = String((e as any)?.message ?? e);
@@ -1142,7 +1165,17 @@ export class Agent {
       } else {
         this.turns.push(turn);
       }
-      await history.append(key, turn).catch(console.error);
+      try {
+        const existing = await history.load(key);
+        const hasPersistedTurn = existing.some(t => t.id === turn.id);
+        if (hasPersistedTurn) {
+          await history.update(key, turn.id, turn);
+        } else {
+          await history.append(key, turn);
+        }
+      } catch (e) {
+        console.error(e);
+      }
     } else {
       // 没有 history 时也要更新内存
       const idx = this.turns.findIndex(t => t.id === turn.id);
@@ -1222,7 +1255,7 @@ export class Agent {
       ...(formattedParams.message !== message ? { userFormattedText: formattedParams.message } : {}),
     });
 
-    // 将 turn 加入内存（_runTurn 内的 buildMessages 需要排除它，_persistTurn 会更新它）
+    // 将 turn 加入内存（_runTurn 内的消息快照需要排除它，_persistTurn 会更新它）
     this.turns.push(turn);
 
     await this._runTurn(turn, {
@@ -1458,7 +1491,7 @@ IMPORTANT: 不要调用工具！
   // ─── warmup ─────────────────────────────────────────────────────────────
 
   /**
-   * warmup 阶段：在 buildMessages 之前执行预处理步骤。
+   * warmup 阶段：在 iter 级 messages 构建之前执行预处理步骤。
    * 
    * 目前包含 compact 压缩，未来可扩展其他预处理步骤。
    * 所有步骤共享同一个 WarmupIter，错误在各步骤内部消化，不向外抛出。
@@ -1595,10 +1628,19 @@ IMPORTANT: 不要调用工具！
     return this.compactRecord.upToTurnId === prevTurn.id;
   }
 
+  /** 获取 compact 可见历史；正在执行中的当前 turn 不参与压缩。 */
+  private _getCompactSourceTurns(): TurnRecord[] {
+    const lastTurn = this.turns[this.turns.length - 1];
+    if (lastTurn && lastTurn.endTime == null) {
+      return this.turns.slice(0, -1);
+    }
+    return this.turns;
+  }
+
   /**
    * 执行 autoCompact：fork 一个无工具 Agent 对所有历史生成完整摘要，
    * 将摘要以 CompactRecord 形式单独存储到 History（不替换 turns）。
-   * buildMessages 时会读取 compactRecord，用游标分割历史：
+   * iter 级 messages 构建时会读取 compactRecord，用游标分割历史：
    *   游标前（含）→ 替换为摘要消息；游标后 → 正常展开。
    *
    * 错误在内部消化，不向外抛出。返回 true 表示成功，false 表示失败/取消。
@@ -1665,15 +1707,16 @@ IMPORTANT: 不要调用工具！
 
 </example>`;
 
-    const totalTurns = this.turns.length;
+    const compactSourceTurns = this._getCompactSourceTurns();
+    const totalTurns = compactSourceTurns.length;
     if (totalTurns === 0) return false;
 
     const MAX_RETRY = enableRetry ? 3 : 0;
 
     // 从 compactRecord 游标之后开始，只压缩尚未压缩的新增 turns。
-    // compactedIndex：游标 turn 在 this.turns 中的索引；-1 表示无 compactRecord。
+    // compactedIndex：游标 turn 在本次 compact 可见历史中的索引；-1 表示无 compactRecord。
     const compactedIndex = this.compactRecord
-      ? this.turns.findIndex((t) => t.id === this.compactRecord!.upToTurnId)
+      ? compactSourceTurns.findIndex((t) => t.id === this.compactRecord!.upToTurnId)
       : -1;
     // startFromIndex：新增部分的起始索引（游标之后第一个 turn）
     const startFromIndex = compactedIndex + 1;
@@ -1695,7 +1738,7 @@ IMPORTANT: 不要调用工具！
       // turnsSlice 绝对数量 = 游标前已有部分 + 本次要压缩的新增部分
       const sliceCount = startFromIndex + firstNewTurns;
       // 游标 = fork 实际看到的最后一条 turn 的 id（与 fork 视野严格对齐）
-      const forkTurns = this.turns.slice(0, sliceCount);
+      const forkTurns = compactSourceTurns.slice(0, sliceCount);
       const upToTurnId = forkTurns[forkTurns.length - 1].id;
 
       // fork 继承 compactRecord（由 createFork 联动处理：游标在截取范围内则保留）
