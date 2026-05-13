@@ -408,11 +408,11 @@ PopupVisible 装饰器说明：
           - 事件名（如 onClick、onChange、onBlur 等）
             - title: 简短中文说明（如 登录）
             - mermaid: 根据事件内容生成对应的 Mermaid 语法流程图（以 flowchart LR; 开头，单行书写）
-            - relation:
-              - type: 关系类型（page，popup），打开弹窗使用popup，跳转页面使用page
-              - name: 关联的弹窗或页面的名称，即对应的节点名称
+            - relations:
+              - 关联的弹窗或页面的名称，即对应的节点名称
+                - type: 关系类型（page，popup），打开弹窗使用popup，跳转页面使用page
       注意格式要严格保持一致；
-      关于relation，只有一条对应关系，事件如果涉及到打开弹窗、跳转页面，则需要relation说明；
+      关于relations，事件如果涉及到打开弹窗、跳转页面，则需要relations说明；
       关于 Mermaid 语法流程图需关注以下规则和要求：
         - 流程图方向统一用 LR（从左到右），节点文本全部用双引号包裹；
         - 条件判断节点用 {} 包裹，分支标注用 |标注内容| 写在箭头上；

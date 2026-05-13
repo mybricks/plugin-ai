@@ -126,14 +126,15 @@ ${DESIGN_DOC_FILE_NAME} 是开发前先生成或更新的设计契约，也是�
 <字段到代码的对应关系>
 - 节点标题对应源码里的 appRef/comRef/popupRef 变量名；type: app 对应 appRef，type: popup 对应 popupRef，type: page/com 对应 comRef。
 - events 以触发元素的 className 为标识；事件名对应 JSX 事件属性名，例如 onClick、onChange、onBlur。
-- relation.type: popup 表示事件会打开弹窗；relation.type: page 表示事件会切换页面；relation.name 对应目标 popup/page 节点名称。
+- relations：事件如果涉及到打开弹窗、跳转页面，则需要 relations 说明。关联的弹窗或页面的名称即对应的节点名称，type 表示关系类型（打开弹窗使用 popup，跳转页面使用 page）。
 - datasource 以触发接口调用的元素 className 为标识；其下方法名对应 dataSource.js 导出或定义的方法名；如果接口调用不属于具体元素，使用 root。
 - store 以消费 store 数据的元素 className 为标识；其下文件路径对应 store 文件，field 对应 store 中维护的属性路径。
 </字段到代码的对应关系>
 
 <节点字段编写细则>
 - events：该节点内声明的事件列表，按 className 分组，每个 className 下列出该元素的所有事件。
-  - 每个事件包含 title、mermaid；涉及打开弹窗或跳转页面时补充 relation。
+  - 每个事件包含 title、mermaid；涉及打开弹窗或跳转页面时补充 relations。
+  - relations 格式：列出关联的弹窗或页面名称（即节点名称），其下声明 type（popup 表示打开弹窗，page 表示跳转页面）。
   - mermaid 必须以 flowchart LR; 开头，流程图方向统一用 LR，节点文本全部用双引号包裹。
   - 条件判断节点用 {} 包裹，分支标注用 |标注内容| 写在箭头上。
   - 判断节点的每个分支必须从判断节点单独引出，用分号分隔多条语句。
@@ -192,9 +193,9 @@ ${DESIGN_DOC_FILE_NAME} 是开发前先生成或更新的设计契约，也是�
     - onClick
       - title: 登录
       - mermaid: flowchart LR; A["校验登录参数"] --> B{"参数是否有效"}; B -->|有效| C["设置loading状态"] --> D["请求登录接口"] --> E{"请求是否成功"}; E -->|成功| F["更新用户状态"]; E -->|失败| G["提示错误信息"]; B -->|无效| H["提示参数错误"]
-      - relation:
-        - type: page
-        - name: SignUp
+      - relations:
+        - SignUp
+          - type: page
 - datasource:
   - signInBtn
     - signIn
