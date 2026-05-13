@@ -15,7 +15,7 @@ export function createCheckStatusTool(designerRef: { current: Designer | undefin
     description: `查看实时项目状态，包含环境信息、运行情况、编译和校验情况等。
 环境信息：设计态/运行态；
 运行情况：渲染页面、弹窗情况、运行报错；
-编译和校验情况：编译信息、eslint信息等；
+编译和校验情况：编译信息、代码校验、md文档校验等信息；
 
 常常用在本轮所有文件修改后，工作结束前，检查渲染情况以及文件校验情况。`,
     parameters: { type: "object", properties: {} },
