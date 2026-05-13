@@ -30,12 +30,9 @@ export const InitProjectRenderer = ({ tool }: { tool: ToolRecord }) => {
     );
   }
 
-  const allFiles: Array<{ path: string; lineCount: number; status: string }> = isRunning
+  const files: Array<{ path: string; lineCount: number; status: string }> = isRunning
     ? (tool.progress?.files ?? [])
     : (tool.result?.metadata?.files ?? []);
-
-  // 过滤掉 md 文件
-  const files = allFiles.filter((file) => !file.path.toLowerCase().endsWith(".md"));
 
   const headerTitle = isRunning ? "初始化项目..." : "初始化项目";
 
