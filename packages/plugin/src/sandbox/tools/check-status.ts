@@ -12,8 +12,12 @@ export const CHECK_STATUS_TOOL_NAME = "check-status";
 export function createCheckStatusTool(designerRef: { current: Designer | undefined }): Tool {
   return {
     name: CHECK_STATUS_TOOL_NAME,
-    description: `查看当前项目的渲染情况，包含所处环境（设计态/运行态）、渲染页面和弹窗情况、报错信息（如果有）。
-常常用在本轮所有代码修改后，本轮工作结束前，检查渲染情况是否正常。`,
+    description: `查看实时项目状态，包含环境信息、运行情况、编译和校验情况等。
+环境信息：设计态/运行态；
+运行情况：渲染页面、弹窗情况、运行报错；
+编译和校验情况：编译信息、eslint信息等；
+
+常常用在本轮所有文件修改后，工作结束前，检查渲染情况以及文件校验情况。`,
     parameters: { type: "object", properties: {} },
     async execute(_params: any, toolContext: ToolExecutionContext) {
 
