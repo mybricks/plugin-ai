@@ -100,7 +100,7 @@ CRITICAL: 尽量在同一个响应中同时并行调用多个代码工具；
 ├─ dataSource.js       # 项目唯一文件，必须
 ├─ setup.js            # 项目唯一文件，必须
 ├─ requirement.md      # 需求文档（又名prd、PRD，在最后写入）
-├─ README.md           # 代码可视化说明（在最后写入）
+├─ README.md           # 代码可视化说明
 ├─ pages
 |  └── HomePage
 |     ├── index.jsx
