@@ -86,13 +86,7 @@ export function createSubAgentTool(
   getAgent: () => Agent,
   subAgentConfigs: SubAgentConfig[]
 ): Tool {
-  // 拼接 description：列出每种 subAgent 的 type 和 description
-  const typeListDesc = subAgentConfigs
-    .map((c) => `  - ${c.type}: ${c.description}`)
-    .join("\n");
-
-  const description =
-    `调用子 Agent 处理特定任务。可用的子 Agent 类型：\n${typeListDesc}`;
+  const description = `调用 SubAgent 处理特定任务。`;
 
   return {
     name: CALL_SUB_AGENT_TOOL_NAME,

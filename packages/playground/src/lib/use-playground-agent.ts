@@ -32,7 +32,7 @@ export function usePlaygroundAgent(
       request: reqFn ?? testCase.request,
       sandbox: fs,
       tools: testCase.tools ?? [],
-      subAgents: testCase.createSubAgents ? testCase.createSubAgents(fs) : testCase.subAgents,
+      skills: testCase.skills,
       summary: testCase.summaryOptions ?? { enabled: false },
       compact: testCase.compactOptions ?? { enabled: false },
       ...(testCase.maskOptions ? { mask: testCase.maskOptions } : {}),

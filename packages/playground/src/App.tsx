@@ -66,6 +66,7 @@ const GROUP_ICONS: Record<string, string> = {
   "消息遮蔽": "🎭",
   "异常检测": "⚠️",
   "Compact": "🗜️",
+  "Skill 技能": "🧠",
   "WebFetch": "🔗",
   "UI 渲染": "🎨",
   "设置": "⚙️",

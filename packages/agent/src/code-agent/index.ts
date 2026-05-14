@@ -1,5 +1,5 @@
 import { Agent, type AgentOptions } from "../agent";
-import type { Tool } from "../types";
+import type { Message, Tool } from "../types";
 import {
   createReadTool, READ_TOOL_NAME,
   createWriteTool, WRITE_TOOL_NAME,
@@ -14,11 +14,32 @@ import {
 import { getCodeAgentSystemPrompt, type CodeAgentPromptOptions } from "./prompt";
 export type { CodeAgentPromptOptions };
 import { type SkillFile, resolveSkillMeta } from "./skills";
-import { createSubAgentTool, type SubAgentConfig } from "../sub-agent";
+import { createSubAgentTool, type SubAgentConfig, CALL_SUB_AGENT_TOOL_NAME } from "../sub-agent";
 export type { SubAgentConfig };
 
 export type { SkillFile };
 export { resolveSkillMeta, USE_SKILL_TOOL_NAME };
+
+// ─── Plugin 配置 ─────────────────────────────────────────────────────────────
+
+/**
+ * CodeAgent 插件配置。
+ *
+ * 对标 Claude Code plugin 的组件聚合语义：
+ *   - skills 使用现有 SkillFile 声明
+ *   - agents 使用现有 SubAgentConfig 声明，并合并到顶层 subAgents
+ *   - tools 使用现有 Tool 声明，并合并到顶层 tools
+ */
+export interface CodeAgentPlugin {
+  /** 插件名称，仅用于调用侧标识；CodeAgent 不额外命名空间化组件 */
+  name?: string;
+  /** 插件内置 Skills，合并到顶层 skills */
+  skills?: SkillFile[];
+  /** 插件内置 Agents，合并到顶层 subAgents */
+  agents?: SubAgentConfig[];
+  /** 插件内置工具，合并到顶层 tools */
+  tools?: Tool[];
+}
 
 // ─── 沙箱接口 ─────────────────────────────────────────────────────────────────
 
@@ -71,7 +92,7 @@ export interface CodeAgentOptions extends Omit<AgentOptions, 'system'> {
    * 对标 claude-code 的 .claude/skills/ 目录机制：
    *   - 每个 SkillFile.name 作为虚拟目录名（.agent/skills/<name>/）
    *   - SKILL.md 为必填入口文件
-   *   - system prompt 中列出 skills 目录（name + description）
+   *   - 技能目录（name + description）列出在环境消息中，随每轮 user 消息注入
    *   - LLM 通过 use_skill 工具按需加载 SKILL.md 内容
    *   - 支持文件可通过 read_file 工具读取（.agent/skills/<name>/<path>）
    *   - 不全量注入，避免 token 浪费
@@ -88,12 +109,77 @@ export interface CodeAgentOptions extends Omit<AgentOptions, 'system'> {
    * 不传或传空数组时不注册该工具。
    */
   subAgents?: SubAgentConfig[];
+  /**
+   * 插件配置列表。
+   *
+   * 构造时会将每个 plugin 的 skills / agents / tools 追加到顶层
+   * skills / subAgents / tools 中，后续虚拟文件、环境信息和工具注册逻辑保持一致。
+   */
+  plugins?: CodeAgentPlugin[];
 }
 
 /** 虚拟 agent 资源路径前缀 */
 const AGENT_PREFIX = ".agent/";
 /** 虚拟 skills 路径前缀 */
 const SKILLS_PREFIX = `${AGENT_PREFIX}skills/`;
+
+// ─── 构建环境信息 ──────────────────────────────────────────────────────────────
+
+/**
+ * 构建环境信息文本（静态，随每轮 user 消息注入到最上方）。
+ *
+ * 包含 skills 目录信息和可用 sub-agents 类型信息，
+ * 用 <system-reminder>环境信息</system-reminder> 包裹，返回字符串。
+ * 如果无任何内容则返回空字符串。
+ */
+function buildEnvironmentSection(skills?: SkillFile[], subAgents?: SubAgentConfig[]): string {
+  const sections: string[] = [];
+
+  // ── 当前日期 ──────────────────────────────────────────────────────────────
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("zh-CN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+  });
+  sections.push(`当前日期：${dateStr}`);
+
+  // ── Skills 目录 ───────────────────────────────────────────────────────────
+  if (skills?.length) {
+    const lines = skills.map((s) => {
+      const skillMd = s.files.find((f) => f.path === "SKILL.md");
+      if (!skillMd) return `  ${s.name}`;
+      const { description, whenToUse } = resolveSkillMeta(skillMd.content, s.name);
+      let line = `  ${s.name}: ${description}`;
+      if (whenToUse) line += `（适用场景：${whenToUse}）`;
+      return line;
+    });
+
+    sections.push(
+      `可用 Skill（当任务涉及相关场景时，使用 ${USE_SKILL_TOOL_NAME} 工具调用指定 Skill 获取完整指导）：\n` +
+      `${lines.join("\n")}\n` +
+      `注意：When a skill matches the user's request, this is a BLOCKING REQUIREMENT. NEVER mention a skill without actually calling this tool.`
+    );
+  }
+
+  // ── SubAgent 目录 ─────────────────────────────────────────────────────────
+  if (subAgents?.length) {
+    const lines = subAgents.map((c) => `  ${c.type}: ${c.description}`).join("\n");
+    sections.push(
+      `可用 SubAgent（需要时使用 ${CALL_SUB_AGENT_TOOL_NAME} 工具发起调用）：\n` +
+      `${lines}`
+    );
+  }
+
+  if (sections.length === 0) return "";
+
+  return (
+    `<system-reminder>\n` +
+    `${sections.join("\n\n")}\n` +
+    `</system-reminder>`
+  );
+}
 
 // ─── CodeAgent ────────────────────────────────────────────────────────────────
 
@@ -111,17 +197,25 @@ const SKILLS_PREFIX = `${AGENT_PREFIX}skills/`;
  *   - `tools`     — 额外自定义工具（如 check_design_status）
  *   - `agentsMd`  — agents.md 规则文档，追加到系统 prompt 末尾
  *   - `skills`    — 技能文件列表，挂载为虚拟文件系统，LLM 按需读取
+ *   - `subAgents` — 子 Agent 配置列表，注册 call-sub-agent 工具
  */
 export class CodeAgent extends Agent {
   constructor(options: CodeAgentOptions) {
-    const { sandbox, skills, system, subAgents, ...agentOptions } = options;
+    const { sandbox, skills, system, subAgents, plugins, ...agentOptions } = options;
+    const pluginSkills = plugins?.flatMap((plugin) => plugin.skills ?? []) ?? [];
+    const pluginSubAgents = plugins?.flatMap((plugin) => plugin.agents ?? []) ?? [];
+    const pluginTools = plugins?.flatMap((plugin) => plugin.tools ?? []) ?? [];
+
+    const resolvedSkills = [...(skills ?? []), ...pluginSkills];
+    const resolvedSubAgents = [...(subAgents ?? []), ...pluginSubAgents];
+    const resolvedTools = [...(agentOptions.tools ?? []), ...pluginTools];
 
     // ── 包装 sandbox.getFiles()，追加 skills 虚拟文件 ─────────────────────────
     const wrappedSandbox: Sandbox | undefined = sandbox
       ? {
           getFiles: async () => {
             const realFiles = await sandbox.getFiles();
-            const skillFiles = (skills ?? []).flatMap((s) =>
+            const skillFiles = resolvedSkills.flatMap((s) =>
               s.files.map((f) => ({
                 path: `${SKILLS_PREFIX}${s.name}/${f.path}`,
                 content: f.content,
@@ -141,14 +235,14 @@ export class CodeAgent extends Agent {
       : [];
 
     // ── sandbox.getContext 作为 getContextMessages ────────────────────────────
-    const getContextMessages = async (): Promise<import("../types").Message[]> => {
+    const getContextMessages = async (): Promise<Message[]> => {
       const ctx = await wrappedSandbox?.getContext?.() ?? null;
       if (!ctx) return [];
       return [{ role: "user", content: ctx }];
     };
 
     // ── sandbox.getUserContext 作为 getUserContextMessages（@experimental）────
-    const getUserContextMessages = async (): Promise<import("../types").Message[]> => {
+    const getUserContextMessages = async (): Promise<Message[]> => {
       const uc = await wrappedSandbox?.getUserContext?.() ?? null;
       if (!uc) return [];
       if (Array.isArray(uc)) {
@@ -157,7 +251,13 @@ export class CodeAgent extends Agent {
       return [{ role: "user", content: uc }];
     };
 
-    const builtinSystem = getCodeAgentSystemPrompt(agentOptions.promptOptions, skills);
+    // ── 构建环境信息（skills 目录 + sub-agents 目录），静态注入 ─────────────────
+    const environmentSection = buildEnvironmentSection(
+      resolvedSkills.length ? resolvedSkills : undefined,
+      resolvedSubAgents.length ? resolvedSubAgents : undefined,
+    );
+
+    const builtinSystem = getCodeAgentSystemPrompt(agentOptions.promptOptions);
     const finalSystem = system ? `${builtinSystem}\n\n${system}` : builtinSystem;
 
     super({
@@ -165,20 +265,21 @@ export class CodeAgent extends Agent {
       system: finalSystem,
       getContextMessages,
       getUserContextMessages,
+      environmentSection,
       // 内置沙箱工具在前，外部注入工具（如 check_design_status）在后
-      tools: [...sandboxTools, ...(agentOptions.tools ?? [])],
+      tools: [...sandboxTools, ...resolvedTools],
     });
 
     // ── 注册 use_skill 工具（需要 skills 列表，在 super() 之后处理）───────────────
-    if (skills?.length) {
-      const skillTool = createSkillTool(skills);
+    if (resolvedSkills.length) {
+      const skillTool = createSkillTool(resolvedSkills);
       this.options.tools = [...(this.options.tools ?? []), skillTool];
     }
 
     // ── 注册 call-sub-agent 工具（需要 this，在 super() 之后处理）─────────────────
     // 用懒引用 () => this 避免在 super() 前访问 this
-    if (subAgents?.length) {
-      const subAgentTool = createSubAgentTool(() => this, subAgents);
+    if (resolvedSubAgents.length) {
+      const subAgentTool = createSubAgentTool(() => this, resolvedSubAgents);
       this.options.tools = [...(this.options.tools ?? []), subAgentTool];
     }
   }

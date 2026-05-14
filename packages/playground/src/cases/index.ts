@@ -45,17 +45,6 @@ import {
 } from "./edge-cases";
 import { compactTriggerCase, compactWithToolsCase, compactWarmupByUsageCase, compactErrorCase, compactEmptyResponseCase, compactNoContentCase, compactInfiniteCase, compactRetrySuccessErrorCase, compactRetrySuccessTagCase, compactBinaryExpandSuccessCase, compactMidTurnErrorRetryCase } from "./compact";
 import { markdownRichCase, userMessageWithLinksCase, streamingMarkdownCase, toolThenEmptyContentCase, assistantMessageWithLinksCase } from "./ui-render";
-import {
-  initProjectSingleFileCase,
-  initProjectMultiFileCase,
-  initProjectStreamingProgressCase,
-  initProjectNoFilesCase,
-  initProjectPartialFailureCase,
-  initProjectIncompleteBlockCase,
-  initProjectWithLanguageCase,
-  initProjectLongWaitCase,
-  initProjectRetryCase,
-} from "./init-project";
 import { multiEditSameFileCase, multiEditPartialSuccessCase } from "./multi-edit";
 import { editDoomLoopCase, editNoDoomLoopCase } from "./edit-doom-loop";
 import { editFewLinesCase } from "./edit-few-lines";
@@ -75,6 +64,7 @@ import {
   grepNoMatchCase,
   grepValidationCase,
 } from "./grep-search";
+import { skillUseThenContinueCase } from "./skill";
 
 export type { TestCase, Priority } from "./types";
 
@@ -85,6 +75,7 @@ export const ALL_CASES: TestCase[] = [
   networkErrorAfterToolCallNoHistoryCase,
   compactMidTurnErrorRetryCase,
   multiEditPartialSuccessCase,
+  skillUseThenContinueCase,
   // ─── 网络中断 ───────────────────────────────────
   networkErrorDelayedCase,
   toolCallArgsMidErrorCase,
@@ -154,16 +145,6 @@ export const ALL_CASES: TestCase[] = [
   assistantMessageWithLinksCase,
   // 异常检测—工具后空 content
   toolThenEmptyContentCase,
-  // 初始化项目 SubAgent
-  initProjectSingleFileCase,
-  initProjectMultiFileCase,
-  initProjectStreamingProgressCase,
-  initProjectNoFilesCase,
-  initProjectPartialFailureCase,
-  initProjectIncompleteBlockCase,
-  initProjectWithLanguageCase,
-  initProjectLongWaitCase,
-  initProjectRetryCase,
   // 设置
   settingCase,
   // Grep 搜索

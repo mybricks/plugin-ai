@@ -3,9 +3,6 @@ import { WRITE_TOOL_NAME } from "./tools/write";
 import { MULTI_WRITE_TOOL_NAME } from './tools/multi-write';
 import { EDIT_TOOL_NAME } from "./tools/edit";
 import { MULTI_EDIT_TOOL_NAME } from "./tools/multi-edit";
-import { USE_SKILL_TOOL_NAME } from "./tools/skill";
-import type { SkillFile } from "./skills";
-import { resolveSkillMeta } from "./skills";
 
 /**
  * 提示词。
@@ -17,12 +14,11 @@ export interface CodeAgentPromptOptions {
   usingToolsSection?: string;
 }
 
-export function getCodeAgentSystemPrompt(opts?: CodeAgentPromptOptions, skills?: SkillFile[]): string {
+export function getCodeAgentSystemPrompt(opts?: CodeAgentPromptOptions): string {
   const sections = [
     getIdentitySection(opts?.identitySection),
     getDoingTasksSection(),
     getUsingToolsSection(opts?.usingToolsSection),
-    getSkillsSection(skills),
     getToneAndStyleSection(),
   ].filter(Boolean);
 
@@ -62,40 +58,6 @@ function getUsingToolsSection(usingTools?: string): string {
  - 使用 \`${EDIT_TOOL_NAME}\` 或 \`${MULTI_EDIT_TOOL_NAME}\` 修改已有文件。这是修改文件的首选工具，因为它只发送差异部分。
  - 使用 \`${WRITE_TOOL_NAME}\` 或 \`${MULTI_WRITE_TOOL_NAME}\` 新建文件，或在需要完整重写文件时使用。对已有文件优先使用 \`${EDIT_TOOL_NAME}\`。
  - 在一次响应中可以调用多个工具。如果多个工具之间没有依赖关系，并行调用它们以提高效率。如果某些工具调用依赖于前一个调用的结果，则按顺序调用。`;
-}
-
-// ─── 可用技能文件 ─────────────────────────────────────────────────────────────
-
-/**
- * 生成 skills 目录节。
- *
- * 格式：每条 skill 结构化列出 name（SkillFile.name，作为索引 key）+ description + whenToUse。
- * 不全量注入内容，LLM 按需通过 use_skill 工具加载。
- */
-function getSkillsSection(skills?: SkillFile[]): string {
-  if (!skills || skills.length === 0) return "";
-
-  const lines = skills.map((s) => {
-    const skillMd = s.files.find((f) => f.path === "SKILL.md");
-    if (!skillMd) {
-      return `- name: ${s.name}`;
-    }
-    const { description, whenToUse } = resolveSkillMeta(skillMd.content, s.name);
-    let line = `- name: ${s.name}\n  description: ${description}`;
-    if (whenToUse) {
-      line += `\n  when_to_use: ${whenToUse}`;
-    }
-    return line;
-  });
-
-  return `# 可用技能文件 (Skills)
-以下是可用的技能列表。当任务涉及相关场景时，使用 \`${USE_SKILL_TOOL_NAME}\` 工具调用指定技能获取完整指导：
-
-${lines.join("\n")}
-
-重要：
-- When a skill matches the user's request, this is a BLOCKING REQUIREMENT...
-- NEVER mention a skill without actually calling this tool`;
 }
 
 // ─── 输出风格 ─────────────────────────────────────────────────────────────────

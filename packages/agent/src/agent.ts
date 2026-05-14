@@ -118,6 +118,12 @@ export interface AgentOptions {
    * - 返回字符串数组：每个元素构造为一条独立的 user 消息注入。
    */
   getUserContextMessages?: () => Promise<Message[]>;
+  /**
+   * 环境信息文本（静态，构建时确定）。
+   * 包含可用 skills、sub-agents 等环境信息，用 <system-reminder> 包裹的字符串。
+   * 每次请求时与 userContextMessages 合并为一条 user 消息，插在当前用户消息之前。
+   */
+  environmentSection?: string;
   /** 工具列表（plugin 初始化时注册额外工具） */
   tools?: Tool[];
   /** 历史记录实现 */
@@ -266,6 +272,8 @@ interface TurnMessageSnapshot {
   contextMessages: Message[];
   /** 用户自定义上下文：每轮开始时获取一次，插入在当前用户消息之前 */
   userContextMessages: Message[];
+  /** 环境信息文本（静态，每次请求时与 userContextMessages 合并为一条 user 消息） */
+  environmentSection: string;
 }
 
 /**
@@ -293,6 +301,7 @@ async function buildTurnMessageSnapshot(
     historyTurns,
     contextMessages,
     userContextMessages,
+    environmentSection: options.environmentSection ?? "",
   };
 }
 
@@ -392,15 +401,19 @@ function buildIterationBaseMessages(
 
 /**
  * 每次 LLM 请求前组装完整 messages 列表：
- *   baseMessages（静态前缀 + 动态上下文 + 历史）+ 用户上下文消息 + 用户消息 + 本轮已积累的对话尾部
+ *   baseMessages（静态前缀 + 动态上下文 + 历史）
+ *   + 前置上下文消息（environmentSection + userContextMessages 合并为一条 user 消息，可选）
+ *   + 用户消息
+ *   + 本轮已积累的对话尾部
  *
- * @param baseMessages       assembleBaseMessages 返回的基础部分
- * @param historyStartIndex  assembled 数组中历史消息的起始索引（mask 时跳过静态前缀）
- * @param options            AgentOptions
- * @param turns              当前 turns 快照（用于 mask）
- * @param params             本轮用户请求参数
- * @param tail               本轮已积累的 assistant + tool 消息（step > 1 时非空）
- * @param userContextMessages  用户自定义上下文消息，插入在用户消息之前（@experimental）
+ * @param baseMessages         buildIterationBaseMessages 返回的基础部分
+ * @param historyStartIndex    assembled 数组中历史消息的起始索引（mask 时跳过静态前缀）
+ * @param options              AgentOptions
+ * @param turns                当前 turns 快照（用于 mask）
+ * @param params               本轮用户请求参数
+ * @param tail                 本轮已积累的 assistant + tool 消息（step > 1 时非空）
+ * @param userContextMessages  用户自定义上下文消息（文本列表，与 environmentSection 合并）
+ * @param environmentSection   环境信息文本（skills/sub-agents），与 userContextMessages 合并为一条 user 消息
  */
 function assembleMessages(
   baseMessages: Message[],
@@ -409,7 +422,8 @@ function assembleMessages(
   turns: TurnRecord[],
   params: RequestAIOptions,
   tail: Message[],
-  userContextMessages: Message[]
+  userContextMessages: Message[],
+  environmentSection: string
 ): Message[] {
   const { message, attachments } = params;
 
@@ -425,13 +439,29 @@ function assembleMessages(
   }
   const userMessage: Message = { role: "user", content: userContent };
 
-  // userContextMessages 放在 userMessage 之前
-  const assembled = [...baseMessages, ...userContextMessages, userMessage, ...tail];
+  // environmentSection 与 userContextMessages 合并为一条前置 user 消息（两者都为空则不插入）
+  const userContextTexts = userContextMessages
+    .map((m) => (typeof m.content === "string" ? m.content : ""))
+    .filter(Boolean);
+  const prefixParts = [
+    ...(environmentSection ? [environmentSection] : []),
+    ...userContextTexts,
+  ];
+  const prefixMessage: Message | null = prefixParts.length > 0
+    ? { role: "user", content: prefixParts.join("\n\n") }
+    : null;
+
+  const assembled = [
+    ...baseMessages,
+    ...(prefixMessage ? [prefixMessage] : []),
+    userMessage,
+    ...tail,
+  ];
 
   // ── prompt cache 断点 3：当前请求尾部最后一条消息 ──────────────
   // tail 非空时最后一条为 role: "tool"，空时为 userMessage (role: "user")
   // role: "assistant" 不加 cache（工具调用响应消息不是断点）
-  const cacheTargetIndex = baseMessages.length + userContextMessages.length + tail.length;
+  const cacheTargetIndex = baseMessages.length + (prefixMessage ? 1 : 0) + tail.length;
   // 等价于 userMessage 在 assembled 中的索引 + tail.length（tail 为空则指向 userMessage 自身）
   const cacheTarget = assembled[cacheTargetIndex];
   if (cacheTarget && (cacheTarget.role === "user" || cacheTarget.role === "tool")) {
@@ -918,7 +948,8 @@ export class Agent {
           messageSnapshot.historyTurns,
           formattedParams,
           tail,
-          messageSnapshot.userContextMessages
+          messageSnapshot.userContextMessages,
+          messageSnapshot.environmentSection
         );
 
         // 调用 LLM

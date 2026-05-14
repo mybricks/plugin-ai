@@ -20,30 +20,15 @@ export const USE_SKILL_TOOL_NAME = "use_skill";
  */
 export function createSkillTool(skills: SkillFile[]): Tool {
   const skillNames = skills.map((s) => s.name);
-  const skillListDesc = skillNames
-    .map((name) => {
-      const skill = skills.find((s) => s.name === name)!;
-      const skillMd = skill.files.find((f) => f.path === "SKILL.md");
-      if (!skillMd) return `- name: ${name}`;
-      const { description, whenToUse } = resolveSkillMeta(skillMd.content, name);
-      let line = `- name: ${name}\n  description: ${description}`;
-      if (whenToUse) {
-        line += `\n  when_to_use: ${whenToUse}`;
-      }
-      return line;
-    })
-    .join("\n");
 
   return {
     name: USE_SKILL_TOOL_NAME,
-    description: `调用指定技能Skill，获取技能的完整指导内容。
+    description: `调用指定 Skill，获取 Skill 的完整指导内容。
 
-当用户消息涉及技能Skill相关场景时，看下是否有合适的技能Skill可以使用。技能Skill提供专业能力和领域知识，应使用此工具加载技能Skill获取完整内容。
-
-${skillListDesc}
+当用户消息涉及 Skill 相关场景时，看下是否有合适的 Skill 可以使用。Skill 提供专业能力和领域知识，应使用此工具加载 Skill 获取完整内容。
 
 用法：
-- 传入 skill name 调用指定技能
+- 传入 skill name 调用指定 Skill
 - 返回内容包括：SKILL.md 完整内容（由 <skill> 标签包裹）、目录树（如有可读取的文件）
 - 可读取的文件可通过 read_file 工具读取（路径格式：.agent/skills/<name>/<path>）`,
     parameters: {

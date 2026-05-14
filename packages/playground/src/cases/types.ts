@@ -1,7 +1,7 @@
 import type { TurnRecord } from "@agent/types";
 import type { RequestAsStreamFn } from "@request/types";
 import type { Tool } from "@agent/types";
-import type { SubAgentConfig, Sandbox } from "@agent/code-agent";
+import type { SkillFile } from "@agent/code-agent";
 import type { FsFile } from "../lib/mem-fs";
 
 export type Priority = "P0" | "P1" | "P2";
@@ -20,8 +20,8 @@ export interface TestCase {
   initialFiles?: FsFile[];
   request: RequestAsStreamFn;
   tools?: Tool[];
-  subAgents?: SubAgentConfig[];
-  createSubAgents?: (sandbox: Sandbox) => SubAgentConfig[];
+  /** 预设技能文件列表，传入 CodeAgent.skills */
+  skills?: SkillFile[];
   maskOptions?: {
     maxTurns?: number;
     maxAgeMinutes?: number;
