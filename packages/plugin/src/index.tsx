@@ -4,7 +4,7 @@ import pkg from "../../../package.json";
 console.log(`%c ${pkg.name} %c@${pkg.version}`, `color:#FFF;background:#fa6400`, ``, ``);
 
 import { CodeAgent, IDBHistory } from "../../agent/src";
-import type { SkillFile, TurnSender } from "../../agent/src";
+import type { CodeAgentPlugin, SkillFile, TurnSender } from "../../agent/src";
 import { createRequestAsStream, createOnUpload, LLMProviders } from "../../request/src";
 import type { RequestAsStreamFn, ProviderConfig } from "../../request/src";
 import { resolvePromptOptions, type PromptSections } from "./prompts";
@@ -16,10 +16,14 @@ import type { Designer, Hooks, RegistSandBoxConfig } from "./sandbox";
 import { ChatPanelList, ChatStartView, ComChatStartView } from "./ui/chat";
 import { ensureAIPanelOpen, ensureFocusComId } from "./utils/ensure-ai-panel-open";
 
+// ─── 数据源插件 ───────────────────────────────────────────────────────────────
+
+export { datasourcePlugin } from "./datasource";
+
 // ─── 工具类型重导出 ────────────────────────────────────────────────────────────
 
 export { CodeAgent, IDBHistory } from "../../agent/src";
-export type { AgentEventMap, SkillFile } from "../../agent/src";
+export type { AgentEventMap, CodeAgentPlugin, SkillFile } from "../../agent/src";
 export { createRequestAsStream, createOnUpload } from "../../request/src";
 export type { RequestAsStreamFn } from "../../request/src";
 export { openSetting, closeSetting, SettingModal } from "./ui/setting";
@@ -67,6 +71,8 @@ export interface PluginAIParams {
   agentsMd?: string;
   /** 技能文件列表，挂载为虚拟 .agent/skills/ 目录，LLM 通过 use_skill 工具按需加载 */
   skills?: SkillFile[];
+  /** 插件列表，会将内部 skills / agents / tools 合并进 CodeAgent 顶层配置 */
+  plugins?: CodeAgentPlugin[];
   /** 覆盖内置系统提示词各节，按 key 深度合并，未提供的 key 保留 MYBRICKS_PROMPT_SECTIONS 默认值 */
   promptSections?: PromptSections;
   /** 额外自定义工具，追加到内置工具（read_file / write_file 等）之后 */
@@ -106,6 +112,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     codingConfig,
     agentsMd,
     skills,
+    plugins,
     promptSections,
     tools,
     componentRuntime,
@@ -199,6 +206,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     requestAsStream,
     agentsMd,
     skills: mergedSkills,
+    plugins,
     promptSections: mergedPromptSections,
     tools,
     availableLibraries: codingConfig?.availableLibraries ?? [],

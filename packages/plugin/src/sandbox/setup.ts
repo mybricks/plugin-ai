@@ -1,6 +1,6 @@
 import React from "react";
 import { CodeAgent, IDBHistory } from "../../../agent/src";
-import type { Tool, Sandbox, CodeAgentPromptOptions, History, BoundHistory, TurnSender } from "../../../agent/src";
+import type { Tool, Sandbox, CodeAgentPlugin, CodeAgentPromptOptions, History, BoundHistory, TurnSender } from "../../../agent/src";
 import type { PromptSections } from "../prompts";
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { Designer, RegistSandBoxConfig } from "./types";
@@ -105,6 +105,7 @@ export interface SetupSandboxParams {
   requestAsStream: RequestAsStreamFn;
   agentsMd?: string;
   skills?: any[];
+  plugins?: CodeAgentPlugin[];
   promptSections?: PromptSections;
   tools?: Tool[];
   availableLibraries?: any[];
@@ -123,12 +124,12 @@ export interface SetupSandboxParams {
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
 export function setupSandbox(params: SetupSandboxParams): void {
-  const { requestAsStream, agentsMd, skills, promptSections, tools, availableLibraries, themes, componentRuntime, history, sender } = params;
+  const { requestAsStream, agentsMd, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, history, sender } = params;
 
   window._sandbox_ = {
     // ── sandbox → Plugin ──────────────────────────────────────────────────────
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
-      return connectToAI(comId, config, { requestAsStream, agentsMd, skills, promptOptions: promptSections?.agent, promptSections, tools, history, sender });
+      return connectToAI(comId, config, { requestAsStream, agentsMd, skills, plugins, promptOptions: promptSections?.agent, promptSections, tools, history, sender });
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
@@ -179,6 +180,7 @@ interface PluginParams {
   requestAsStream: RequestAsStreamFn;
   agentsMd?: string;
   skills?: any[];
+  plugins?: CodeAgentPlugin[];
   promptOptions?: CodeAgentPromptOptions;
   promptSections?: PromptSections;
   tools?: Tool[];
@@ -189,7 +191,7 @@ interface PluginParams {
 function connectToAI(
   comId: string,
   { designer, hooks }: RegistSandBoxConfig,
-  { requestAsStream, agentsMd, skills, promptOptions, promptSections, tools, history, sender }: PluginParams
+  { requestAsStream, agentsMd, skills, plugins, promptOptions, promptSections, tools, history, sender }: PluginParams
 ): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
 
@@ -235,6 +237,7 @@ function connectToAI(
     hooks,
     agentsMd,
     skills,
+    plugins,
     subAgents: [],
     formatUserMessage: (params) => {
       const focusSnapshot = context.currentFocus;
