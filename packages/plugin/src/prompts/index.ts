@@ -1,8 +1,10 @@
 import type { CodeAgentPromptOptions } from "../../../agent/src";
 import { MYBRICKS_PROMPT_SECTIONS } from "./mybricks";
-// import { MYBRICKS_DESIGN_FIRST_PROMPT_SECTIONS } from './mybricks-design-first'
+// import { MYBRICKS_SPEC_FIRST_PROMPT_SECTIONS } from "./mybricks-spec-first";
+// import { MYBRICKS_JSDOC_PROMPT_SECTIONS } from './mybricks-jsdoc'
 
 export type { MybricksPromptSections } from "./mybricks";
+
 
 /**
  * Agent 身份与工具使用相关提示词节，对应 CodeAgentPromptOptions。
@@ -42,7 +44,7 @@ export interface PromptSectionsDesignGuide {
  * 文档规范相关提示词节。
  */
 export interface PromptSectionsDocumentGuide {
-  /** README.md 与 requirement.md 的书写规范 */
+  /** 代码说明文档（README.md / JSDoc 注释）与 requirement.md 的书写规范 */
   firstOfAll?: string;
 }
 
@@ -72,7 +74,7 @@ export interface PromptSections {
  */
 export function resolveDefaultPromptSections(input?: PromptSections): Required<PromptSections> {
   const D = MYBRICKS_PROMPT_SECTIONS;
-  // const D = MYBRICKS_DESIGN_FIRST_PROMPT_SECTIONS;
+  // const D = MYBRICKS_JSDOC_PROMPT_SECTIONS;
   const result: any = {};
   for (const key of Object.keys(D) as (keyof typeof D)[]) {
     result[key] = { ...D[key], ...input?.[key as keyof PromptSections] };

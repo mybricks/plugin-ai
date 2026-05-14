@@ -23,7 +23,7 @@ function withShadowStyles<P extends object>(
       injectedRef.current = true;
       if (!(window as any)[styleFlag]) {
         document.head.querySelectorAll("style").forEach((style) => {
-          if (style.textContent?.includes("--plugin-ai-comp-view")) {
+          if (style.textContent?.includes("plugin-ai-comp-view-anchor")) {
             root.appendChild(style.cloneNode(true));
           }
         });

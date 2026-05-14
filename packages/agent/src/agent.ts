@@ -255,6 +255,8 @@ export interface RequestAIOptions {
   [key: string]: any;
 }
 
+type TurnPersistMode = "append" | "update";
+
 // ─── 构建消息列表 ──────────────────────────────────────────────────────────────
 
 interface TurnMessageSnapshot {
@@ -736,6 +738,7 @@ export class Agent {
     // 统一走 _runTurn，由它根据 turn.iterations 决定是否跑 beforeTurn/warmup
     await this._runTurn(turn, {
       userParams: { message: turn.userText, attachments: turn.userAttachments, meta: turn.meta },
+      persistMode: "update",
     });
   }
 
@@ -750,9 +753,10 @@ export class Agent {
     opts: {
       userParams: { message: string; attachments?: any[]; meta?: any };
       llmRest?: Record<string, any>;
+      persistMode: TurnPersistMode;
     }
   ): Promise<void> {
-    const { userParams, llmRest } = opts;
+    const { userParams, llmRest, persistMode } = opts;
     const isFromStart = getLLMIterations(turn.iterations).length === 0;
 
     // 重置 turn 状态
@@ -779,13 +783,13 @@ export class Agent {
       turn.endTime = Date.now();
       turn.status = "error";
       turn.error = String((e as any)?.message ?? e);
-      await this._persistTurn(turn);
+      await this._saveTurnRecord(turn, persistMode);
       this.events.emit("turn:error", { error: e });
       this._onTurnEnd(turn);
       throw e;
     }
 
-    await this._runReActLoop({ messageSnapshot, turn, userParams, llmRest });
+    await this._runReActLoop({ messageSnapshot, turn, userParams, llmRest, persistMode });
   }
 
   /** ReAct 循环核心逻辑（requestAI 和 retry 共用） */
@@ -798,8 +802,10 @@ export class Agent {
     userParams: { message: string; attachments?: any[]; meta?: any };
     /** 透传给 callLLM 的其余参数（aiRole 等） */
     llmRest?: Record<string, any>;
+    /** 本次执行对持久化层的写入语义：新 turn 首次保存 append，retry 复用旧 turn update */
+    persistMode: TurnPersistMode;
   }): Promise<void> {
-    const { messageSnapshot, turn, userParams, llmRest = {} } = opts;
+    const { messageSnapshot, turn, userParams, llmRest = {}, persistMode } = opts;
 
     // 从 turn.iterations 自动推导 initialTail 和 startStep
     const llmItersOnEntry = getLLMIterations(turn.iterations);
@@ -868,7 +874,7 @@ export class Agent {
         if (signal.aborted) {
           turn.status = "abort";
           turn.endTime = Date.now();
-          await this._persistTurn(turn);
+          await this._saveTurnRecord(turn, persistMode);
           this.events.emit("turn:abort", {});
           this._onTurnEnd(turn);
           return;
@@ -876,7 +882,7 @@ export class Agent {
 
         // 每次 LLM 请求之前判断是否需要 warmup（compact 等预处理）
         if (this._shouldAutoCompact() && !this._isAlreadyCompacted()) {
-          const warmupAborted = await this._runWarmup(turn, signal);
+          const warmupAborted = await this._runWarmup(turn, signal, persistMode);
           if (warmupAborted) return;
         }
 
@@ -936,7 +942,7 @@ export class Agent {
           turn.endTime = Date.now();
           turn.status = "error";
           turn.error = String((e as any)?.message ?? e);
-          await this._persistTurn(turn);
+          await this._saveTurnRecord(turn, persistMode);
           this.events.emit("turn:error", { error: e });
           this._onTurnEnd(turn);
           throw e;
@@ -945,7 +951,7 @@ export class Agent {
         if (llmResult.aborted) {
           turn.status = "abort";
           turn.endTime = Date.now();
-          await this._persistTurn(turn);
+          await this._saveTurnRecord(turn, persistMode);
           this.events.emit("turn:abort", {});
           this._onTurnEnd(turn);
           return;
@@ -971,7 +977,7 @@ export class Agent {
         if (modelFinished) {
           turn.endTime = iterEndTime;
           turn.status = "success";
-          await this._persistTurn(turn);
+          await this._saveTurnRecord(turn, persistMode);
           this.events.emit("llm:complete", { step, finishReason: llmResult.finishReason, usage: llmResult.usage, done: true, endTime: turn.endTime });
           this.events.emit("turn:complete", {});
           this._onTurnEnd(turn);
@@ -1112,7 +1118,7 @@ export class Agent {
         if (signal.aborted) {
           turn.status = "abort";
           turn.endTime = Date.now();
-          await this._persistTurn(turn);
+          await this._saveTurnRecord(turn, persistMode);
           this.events.emit("turn:abort", {});
           this._onTurnEnd(turn);
           return;
@@ -1121,8 +1127,8 @@ export class Agent {
         if (doomLoopTriggered && doomLoopInfo) {
           turn.endTime = Date.now();
           turn.status = "error";
-          turn.error = `模型异常，已自动中断，可以发送消息让大模型继续`;
-          await this._persistTurn(turn);
+          turn.error = `模型异常，已自动中断，可以点击重试或发送新的消息`;
+          await this._saveTurnRecord(turn, persistMode);
           this.events.emit("turn:error", { error: new Error(turn.error) });
           this._onTurnEnd(turn);
           return;
@@ -1136,7 +1142,7 @@ export class Agent {
       const lastIterUsage = lastIter && !("type" in lastIter) ? (lastIter as any).usage : undefined;
       turn.endTime = Date.now();
       turn.status = "success";
-      await this._persistTurn(turn);
+      await this._saveTurnRecord(turn, persistMode);
       this.events.emit("llm:complete", { step: maxSteps, finishReason: "length", usage: lastIterUsage, done: true, endTime: turn.endTime });
       this.events.emit("turn:complete", {});
       this._onTurnEnd(turn);
@@ -1146,7 +1152,7 @@ export class Agent {
         turn.endTime = Date.now();
         turn.status = "error";
         turn.error = String((e as any)?.message ?? e);
-        await this._persistTurn(turn);
+        await this._saveTurnRecord(turn, persistMode);
         this.events.emit("turn:error", { error: e });
         this._onTurnEnd(turn);
       }
@@ -1154,8 +1160,8 @@ export class Agent {
     }
   }
 
-  /** 持久化单个 turn */
-  private async _persistTurn(turn: TurnRecord): Promise<void> {
+  /** 保存单个 turn：新 turn 首次保存 append，retry/续跑复用旧 turn update。 */
+  private async _saveTurnRecord(turn: TurnRecord, mode: TurnPersistMode): Promise<void> {
     const { history, key } = this.options;
     if (history && key) {
       // 更新 turns 数组中的 turn
@@ -1166,9 +1172,7 @@ export class Agent {
         this.turns.push(turn);
       }
       try {
-        const existing = await history.load(key);
-        const hasPersistedTurn = existing.some(t => t.id === turn.id);
-        if (hasPersistedTurn) {
+        if (mode === "update") {
           await history.update(key, turn.id, turn);
         } else {
           await history.append(key, turn);
@@ -1255,12 +1259,13 @@ export class Agent {
       ...(formattedParams.message !== message ? { userFormattedText: formattedParams.message } : {}),
     });
 
-    // 将 turn 加入内存（_runTurn 内的消息快照需要排除它，_persistTurn 会更新它）
+    // 将 turn 加入内存（_runTurn 内的消息快照需要排除它，_saveTurnRecord 会更新它）
     this.turns.push(turn);
 
     await this._runTurn(turn, {
       userParams: { message, attachments: formattedParams.attachments ?? attachments, meta: formattedMeta },
       llmRest: rest,
+      persistMode: "append",
     });
   }
 
@@ -1498,7 +1503,7 @@ IMPORTANT: 不要调用工具！
    * 
    * @returns true 表示用户取消，调用方应 return；false 表示继续主流程
    */
-  private async _runWarmup(turn: TurnRecord, signal: AbortSignal): Promise<boolean> {
+  private async _runWarmup(turn: TurnRecord, signal: AbortSignal, persistMode: TurnPersistMode): Promise<boolean> {
     // 判断是否需要执行任何 warmup 步骤
     const needCompact = this._shouldAutoCompact() && !this._isAlreadyCompacted();
     if (!needCompact) return false;
@@ -1531,7 +1536,7 @@ IMPORTANT: 不要调用工具！
         turn.endTime = warmupIter.endTime;
         turn.status = "error";
         turn.error = errorMsg;
-        await this._persistTurn(turn);
+        await this._saveTurnRecord(turn, persistMode);
         this.events.emit("turn:error", { error: new Error(errorMsg) });
         this._onTurnEnd(turn);
         return true;
@@ -1547,7 +1552,7 @@ IMPORTANT: 不要调用工具！
       this.events.emit("warmup:complete", { status: "error", content: warmupIter.content, endTime: warmupEndTime });
       turn.endTime = warmupEndTime;
       turn.status = "abort";
-      await this._persistTurn(turn);
+      await this._saveTurnRecord(turn, persistMode);
       this.events.emit("turn:abort", {});
       this._onTurnEnd(turn);
       return true;

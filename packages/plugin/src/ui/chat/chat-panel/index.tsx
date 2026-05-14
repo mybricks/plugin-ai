@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
 import type { QueueItem } from "../../../context/queue";
@@ -40,9 +40,14 @@ export interface ChatPanelProps {
   disabled?: boolean;
 }
 
+export interface ChatPanelRef {
+  focus: () => void;
+  appendInput: (content: string) => void;
+}
+
 // ─── ChatPanel ────────────────────────────────────────────────────────────────
 
-const ChatPanel = ({
+const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   user,
   copilot,
   header = true,
@@ -52,7 +57,7 @@ const ChatPanel = ({
   renderUserMessage,
   renderFocus,
   disabled = false,
-}: ChatPanelProps) => {
+}, ref) => {
   const agentKey = agent?.key ?? "";
 
   const senderRef = useRef<SenderRef>(null);
@@ -77,6 +82,15 @@ const ChatPanel = ({
 
   const { messages, syncAgent, subscribeSession, clearSession } = useSession(agent);
   const messageListRef = useRef<{ scrollToBottom: () => void }>(null);
+
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      senderRef.current?.focus();
+    },
+    appendInput: (content: string) => {
+      senderRef.current?.appendInput(content);
+    },
+  }), []);
 
   // 同步历史 + 订阅事件 + turn 滚底
   useEffect(() => {
@@ -191,6 +205,6 @@ const ChatPanel = ({
       />
     </div>
   );
-};
+});
 
 export { ChatPanel };

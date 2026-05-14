@@ -1,5 +1,5 @@
 export { ChatPanel } from "./chat-panel";
-export type { ChatPanelProps } from "./chat-panel";
+export type { ChatPanelProps, ChatPanelRef } from "./chat-panel";
 
 export { ChatPanelList } from "./chat-panel-list";
 export type { ChatPanelListProps } from "./chat-panel-list";

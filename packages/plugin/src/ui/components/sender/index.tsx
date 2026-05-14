@@ -138,6 +138,7 @@ interface SenderProps {
 
 interface SenderRef {
   focus: () => void;
+  appendInput: (content: string) => void;
   // TODO: 目前仅展示聚焦组件且单个比较简单直接set即可，后续可通过输入框@唤起选择多个
   setMentions: (mentions: Mention[]) => void;
 }
@@ -152,11 +153,45 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const [vibeCoding, setVibeCoding] = useState(false);
   const [uploading, setUploading] = useState(false);
 
+  const appendInput = (content: string) => {
+    if (!content) {
+      return;
+    }
+
+    const editor = inputEditorRef.current;
+    if (!editor) {
+      return;
+    }
+
+    editor.focus();
+    const selection = window.getSelection();
+    const activeRange = selection?.rangeCount ? selection.getRangeAt(0) : undefined;
+    const useActiveRange = !!activeRange && editor.contains(activeRange.commonAncestorContainer);
+    const range = useActiveRange ? activeRange! : document.createRange();
+
+    if (!useActiveRange) {
+      range.selectNodeContents(editor);
+      range.collapse(false);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }
+
+    range.deleteContents();
+    const textNode = document.createTextNode(content);
+    range.insertNode(textNode);
+    range.setStartAfter(textNode);
+    range.setEndAfter(textNode);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    setInputContent(editor.textContent);
+  }
+
   useImperativeHandle(ref, () => {
     return {
       focus: () => {
         inputEditorRef.current!.focus()
       },
+      appendInput,
       setMentions: (mentions) => {
         setMentions(mentions)
         setVibeCoding(mentions[0]?.vibeCoding || false);

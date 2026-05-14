@@ -27,7 +27,7 @@ export type { SettingModalProps } from "./ui/setting";
 export type { Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams } from "./sandbox";
 export type { SettingValue, ProviderConfig, ModelConfig } from "./ui/setting";
 export { ChatPanel, ChatPanelList, ChatStartView, ComChatStartView } from "./ui/chat";
-export type { ChatPanelProps, ChatPanelListProps, ChatStartViewProps, ComChatStartViewProps } from "./ui/chat";
+export type { ChatPanelProps, ChatPanelRef, ChatPanelListProps, ChatStartViewProps, ComChatStartViewProps } from "./ui/chat";
 
 // ─── PluginAI 实例 API ────────────────────────────────────────────────────────
 
