@@ -153,10 +153,6 @@ popupRef 说明：
 - 该组件默认接收保留字段；
 - 该浮层类组件是响应式的，数据变更会自动刷新；
 
-PopupVisible 装饰器说明：
-- PopupVisible 是一个属性装饰器，用于将浮层类组件在**设计态**下将变量默认设置为**打开状态**，这样设计者才能选中浮层内部的元素进行编辑；
-- 对于浮层类组件的打开与否，不需要在 runtime 层控制，统一由装饰器进行管理；
-
 #### less 文件编写规范
 1. 严格参考设计风格与主题变量使用说明来编写样式；若项目提供了主题变量，编写前必须先列举全部可用变量，再对照每条样式属性逐一检查是否有对应变量，有则必须使用，禁止硬编码已有主题变量所覆盖的色值或数值；
 2. :frame 配置规则（仅页面和浮层类组件需要，普通组件不需要）：
@@ -186,9 +182,8 @@ PopupVisible 装饰器说明：
   - 错误：\`this.user.name = "名称";\`
 
 编写规范：
-1. 当字段用于控制浮层类组件的显示/隐藏状态时，需要对该字段使用装饰器 @PopupVisible；
-2. 默认导出实例化后的 store；
-3. 必须使用 makeAutoObservable；
+1. 默认导出实例化后的 store；
+2. 必须使用 makeAutoObservable；
 
 注意：
 - store 内部变量之间不会监听，只有组件内使用 store 中的数据时，数据变更才会自动刷新组件；当需要监听组件 A 变化刷新 UI 时，必须在组件内读取 A 的值，当需要更新字段 A 时，必须修改 A 的值；
@@ -257,14 +252,13 @@ PopupVisible 装饰器说明：
   \`\`\`
 
   \`\`\`js
-  import { makeAutoObservable, PopupVisible } from "mybricks";
+  import { makeAutoObservable } from "mybricks";
 
   class Store {
     constructor() {
       makeAutoObservable(this);
     }
     
-    @PopupVisible
     detailModalVisible = false;
 
     btns = [

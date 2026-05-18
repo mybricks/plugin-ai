@@ -91,6 +91,14 @@ export interface PluginAIParams {
     canvas?: {
       width?: number
       height?: number
+    },
+    /** 数据响应式配置 */
+    reactivity?: {
+      /**
+       * native 原生（react hooks，提示词中不做特别说明）
+       * store 内置响应式能力
+       */
+      type: 'native' | 'store'
     }
   }
   /** LLM 配置（自定义渠道时使用） */
