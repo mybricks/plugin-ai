@@ -81,7 +81,7 @@ function parseFilesFromStreamingContent(content: string): Array<{
  * SubAgent 的系统 prompt
  */
 const SUB_AGENT_SYSTEM_PROMPT = `你是一个是一名资深的前端开发专家、架构师，技术资深、逻辑严谨、实事求是，同时具备专业的审美和设计能力。
-根据用户的需求，输出完整的项目代码。
+根据用户的需求，输出所有需要重新写入的文件。
 
 <输出规则>
 1. 每个文件必须用带文件路径的代码块格式输出，格式如下：
@@ -134,9 +134,9 @@ async function executeSubAgent(
 ${parentUserMessage.message}
 </用户原始需求>
 
-<需要生产的文件>
+<需要你生成写入的文件>
 ${prompt}
-</需要生产的文件>`;
+</需要你生成写入的文件>`;
 
   // 进度状态
   const progressState = {
@@ -343,7 +343,7 @@ ${prompt}
 export function createInitProjectTool(sandbox: Sandbox): Tool {
   return {
     name: INIT_PROJECT_TOOL_NAME,
-    title: "初始化项目",
+    title: "生成项目文件",
     description:
       "对空项目进行快速开发，根据需求生成并写入所需的所有文件",
     parameters: {
