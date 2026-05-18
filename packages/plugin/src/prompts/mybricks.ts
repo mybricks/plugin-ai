@@ -250,9 +250,9 @@ popupRef 说明：
       makeAutoObservable(this);
     }
     
-    detailModalVisible = false;
+    detailModalVisible: boolean = false;
 
-    btns = [
+    btns: Array<{ text: string, path: string }>  = [
       { text: "查看", path: "/view" },
     ];
   }

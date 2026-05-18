@@ -484,13 +484,35 @@ popupRef 说明：
 
 \`\`\`ts
 // dataSource.ts —— 项目唯一的接口文件，所有 HTTP 请求都定义在这里
-export async function signIn(params) {
-  return await fetch('/api/sign-in', { method: 'POST', body: JSON.stringify(params) });
+import { DataSource } from "mybricks";
+
+interface LoginParams {
+  username: string;
+  password: string;
 }
 
-export async function signUp(params) {
-  return await fetch('/api/sign-up', { method: 'POST', body: JSON.stringify(params) });
+interface LoginResult {
+  status: number;
+  data?: {
+    token: string;
+    user: {
+      id: number;
+      name: string;
+    };
+  };
 }
+
+class MyDatasource extends DataSource {
+  async signIn(params: LoginParams): Promise<LoginResult> {
+    return this.axios.post("/api/sign-in", params);
+  }
+
+  async signUp(params: LoginParams): Promise<LoginResult> {
+    return this.axios.post("/api/sign-up", params);
+  }
+}
+
+export default new MyDatasource();
 \`\`\`
 
 \`\`\`ts
@@ -502,11 +524,11 @@ class Store {
   constructor() {
     makeAutoObservable(this);
   }
-  welcomeMsg = '';
-  userType = '';
-  loading = false;
+  welcomeMsg: string = '';
+  userType: string = '';
+  loading: boolean = false;
 
-  async signIn(params) {
+  async signIn(params): Promise<void> {
     this.loading = true;
     try {
       const res = await dataSource.signIn(params); // 调用 dataSource.ts 中的 signIn
@@ -530,12 +552,12 @@ class Store {
   constructor() {
     makeAutoObservable(this);
   }
-  loading = false;
+  loading: boolean = false;
 
-  async signUp(params) {
+  async signUp(): Promise<void> {
     this.loading = true;
     try {
-      await dataSource.signUp(params); // 调用 dataSource.ts 中的 signUp
+      await dataSource.signUp(); // 调用 dataSource.ts 中的 signUp
     } finally {
       this.loading = false;
     }
