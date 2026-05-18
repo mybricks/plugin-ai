@@ -1,4 +1,4 @@
-import type { CompactRecord, History, TurnRecord, VersionFile, VersionRecord } from "../types";
+import type { CompactRecord, History, PagedVersions, TurnRecord, VersionFile, VersionPageOptions, VersionRecord } from "../types";
 
 /** 基于 IndexedDB 的调用历史持久化（存储 TurnRecord[]） */
 export class IDBHistory implements History {
@@ -17,7 +17,7 @@ export class IDBHistory implements History {
    * 与 versions_meta 分离，使 listVersions 无需全量读取大文件对象。
    */
   private readonly versionFilesStoreName = "versions_files";
-  private readonly version = 3;
+  private readonly version = 4;
 
   constructor(options: { dbName?: string } = {}) {
     this.dbName = options.dbName ?? "@plugin-ai/agent/history";
@@ -38,6 +38,13 @@ export class IDBHistory implements History {
         if (!db.objectStoreNames.contains(this.versionMetaStoreName)) {
           const metaStore = db.createObjectStore(this.versionMetaStoreName, { keyPath: "id" });
           metaStore.createIndex("by_agentKey_createdAt", ["agentKey", "createdAt"], { unique: false });
+          metaStore.createIndex("by_turnId", "turnId", { unique: false });
+        } else if (e.oldVersion < 4) {
+          // v4 新增 by_turnId 索引
+          const metaStore = (e.target as IDBOpenDBRequest).transaction!.objectStore(this.versionMetaStoreName);
+          if (!metaStore.indexNames.contains("by_turnId")) {
+            metaStore.createIndex("by_turnId", "turnId", { unique: false });
+          }
         }
         if (!db.objectStoreNames.contains(this.versionFilesStoreName)) {
           db.createObjectStore(this.versionFilesStoreName, { keyPath: "versionId" });
@@ -174,28 +181,72 @@ export class IDBHistory implements History {
   // listVersions / addVersion 的 key 参数同为 agentKey，用于版本记录的分区隔离。
   // getVersion / getVersionFiles / updateVersion 以 versionId（uuid）精确定位，不需要 key。
 
-  async listVersions(key: string): Promise<VersionRecord[]> {
+  async listVersions(key: string, options: VersionPageOptions): Promise<PagedVersions> {
+    const { pageNum, pageSize } = options;
+    console.log('[options]', options)
+    const offset = (pageNum - 1) * pageSize;
     const db = await this.getDB();
-    return new Promise((resolve, reject) => {
+    const range = IDBKeyRange.bound([key, -Infinity], [key, Infinity]);
+
+    // ── 1. 先 count 总数 ──────────────────────────────────────────────────────
+    const total: number = await new Promise((resolve, reject) => {
       const tx = db.transaction(this.versionMetaStoreName, "readonly");
-      const store = tx.objectStore(this.versionMetaStoreName);
-      const index = store.index("by_agentKey_createdAt");
-      // IDBKeyRange: agentKey === key，createdAt 任意 → 范围 [key, -∞] ~ [key, +∞]
-      const range = IDBKeyRange.bound([key, -Infinity], [key, Infinity]);
-      const req = index.getAll(range);
-      req.onsuccess = () => {
-        // 结果已按 [agentKey, createdAt] 升序（IDB 默认升序），去掉内部 agentKey 字段后返回
-        const results: VersionRecord[] = (req.result ?? []).map(
-          ({ agentKey: _agentKey, ...rest }) => rest as VersionRecord
-        );
-        resolve(results);
-      };
+      const req = tx.objectStore(this.versionMetaStoreName)
+        .index("by_agentKey_createdAt")
+        .count(range);
+      req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
+
+    // ── 2. 用降序 cursor 分页读取 ─────────────────────────────────────────────
+    const list: VersionRecord[] = await new Promise((resolve, reject) => {
+      const tx = db.transaction(this.versionMetaStoreName, "readonly");
+      const index = tx.objectStore(this.versionMetaStoreName).index("by_agentKey_createdAt");
+      const req = index.openCursor(range, "prev");
+
+      const results: VersionRecord[] = [];
+      let skipped = 0;
+      let collected = 0;
+
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor || collected >= pageSize) {
+          resolve(results);
+          return;
+        }
+
+        // 跳过偏移量之前的记录
+        if (skipped < offset) {
+          skipped++;
+          cursor.continue();
+          return;
+        }
+
+        const { agentKey: _agentKey, ...rest } = cursor.value as VersionRecord & { agentKey: string };
+        results.push(rest as VersionRecord);
+        collected++;
+        cursor.continue();
+      };
+
+      req.onerror = () => reject(req.error);
+    });
+
+    return { total, list };
   }
 
   async addVersion(key: string, record: VersionRecord, files: VersionFile[]): Promise<void> {
     const db = await this.getDB();
+
+    // 通过 by_turnId 索引精确查找，O(log n) 定位，无需全表扫描
+    const isDuplicate = await new Promise<boolean>((resolve, reject) => {
+      const tx = db.transaction(this.versionMetaStoreName, "readonly");
+      const req = tx.objectStore(this.versionMetaStoreName).index("by_turnId").get(record.turnId);
+      req.onsuccess = () => resolve(req.result !== undefined);
+      req.onerror = () => reject(req.error);
+    });
+
+    if (isDuplicate) return;
+
     return new Promise((resolve, reject) => {
       const tx = db.transaction(
         [this.versionMetaStoreName, this.versionFilesStoreName],
@@ -232,6 +283,10 @@ export class IDBHistory implements History {
       };
       req.onerror = () => reject(req.error);
     });
+  }
+
+  getVersionByTurnId() {
+
   }
 
   async updateVersion(

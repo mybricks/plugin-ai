@@ -273,6 +273,22 @@ export interface CompactRecord {
   createdAt: number;
 }
 
+// ─── 版本列表分页参数 & 返回值 ─────────────────────────────────────────────────
+
+export interface VersionPageOptions {
+  /** 页码，从 1 开始 */
+  pageNum: number;
+  /** 每页条数 */
+  pageSize: number;
+}
+
+export interface PagedVersions {
+  /** 该 agentKey 下版本总条数 */
+  total: number;
+  /** 当前页版本列表，按 createdAt 降序 */
+  list: VersionRecord[];
+}
+
 // ─── History 接口 ─────────────────────────────────────────────────────────────
 
 export interface History {
@@ -310,10 +326,12 @@ export interface History {
   // getVersion / getVersionFiles / updateVersion 以 versionId（uuid）精确定位，不需要 key。
 
   /**
-   * 获取该 agentKey 下所有版本的元数据列表，按 createdAt 升序排列。
+   * 分页获取该 agentKey 下的版本元数据列表，按 createdAt 降序排列。
    * 不含 files 内容（files 通过 getVersionFiles 单独读取）。
+   * @param key     agentKey
+   * @param options 分页参数（pageNum 从 1 开始）
    */
-  listVersions(key: string): Promise<VersionRecord[]>;
+  listVersions(key: string, options: VersionPageOptions): Promise<PagedVersions>;
 
   /**
    * 追加一条新版本记录（metadata + files 原子写入）。
@@ -352,7 +370,7 @@ export interface History {
  */
 export interface BoundHistory {
   // ── 版本快照 ──────────────────────────────────────────────────────────────
-  listVersions(): Promise<VersionRecord[]>;
+  listVersions(options: VersionPageOptions): Promise<PagedVersions>;
   addVersion(record: VersionRecord, files: VersionFile[]): Promise<void>;
   getVersionFiles(versionId: string): Promise<VersionFile[]>;
   getVersion(versionId: string): Promise<VersionRecord | null>;
@@ -368,7 +386,7 @@ export interface BoundHistory {
  */
 export function bindHistory(history: History, agentKey: string): BoundHistory {
   return {
-    listVersions: () => history.listVersions(agentKey),
+    listVersions: (options) => history.listVersions(agentKey, options),
     addVersion: (record, files) => history.addVersion(agentKey, record, files),
     getVersionFiles: (versionId) => history.getVersionFiles(versionId),
     getVersion: (versionId) => history.getVersion(versionId),
