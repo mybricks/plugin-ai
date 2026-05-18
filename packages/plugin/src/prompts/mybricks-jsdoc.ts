@@ -294,6 +294,18 @@ PopupVisible 装饰器说明：
    * title: 操作按钮区块
    * summary: 提供查看与关闭按钮，用于控制详情弹窗显示状态。
    * type: com
+   * events:
+   *   openBtn:
+   *     onClick:
+   *       title: 打开详情弹窗
+   *       mermaid: 'flowchart LR; A["记录操作日志"] --> B["打开详情弹窗"]'
+   *       relations:
+   *         DetailModal:
+   *           type: popup
+   *   closeBtn:
+   *     onClick:
+   *       title: 关闭详情弹窗
+   *       mermaid: 'flowchart LR; A["记录操作日志"] --> B["关闭详情弹窗"]'
    */
   const OperationBar = comRef(() => {
     return (
@@ -301,13 +313,6 @@ PopupVisible 装饰器说明：
         <Button
           type="primary"
           className={css.openBtn}
-          /*
-           * title: 打开详情弹窗
-           * mermaid: 'flowchart LR; A["记录操作日志"] --> B["打开详情弹窗"]'
-           * relations:
-           *   DetailModal:
-           *     type: popup
-           */
           onClick={() => 
             logger.info('[OperationBar/onClick] 点击打开弹窗');
             store.detailModalVisible = true;
@@ -315,10 +320,6 @@ PopupVisible 装饰器说明：
         >查看</Button>
         <Button
           className={css.closeBtn}
-          /*
-           * title: 关闭详情弹窗
-           * mermaid: 'flowchart LR; A["记录操作日志"] --> B["关闭详情弹窗"]'
-           */
           onClick={() => 
             logger.info('[OperationBar/onClick] 点击关闭弹窗');
             store.detailModalVisible = false;
@@ -402,9 +403,9 @@ PopupVisible 装饰器说明：
   documentGuide: {
     firstOfAll: `
 ### JSDoc 注释
-编写或修改 appRef / comRef / popupRef 节点代码时，必须为每一个节点同步编写或更新对应的 JSDoc 注释说明；编写或修改带事件 props 的 JSX 标签时，必须在该标签上方同步编写或更新事件注释。JSDoc 注释属于代码的一部分，承载原 README.md 中的代码可视化说明信息，必须与节点代码、事件标签一起生成、一起维护。禁止只给页面节点、根节点或少数组件写注释。
+编写或修改 appRef / comRef / popupRef 节点代码时，必须为每一个节点同步编写或更新对应的 JSDoc 注释说明。JSDoc 注释属于代码的一部分，承载原 README.md 中的代码可视化说明信息，必须与节点代码一起生成、一起维护。禁止只给页面节点、根节点或少数组件写注释。
 维护时机：
-- 必须维护（强约束）：节点缺少 JSDoc 注释；带事件 props 的 JSX 标签缺少事件注释；或现有注释内容与「注释编写规范」不符；或需求明确要求更新注释（此时必须重新逐行审查源码与注释的差异，确保注释完全对齐当前源码，包括 events/datasource/store 的 className 标识、字段、流程图等）；
+- 必须维护（强约束）：节点缺少 JSDoc 注释；或现有注释内容与「注释编写规范」不符；或需求明确要求更新注释（此时必须重新逐行审查源码与注释的差异，确保注释完全对齐当前源码，包括 events/datasource/store 的 className 标识、字段、流程图等）；
 - 建议更新（结构或内容变化）：在 jsx 中新增、删除或重命名了 appRef/comRef 节点，或 Route 中注册的页面组件发生变化；export default 的根节点类型或子节点类型组合发生变化导致标题层级需调整；JSX 中新增、删除或修改了带事件 props（onClick 等）的元素，或其 className 发生变化；JSX 中新增、删除或修改了消费 store 数据（通过子节点渲染或 prop 传入）的元素，或其 className 发生变化；JSX 中新增、删除或修改了触发 datasource 调用的元素，或其 className 发生变化；某节点的 UI 结构、交互或业务含义发生明显变化；
 - 无需更新：jsx、store.js 未被修改，且现有 JSDoc 注释已正确反映当前源码的节点结构、事件与说明；仅修改了 style.less、service.js 等与节点行为无关的文件；
 <JSDoc 注释编写规范>
@@ -424,8 +425,7 @@ PopupVisible 装饰器说明：
   <注释位置>
   - export default appRef/comRef/popupRef：JSDoc 写在 export default 语句正上方；
   - const Xxx = appRef/comRef/popupRef(...)：JSDoc 写在 const 声明正上方；
-  - 带事件 props 的 JSX 标签：事件注释写在对应事件 prop 正上方，作为 JSX 块注释嵌入标签属性列表中；
-  - 子节点注释紧跟其节点声明，事件注释紧贴其触发事件 prop，不集中写在文件顶部或底部；
+  - 子节点注释紧跟其节点声明，不集中写在文件顶部或底部；
   - 已存在 JSDoc 时直接更新原注释，禁止新增重复注释。
   </注释位置>
 
@@ -435,15 +435,18 @@ PopupVisible 装饰器说明：
   - title：根据节点内容与名称写出简洁的语义化标题，体现节点职责，避免与组件名简单重复（如组件叫 SignIn 时 title 可用「登录页」而非「登录」）；
   - summary：对节点的用途、场景或关键行为做简短说明，补充 title 未涵盖的信息，避免与 title 重复或仅罗列 UI 元素；
   - type：app | page | com | popup，其中 app 对应 appRef，page 对应通过 Route 注册的 comRef（页面组件），com 对应 comRef（非路由页面），popup 对应 popupRef。
-  - datasource：该组件内调用的接口列表（找最近的组件，而不是页面）
+  - datasource：该组件内触发的 dataSource.js 接口调用列表（找最近的组件，而不是页面）
+    > 触发机制：JSX 中的事件处理器或 React hooks 调用 store 方法，store 方法内部再调用 dataSource.js 中的函数发起 HTTP 请求。JSDoc 的 datasource 字段记录的是最终调用到 dataSource.js 中哪个函数。
+    > 判断标准：store 方法体内有 \`await dataSource.xxx()\` 或 \`dataSource.xxx()\` 调用，则该调用必须记录在 datasource 字段中，api 名称对应 dataSource.js 中的函数名。
     1. datasource 不一定能稳定归属到某个 JSX 标签，因此写在最近的 appRef/comRef/popupRef 节点 JSDoc 中
     2. 每条接口调用用缩进对象结构描述，包含以下字段：
       className（对应触发接口调用的元素 className）:
-        api（真实方法名，对应 datasource 中的方法）:
+        api（dataSource.js 中导出的真实函数名，如 signIn、fetchUserList 等）:
           desc: 用途说明
-    3. 特殊情况：当接口调用在函数体或 React hooks（如 useEffect）内、不属于某个具体元素时，使用「root」作为标识
+    3. 特殊情况：当接口调用由 React hooks（如 useEffect）在组件初始化时发起、不属于任何具体交互元素时，使用「root」作为标识，表示「该组件挂载时的初始化请求」；如果接口调用是由某个具体的交互元素（如按钮、表单）触发的，必须使用该元素的 className 作为标识，禁止错误地归到「root」下
     4. 【严禁重复】datasource 注释必须以 com 节点为最小单位归属：接口调用发生在哪个 comRef/popupRef 的 JSX 作用域内，就只写在该节点注释中，其父节点禁止重复声明。
     5. 无接口调用直接省略 datasource 字段，禁止出现「(无接口调用)」或空对象，不写即代表无调用
+    6. 【强制扫描】编写 datasource 注释前，必须读取对应的 store.js 文件，检查每个 store 方法体内是否有 dataSource.xxx() 的调用；凡是有调用的，无论由按钮触发还是由 useEffect 触发，都必须记录到 datasource 字段中。
   - store：该组件内消费的store数据列表（找最近的组件，而不是页面）
     1. store 不一定能稳定归属到某个 JSX 标签，因此写在最近的 appRef/comRef/popupRef 节点 JSDoc 中；如果 store 数据直接渲染在 JSX 标签上，用该标签的 className 作为标识；【强制前提】渲染 store 数据的元素必须有 className，如果源码中缺少，必须先在代码中补上 className，再写注释
       - 在子节点中直接渲染：\`<div className={css.xxx}>{store.xxx}</div>\`
@@ -455,21 +458,24 @@ PopupVisible 装饰器说明：
             desc: 用途说明
           对应store的属性路径:
             desc: ...
-    3. 「root」使用条件（严格限制）：只有当消费 store 数据的元素自身没有 className 且上层元素都没有 className 时，才允许使用「root」作为标识，应尽可能避免使用root；
+    3. 「root」使用条件（极端严格限制）：**只有当该组件的 JSX 根元素自身没有 className，且直接在根元素上消费了 store 数据**时，才允许使用「root」作为标识。绝对禁止将子孙元素消费的 store 数据写在「root」下——子孙元素必须用其自身的 className 作为标识，哪怕需要先在代码中补上 className 再写注释。
     4. 每一个组件，如果在代码层面没有读取 store 的字段来做ui以及视觉的渲染，禁止编写store信息；即使子组件使用了，也不应该使用root，以实际代码情况为准；
     5. 【严禁重复】store 注释必须以 com 节点为最小单位归属：如果 store 数据是在某个子 com 节点内消费的，则 store 条目只能写在该 com 节点注释中，其父节点（page 或上层 com）禁止重复声明相同的 store 条目。判断标准：store 数据的实际消费发生在哪个 comRef/popupRef 的 JSX 作用域内，就归属于哪个节点，不随层级向上传递。
     6. 无store数据消费直接省略 store 字段，禁止出现「(无store消费)」或空对象，不写即代表无消费
-  </节点说明>
-
-  <事件说明>
-  事件注释直接写在事件 prop（onClick、onChange、onBlur 等）正上方，作为 JSX 块注释嵌入标签属性列表中。事件注释只描述紧随其后的事件 prop，不写在组件 JSDoc 中。
-  - 不要写 @mybricks-event；
-  - 不要写 className，className 由当前 JSX 标签自身提供；【强制前提】带事件的元素必须有 className，如果源码中缺少，必须先在代码中补上 className，再写事件注释；
-  - 不要写事件名，事件名由紧随注释后的事件 prop 表达；
-  - 只写有效字段：
-    - title：简短中文说明（如 登录）
-    - mermaid：根据事件内容生成对应的 Mermaid 语法流程图（以 flowchart LR; 开头，单行书写）
-    - relations：事件如果涉及打开弹窗、跳转页面，则需要声明关联节点及关系类型
+    7. 【精确粒度】className 标识必须是实际消费 store 数据的那个元素的 className，而不是其父容器的 className。例如：\`<div className={css.card}><span className={css.userName}>{store.user.name}</span></div>\`，store 标识应该是 \`userName\`，而不是 \`card\`。
+  - events：该组件内所有带事件 props 的交互元素列表，写在最近的 appRef/comRef/popupRef 节点 JSDoc 中
+    1. 【强制前提】带事件的元素必须有 className，如果源码中缺少，必须先在代码中补上 className，再写事件注释；
+    2. 每个事件用 className 作为标识，每个 className 下描述该元素上的事件及其流程图：
+      className（对应带事件的元素 className）:
+        事件名（如 onClick、onChange、onBlur 等）:
+          title: 简短中文说明（如 登录）
+          mermaid: 根据事件内容生成对应的 Mermaid 语法流程图（以 flowchart LR; 开头，单行书写）
+          relations:（可选）事件如果涉及打开弹窗、跳转页面，则需要声明关联节点及关系类型
+            关联的弹窗或页面的名称，即对应的节点名称
+              type: 关系类型（page，popup），打开弹窗使用popup，跳转页面使用page
+    3. 【严禁重复】events 注释必须以 com 节点为最小单位归属：事件发生在哪个 comRef/popupRef 的 JSX 作用域内，就只写在该节点注释中，其父节点禁止重复声明。
+    4. 无交互事件直接省略 events 字段，禁止出现空对象，不写即代表无事件
+    5. 【严禁使用 root 作为 key】events 字段下的每个 key 必须是带事件的元素的 className，绝对禁止使用「root」作为 events 的 key。events 只描述具体元素或组件的 onXXX 实现，不存在「整个根节点」的事件。如果某元素没有 className，必须先在代码中补上 className，再以该 className 作为 key。
   关于 Mermaid 语法流程图需关注以下规则和要求：
   - 流程图方向统一用 LR（从左到右），节点文本全部用双引号包裹；
   - 条件判断节点用 {} 包裹，分支标注用 |标注内容| 写在箭头上；
@@ -483,13 +489,81 @@ PopupVisible 装饰器说明：
   - 禁止出现用户动作类流程节点（如「点击按钮」）、空洞节点（如「开始」「结束」「执行业务操作」）；
   - 流程图须真实完整：严格依据事件处理函数内的代码逻辑，以及所调用的 store 方法内部实现来绘制，不省略、不捏造。
   - 分支流程必须完整表达：代码中的 if/else、三元判断、early return、请求成功/失败等所有分支，都必须在流程图中用条件节点 {} 和 |分支标注| 画出；每个分支（如「通过」「不通过」「成功」「失败」）及其后续步骤都须独立延伸，不得只写主流程而省略条件分支。
-  </事件说明>
+  </节点说明>
 </JSDoc 注释编写规范>
 
 <基于 jsx 的 JSDoc 注释示例>
-如果某一个组件源代码如下，可以看到有三个comRef（其中两个为页面节点）、一个appRef，所以需要为一个app节点、两个页面节点、一个组件节点分别补充 JSDoc 注释。每个 appRef / comRef / popupRef 声明都必须有自己的 JSDoc 注释。
+如果某一个组件源代码如下（包含 dataSource.js 接口文件、store.js 状态管理文件、各页面的 jsx 文件），可以看到有三个comRef（其中两个为页面节点）、一个appRef，所以需要为一个app节点、两个页面节点、一个组件节点分别补充 JSDoc 注释。每个 appRef / comRef / popupRef 声明都必须有自己的 JSDoc 注释。
+
+注意：datasource 字段记录的 api 名称，必须是 dataSource.js 文件中真实导出的函数名。判断是否需要写 datasource，关键是看 store.js 中的方法体内是否有 dataSource.xxx() 的调用。
+
+\`\`\`js
+// dataSource.js —— 项目唯一的接口文件，所有 HTTP 请求都定义在这里
+export async function signIn(params) {
+  return await fetch('/api/sign-in', { method: 'POST', body: JSON.stringify(params) });
+}
+
+export async function signUp(params) {
+  return await fetch('/api/sign-up', { method: 'POST', body: JSON.stringify(params) });
+}
+\`\`\`
+
+\`\`\`js
+// pages/SignIn/store.js —— 登录页 store，内部调用 dataSource.js 的 signIn 函数
+import dataSource from '../../dataSource.js';
+import { makeAutoObservable } from 'mybricks';
+
+class Store {
+  constructor() {
+    makeAutoObservable(this);
+  }
+  welcomeMsg = '';
+  userType = '';
+  loading = false;
+
+  async signIn(params) {
+    this.loading = true;
+    try {
+      const res = await dataSource.signIn(params); // 调用 dataSource.js 中的 signIn
+      this.welcomeMsg = res.welcomeMsg;
+      this.userType = res.userType;
+    } finally {
+      this.loading = false;
+    }
+  }
+}
+
+export default new Store();
+\`\`\`
+
+\`\`\`js
+// pages/SignUp/store.js —— 注册页 store，内部调用 dataSource.js 的 signUp 函数
+import dataSource from '../../dataSource.js';
+import { makeAutoObservable } from 'mybricks';
+
+class Store {
+  constructor() {
+    makeAutoObservable(this);
+  }
+  loading = false;
+
+  async signUp(params) {
+    this.loading = true;
+    try {
+      await dataSource.signUp(params); // 调用 dataSource.js 中的 signUp
+    } finally {
+      this.loading = false;
+    }
+  }
+}
+
+export default new Store();
+\`\`\`
+
 \`\`\`jsx
-import store from '../store.js';
+// pages/SignIn/index.jsx 和 pages/SignUp/index.jsx 合并展示
+import signInStore from './pages/SignIn/store.js';
+import signUpStore from './pages/SignUp/store.js';
 import { comRef, appRef, Routes, Route } from 'mybricks'
 
 /**
@@ -501,7 +575,12 @@ import { comRef, appRef, Routes, Route } from 'mybricks'
  * datasource:
  *   signUpBtn:
  *     signUp:
- *       desc: 点击注册按钮调用注册接口
+ *       desc: 点击注册按钮调用注册接口（signUpStore.signUp 内部调用 dataSource.signUp）
+ * events:
+ *   signUpBtn:
+ *     onClick:
+ *       title: 注册
+ *       mermaid: 'flowchart LR; A["校验表单参数"] --> B{"参数是否有效"} -->|有效| C["设置loading状态"] --> D["请求注册接口"] --> E{"请求是否成功"} -->|成功| F["跳转登录页"] --> G["取消loading状态"]; E -->|失败| H["提示错误信息"] --> G; B -->|无效| I["提示参数错误"]'
  */
 const StepRegisterForm = comRef(({}) => {
   return (
@@ -509,12 +588,8 @@ const StepRegisterForm = comRef(({}) => {
       <form />
       <button
         className={css.signUpBtn}
-        /*
-         * title: 注册
-         * mermaid: 'flowchart LR; A["校验表单参数"] --> B{"参数是否有效"} -->|有效| C["设置loading状态"] --> D["请求注册接口"] --> E{"请求是否成功"} -->|成功| F["跳转登录页"] --> G["取消loading状态"]; E -->|失败| H["提示错误信息"] --> G; B -->|无效| I["提示参数错误"]'
-         */
         onClick={() => {
-          store.signUp();
+          signUpStore.signUp(); // signUpStore.signUp() 内部调用了 dataSource.signUp()
         }}
       >注册</button>
     </div>
@@ -546,30 +621,31 @@ const SignUp = comRef(() => {
  * datasource:
  *   signInBtn:
  *     signIn:
- *       desc: 点击登录按钮调用登录接口
+ *       desc: 点击登录按钮调用登录接口（signInStore.signIn 内部调用 dataSource.signIn）
  * store:
  *   loginInfo:
- *     /store.js:
+ *     /pages/SignIn/store.js:
  *       welcomeMsg:
  *         desc: 展示欢迎语
  *       userType:
  *         desc: 展示用户类型
+ * events:
+ *   signInBtn:
+ *     onClick:
+ *       title: 登录
+ *       mermaid: 'flowchart LR; A["校验登录参数"] --> B{"参数是否有效"} -->|有效| C["设置loading状态"] --> D["请求登录接口"] --> E{"请求是否成功"} -->|成功| F["更新用户状态"] --> G["取消loading状态"]; E -->|失败| H["提示错误信息"] --> G; B -->|无效| I["提示参数错误"]'
  */
 const SignIn = comRef(({}) => {
   return (
     <div>
       <h1>登录</h1>
       <div className={css.loginInfo}>
-        {store.welcomeMsg} - {store.userType}
+        {signInStore.welcomeMsg} - {signInStore.userType}
       </div>
       <button
         className={css.signInBtn}
-        /*
-         * title: 登录
-         * mermaid: 'flowchart LR; A["校验登录参数"] --> B{"参数是否有效"} -->|有效| C["设置loading状态"] --> D["请求登录接口"] --> E{"请求是否成功"} -->|成功| F["更新用户状态"] --> G["取消loading状态"]; E -->|失败| H["提示错误信息"] --> G; B -->|无效| I["提示参数错误"]'
-         */
         onClick={() => {
-          store.signIn();
+          signInStore.signIn(); // signInStore.signIn() 内部调用了 dataSource.signIn()
         }}
       >
         登录
