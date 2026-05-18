@@ -54,6 +54,10 @@ export interface SandboxConfig {
   componentRuntime?: any;
 }
 
+type MaybePromise<T> = T | Promise<T>;
+
+export type PluginGetUserContextMessage = () => MaybePromise<string | null | undefined>;
+
 /**
  * connectToAI 的返回值。
  * sandbox 可通过此对象访问该 comId 对应的 History 实例，用于版本管理。
@@ -111,6 +115,11 @@ export interface SetupSandboxParams {
   availableLibraries?: any[];
   themes?: any[];
   componentRuntime?: any;
+  /**
+   * 外部增量注入的用户上下文文本，会在每个 turn 开始时读取一次，
+   * 并拼接到内置项目空间上下文后一起注入给 CodeAgent。
+   */
+  getUserContextMessage?: PluginGetUserContextMessage;
   /** 透传给 CodeAgent 的历史记录实现，不传时使用内置 IDBHistory */
   history?: History;
   /** 消息发送者信息，注入到每条用户消息中，UI 展示时优先使用 */
@@ -124,12 +133,12 @@ export interface SetupSandboxParams {
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
 export function setupSandbox(params: SetupSandboxParams): void {
-  const { requestAsStream, agentsMd, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, history, sender } = params;
+  const { requestAsStream, agentsMd, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, getUserContextMessage, history, sender } = params;
 
   window._sandbox_ = {
     // ── sandbox → Plugin ──────────────────────────────────────────────────────
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
-      return connectToAI(comId, config, { requestAsStream, agentsMd, skills, plugins, promptOptions: promptSections?.agent, promptSections, tools, history, sender });
+      return connectToAI(comId, config, { requestAsStream, agentsMd, skills, plugins, promptOptions: promptSections?.agent, promptSections, tools, getUserContextMessage, history, sender });
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
@@ -184,6 +193,7 @@ interface PluginParams {
   promptOptions?: CodeAgentPromptOptions;
   promptSections?: PromptSections;
   tools?: Tool[];
+  getUserContextMessage?: PluginGetUserContextMessage;
   history?: History;
   sender?: TurnSender;
 }
@@ -191,7 +201,7 @@ interface PluginParams {
 function connectToAI(
   comId: string,
   { designer, hooks }: RegistSandBoxConfig,
-  { requestAsStream, agentsMd, skills, plugins, promptOptions, promptSections, tools, history, sender }: PluginParams
+  { requestAsStream, agentsMd, skills, plugins, promptOptions, promptSections, tools, getUserContextMessage, history, sender }: PluginParams
 ): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
 
@@ -211,15 +221,21 @@ function connectToAI(
     getUserContext: async () => {
       const files = await sandbox.getFiles();
 
+      let builtinContext: string;
       if (files.length === 0) {
-        return '项目空间为空，没有任何代码文件。\n';
+        builtinContext = '项目空间为空，没有任何代码文件。\n';
+      } else {
+        const fileList = files.map((f) => {
+          const lineCount = f.content.split('\n').length;
+          return `- ${f.path} (${lineCount} lines)`;
+        }).join('\n');
+        builtinContext = `这是发送这条消息时的各类环境信息，并不会实时更新。\n\n# 项目空间\n\n${fileList}\n`;
       }
 
-      const fileList = files.map((f) => {
-        const lineCount = f.content.split('\n').length;
-        return `- ${f.path} (${lineCount} lines)`;
-      }).join('\n');
-      return `这是发送这条消息时的各类环境信息，并不会实时更新。\n\n# 项目空间\n\n${fileList}\n`;
+      const customContextMessage = await getUserContextMessage?.();
+      return customContextMessage
+        ? `${builtinContext}\n\n${customContextMessage}`
+        : builtinContext;
     },
   };
 

@@ -31,7 +31,7 @@ export { resolveSkillMeta, USE_SKILL_TOOL_NAME };
  *   - tools 使用现有 Tool 声明，并合并到顶层 tools
  */
 export interface CodeAgentPlugin {
-  /** 插件名称，仅用于调用侧标识；CodeAgent 不额外命名空间化组件 */
+  /** 插件名称，用于为插件注册的 tool 添加 `${plugin.name}_` 命名空间前缀 */
   name?: string;
   /** 插件内置 Skills，合并到顶层 skills */
   skills?: SkillFile[];
@@ -123,6 +123,14 @@ const AGENT_PREFIX = ".agent/";
 /** 虚拟 skills 路径前缀 */
 const SKILLS_PREFIX = `${AGENT_PREFIX}skills/`;
 
+function prefixPluginToolName(pluginName: string | undefined, tool: Tool): Tool {
+  if (!pluginName) return tool;
+  return {
+    ...tool,
+    name: `${pluginName}_${tool.name}`,
+  };
+}
+
 // ─── 构建环境信息 ──────────────────────────────────────────────────────────────
 
 /**
@@ -204,7 +212,9 @@ export class CodeAgent extends Agent {
     const { sandbox, skills, system, subAgents, plugins, ...agentOptions } = options;
     const pluginSkills = plugins?.flatMap((plugin) => plugin.skills ?? []) ?? [];
     const pluginSubAgents = plugins?.flatMap((plugin) => plugin.agents ?? []) ?? [];
-    const pluginTools = plugins?.flatMap((plugin) => plugin.tools ?? []) ?? [];
+    const pluginTools = plugins?.flatMap((plugin) =>
+      (plugin.tools ?? []).map((tool) => prefixPluginToolName(plugin.name, tool))
+    ) ?? [];
 
     const resolvedSkills = [...(skills ?? []), ...pluginSkills];
     const resolvedSubAgents = [...(subAgents ?? []), ...pluginSubAgents];

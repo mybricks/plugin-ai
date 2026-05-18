@@ -12,13 +12,9 @@ import { DEFAULT_PLUGIN_SKILLS } from "./skills/default";
 
 import { context } from "./context";
 import { setupSandbox } from "./sandbox";
-import type { Designer, Hooks, RegistSandBoxConfig } from "./sandbox";
+import type { Designer, Hooks, RegistSandBoxConfig, PluginGetUserContextMessage } from "./sandbox";
 import { ChatPanelList, ChatStartView, ComChatStartView } from "./ui/chat";
 import { ensureAIPanelOpen, ensureFocusComId } from "./utils/ensure-ai-panel-open";
-
-// ─── 数据源插件 ───────────────────────────────────────────────────────────────
-
-export { datasourcePlugin } from "./datasource";
 
 // ─── 工具类型重导出 ────────────────────────────────────────────────────────────
 
@@ -28,8 +24,9 @@ export { createRequestAsStream, createOnUpload } from "../../request/src";
 export type { RequestAsStreamFn } from "../../request/src";
 export { openSetting, closeSetting, SettingModal } from "./ui/setting";
 export type { SettingModalProps } from "./ui/setting";
-export type { Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams } from "./sandbox";
-export type { SettingValue, ProviderConfig, ModelConfig } from "./ui/setting";
+export type { Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams, PluginGetUserContextMessage } from "./sandbox";
+// ProviderConfig / ModelConfig 已由 request 包导出，此处仅导出 plugin 专属类型
+export type { SettingValue } from "./ui/setting";
 export { ChatPanel, ChatPanelList, ChatStartView, ComChatStartView } from "./ui/chat";
 export type { ChatPanelProps, ChatPanelRef, ChatPanelListProps, ChatStartViewProps, ComChatStartViewProps } from "./ui/chat";
 
@@ -77,6 +74,11 @@ export interface PluginAIParams {
   promptSections?: PromptSections;
   /** 额外自定义工具，追加到内置工具（read_file / write_file 等）之后 */
   tools?: import("../../agent/src").Tool[];
+  /**
+   * 外部增量注入的用户上下文文本。每个 turn 开始时读取一次，
+   * 返回内容会拼接到内置项目空间上下文后，作为 user context 注入给 CodeAgent。
+   */
+  getUserContextMessage?: PluginGetUserContextMessage;
   /** 组件运行时扩展 */
   componentRuntime?: {
     /** 基于babel的自定义插件 */
@@ -115,6 +117,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     plugins,
     promptSections,
     tools,
+    getUserContextMessage,
     componentRuntime,
     llm,
     history,
@@ -209,6 +212,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     plugins,
     promptSections: mergedPromptSections,
     tools,
+    getUserContextMessage,
     availableLibraries: codingConfig?.availableLibraries ?? [],
     themes: codingConfig?.themes ?? [],
     componentRuntime,
