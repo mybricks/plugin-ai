@@ -27,13 +27,12 @@ export interface Designer {
    */
   getRuntimeMode(): string | undefined;
   /**
-   * 导出当前项目上下文为字符串，用于每轮请求时注入到 getContextMessages。
-   * 例如：当前项目代码、组件结构等。
+   * 获取当前生效的类库文档，由 plugin 侧拼接进 getContext。
    */
-  exportToMessage(): string;
+  getEffectiveLibraries(): Array<{ name: string; version?: string; usage: string }> | Promise<Array<{ name: string; version?: string; usage: string }>>;
   /**
    * 导出当前项目的资源代码（如依赖列表、公共资源引用等），
-   * 用于与 exportToMessage 共同构成 getContext 的返回值。
+   * 用于注入当前项目源码上下文。
    */
   exportResourceCode(): string;
 

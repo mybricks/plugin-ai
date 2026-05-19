@@ -19,7 +19,7 @@ import { ensureAIPanelOpen, ensureFocusComId } from "./utils/ensure-ai-panel-ope
 // ─── 工具类型重导出 ────────────────────────────────────────────────────────────
 
 export { CodeAgent, IDBHistory } from "../../agent/src";
-export type { AdditionalDirectory, AgentEventMap, CodeAgentPlugin, SkillFile } from "../../agent/src";
+export type { AdditionalDirectory, AgentEventMap, AgentsMdConfig, CodeAgentPlugin, SkillFile } from "../../agent/src";
 export { createRequestAsStream, createOnUpload } from "../../request/src";
 export type { RequestAsStreamFn } from "../../request/src";
 export { openSetting, closeSetting, SettingModal } from "./ui/setting";
@@ -29,6 +29,7 @@ export type { Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, 
 export type { SettingValue } from "./ui/setting";
 export { ChatPanel, ChatPanelList, ChatStartView, ComChatStartView } from "./ui/chat";
 export type { ChatPanelProps, ChatPanelRef, ChatPanelListProps, ChatStartViewProps, ComChatStartViewProps } from "./ui/chat";
+export * from "./preset";
 
 // ─── PluginAI 实例 API ────────────────────────────────────────────────────────
 
@@ -74,7 +75,7 @@ export interface PluginAIParams {
     codeRules?: string;
     designRules?: string;
   };
-  /** agents.md 内容，对标 CLAUDE.md，注入到系统 prompt 末尾 */
+  /** agents.md 内容，对标 CLAUDE.md，作为独立 user context 注入 */
   agentsMd?: string;
   /** 技能文件列表，挂载为虚拟 .agent/skills/ 目录，LLM 通过 use_skill 工具按需加载 */
   skills?: SkillFile[];
@@ -233,6 +234,8 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     getUserContextMessage,
     availableLibraries: codingConfig?.availableLibraries ?? [],
     themes: codingConfig?.themes ?? [],
+    codeRules: codingConfig?.codeRules,
+    designRules: codingConfig?.designRules,
     componentRuntime,
     history,
     sender,

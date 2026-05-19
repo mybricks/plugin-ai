@@ -63,6 +63,8 @@ export function createSkillTool(skills: SkillFile[]): Tool {
         throw new ToolValidationError(`SKILL.md not found in skill "${skill.name}". This skill is misconfigured.`);
       }
 
+      await skill.updateContent?.();
+
       // ── 构造输出：<skill> 标签包裹 SKILL.md 内容 ───────────────────────────
       let output = `<skill name="${skill.name}">
 ${skillMd.content}

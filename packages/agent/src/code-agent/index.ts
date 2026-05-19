@@ -43,6 +43,8 @@ export interface AdditionalDirectory {
    * 让 LLM 了解该目录的用途，例如 "产品设计规范文档"。
    */
   description?: string;
+  /** 该扩展目录对应的 agents.md 内容 */
+  agentsMd?: string;
   /** 读取该目录下的文件列表 */
   getFiles: () => Promise<Array<{ path: string; content: string }>>;
   /**
@@ -83,6 +85,8 @@ export interface CodeAgentPlugin {
   version?: string;
   /** 插件描述（可选，展示/调试用） */
   description?: string;
+  /** 项目级规则 */
+  agentsMd?: never;
   /**
    * 初始启用状态，默认 true（全部启用）。
    * 设为 false 可让插件以禁用状态注册，需调用 enablePlugin(name) 后才会在 turn 中生效。
@@ -271,12 +275,13 @@ function buildEnvironmentSection(skills?: SkillFile[], subAgents?: SubAgentConfi
  * 额外能力（如 check_design_status）通过 `tools` 参数从外部注入，
  * CodeAgent 本身不感知 project / hooks 等具体概念。
  *
- * plugin 初始化时可传入：
+ * 初始化时可传入：
  *   - `sandbox`   — 沙箱（文件读写）
  *   - `tools`     — 额外自定义工具（如 check_design_status）
- *   - `agentsMd`  — agents.md 规则文档，追加到系统 prompt 末尾
+ *   - `agentsMd`  — 项目级 agents.md 规则文档，由基础 Agent 作为独立 user context 注入
  *   - `skills`    — 技能文件列表，挂载为虚拟文件系统，LLM 按需读取
  *   - `subAgents` — 子 Agent 配置列表，注册 call-sub-agent 工具
+ *   - `plugins`   — 插件列表（仅支持 skills / agents / tools / additionalDirectories）
  */
 export class CodeAgent extends Agent {
   /** 全量插件列表（构造时传入，不变） */

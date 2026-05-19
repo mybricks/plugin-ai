@@ -37,6 +37,11 @@ export interface SkillFile {
     /** 文件完整内容（SKILL.md 支持 YAML frontmatter） */
     content: string;
   }>;
+  /**
+   * @deprecated 临时兼容运行时动态 Skill 内容注入。后续应迁移到更明确的动态资源机制，
+   * 避免在 Skill 对象上原地更新文件内容。
+   */
+  updateContent?: (context?: unknown) => void | Promise<void>;
 }
 
 // ─── 元信息解析 ───────────────────────────────────────────────────────────────

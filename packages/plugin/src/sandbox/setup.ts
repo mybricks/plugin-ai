@@ -1,6 +1,6 @@
 import React from "react";
 import { CodeAgent, IDBHistory } from "../../../agent/src";
-import type { Tool, Sandbox, CodeAgentPlugin, CodeAgentPromptOptions, History, BoundHistory, TurnSender, AdditionalDirectory } from "../../../agent/src";
+import type { Tool, Sandbox, CodeAgentPlugin, CodeAgentPromptOptions, History, BoundHistory, TurnSender, AdditionalDirectory, AgentsMdConfig, SkillFile } from "../../../agent/src";
 import type { PromptSections } from "../prompts";
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { Designer, RegistSandBoxConfig } from "./types";
@@ -52,6 +52,8 @@ export interface SandboxConfig {
    * 组件运行时扩展
    */
   componentRuntime?: any;
+  codeRules?: string;
+  designRules?: string;
 }
 
 type MaybePromise<T> = T | Promise<T>;
@@ -108,13 +110,15 @@ declare global {
 export interface SetupSandboxParams {
   requestAsStream: RequestAsStreamFn;
   agentsMd?: string;
-  skills?: any[];
+  skills?: SkillFile[];
   plugins?: CodeAgentPlugin[];
   promptSections?: PromptSections;
   tools?: Tool[];
   availableLibraries?: any[];
   themes?: any[];
   componentRuntime?: any;
+  codeRules?: string;
+  designRules?: string;
   /**
    * 外部增量注入的用户上下文文本，会在每个 turn 开始时读取一次，
    * 并拼接到内置项目空间上下文后一起注入给 CodeAgent。
@@ -133,12 +137,12 @@ export interface SetupSandboxParams {
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
 export function setupSandbox(params: SetupSandboxParams): void {
-  const { requestAsStream, agentsMd, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, getUserContextMessage, history, sender } = params;
+  const { requestAsStream, agentsMd, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, codeRules, designRules, getUserContextMessage, history, sender } = params;
 
   window._sandbox_ = {
     // ── sandbox → Plugin ──────────────────────────────────────────────────────
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
-      return connectToAI(comId, config, { requestAsStream, agentsMd, skills, plugins, promptOptions: promptSections?.agent, promptSections, tools, getUserContextMessage, history, sender });
+      return connectToAI(comId, config, { requestAsStream, agentsMd, skills, plugins, promptOptions: promptSections?.agent, promptSections, tools, codeRules, designRules, getUserContextMessage, history, sender });
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
@@ -178,7 +182,9 @@ export function setupSandbox(params: SetupSandboxParams): void {
       promptSections,
       availableLibraries: availableLibraries ?? [],
       themes: themes ?? [],
-      componentRuntime
+      componentRuntime,
+      codeRules,
+      designRules,
     },
   };
 }
@@ -188,23 +194,140 @@ export function setupSandbox(params: SetupSandboxParams): void {
 interface PluginParams {
   requestAsStream: RequestAsStreamFn;
   agentsMd?: string;
-  skills?: any[];
+  skills?: SkillFile[];
   plugins?: CodeAgentPlugin[];
   promptOptions?: CodeAgentPromptOptions;
   promptSections?: PromptSections;
   tools?: Tool[];
+  codeRules?: string;
+  designRules?: string;
   getUserContextMessage?: PluginGetUserContextMessage;
   history?: History;
   sender?: TurnSender;
 }
 
+interface SkillRuntimeContext {
+  designer?: Designer;
+  codeRules?: string;
+  designRules?: string;
+}
+
+function injectSkillRuntimeContext(
+  skill: SkillFile,
+  runtimeContext: SkillRuntimeContext
+): SkillFile {
+  const clonedSkill: SkillFile = {
+    ...skill,
+    files: skill.files.map((file) => ({ ...file })),
+  };
+
+  if (skill.updateContent) {
+    const updateContent = skill.updateContent;
+    clonedSkill.updateContent = () => updateContent.call(clonedSkill, runtimeContext);
+  }
+
+  return clonedSkill;
+}
+
+function injectPluginRuntimeContext(
+  plugin: CodeAgentPlugin,
+  runtimeContext: SkillRuntimeContext
+): CodeAgentPlugin {
+  if (!plugin.skills?.length) return plugin;
+
+  return {
+    ...plugin,
+    skills: plugin.skills.map((skill) => injectSkillRuntimeContext(skill, runtimeContext)),
+  };
+}
+
+function wrapRules(tag: string, value?: string): string {
+  const content = value?.trim();
+  return content ? `\n<${tag}>\n${content}\n</${tag}>\n` : '';
+}
+
+function formatLibraryDocs(libraries: Array<{ name: string; version?: string; usage: string }>): string {
+  return libraries
+    .map((library) => `---\nname: ${library.name}\nversion: ${library.version ?? ''}\n---\n${library.usage}`)
+    .join('\n\n');
+}
+
+function hasPromptSectionContent(section?: object): boolean {
+  return Object.values(section ?? {}).some((value) =>
+    typeof value === 'string' && value.trim().length > 0
+  );
+}
+
+async function buildDesignerContext(
+  designer: Designer | undefined,
+  promptSections: PromptSections | undefined,
+  rules: { codeRules?: string; designRules?: string }
+): Promise<string | null> {
+  if (!designer) return null;
+
+  const developeGuide = promptSections?.developeGuide ?? {};
+  const designGuide = promptSections?.designGuide ?? {};
+  const documentGuide = promptSections?.documentGuide ?? {};
+
+  if (!hasPromptSectionContent(developeGuide)) return null;
+
+  const codeRulesSection = wrapRules('code_rules', rules.codeRules);
+  const designRulesSection = wrapRules('design_rules', rules.designRules);
+
+  const bestPracticesContent = [
+    codeRulesSection ? '#### 代码规范：\n' + codeRulesSection : undefined,
+    developeGuide.assetsUsageSection ? '#### 图片和图标使用：\n' + developeGuide.assetsUsageSection : undefined,
+    developeGuide.examplesSection ? '#### 开发示例：\n' + developeGuide.examplesSection : undefined,
+  ].filter(Boolean).join('\n');
+
+  const documentGuideContent = [
+    documentGuide.firstOfAll,
+    documentGuide.requirementGuide,
+  ].filter(Boolean).join('\n\n');
+
+  const libraries = await designer.getEffectiveLibraries();
+  const libraryDocsContent = formatLibraryDocs(libraries);
+
+  return [
+    '\n# 前端开发指南\n',
+    developeGuide.firstOfAll,
+    '\n## 项目架构\n',
+    developeGuide.architectureSection ?? '',
+    '\n## 环境变量\n',
+    [
+      '以下是系统注入的环境变量，可在组件代码中通过 `process.env.<变量名>` 访问，**禁止自行声明或覆盖这些变量**：\n',
+      '| 变量名 | 类型 | 设计态值 | 运行态值 | 说明 |',
+      '|--------|------|----------|----------|------|',
+      '| `process.env.POPUP_VISIBLE` | `boolean` | `true` | `false` | 控制浮层（弹窗/抽屉等）的默认显示状态。设计态下为 `true` 使浮层保持展开，方便设计者选中浮层内元素进行编辑；运行态下为 `false`，由业务逻辑控制显隐。**浮层组件必须将此变量与业务状态做 `||` 合并使用**，例如：`visible={process.env.POPUP_VISIBLE \\|\\| store.modalVisible}` |',
+      '| `process.env.POPUP_NODE` | `HTMLElement` | 设计器画布容器节点 | 页面容器节点 | 浮层的挂载容器。设计、运行态下均指向设计器画布，确保浮层渲染在画布内部。例如一些三方库的指定挂载节点：`getContainer={() => process.env.POPUP_NODE}` |',
+    ].join('\n') + '\n',
+    '\n## 最佳实践\n',
+    bestPracticesContent,
+    developeGuide.end,
+    '\n## 设计规范\n',
+    [designGuide.firstOfAll, designRulesSection].filter(Boolean).join('\n'),
+    ...(documentGuideContent ? [
+      '\n## 文档规范\n',
+      '<文档规范>\n',
+      documentGuideContent,
+      '\n</文档规范>\n',
+    ] : []),
+    '\n## 允许使用的类库\n',
+    '\n---\n\n',
+    libraryDocsContent,
+  ].join('');
+}
+
 function connectToAI(
   comId: string,
   { designer, hooks }: RegistSandBoxConfig,
-  { requestAsStream, agentsMd, skills, plugins, promptOptions, promptSections, tools, getUserContextMessage, history, sender }: PluginParams
+  { requestAsStream, agentsMd, skills, plugins, promptOptions, promptSections, tools, codeRules, designRules, getUserContextMessage, history, sender }: PluginParams
 ): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
-  const effectivePlugins = context.applyPluginEnabledOverrides(plugins);
+  const runtimeContext: SkillRuntimeContext = { designer, codeRules, designRules };
+  const runtimeSkills = skills?.map((skill) => injectSkillRuntimeContext(skill, runtimeContext));
+  const runtimePlugins = plugins?.map((plugin) => injectPluginRuntimeContext(plugin, runtimeContext));
+  const effectivePlugins = context.applyPluginEnabledOverrides(runtimePlugins);
 
   if (context.agentMap.has(agentKey)) {
     // 已注册：直接从现有 agent 实例上取 history 返回，不重复初始化
@@ -218,6 +341,22 @@ function connectToAI(
       ?? effectivePlugins?.filter((p) => p.enabled !== false)
       ?? [];
     return enabledPlugins.flatMap((p) => p.additionalDirectories ?? []);
+  };
+  const buildAgentsMdConfig = (): AgentsMdConfig[] => {
+    const config: AgentsMdConfig[] = [];
+    const rootAgentsMd = agentsMd?.trim();
+    if (rootAgentsMd) {
+      config.push({ path: "agents.md", content: rootAgentsMd });
+    }
+    for (const dir of getEnabledAdditionalDirectories()) {
+      const content = dir.agentsMd?.trim();
+      if (!content) continue;
+      config.push({
+        path: `${dir.path}agents.md`,
+        content,
+      });
+    }
+    return config;
   };
   const findAdditionalDirectory = (path: string, dirs: AdditionalDirectory[]) => {
     return dirs
@@ -296,56 +435,80 @@ function connectToAI(
       await Promise.all(tasks);
     },
 
-    getContext: async () => {
-      return designerRef.current?.exportToMessage() ?? null;
-    },
+    getContext: async () => buildDesignerContext(designerRef.current, promptSections, { codeRules, designRules }),
 
     // ── getUserContext：主项目空间 + 扩展目录描述 + 宿主自定义上下文 ──────────
     getUserContext: async () => {
-      // 1. 主项目空间文件列表（只列主空间，不含扩展目录）
-      const mainFiles = await designer.getFiles();
-      let builtinContext: string;
+      const additionalDirectories = getEnabledAdditionalDirectories();
+      const summarizeFiles = (files: Array<{ path: string; content: string }>) => {
+        const suffixMap: Record<string, number> = {};
+        for (const f of files) {
+          const dotIdx = f.path.lastIndexOf('.');
+          const ext = dotIdx !== -1 ? f.path.slice(dotIdx) : '(无后缀)';
+          suffixMap[ext] = (suffixMap[ext] ?? 0) + 1;
+        }
+        return Object.entries(suffixMap)
+          .map(([ext, count]) => `${count} 个 ${ext}`)
+          .join('、');
+      };
+      const normalizeMainPath = (path: string) => path.replace(/^\/+/, '');
+      const normalizeDirectoryPath = (path: string) => path.replace(/^\/+/, '');
+      const ensureTrailingSlash = (path: string) => path.endsWith('/') ? path : `${path}/`;
+      const examplePath = (dirPath: string) => `${ensureTrailingSlash(normalizeDirectoryPath(dirPath))}src/index.ts`;
+
+      const [mainFiles, extraDirectoryInfos] = await Promise.all([
+        designer.getFiles(),
+        Promise.all(additionalDirectories.map(async (dir) => ({
+          dir,
+          files: await dir.getFiles(),
+        }))),
+      ]);
+
+      const projectCount = 1 + additionalDirectories.length;
+      const sections: string[] = [
+        `这是发送这条消息时的项目空间快照，并不会实时更新。\n\n# 项目空间\n当前项目一共有${projectCount}个工程`,
+      ];
+
       if (mainFiles.length === 0) {
-        builtinContext = '项目空间为空，没有任何代码文件。\n';
+        sections.push([
+          '## 前端工程',
+          'MyBricks的前端工程项目，需要遵循前端开发规范进行开发。',
+          '当前没有任何代码文件。可以使用类似 `index.tsx` 的路径来操作文件。',
+        ].join('\n'));
       } else {
+        const suffixSummary = summarizeFiles(mainFiles);
         const fileList = mainFiles.map((f) => {
           const lineCount = f.content.split('\n').length;
-          return `- ${f.path} (${lineCount} lines)`;
+          return `- ${normalizeMainPath(f.path)} (${lineCount} lines)`;
         }).join('\n');
-        builtinContext = `这是发送这条消息时的各类环境信息，并不会实时更新。\n\n# 项目空间\n\n${fileList}\n`;
+        sections.push([
+          '## 前端工程',
+          'MyBricks的前端工程项目，需要遵循前端开发规范进行开发。',
+          `总计：${mainFiles.length} 个文件（${suffixSummary}）`,
+          '文件：',
+          fileList,
+        ].join('\n'));
       }
 
-      // 2. 扩展目录描述（framework 自动生成，宿主零配置）
-      let extraContext = '';
-      const additionalDirectories = getEnabledAdditionalDirectories();
-      if (additionalDirectories.length) {
-        const parts = await Promise.all(
-          additionalDirectories.map(async (dir) => {
-            const dirFiles = await dir.getFiles();
-            // 按文件后缀统计数量
-            const suffixMap: Record<string, number> = {};
-            for (const f of dirFiles) {
-              const dotIdx = f.path.lastIndexOf('.');
-              const ext = dotIdx !== -1 ? f.path.slice(dotIdx) : '(无后缀)';
-              suffixMap[ext] = (suffixMap[ext] ?? 0) + 1;
-            }
-            const suffixSummary = Object.entries(suffixMap)
-              .map(([ext, count]) => `${count} 个 ${ext}`)
-              .join('、');
-            const dirLabel = dir.description ? `${dir.description}（${dir.path}）` : dir.path;
-            const countDesc = dirFiles.length === 0
-              ? '暂无文件'
-              : `共 ${dirFiles.length} 个文件（${suffixSummary}），请按需读取文件内容`;
-            return `# 扩展目录：${dirLabel}\n${countDesc}。`;
-          })
-        );
-        extraContext = '\n\n' + parts.join('\n\n');
+      if (extraDirectoryInfos.length) {
+        const extraSections = extraDirectoryInfos.map(({ dir, files }, index) => {
+          const suffixSummary = summarizeFiles(files);
+          const countDesc = files.length === 0
+            ? '当前没有任何代码文件。'
+            : `总计：${files.length} 个文件（${suffixSummary}）。当前不展开文件列表，请按需搜索或读取目录下的具体文件。`;
+          return [
+            `工程${index + 1}，虚拟目录为\`${normalizeDirectoryPath(dir.path)}\``,
+            dir.description ? `说明：\n${dir.description}` : undefined,
+            countDesc,
+            `可以使用类似 \`${examplePath(dir.path)}\` 的完整路径来读取或修改文件。`,
+          ].filter(Boolean).join('\n');
+        }).join('\n\n');
+        sections.push(`## 扩展工程（${extraDirectoryInfos.length}个）\n${extraSections}`);
       }
 
-      // 3. 宿主自定义上下文
       const customContextMessage = await getUserContextMessage?.();
 
-      const combined = builtinContext + extraContext;
+      const combined = sections.join('\n\n');
       return customContextMessage
         ? `${combined}\n\n${customContextMessage}`
         : combined;
@@ -364,8 +527,8 @@ function connectToAI(
     tools: [checkStatusTool, initProjectTool, ...(tools ?? [])],
     promptOptions,
     hooks,
-    agentsMd,
-    skills,
+    agentsMdConfig: buildAgentsMdConfig,
+    skills: runtimeSkills,
     plugins: effectivePlugins,
     subAgents: [],
     formatUserMessage: (params) => {

@@ -11,6 +11,17 @@ export { AgentEvents };
 export type { Message, History, Tool, TurnRecord, ToolCallRecord, WarmupIter };
 export type { CompactRecord, MaskOptions, BoundHistory };
 
+type MaybePromise<T> = T | Promise<T>;
+
+export interface AgentsMdConfig {
+  /** agents.md 虚拟路径，用于多份规则合并展示时区分来源 */
+  path: string;
+  /** agents.md 文件内容 */
+  content: string;
+}
+
+export type AgentsMdConfigResolver = () => MaybePromise<AgentsMdConfig[]>;
+
 // ─── 默认配置常量 ────────────────────────────────────────────────────────────
 /** 默认上下文窗口大小（token 数） */
 const DEFAULT_CONTEXT_WINDOW = 200_000;
@@ -102,9 +113,9 @@ export interface AgentOptions {
    *   - 此处采用相同方式：agentsMd 不追加到 system prompt，而是作为独立的
    *     user 消息插在历史记录之前，LLM 会将其视为背景上下文而非强制指令。
    *
-   * 由 plugin 初始化时由调用方以字符串方式传入。
+   * 由调用方传入带路径和内容的 agents.md 配置。
    */
-  agentsMd?: string;
+  agentsMdConfig?: AgentsMdConfigResolver;
   /**
    * 动态上下文注入（异步）。
    * 每次请求前调用，返回的消息列表会插入到对话历史末尾、用户消息之前。
@@ -271,6 +282,8 @@ type TurnPersistMode = "append" | "update";
 interface TurnMessageSnapshot {
   /** 当前 turn 可见的历史 turns 快照 */
   historyTurns: TurnRecord[];
+  /** 项目级 agents.md 规则文档，每轮开始时获取一次 */
+  agentsMdMessage: Message | null;
   /** turn 级动态上下文：每轮开始时获取一次，后续 iter 复用 */
   contextMessages: Message[];
   /** 用户自定义上下文：每轮开始时获取一次，插入在当前用户消息之前 */
@@ -282,6 +295,7 @@ interface TurnMessageSnapshot {
 /**
  * 构建 turn 级消息快照（在 turn 开始时调用一次）：
  *   [snapshot.historyTurns]         历史 turns 快照
+ *   [snapshot.agentsMdMessage]      agents.md 上下文（仅获取一次）
  *   [snapshot.contextMessages]      动态上下文（getContextMessages，仅获取一次）
  *   [snapshot.userContextMessages]  用户自定义上下文（getUserContextMessages，仅获取一次）
  *
@@ -292,6 +306,8 @@ async function buildTurnMessageSnapshot(
   options: AgentOptions,
   historyTurns: TurnRecord[]
 ): Promise<TurnMessageSnapshot> {
+  const agentsMdMessage = await buildAgentsMdMessage(options.agentsMdConfig);
+
   const contextMessages: Message[] = options.getContextMessages
     ? await options.getContextMessages()
     : [];
@@ -302,11 +318,42 @@ async function buildTurnMessageSnapshot(
 
   return {
     historyTurns,
+    agentsMdMessage,
     contextMessages,
     userContextMessages,
     environmentSection: typeof options.environmentSection === "function"
       ? options.environmentSection()
       : (options.environmentSection ?? ""),
+  };
+}
+
+function formatAgentsMdEntry(entry: AgentsMdConfig): string {
+  const escapeAttr = (value: string) => value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  return `<agents-md path="${escapeAttr(entry.path)}">\n${entry.content}\n</agents-md>`;
+}
+
+async function buildAgentsMdMessage(
+  agentsMdConfig: AgentOptions["agentsMdConfig"]
+): Promise<Message | null> {
+  const entries = (agentsMdConfig ? await agentsMdConfig() : [])
+    .map((entry) => ({
+      ...entry,
+      content: entry.content?.trim() ?? "",
+    }))
+    .filter((entry) => entry.content);
+
+  if (!entries.length) return null;
+
+  const content = `# agents.md\n\n${entries.map(formatAgentsMdEntry).join("\n\n")}\n\n`;
+
+  return {
+    role: "user",
+    content:
+      `<system-reminder>\n` +
+      `As you answer the user's questions, you can use the following context:\n` +
+      content +
+      `IMPORTANT: this context may or may not be relevant to your tasks. You should not respond to this context unless it is highly relevant to your task.\n` +
+      `</system-reminder>`,
   };
 }
 
@@ -328,25 +375,11 @@ function buildIterationBaseMessages(
   snapshot: TurnMessageSnapshot,
   compactRecord?: CompactRecord | null
 ): { baseMessages: Message[]; historyStartIndex: number } {
-  const { system, agentsMd } = options;
-  const { historyTurns, contextMessages } = snapshot;
+  const { system } = options;
+  const { historyTurns, agentsMdMessage, contextMessages } = snapshot;
 
   const systemMessage: Message | null = system
     ? { role: "system", content: system }
-    : null;
-
-  // agentsMd 以独立 user 消息注入，对标 claude-code 的 prependUserContext 机制：
-  // 包裹在 <system-reminder> 中，告知 LLM 此上下文可能与当前任务相关或无关。
-  const agentsMdMessage: Message | null = agentsMd
-    ? {
-        role: "user",
-        content:
-          `<system-reminder>\n` +
-          `As you answer the user's questions, you can use the following context:\n` +
-          `# agents.md\n${agentsMd}\n\n` +
-          `IMPORTANT: this context may or may not be relevant to your tasks. You should not respond to this context unless it is highly relevant to your task.\n` +
-          `</system-reminder>`,
-      }
     : null;
 
   // compact 摘要消息对（放在历史对话之前，游标后的 turns 正常展开）
