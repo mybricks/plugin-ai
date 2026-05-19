@@ -243,7 +243,7 @@ popupRef 说明：
   import { useState } from 'react';
   import { comRef, logger } from "mybricks";
   import { Button } from "xy-ui";
-  import styles from "./index.module.less";
+  import css from "./index.module.less";
 
   interface Btn {
     text: string;
