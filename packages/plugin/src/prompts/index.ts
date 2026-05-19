@@ -1,5 +1,5 @@
 import type { CodeAgentPromptOptions } from "../../../agent/src";
-import { MYBRICKS_PROMPT_SECTIONS } from "./mybricks";
+// import { MYBRICKS_PROMPT_SECTIONS } from "./mybricks";
 // import { MYBRICKS_SPEC_FIRST_PROMPT_SECTIONS } from "./mybricks-spec-first";
 import { MYBRICKS_JSDOC_PROMPT_SECTIONS } from './mybricks-jsdoc'
 
