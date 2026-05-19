@@ -94,18 +94,18 @@ CRITICAL: 尽量在同一个响应中同时并行调用多个代码工具，除�
   - 对于插画/装饰性图形：我们优先推荐使用简单的svg来占位，避免使用图片过于跳脱；`,
     architectureSection: `\`\`\`
 ├─ index.tsx           # 模块入口，有且仅有一个，必须写在根路径
-├─ index.less
+├─ index.module.less
 ├─ dataSource.ts       # 项目唯一文件，必须
 ├─ setup.ts            # 项目唯一文件，必须
 ├─ requirement.md      # 需求文档（又名prd、PRD，在最后写入）
 ├─ pages
 |  └── HomePage
 |     ├── index.tsx
-|     ├── index.less
+|     ├── index.module.less
 └─ components
    └── SharedComponent
       ├── index.tsx
-      └── index.less
+      └── index.module.less
 \`\`\`
 
 > 项目支持渐进式渲染，初始化项目时，建议将入口和公共文件先初始化好，再按照页面进行初始化。
@@ -278,7 +278,7 @@ popupRef 说明：
 
   /**
    * @mybricks
-   * name: default
+   * name: DetailPage
    * title: 查看详情页
    * summary: 页面节点，初始化标题并挂载操作按钮区块。
    * type: page
@@ -361,10 +361,6 @@ popupRef 说明：
   - 【强制】所有 appRef / comRef / popupRef 声明都必须有 JSDoc 注释，包括页面内拆分的辅助 comRef、列表单项 comRef、弹窗 popupRef、export default comRef/appRef；不得只给 Route 页面组件或根节点写注释。
   </节点>
 
-  <根节点>
-  对应 export default ...，根节点可以是任意类型；根节点 JSDoc 必须写在 export default 前，name 固定为 default。
-  </根节点>
-
   <注释位置>
   - export default appRef/comRef/popupRef：JSDoc 写在 export default 语句正上方；
   - const Xxx = appRef/comRef/popupRef(...)：JSDoc 写在 const 声明正上方；
@@ -374,7 +370,7 @@ popupRef 说明：
 
   <节点说明>
   每个节点 JSDoc 统一使用 @mybricks 自定义 tag 承载结构化信息，@mybricks 下方直接书写缩进结构；字段名保持稳定，字段内容按原 README.md 的语义填写。不要使用多层 Markdown 列表或代码围栏表达结构化数据。
-  - name：节点名称，根节点固定 default，其余节点对应代码中各节点变量声明的变量名；
+  - name：节点名称，对应代码中节点变量声明的变量名，如果是export default 导出，则对应文件名；
   - title：根据节点内容与名称写出简洁的语义化标题，体现节点职责，避免与组件名简单重复（如组件叫 SignIn 时 title 可用「登录页」而非「登录」）；
   - summary：对节点的用途、场景或关键行为做简短说明，补充 title 未涵盖的信息，避免与 title 重复或仅罗列 UI 元素；
   - type：app | page | com | popup，其中 app 对应 appRef，page 对应通过 Route 注册的 comRef（页面组件），com 对应 comRef（非路由页面），popup 对应 popupRef。
