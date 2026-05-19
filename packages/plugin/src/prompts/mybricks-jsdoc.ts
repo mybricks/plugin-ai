@@ -94,18 +94,26 @@ CRITICAL: 尽量在同一个响应中同时并行调用多个代码工具，除�
   - 对于插画/装饰性图形：我们优先推荐使用简单的svg来占位，避免使用图片过于跳脱；`,
     architectureSection: `\`\`\`
 ├─ index.tsx           # 模块入口，有且仅有一个，必须写在根路径
-├─ index.less
+├─ index.module.less
 ├─ dataSource.ts       # 项目唯一文件，必须
 ├─ setup.ts            # 项目唯一文件，必须
 ├─ requirement.md      # 需求文档（又名prd、PRD，在最后写入）
+├─ hooks               # 可选，可复用的全局自定义 hooks 目录
+|  ├── useXxx.ts       # 每个 hook 单独一个文件，文件名与 hook 同名
+|  └── useYyy.ts
 ├─ pages
 |  └── HomePage
 |     ├── index.tsx
-|     ├── index.less
-└─ components
+|     ├── index.module.less
+|     └── hooks        # 可选，该页面/组件的自定义 hooks 目录
+|        ├── useXxx.ts # 每个 hook 单独一个文件，文件名与 hook 同名
+|        └── useYyy.ts
+└─ components          # 可复用公共组件目录，所有跨页面复用的组件统一存放
    └── SharedComponent
       ├── index.tsx
-      └── index.less
+      ├── index.module.less
+      └── hooks
+         └── useXxx.ts
 \`\`\`
 
 > 项目支持渐进式渲染，初始化项目时，建议将入口和公共文件先初始化好，再按照页面进行初始化。
@@ -113,14 +121,14 @@ CRITICAL: 尽量在同一个响应中同时并行调用多个代码工具，除�
 #### 页面与组件的文件拆分
 - index.tsx：模块入口，有且仅有一个，且必须写在根路径的 \`index.tsx\` 中；
 - pages/xxx：页面，每个页面必须单独拆到**文件夹**中，例如 \`pages/HomePage/index.tsx\`、\`pages/UserPage/index.tsx\`；
-- 组件：可以被复用的组件可以放到公共\`components/\` 目录下；
+- 组件：公共可复用组件，所有能在多个页面中重复使用的功能组件，必须统一放在 components/ 目录下，每个组件独立创建文件夹存放；
 
 > 拆分仅作为结构处理，建议的开发顺序是完成基础架构的代码、然后按页面维度一个一个完成需求。
 
 #### tsx 文件编写规范
 1. 必须使用 TypeScript，所有组件 props、state、函数参数和返回值都需要有明确的类型定义；
 2. 组件状态和业务逻辑封装在组件内部，使用 useState、useReducer 等 React hooks 管理状态；
-3. 当逻辑相对独立或较为复杂时，抽取到同级 \`hooks.ts\` 文件中，以自定义 hook 的形式管理；
+3. 当逻辑相对独立或较为复杂时，抽取到同级 \`hooks/\` 文件夹中，每个自定义 hook 单独一个文件（如 \`hooks/useXxx.ts\`）；
 4. 禁止编写未实现的事件函数；
 5. 对于浮层类组件，如弹窗、抽屉等，控制浮层的显示/打开/弹出/隐藏状态的变量使用 useState 维护，禁止设置为固定值；
 6. 所有来自三方库的组件都必须带有 className 属性，值需语义化明确且唯一，无论是否需要样式，以便通过 CSS 选择器选中；
@@ -152,6 +160,19 @@ popupRef 说明：
 5. 尽量不要用 calc 等复杂的计算；
 6. 动效、动画等效果，尽量使用 css3 的方式实现，例如 transition、animation 等；
 7. 不使用 :before、:after 等伪类选择器来实现 dom；
+
+#### hooks/ 文件夹编写规范
+当组件内存在相对独立、可复用或逻辑复杂的逻辑时，将其抽取为自定义 hook，放在同级 \`hooks/\` 文件夹中，每个 hook 对应一个独立文件。
+
+使用原则：
+- hooks 以文件夹形式存放，目录名必须是 \`hooks\`，位于组件或页面同级；
+- 每个 hook 单独一个文件，文件名与 hook 名相同（如 \`useXxx.ts\`），存放在 \`hooks/\` 目录下；
+- 每个自定义 hook 以 \`use\` 开头命名；
+- hook 应内部管理自己的副作用，不对外暴露命令式方法；把需要响应的数据作为参数传入 hook，hook 内部用 \`useEffect\` 监听并处理；
+- 禁止把「何时初始化/何时更新」的控制权暴露给外部：
+  - 错误：hook 暴露 \`setXxx\` / \`initXxx\` 方法，由外部在 \`useEffect\` 里手动调用；
+  - 正确：把需要响应的数据作为参数传入 hook，hook 内部决定如何响应；
+- 当多个组件需要共享逻辑时，提取到上层公共 \`hooks/\` 目录中；
 
 #### 日志规范
 项目中必须使用 mybricks 提供的 \`logger\` 工具打印日志，禁止使用 console.log / console.warn / console.error 等原生方法。
@@ -222,7 +243,7 @@ popupRef 说明：
   import { useState } from 'react';
   import { comRef, logger } from "mybricks";
   import { Button } from "xy-ui";
-  import styles from "./index.module.less";
+  import css from "./index.module.less";
 
   interface Btn {
     text: string;
@@ -278,7 +299,7 @@ popupRef 说明：
 
   /**
    * @mybricks
-   * name: default
+   * name: DetailPage
    * title: 查看详情页
    * summary: 页面节点，初始化标题并挂载操作按钮区块。
    * type: page
@@ -348,7 +369,7 @@ popupRef 说明：
 ### JSDoc 注释
 编写或修改 appRef / comRef / popupRef 节点代码时，必须为每一个节点同步编写或更新对应的 JSDoc 注释说明。JSDoc 注释属于代码的一部分，承载原 README.md 中的代码可视化说明信息，必须与节点代码一起生成、一起维护。禁止只给页面节点、根节点或少数组件写注释。
 维护时机：
-- 必须维护（强约束）：节点缺少 JSDoc 注释；或现有注释内容与「注释编写规范」不符；或需求明确要求更新注释（此时必须重新逐行审查源码与注释的差异，确保注释完全对齐当前源码，包括 events/datasource/state 的 className 标识、字段、流程图等）；
+- 必须维护（强约束）：节点缺少 JSDoc 注释；或现有注释内容与「注释编写规范」不符；或需求明确要求更新注释（此时必须重新逐行审查源码与注释的差异，确保注释完全对齐当前源码，包括 events/datasource/state 的 className 标识、字段、流程图等）；或需求明确要求更新文档，注意用户要求的更新文档也包括了JSDoc注释；
 - 建议更新（结构或内容变化）：在 tsx 中新增、删除或重命名了 appRef/comRef 节点，或 Route 中注册的页面组件发生变化；export default 的根节点类型或子节点类型组合发生变化导致标题层级需调整；JSX 中新增、删除或修改了带事件 props（onClick 等）的元素，或其 className 发生变化；JSX 中新增、删除或修改了渲染组件内状态（useState/useReducer 等 hooks 管理的状态）的元素，或其 className 发生变化；JSX 中新增、删除或修改了触发 datasource 调用的元素，或其 className 发生变化；某节点的 UI 结构、交互或业务含义发生明显变化；
 - 无需更新：tsx 未被修改，且现有 JSDoc 注释已正确反映当前源码的节点结构、事件与说明；仅修改了 style.less 等与节点行为无关的文件；
 <JSDoc 注释编写规范>
@@ -361,10 +382,6 @@ popupRef 说明：
   - 【强制】所有 appRef / comRef / popupRef 声明都必须有 JSDoc 注释，包括页面内拆分的辅助 comRef、列表单项 comRef、弹窗 popupRef、export default comRef/appRef；不得只给 Route 页面组件或根节点写注释。
   </节点>
 
-  <根节点>
-  对应 export default ...，根节点可以是任意类型；根节点 JSDoc 必须写在 export default 前，name 固定为 default。
-  </根节点>
-
   <注释位置>
   - export default appRef/comRef/popupRef：JSDoc 写在 export default 语句正上方；
   - const Xxx = appRef/comRef/popupRef(...)：JSDoc 写在 const 声明正上方；
@@ -374,7 +391,7 @@ popupRef 说明：
 
   <节点说明>
   每个节点 JSDoc 统一使用 @mybricks 自定义 tag 承载结构化信息，@mybricks 下方直接书写缩进结构；字段名保持稳定，字段内容按原 README.md 的语义填写。不要使用多层 Markdown 列表或代码围栏表达结构化数据。
-  - name：节点名称，根节点固定 default，其余节点对应代码中各节点变量声明的变量名；
+  - name：节点名称，对应代码中节点变量声明的变量名，如果是export default 导出，则对应文件名；
   - title：根据节点内容与名称写出简洁的语义化标题，体现节点职责，避免与组件名简单重复（如组件叫 SignIn 时 title 可用「登录页」而非「登录」）；
   - summary：对节点的用途、场景或关键行为做简短说明，补充 title 未涵盖的信息，避免与 title 重复或仅罗列 UI 元素；
   - type：app | page | com | popup，其中 app 对应 appRef，page 对应通过 Route 注册的 comRef（页面组件），com 对应 comRef（非路由页面），popup 对应 popupRef。
@@ -405,6 +422,7 @@ popupRef 说明：
     5. 【严禁重复】state 注释必须以 com 节点为最小单位归属：如果状态是在某个子 com 节点内消费的，则 state 条目只能写在该 com 节点注释中，其父节点（page 或上层 com）禁止重复声明相同的 state 条目。判断标准：状态的实际渲染发生在哪个 comRef/popupRef 的 JSX 作用域内，就归属于哪个节点，不随层级向上传递。
     6. 无状态渲染直接省略 state 字段，禁止出现「(无状态渲染)」或空对象，不写即代表无状态渲染
     7. 【精确粒度】className 标识必须是实际渲染状态的那个元素的 className，而不是其父容器的 className。例如：\`<div className={css.card}><span className={css.userName}>{userName}</span></div>\`，state 标识应该是 \`userName\`，而不是 \`card\`。
+    8. 【严禁】禁止将外部来源的值计入 state 字段，state 字段仅用于记录组件自身通过 React hooks 管理的状态
   - events：该组件内所有带事件 props 的交互元素列表，写在最近的 appRef/comRef/popupRef 节点 JSDoc 中
     1. 【强制前提】带事件的元素必须有 className，如果源码中缺少，必须先在代码中补上 className，再写事件注释；
     2. 每个事件用 className 作为标识，每个 className 下描述该元素上的事件及其流程图：
