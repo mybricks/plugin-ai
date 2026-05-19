@@ -7,14 +7,14 @@ export type { Message, History, Tool, TurnRecord, TurnSender, ToolCallRecord, To
 export { ToolValidationError, bindHistory } from "./types";
 
 export { CodeAgent } from "./code-agent";
-export type { CodeAgentOptions, CodeAgentPlugin, CodeAgentPromptOptions, Sandbox, SkillFile } from "./code-agent";
+export type { AdditionalDirectory, CodeAgentOptions, CodeAgentPlugin, CodeAgentPromptOptions, Sandbox, SkillFile } from "./code-agent";
 export { READ_TOOL_NAME, WRITE_TOOL_NAME, MULTI_WRITE_TOOL_NAME, EDIT_TOOL_NAME, MULTI_EDIT_TOOL_NAME, DELETE_TOOL_NAME, GREP_TOOL_NAME, GLOB_TOOL_NAME, USE_SKILL_TOOL_NAME } from "./code-agent/tools";
 
 export { IDBHistory } from "./history/idb-history";
 export { HTTPHistory } from "./history/http-history";
 
-export { createSubAgentTool, CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
-export type { SubAgentConfig } from "./sub-agent";
+export { createSubAgentTool, resolveSubAgentMeta, CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
+export type { SubAgentConfig, SubAgentFile, SubAgentMeta } from "./sub-agent";
 
 export type { RetryOptions } from "./retry";
 export { AbortError, isAbortError } from "./errors";

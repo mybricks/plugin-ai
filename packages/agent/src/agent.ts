@@ -119,11 +119,14 @@ export interface AgentOptions {
    */
   getUserContextMessages?: () => Promise<Message[]>;
   /**
-   * 环境信息文本（静态，构建时确定）。
+   * 环境信息文本（支持动态函数形式）。
    * 包含可用 skills、sub-agents 等环境信息，用 <system-reminder> 包裹的字符串。
    * 每次请求时与 userContextMessages 合并为一条 user 消息，插在当前用户消息之前。
+   *
+   * - 传字符串：静态内容，构建时确定（原有用法）
+   * - 传函数：每次 turn 开始时调用求值，用于插件动态启用/禁用场景
    */
-  environmentSection?: string;
+  environmentSection?: string | (() => string);
   /** 工具列表（plugin 初始化时注册额外工具） */
   tools?: Tool[];
   /** 历史记录实现 */
@@ -301,7 +304,9 @@ async function buildTurnMessageSnapshot(
     historyTurns,
     contextMessages,
     userContextMessages,
-    environmentSection: options.environmentSection ?? "",
+    environmentSection: typeof options.environmentSection === "function"
+      ? options.environmentSection()
+      : (options.environmentSection ?? ""),
   };
 }
 
@@ -1373,10 +1378,10 @@ export class Agent {
    * 与 createFork 的差异：
    *   - 强制 maxSteps: 1（不允许多次 ReAct 轮询）
    *   - 强制 tools: []（不允许工具调用）
-   *   - 支持通过 SubAgentConfig 覆盖 system
+   *   - 支持通过 ForkAgentOptions 覆盖 system / tools / aiRole
    *   - 全量继承父 turns 历史
    */
-  createSubAgent(config: import("./sub-agent").SubAgentConfig): ForkAgent {
+  createSubAgent(config: ForkAgentOptions): ForkAgent {
     const baseTools = config.tools ?? (this.options.tools ?? []);
     const tools = baseTools.filter((t: Tool) => t.name !== CALL_SUB_AGENT_TOOL_NAME);
     return this.createFork({

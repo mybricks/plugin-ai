@@ -19,7 +19,7 @@ import { ensureAIPanelOpen, ensureFocusComId } from "./utils/ensure-ai-panel-ope
 // ─── 工具类型重导出 ────────────────────────────────────────────────────────────
 
 export { CodeAgent, IDBHistory } from "../../agent/src";
-export type { AgentEventMap, CodeAgentPlugin, SkillFile } from "../../agent/src";
+export type { AdditionalDirectory, AgentEventMap, CodeAgentPlugin, SkillFile } from "../../agent/src";
 export { createRequestAsStream, createOnUpload } from "../../request/src";
 export type { RequestAsStreamFn } from "../../request/src";
 export { openSetting, closeSetting, SettingModal } from "./ui/setting";
@@ -40,6 +40,16 @@ export interface PluginAIController {
   enable(): void;
   /** 动态设置禁用状态 */
   setDisabled(value: boolean): void;
+  /**
+   * 广播启用插件：影响所有已创建的 CodeAgent 实例，且对后续新建实例同样生效。
+   * 下一个 turn 开始时生效（skills / tools / agents 会重新合并）。
+   */
+  enablePlugin(name: string): void;
+  /**
+   * 广播禁用插件：影响所有已创建的 CodeAgent 实例，且对后续新建实例同样生效。
+   * 下一个 turn 开始时生效（skills / tools / agents 会重新合并）。
+   */
+  disablePlugin(name: string): void;
 }
 
 /** pluginAI() 返回值，顶层为 Mybricks 插件标准属性，controller 为扩展控制接口 */
@@ -68,7 +78,7 @@ export interface PluginAIParams {
   agentsMd?: string;
   /** 技能文件列表，挂载为虚拟 .agent/skills/ 目录，LLM 通过 use_skill 工具按需加载 */
   skills?: SkillFile[];
-  /** 插件列表，会将内部 skills / agents / tools 合并进 CodeAgent 顶层配置 */
+  /** 插件列表，会将内部 skills / agents / tools / additionalDirectories 合并进 CodeAgent 顶层配置 */
   plugins?: CodeAgentPlugin[];
   /** 覆盖内置系统提示词各节，按 key 深度合并，未提供的 key 保留 MYBRICKS_PROMPT_SECTIONS 默认值 */
   promptSections?: PromptSections;
@@ -121,7 +131,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     componentRuntime,
     llm,
     history,
-    sender
+    sender,
   } = params;
 
   const mergedPromptSections = resolvePromptOptions(promptSections);
@@ -217,7 +227,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     themes: codingConfig?.themes ?? [],
     componentRuntime,
     history,
-    sender
+    sender,
   });
 
   return {
@@ -236,6 +246,12 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
       },
       setDisabled(value: boolean) {
         context.setDisabled(value);
+      },
+      enablePlugin(name: string) {
+        context.enablePlugin(name);
+      },
+      disablePlugin(name: string) {
+        context.disablePlugin(name);
       },
     },
     contributes: {

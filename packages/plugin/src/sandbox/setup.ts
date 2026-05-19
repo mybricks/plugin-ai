@@ -1,6 +1,6 @@
 import React from "react";
 import { CodeAgent, IDBHistory } from "../../../agent/src";
-import type { Tool, Sandbox, CodeAgentPlugin, CodeAgentPromptOptions, History, BoundHistory, TurnSender } from "../../../agent/src";
+import type { Tool, Sandbox, CodeAgentPlugin, CodeAgentPromptOptions, History, BoundHistory, TurnSender, AdditionalDirectory } from "../../../agent/src";
 import type { PromptSections } from "../prompts";
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { Designer, RegistSandBoxConfig } from "./types";
@@ -204,6 +204,7 @@ function connectToAI(
   { requestAsStream, agentsMd, skills, plugins, promptOptions, promptSections, tools, getUserContextMessage, history, sender }: PluginParams
 ): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
+  const effectivePlugins = context.applyPluginEnabledOverrides(plugins);
 
   if (context.agentMap.has(agentKey)) {
     // 已注册：直接从现有 agent 实例上取 history 返回，不重复初始化
@@ -211,31 +212,143 @@ function connectToAI(
     return { history: existingAgent.getHistory() };
   }
 
+  let agentRef: CodeAgent | undefined;
+  const getEnabledAdditionalDirectories = (): AdditionalDirectory[] => {
+    const enabledPlugins = agentRef?.getEnabledPlugins()
+      ?? effectivePlugins?.filter((p) => p.enabled !== false)
+      ?? [];
+    return enabledPlugins.flatMap((p) => p.additionalDirectories ?? []);
+  };
+  const findAdditionalDirectory = (path: string, dirs: AdditionalDirectory[]) => {
+    return dirs
+      .filter((dir) => path.startsWith(dir.path))
+      .sort((a, b) => b.path.length - a.path.length)[0];
+  };
+
   const sandbox: Sandbox = {
-    getFiles: designer.getFiles.bind(designer),
-    updateFiles: designer.updateFiles.bind(designer),
-    deleteFiles: designer.deleteFiles.bind(designer),
+    // ── getFiles：主空间 + 所有扩展目录文件合并 ──────────────────────────────
+    getFiles: async () => {
+      const mainFiles = await designer.getFiles();
+      const additionalDirectories = getEnabledAdditionalDirectories();
+      if (!additionalDirectories.length) return mainFiles;
+      const extraFiles = (await Promise.all(
+        additionalDirectories.map(async (dir) => {
+          const files = await dir.getFiles();
+          return files.map(f => ({
+            // 若 getFiles 返回的 path 不含前缀则自动补上
+            path: f.path.startsWith(dir.path) ? f.path : `${dir.path}${f.path}`,
+            content: f.content,
+          }));
+        })
+      )).flat();
+      return [...mainFiles, ...extraFiles];
+    },
+
+    // ── updateFiles：按路径前缀分组分发 ──────────────────────────────────────
+    updateFiles: async (files) => {
+      const additionalDirectories = getEnabledAdditionalDirectories();
+      if (!additionalDirectories.length) return designer.updateFiles(files);
+      const mainFiles: typeof files = [];
+      const extraGroups = new Map<AdditionalDirectory, typeof files>();
+      for (const file of files) {
+        const dir = findAdditionalDirectory(file.path, additionalDirectories);
+        if (dir) {
+          if (!extraGroups.has(dir)) extraGroups.set(dir, []);
+          extraGroups.get(dir)!.push(file);
+        } else {
+          mainFiles.push(file);
+        }
+      }
+      const tasks: Promise<void>[] = [];
+      if (mainFiles.length) tasks.push(designer.updateFiles(mainFiles));
+      for (const [dir, dirFiles] of extraGroups) {
+        if (!dir.updateFiles) {
+          throw new Error(`AdditionalDirectory "${dir.path}" is read-only (no updateFiles provided)`);
+        }
+        tasks.push(dir.updateFiles(dirFiles));
+      }
+      await Promise.all(tasks);
+    },
+
+    // ── deleteFiles：按路径前缀分组分发 ──────────────────────────────────────
+    deleteFiles: async (paths) => {
+      const additionalDirectories = getEnabledAdditionalDirectories();
+      if (!additionalDirectories.length) return designer.deleteFiles(paths);
+      const mainPaths: string[] = [];
+      const extraGroups = new Map<AdditionalDirectory, string[]>();
+      for (const p of paths) {
+        const dir = findAdditionalDirectory(p, additionalDirectories);
+        if (dir) {
+          if (!extraGroups.has(dir)) extraGroups.set(dir, []);
+          extraGroups.get(dir)!.push(p);
+        } else {
+          mainPaths.push(p);
+        }
+      }
+      const tasks: Promise<void>[] = [];
+      if (mainPaths.length) tasks.push(designer.deleteFiles(mainPaths));
+      for (const [dir, dirPaths] of extraGroups) {
+        if (!dir.deleteFiles) {
+          throw new Error(`AdditionalDirectory "${dir.path}" does not support deleteFiles`);
+        }
+        tasks.push(dir.deleteFiles(dirPaths));
+      }
+      await Promise.all(tasks);
+    },
+
     getContext: async () => {
       return designerRef.current?.exportToMessage() ?? null;
     },
-    getUserContext: async () => {
-      const files = await sandbox.getFiles();
 
+    // ── getUserContext：主项目空间 + 扩展目录描述 + 宿主自定义上下文 ──────────
+    getUserContext: async () => {
+      // 1. 主项目空间文件列表（只列主空间，不含扩展目录）
+      const mainFiles = await designer.getFiles();
       let builtinContext: string;
-      if (files.length === 0) {
+      if (mainFiles.length === 0) {
         builtinContext = '项目空间为空，没有任何代码文件。\n';
       } else {
-        const fileList = files.map((f) => {
+        const fileList = mainFiles.map((f) => {
           const lineCount = f.content.split('\n').length;
           return `- ${f.path} (${lineCount} lines)`;
         }).join('\n');
         builtinContext = `这是发送这条消息时的各类环境信息，并不会实时更新。\n\n# 项目空间\n\n${fileList}\n`;
       }
 
+      // 2. 扩展目录描述（framework 自动生成，宿主零配置）
+      let extraContext = '';
+      const additionalDirectories = getEnabledAdditionalDirectories();
+      if (additionalDirectories.length) {
+        const parts = await Promise.all(
+          additionalDirectories.map(async (dir) => {
+            const dirFiles = await dir.getFiles();
+            // 按文件后缀统计数量
+            const suffixMap: Record<string, number> = {};
+            for (const f of dirFiles) {
+              const dotIdx = f.path.lastIndexOf('.');
+              const ext = dotIdx !== -1 ? f.path.slice(dotIdx) : '(无后缀)';
+              suffixMap[ext] = (suffixMap[ext] ?? 0) + 1;
+            }
+            const suffixSummary = Object.entries(suffixMap)
+              .map(([ext, count]) => `${count} 个 ${ext}`)
+              .join('、');
+            const dirLabel = dir.description ? `${dir.description}（${dir.path}）` : dir.path;
+            const countDesc = dirFiles.length === 0
+              ? '暂无文件'
+              : `共 ${dirFiles.length} 个文件（${suffixSummary}），请按需读取文件内容`;
+            return `# 扩展目录：${dirLabel}\n${countDesc}。`;
+          })
+        );
+        extraContext = '\n\n' + parts.join('\n\n');
+      }
+
+      // 3. 宿主自定义上下文
       const customContextMessage = await getUserContextMessage?.();
+
+      const combined = builtinContext + extraContext;
       return customContextMessage
-        ? `${builtinContext}\n\n${customContextMessage}`
-        : builtinContext;
+        ? `${combined}\n\n${customContextMessage}`
+        : combined;
     },
   };
 
@@ -253,7 +366,7 @@ function connectToAI(
     hooks,
     agentsMd,
     skills,
-    plugins,
+    plugins: effectivePlugins,
     subAgents: [],
     formatUserMessage: (params) => {
       const focusSnapshot = context.currentFocus;
@@ -276,6 +389,7 @@ function connectToAI(
       };
     },
   });
+  agentRef = agent;
 
   context.sandboxMap.set(agentKey, { sandbox, designerRef });
   context.agentMap.set(agentKey, agent);

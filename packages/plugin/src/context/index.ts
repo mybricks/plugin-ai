@@ -98,6 +98,37 @@ class Context {
     this.disabled = value;
     this.events.emit("disabled", value);
   }
+
+  /** 插件启停覆盖值，用于影响后续新建的 CodeAgent 实例。 */
+  private _pluginEnabledOverrides = new Map<string, boolean>();
+
+  applyPluginEnabledOverrides<T extends { name: string; enabled?: boolean }>(plugins?: T[]): T[] | undefined {
+    if (!plugins?.length || this._pluginEnabledOverrides.size === 0) return plugins;
+    return plugins.map((plugin) => {
+      const enabled = this._pluginEnabledOverrides.get(plugin.name);
+      return enabled === undefined ? plugin : { ...plugin, enabled };
+    });
+  }
+
+  /**
+   * 启用插件：更新全局集合，并广播到所有已存在的 CodeAgent 实例。
+   */
+  enablePlugin(name: string) {
+    this._pluginEnabledOverrides.set(name, true);
+    for (const agent of this.agentMap.values()) {
+      agent.enablePlugin(name);
+    }
+  }
+
+  /**
+   * 禁用插件：更新全局集合，并广播到所有已存在的 CodeAgent 实例。
+   */
+  disablePlugin(name: string) {
+    this._pluginEnabledOverrides.set(name, false);
+    for (const agent of this.agentMap.values()) {
+      agent.disablePlugin(name);
+    }
+  }
 }
 
 export const context = new Context();

@@ -1,20 +1,24 @@
 import { Agent, type AgentOptions } from "../agent";
 import type { Message, Tool } from "../types";
 import {
-  createReadTool, READ_TOOL_NAME,
-  createWriteTool, WRITE_TOOL_NAME,
-  createMultiWriteTool, MULTI_WRITE_TOOL_NAME,
-  createEditTool, EDIT_TOOL_NAME,
-  createMultiEditTool, MULTI_EDIT_TOOL_NAME,
-  createDeleteTool, DELETE_TOOL_NAME,
+  createReadTool,
+  createWriteTool,
+  createEditTool,
+  createMultiEditTool,
+  createDeleteTool,
   createGrepTool,
-  createGlobTool,
-  createSkillTool, USE_SKILL_TOOL_NAME,
+  createSkillTool,
+  USE_SKILL_TOOL_NAME,
 } from "./tools";
 import { getCodeAgentSystemPrompt, type CodeAgentPromptOptions } from "./prompt";
 export type { CodeAgentPromptOptions };
 import { type SkillFile, resolveSkillMeta } from "./skills";
-import { createSubAgentTool, type SubAgentConfig, CALL_SUB_AGENT_TOOL_NAME } from "../sub-agent";
+import {
+  createSubAgentTool,
+  resolveSubAgentMeta,
+  type SubAgentConfig,
+  CALL_SUB_AGENT_TOOL_NAME,
+} from "../sub-agent";
 export type { SubAgentConfig };
 
 export type { SkillFile };
@@ -23,22 +27,81 @@ export { resolveSkillMeta, USE_SKILL_TOOL_NAME };
 // ─── Plugin 配置 ─────────────────────────────────────────────────────────────
 
 /**
+ * CodeAgent 插件挂载的额外目录。
+ *
+ * 目录通过虚拟路径前缀暴露给 CodeAgent 的文件工具；读写删除仍由宿主侧
+ * sandbox 适配层路由到对应 API。
+ */
+export interface AdditionalDirectory {
+  /**
+   * 虚拟路径前缀，末尾必须带斜杠，例如 ".specs/" 或 "knowledge/"。
+   * 所有 path.startsWith(dir.path) 的文件操作都会路由到此目录。
+   */
+  path: string;
+  /**
+   * 目录描述，由 framework 自动注入到每轮 getUserContext 中，
+   * 让 LLM 了解该目录的用途，例如 "产品设计规范文档"。
+   */
+  description?: string;
+  /** 读取该目录下的文件列表 */
+  getFiles: () => Promise<Array<{ path: string; content: string }>>;
+  /**
+   * 写入文件（可选）。
+   * 不传则视为只读目录，LLM 尝试写入时框架抛出错误。
+   */
+  updateFiles?: (files: Array<{ path: string; content: string }>) => Promise<void>;
+  /**
+   * 删除文件（可选）。
+   * 不传则视为不支持删除，操作时框架抛出错误。
+   */
+  deleteFiles?: (paths: string[]) => Promise<void>;
+}
+
+/**
  * CodeAgent 插件配置。
  *
  * 对标 Claude Code plugin 的组件聚合语义：
- *   - skills 使用现有 SkillFile 声明
- *   - agents 使用现有 SubAgentConfig 声明，并合并到顶层 subAgents
- *   - tools 使用现有 Tool 声明，并合并到顶层 tools
+ *   - skills 使用 SkillFile 声明
+ *   - agents 使用 SubAgentConfig 声明（md 文件驱动），合并到顶层 subAgents
+ *   - tools 使用 Tool 声明，并合并到顶层 tools
+ *   - additionalDirectories 使用 AdditionalDirectory 声明，挂载额外文件目录
+ *
+ * name 命名规范：
+ *   - 仅允许小写英文字母、数字、中划线、下划线
+ *   - 格式：[a-z0-9][a-z0-9_-]*（参考 npm 包名 / 文件夹名规范）
+ *   - 示例：my-plugin、code_review、mybricks-spec
+ *   - 格式不符时：运行时 console.warn 提示，不阻断执行
  */
 export interface CodeAgentPlugin {
-  /** 插件名称，用于为插件注册的 tool 添加 `${plugin.name}_` 命名空间前缀 */
-  name?: string;
+  /**
+   * 插件唯一标识（必填）。
+   * 用作 enablePlugin / disablePlugin 的查找键，以及工具命名空间前缀。
+   * 命名规范：[a-z0-9][a-z0-9_-]*
+   */
+  name: string;
+  /** 插件版本号（可选，展示用） */
+  version?: string;
+  /** 插件描述（可选，展示/调试用） */
+  description?: string;
+  /**
+   * 初始启用状态，默认 true（全部启用）。
+   * 设为 false 可让插件以禁用状态注册，需调用 enablePlugin(name) 后才会在 turn 中生效。
+   */
+  enabled?: boolean;
   /** 插件内置 Skills，合并到顶层 skills */
   skills?: SkillFile[];
-  /** 插件内置 Agents，合并到顶层 subAgents */
+  /**
+   * 插件内置 SubAgents，合并到顶层 subAgents。
+   * 每个 SubAgentConfig 通过 `${name}.md` 文件定义配置和系统提示词。
+   */
   agents?: SubAgentConfig[];
-  /** 插件内置工具，合并到顶层 tools */
+  /** 插件内置工具，合并到顶层 tools（工具名自动加 pluginName_ 前缀） */
   tools?: Tool[];
+  /**
+   * 插件额外挂载目录。
+   * 仅在插件启用时参与文件读取、写入、删除和 user context 注入。
+   */
+  additionalDirectories?: AdditionalDirectory[];
 }
 
 // ─── 沙箱接口 ─────────────────────────────────────────────────────────────────
@@ -76,7 +139,7 @@ export interface Sandbox {
 
 // ─── CodeAgentOptions ────────────────────────────────────────────────────────
 
-export interface CodeAgentOptions extends Omit<AgentOptions, 'system'> {
+export interface CodeAgentOptions extends Omit<AgentOptions, "system"> {
   /**
    * 沙箱，提供文件读写工具的底层实现。
    * 通常由 plugin 侧通过 window._registSandBox_ 注入。
@@ -112,8 +175,10 @@ export interface CodeAgentOptions extends Omit<AgentOptions, 'system'> {
   /**
    * 插件配置列表。
    *
-   * 构造时会将每个 plugin 的 skills / agents / tools 追加到顶层
-   * skills / subAgents / tools 中，后续虚拟文件、环境信息和工具注册逻辑保持一致。
+   * 每个插件的 skills / agents / tools 会在每次 turn 开始时，根据当前启用状态
+   * 动态合并到顶层 skills / subAgents / tools 中，而非构造期固化。
+   *
+   * 插件启用状态通过 enablePlugin / disablePlugin 控制，初始状态由 plugin.enabled 字段决定（默认 true）。
    */
   plugins?: CodeAgentPlugin[];
 }
@@ -123,8 +188,10 @@ const AGENT_PREFIX = ".agent/";
 /** 虚拟 skills 路径前缀 */
 const SKILLS_PREFIX = `${AGENT_PREFIX}skills/`;
 
-function prefixPluginToolName(pluginName: string | undefined, tool: Tool): Tool {
-  if (!pluginName) return tool;
+/** 插件 name 命名规范校验 */
+const PLUGIN_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
+
+function prefixPluginToolName(pluginName: string, tool: Tool): Tool {
   return {
     ...tool,
     name: `${pluginName}_${tool.name}`,
@@ -134,7 +201,7 @@ function prefixPluginToolName(pluginName: string | undefined, tool: Tool): Tool 
 // ─── 构建环境信息 ──────────────────────────────────────────────────────────────
 
 /**
- * 构建环境信息文本（静态，随每轮 user 消息注入到最上方）。
+ * 构建环境信息文本（每次 turn 开始时动态求值）。
  *
  * 包含 skills 目录信息和可用 sub-agents 类型信息，
  * 用 <system-reminder>环境信息</system-reminder> 包裹，返回字符串。
@@ -166,27 +233,31 @@ function buildEnvironmentSection(skills?: SkillFile[], subAgents?: SubAgentConfi
 
     sections.push(
       `可用 Skill（当任务涉及相关场景时，使用 ${USE_SKILL_TOOL_NAME} 工具调用指定 Skill 获取完整指导）：\n` +
-      `${lines.join("\n")}\n` +
-      `注意：When a skill matches the user's request, this is a BLOCKING REQUIREMENT. NEVER mention a skill without actually calling this tool.`
+        `${lines.join("\n")}\n` +
+        `注意：When a skill matches the user's request, this is a BLOCKING REQUIREMENT. NEVER mention a skill without actually calling this tool.`
     );
   }
 
   // ── SubAgent 目录 ─────────────────────────────────────────────────────────
   if (subAgents?.length) {
-    const lines = subAgents.map((c) => `  ${c.type}: ${c.description}`).join("\n");
+    const lines = subAgents
+      .map((c) => {
+        const mainFile = c.files.find((f) => f.path === `${c.name}.md`);
+        if (!mainFile) return `  ${c.name}`;
+        const { description } = resolveSubAgentMeta(mainFile.content, c.name);
+        return `  ${c.name}: ${description}`;
+      })
+      .join("\n");
+
     sections.push(
       `可用 SubAgent（需要时使用 ${CALL_SUB_AGENT_TOOL_NAME} 工具发起调用）：\n` +
-      `${lines}`
+        `${lines}`
     );
   }
 
   if (sections.length === 0) return "";
 
-  return (
-    `<system-reminder>\n` +
-    `${sections.join("\n\n")}\n` +
-    `</system-reminder>`
-  );
+  return `<system-reminder>\n${sections.join("\n\n")}\n</system-reminder>`;
 }
 
 // ─── CodeAgent ────────────────────────────────────────────────────────────────
@@ -208,24 +279,56 @@ function buildEnvironmentSection(skills?: SkillFile[], subAgents?: SubAgentConfi
  *   - `subAgents` — 子 Agent 配置列表，注册 call-sub-agent 工具
  */
 export class CodeAgent extends Agent {
+  /** 全量插件列表（构造时传入，不变） */
+  private _plugins: CodeAgentPlugin[];
+  /**
+   * 当前已启用的插件名集合。
+   * 由 plugin.enabled 字段（默认 true）初始化。
+   * enablePlugin / disablePlugin 调用时即时更新，下一个 turn 生效。
+   */
+  private _enabledPluginNames: Set<string>;
+  /**
+   * 顶层基础资源（来自 options.skills / options.subAgents / options.tools，不含 plugin 部分）。
+   * 不参与动态重算，始终全量参与每次 turn 的资源合并。
+   */
+  private _base: { skills: SkillFile[]; subAgents: SubAgentConfig[]; tools: Tool[] };
+
   constructor(options: CodeAgentOptions) {
-    const { sandbox, skills, system, subAgents, plugins, ...agentOptions } = options;
-    const pluginSkills = plugins?.flatMap((plugin) => plugin.skills ?? []) ?? [];
-    const pluginSubAgents = plugins?.flatMap((plugin) => plugin.agents ?? []) ?? [];
-    const pluginTools = plugins?.flatMap((plugin) =>
-      (plugin.tools ?? []).map((tool) => prefixPluginToolName(plugin.name, tool))
-    ) ?? [];
+    const {
+      sandbox,
+      skills,
+      system,
+      subAgents,
+      plugins = [],
+      ...agentOptions
+    } = options;
 
-    const resolvedSkills = [...(skills ?? []), ...pluginSkills];
-    const resolvedSubAgents = [...(subAgents ?? []), ...pluginSubAgents];
-    const resolvedTools = [...(agentOptions.tools ?? []), ...pluginTools];
+    for (const plugin of plugins) {
+      if (!PLUGIN_NAME_PATTERN.test(plugin.name)) {
+        console.warn(
+          `[CodeAgent] Plugin name "${plugin.name}" 不符合命名规范 [a-z0-9][a-z0-9_-]*，` +
+            `建议使用小写英文字母、数字、中划线或下划线，且以字母或数字开头。`
+        );
+      }
+    }
 
-    // ── 包装 sandbox.getFiles()，追加 skills 虚拟文件 ─────────────────────────
+    const baseSkills = skills ?? [];
+    const baseSubAgents = subAgents ?? [];
+    const baseUserTools = agentOptions.tools ?? [];
+
+    // super() 调用前 this 不可用，先用 enabledNamesRef 供 wrappedSandbox 闭包读取。
+    // super() 之后再把它同步到真实的 this._enabledPluginNames 引用。
+    const enabledNamesRef = { current: new Set<string>() };
+
     const wrappedSandbox: Sandbox | undefined = sandbox
       ? {
           getFiles: async () => {
             const realFiles = await sandbox.getFiles();
-            const skillFiles = resolvedSkills.flatMap((s) =>
+            const enabledPluginSkills = plugins
+              .filter((p) => enabledNamesRef.current.has(p.name))
+              .flatMap((p) => p.skills ?? []);
+            const allSkills = [...baseSkills, ...enabledPluginSkills];
+            const skillFiles = allSkills.flatMap((s) =>
               s.files.map((f) => ({
                 path: `${SKILLS_PREFIX}${s.name}/${f.path}`,
                 content: f.content,
@@ -241,31 +344,38 @@ export class CodeAgent extends Agent {
       : undefined;
 
     const sandboxTools: Tool[] = wrappedSandbox
-      ? [createReadTool(wrappedSandbox), createWriteTool(wrappedSandbox), createEditTool(wrappedSandbox), createMultiEditTool(wrappedSandbox), createDeleteTool(wrappedSandbox), createGrepTool(wrappedSandbox)]
+      ? [
+          createReadTool(wrappedSandbox),
+          createWriteTool(wrappedSandbox),
+          createEditTool(wrappedSandbox),
+          createMultiEditTool(wrappedSandbox),
+          createDeleteTool(wrappedSandbox),
+          createGrepTool(wrappedSandbox),
+        ]
       : [];
 
     // ── sandbox.getContext 作为 getContextMessages ────────────────────────────
+      const base = {
+      skills: baseSkills,
+      subAgents: baseSubAgents,
+      tools: [...sandboxTools, ...baseUserTools],
+    };
+
     const getContextMessages = async (): Promise<Message[]> => {
-      const ctx = await wrappedSandbox?.getContext?.() ?? null;
+      const ctx = (await wrappedSandbox?.getContext?.()) ?? null;
       if (!ctx) return [];
       return [{ role: "user", content: ctx }];
     };
 
     // ── sandbox.getUserContext 作为 getUserContextMessages（@experimental）────
     const getUserContextMessages = async (): Promise<Message[]> => {
-      const uc = await wrappedSandbox?.getUserContext?.() ?? null;
+      const uc = (await wrappedSandbox?.getUserContext?.()) ?? null;
       if (!uc) return [];
       if (Array.isArray(uc)) {
-        return uc.map(text => ({ role: "user", content: text }));
+        return uc.map((text) => ({ role: "user", content: text }));
       }
       return [{ role: "user", content: uc }];
     };
-
-    // ── 构建环境信息（skills 目录 + sub-agents 目录），静态注入 ─────────────────
-    const environmentSection = buildEnvironmentSection(
-      resolvedSkills.length ? resolvedSkills : undefined,
-      resolvedSubAgents.length ? resolvedSubAgents : undefined,
-    );
 
     const builtinSystem = getCodeAgentSystemPrompt(agentOptions.promptOptions);
     const finalSystem = system ? `${builtinSystem}\n\n${system}` : builtinSystem;
@@ -275,22 +385,100 @@ export class CodeAgent extends Agent {
       system: finalSystem,
       getContextMessages,
       getUserContextMessages,
-      environmentSection,
-      // 内置沙箱工具在前，外部注入工具（如 check_design_status）在后
-      tools: [...sandboxTools, ...resolvedTools],
+      environmentSection: () => {
+        const { skills, subAgents } = this._getEnabledResources();
+        return buildEnvironmentSection(
+          skills.length ? skills : undefined,
+          subAgents.length ? subAgents : undefined,
+        );
+      },
+      tools: base.tools,
     });
 
-    // ── 注册 use_skill 工具（需要 skills 列表，在 super() 之后处理）───────────────
-    if (resolvedSkills.length) {
-      const skillTool = createSkillTool(resolvedSkills);
-      this.options.tools = [...(this.options.tools ?? []), skillTool];
-    }
+    this._plugins = plugins;
+    this._base = base;
+    this._enabledPluginNames = new Set(
+      plugins.filter((p) => p.enabled !== false).map((p) => p.name)
+    );
 
-    // ── 注册 call-sub-agent 工具（需要 this，在 super() 之后处理）─────────────────
-    // 用懒引用 () => this 避免在 super() 前访问 this
-    if (resolvedSubAgents.length) {
-      const subAgentTool = createSubAgentTool(() => this, resolvedSubAgents);
-      this.options.tools = [...(this.options.tools ?? []), subAgentTool];
-    }
+    enabledNamesRef.current = this._enabledPluginNames;
+
+    this._rebuildDynamicTools();
+  }
+
+  private _getEnabledResources(): {
+    skills: SkillFile[];
+    subAgents: SubAgentConfig[];
+    tools: Tool[];
+  } {
+    const enabledPlugins = this._plugins.filter((p) =>
+      this._enabledPluginNames.has(p.name)
+    );
+
+    const skills = [
+      ...this._base.skills,
+      ...enabledPlugins.flatMap((p) => p.skills ?? []),
+    ];
+    const subAgents = [
+      ...this._base.subAgents,
+      ...enabledPlugins.flatMap((p) => p.agents ?? []),
+    ];
+    const pluginTools = enabledPlugins.flatMap((p) =>
+      (p.tools ?? []).map((t) => prefixPluginToolName(p.name, t))
+    );
+    const tools = [...this._base.tools, ...pluginTools];
+
+    return { skills, subAgents, tools };
+  }
+
+  /**
+   * 根据当前启用插件状态，重建 use_skill、call-sub-agent 工具以及 plugin tools。
+   * 每次 requestAI 前调用，确保工具列表与启用状态一致。
+   */
+  private _rebuildDynamicTools(): void {
+    const { skills, subAgents, tools } = this._getEnabledResources();
+
+    const skillTool = skills.length ? createSkillTool(skills) : null;
+    const subAgentTool = subAgents.length
+      ? createSubAgentTool(
+          () => this,
+          subAgents,
+          skills.length ? skills : undefined,
+        )
+      : null;
+
+    this.options.tools = [
+      ...tools,
+      ...(skillTool ? [skillTool] : []),
+      ...(subAgentTool ? [subAgentTool] : []),
+    ];
+  }
+
+  override async requestAI(params: Parameters<Agent["requestAI"]>[0]): Promise<void> {
+    this._rebuildDynamicTools();
+    return super.requestAI(params);
+  }
+
+  /**
+   * 启用指定插件（仅影响当前实例）。
+   * 下一个 turn 开始时生效（skills / tools / agents 会重新合并）。
+   */
+  enablePlugin(name: string): void {
+    this._enabledPluginNames.add(name);
+  }
+
+  /**
+   * 禁用指定插件（仅影响当前实例）。
+   * 下一个 turn 开始时生效（skills / tools / agents 会重新合并）。
+   */
+  disablePlugin(name: string): void {
+    this._enabledPluginNames.delete(name);
+  }
+
+  /**
+   * 获取当前已启用的插件列表（快照，不影响内部状态）。
+   */
+  getEnabledPlugins(): CodeAgentPlugin[] {
+    return this._plugins.filter((p) => this._enabledPluginNames.has(p.name));
   }
 }
