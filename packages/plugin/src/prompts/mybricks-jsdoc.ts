@@ -98,14 +98,22 @@ CRITICAL: 尽量在同一个响应中同时并行调用多个代码工具，除�
 ├─ dataSource.ts       # 项目唯一文件，必须
 ├─ setup.ts            # 项目唯一文件，必须
 ├─ requirement.md      # 需求文档（又名prd、PRD，在最后写入）
+├─ hooks               # 可选，可复用的全局自定义 hooks 目录
+|  ├── useXxx.ts       # 每个 hook 单独一个文件，文件名与 hook 同名
+|  └── useYyy.ts
 ├─ pages
 |  └── HomePage
 |     ├── index.tsx
 |     ├── index.module.less
-└─ components
+|     └── hooks        # 可选，该页面/组件的自定义 hooks 目录
+|        ├── useXxx.ts # 每个 hook 单独一个文件，文件名与 hook 同名
+|        └── useYyy.ts
+└─ components          # 可复用公共组件目录，所有跨页面复用的组件统一存放
    └── SharedComponent
       ├── index.tsx
-      └── index.module.less
+      ├── index.module.less
+      └── hooks
+         └── useXxx.ts
 \`\`\`
 
 > 项目支持渐进式渲染，初始化项目时，建议将入口和公共文件先初始化好，再按照页面进行初始化。
@@ -113,14 +121,14 @@ CRITICAL: 尽量在同一个响应中同时并行调用多个代码工具，除�
 #### 页面与组件的文件拆分
 - index.tsx：模块入口，有且仅有一个，且必须写在根路径的 \`index.tsx\` 中；
 - pages/xxx：页面，每个页面必须单独拆到**文件夹**中，例如 \`pages/HomePage/index.tsx\`、\`pages/UserPage/index.tsx\`；
-- 组件：可以被复用的组件可以放到公共\`components/\` 目录下；
+- 组件：公共可复用组件，所有能在多个页面中重复使用的功能组件，必须统一放在 components/ 目录下，每个组件独立创建文件夹存放；
 
 > 拆分仅作为结构处理，建议的开发顺序是完成基础架构的代码、然后按页面维度一个一个完成需求。
 
 #### tsx 文件编写规范
 1. 必须使用 TypeScript，所有组件 props、state、函数参数和返回值都需要有明确的类型定义；
 2. 组件状态和业务逻辑封装在组件内部，使用 useState、useReducer 等 React hooks 管理状态；
-3. 当逻辑相对独立或较为复杂时，抽取到同级 \`hooks.ts\` 文件中，以自定义 hook 的形式管理；
+3. 当逻辑相对独立或较为复杂时，抽取到同级 \`hooks/\` 文件夹中，每个自定义 hook 单独一个文件（如 \`hooks/useXxx.ts\`）；
 4. 禁止编写未实现的事件函数；
 5. 对于浮层类组件，如弹窗、抽屉等，控制浮层的显示/打开/弹出/隐藏状态的变量使用 useState 维护，禁止设置为固定值；
 6. 所有来自三方库的组件都必须带有 className 属性，值需语义化明确且唯一，无论是否需要样式，以便通过 CSS 选择器选中；
@@ -152,6 +160,19 @@ popupRef 说明：
 5. 尽量不要用 calc 等复杂的计算；
 6. 动效、动画等效果，尽量使用 css3 的方式实现，例如 transition、animation 等；
 7. 不使用 :before、:after 等伪类选择器来实现 dom；
+
+#### hooks/ 文件夹编写规范
+当组件内存在相对独立、可复用或逻辑复杂的逻辑时，将其抽取为自定义 hook，放在同级 \`hooks/\` 文件夹中，每个 hook 对应一个独立文件。
+
+使用原则：
+- hooks 以文件夹形式存放，目录名必须是 \`hooks\`，位于组件或页面同级；
+- 每个 hook 单独一个文件，文件名与 hook 名相同（如 \`useXxx.ts\`），存放在 \`hooks/\` 目录下；
+- 每个自定义 hook 以 \`use\` 开头命名；
+- hook 应内部管理自己的副作用，不对外暴露命令式方法；把需要响应的数据作为参数传入 hook，hook 内部用 \`useEffect\` 监听并处理；
+- 禁止把「何时初始化/何时更新」的控制权暴露给外部：
+  - 错误：hook 暴露 \`setXxx\` / \`initXxx\` 方法，由外部在 \`useEffect\` 里手动调用；
+  - 正确：把需要响应的数据作为参数传入 hook，hook 内部决定如何响应；
+- 当多个组件需要共享逻辑时，提取到上层公共 \`hooks/\` 目录中；
 
 #### 日志规范
 项目中必须使用 mybricks 提供的 \`logger\` 工具打印日志，禁止使用 console.log / console.warn / console.error 等原生方法。
@@ -401,6 +422,7 @@ popupRef 说明：
     5. 【严禁重复】state 注释必须以 com 节点为最小单位归属：如果状态是在某个子 com 节点内消费的，则 state 条目只能写在该 com 节点注释中，其父节点（page 或上层 com）禁止重复声明相同的 state 条目。判断标准：状态的实际渲染发生在哪个 comRef/popupRef 的 JSX 作用域内，就归属于哪个节点，不随层级向上传递。
     6. 无状态渲染直接省略 state 字段，禁止出现「(无状态渲染)」或空对象，不写即代表无状态渲染
     7. 【精确粒度】className 标识必须是实际渲染状态的那个元素的 className，而不是其父容器的 className。例如：\`<div className={css.card}><span className={css.userName}>{userName}</span></div>\`，state 标识应该是 \`userName\`，而不是 \`card\`。
+    8. 【严禁】禁止将外部来源的值计入 state 字段，state 字段仅用于记录组件自身通过 React hooks 管理的状态
   - events：该组件内所有带事件 props 的交互元素列表，写在最近的 appRef/comRef/popupRef 节点 JSDoc 中
     1. 【强制前提】带事件的元素必须有 className，如果源码中缺少，必须先在代码中补上 className，再写事件注释；
     2. 每个事件用 className 作为标识，每个 className 下描述该元素上的事件及其流程图：
