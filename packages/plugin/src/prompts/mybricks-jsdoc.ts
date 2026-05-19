@@ -18,7 +18,7 @@ export const MYBRICKS_JSDOC_PROMPT_SECTIONS = {
 > 当前「项目空间」仅提供文件路径列表，不含完整源码。需要理解现有实现时，优先使用 \`${GREP_TOOL_NAME}\` 搜索定位，再使用 \`${READ_TOOL_NAME}\` 读取相关文件。
 > 在一轮中并发调用工具是提高效率的关键，必须严格遵守以下原则以最小化调用轮次。
 > 调用工具前必须输出简短点一句话内容用来承接上下文，告诉用户你要做什么。这有助于他们理解你的操作及其原因。
-> 所有的工具使用的文件路径为不带/的绝对路径，如 pages 里 HomePage 下的 index.jsx文件，则path为pages/HomePage/index.jsx。
+> 所有的工具使用的文件路径为不带/的绝对路径，如 pages 里 HomePage 下的 index.tsx文件，则path为pages/HomePage/index.tsx。
 
 !IMPORTANT: 所有文件内容中禁止使用emoji、特殊字符、表情符号。
 
@@ -93,68 +93,55 @@ CRITICAL: 尽量在同一个响应中同时并行调用多个代码工具，除�
   - 对于Logo：我们建议使用色块+文本占位；
   - 对于插画/装饰性图形：我们优先推荐使用简单的svg来占位，避免使用图片过于跳脱；`,
     architectureSection: `\`\`\`
-├─ index.jsx           # 模块入口，有且仅有一个，必须写在根路径
+├─ index.tsx           # 模块入口，有且仅有一个，必须写在根路径
 ├─ index.less
-├─ store.js            # 全局 store（可选）
-├─ dataSource.js       # 项目唯一文件，必须
-├─ setup.js            # 项目唯一文件，必须
+├─ store.ts            # 全局 store（可选）
+├─ dataSource.ts       # 项目唯一文件，必须
+├─ setup.ts            # 项目唯一文件，必须
 ├─ requirement.md      # 需求文档（又名prd、PRD，在最后写入）
 ├─ pages
 |  └── HomePage
-|     ├── index.jsx
+|     ├── index.tsx
 |     ├── index.less
-|     ├── store.js     # 页面级 store（可选）
+|     ├── store.ts     # 页面级 store（可选）
 └─ components
    └── SharedComponent
-      ├── index.jsx
+      ├── index.tsx
       └── index.less
 \`\`\`
 
 > 项目支持渐进式渲染，初始化项目时，建议将入口和公共文件先初始化好，再按照页面进行初始化。
 
 #### 页面与组件的文件拆分
-- index.jsx：模块入口，有且仅有一个，且必须写在根路径的 \`index.jsx\` 中；
-- pages/xxx：页面，每个页面必须单独拆到**文件夹**中，例如 \`pages/HomePage/index.jsx\`、\`pages/UserPage/index.jsx\`；
+- index.tsx：模块入口，有且仅有一个，且必须写在根路径的 \`index.tsx\` 中；
+- pages/xxx：页面，每个页面必须单独拆到**文件夹**中，例如 \`pages/HomePage/index.tsx\`、\`pages/UserPage/index.tsx\`；
 - 组件：可以被复用的组件可以放到公共\`components/\` 目录下；
 
 > 拆分仅作为结构处理，建议的开发顺序是完成基础架构的代码、然后按页面维度一个一个完成需求。
 
-#### jsx 文件编写规范
-1. 组件 props 禁止传递保留字段（\`_env\`、\`popupNode\`）以及 store 数据：
-   - 错误：\`<UserInfo _env={_env} popupNode={popupNode} store={store} user={store.user} />\`
-   - 正确：\`<UserInfo />\`
-2. 组件必须自行从 store 读取所需数据、自行调用 store 方法更新，禁止由父组件通过 props 传入 value/onChange 等受控属性或事件回调；组合区块（如 SearchBar）只负责布局与子区块的挂载，不向子区块传递 value、onChange、onClick 等；仅当区块是可复用单元（如列表单项的单条数据）时才通过 props 传数据，且单项内部如需读写状态应自行接收 store，不通过父组件传事件回调；
-3. 禁止编写未实现的事件函数；
-4. 业务逻辑封装在 store 中（例如：登录态校验、数据查询等）；
-5. 组件各类状态控制维护在 store 中（例如：loading、选中态、状态切换等）；
-7. 对于浮层类组件，如弹窗、抽屉等，控制浮层的显示/打开/弹出/隐藏状态的变量必须维护在 store 中，这类状态禁止设置一个固定的值；
-8. 严格遵守 jsx 语法规范，不允许使用 typescript 语法；
-9. 所有来自三方库的组件都必须带有 className 属性，值需语义化明确且唯一，无论是否需要样式，以便通过 CSS 选择器选中；
+#### tsx 文件编写规范
+1. 组件必须自行从 store 读取所需数据、自行调用 store 方法更新，禁止由父组件通过 props 传入 value/onChange 等受控属性或事件回调；组合区块（如 SearchBar）只负责布局与子区块的挂载，不向子区块传递 value、onChange、onClick 等；仅当区块是可复用单元（如列表单项的单条数据）时才通过 props 传数据，且单项内部如需读写状态应自行接收 store，不通过父组件传事件回调；
+2. 禁止编写未实现的事件函数；
+3. 业务逻辑封装在 store 中（例如：登录态校验、数据查询等）；
+4. 组件各类状态控制维护在 store 中（例如：loading、选中态、状态切换等）；
+5. 对于浮层类组件，如弹窗、抽屉等，控制浮层的显示/打开/弹出/隐藏状态的变量必须维护在 store 中，这类状态禁止设置一个固定的值；
+6. 严格遵守 tsx 语法规范；
+7. 所有来自三方库的组件都必须带有 className 属性，值需语义化明确且唯一，无论是否需要样式，以便通过 CSS 选择器选中；
   - \`<View className={css.xxx}/>\`
-10. 所有html元素都必须具有语义化的 className，无论是否需要样式，以便通过 CSS 选择器选中；
+8. 所有html元素都必须具有语义化的 className，无论是否需要样式，以便通过 CSS 选择器选中；
   - \`<div className={css.xxx}/>\`
-11. 所有与样式相关的内容都要写在 less 文件中，避免在 jsx 中通过 style 编写；
-12. 各类动效、动画等，尽量使用 css3 的方式在 less 中实现，不要为此引入任何的额外类库；
-13. 禁止出现直接引用标签的写法，例如 \`<Tags[XX] property={'aa'}/>\`，正确的写法是先定义 \`const XX = Tag[XX]; <XX property={'aa'}/>\`；
-14. 所有列表中的组件，必须通过 key 属性做唯一标识，不要使用 index 作为 key；
-
-保留字段（禁止通过 props 传递）：
-- \`_env\`：环境变量，\`_env.mode\` 表示运行环境（design | runtime）；
-- \`popupNode\`：浮层挂载目标 DOM 节点，浮层类组件必须挂载到此节点上；
+9. 所有与样式相关的内容都要写在 less 文件中，避免在 tsx 中通过 style 编写；
+10. 各类动效、动画等，尽量使用 css3 的方式在 less 中实现，不要为此引入任何的额外类库；
+11. 禁止出现直接引用标签的写法，例如 \`<Tags[XX] property={'aa'}/>\`，正确的写法是先定义 \`const XX = Tag[XX]; <XX property={'aa'}/>\`；
+12. 所有列表中的组件，必须通过 key 属性做唯一标识，不要使用 index 作为 key；
 
 comRef 说明：
 - comRef 是 MyBricks 提供的高阶函数，用于创建一个组件；
-- 该组件默认接收保留字段；
 - 该组件是响应式组件，组件内使用 store 中的数据时，数据变更会自动刷新组件；
 
 popupRef 说明：
 - popupRef 是 MyBricks 提供的高阶函数，用于创建浮层类组件（弹窗、抽屉等）；
-- 该组件默认接收保留字段；
 - 该浮层类组件是响应式的，数据变更会自动刷新；
-
-PopupVisible 装饰器说明：
-- PopupVisible 是一个属性装饰器，用于将浮层类组件在**设计态**下将变量默认设置为**打开状态**，这样设计者才能选中浮层内部的元素进行编辑；
-- 对于浮层类组件的打开与否，不需要在 runtime 层控制，统一由装饰器进行管理；
 
 #### less 文件编写规范
 1. 严格参考设计风格与主题变量使用说明来编写样式；若项目提供了主题变量，编写前必须先列举全部可用变量，再对照每条样式属性逐一检查是否有对应变量，有则必须使用，禁止硬编码已有主题变量所覆盖的色值或数值；
@@ -170,11 +157,11 @@ PopupVisible 装饰器说明：
 6. 动效、动画等效果，尽量使用 css3 的方式实现，例如 transition、animation 等；
 7. 不使用 :before、:after 等伪类选择器来实现 dom；
 
-#### store.js 文件编写规范
-只有入口、页面可以编写 store.js 文件，即可以封装全局 store 和页面级 store；store.js 文件用于管理全局、页面的状态，封装实现各类业务逻辑，响应式 Store，组件侧监听变量能实现自动刷新。
+#### store.ts 文件编写规范
+只有入口、页面可以编写 store.ts 文件，即可以封装全局 store 和页面级 store；store.ts 文件用于管理全局、页面的状态，封装实现各类业务逻辑，响应式 Store，组件侧监听变量能实现自动刷新。
 
 使用原则：
-- 文件名必须是 \`store.js\`；
+- 文件名必须是 \`store.ts\`；
 - 业务逻辑应尽量维护在 store 中，以便跨组件共享、持久化；
 - 当多个区块需要读写或联动的派生数据时，放在 store 中；
 - 模块内可复用的业务逻辑与数据放在 store 中；
@@ -185,9 +172,8 @@ PopupVisible 装饰器说明：
   - 错误：\`this.user.name = "名称";\`
 
 编写规范：
-1. 当字段用于控制浮层类组件的显示/隐藏状态时，需要对该字段使用装饰器 @PopupVisible；
-2. 默认导出实例化后的 store；
-3. 必须使用 makeAutoObservable；
+1. 默认导出实例化后的 store；
+2. 必须使用 makeAutoObservable；
 
 注意：
 - store 内部变量之间不会监听，只有组件内使用 store 中的数据时，数据变更才会自动刷新组件；当需要监听组件 A 变化刷新 UI 时，必须在组件内读取 A 的值，当需要更新字段 A 时，必须修改 A 的值；
@@ -195,7 +181,7 @@ PopupVisible 装饰器说明：
 - 禁止使用 getter 方法（例如：get count() {...}）；
 - 任何数据初始化动作都不允许写在 constructor 内；
 - 禁止在 React 函数组件内直接调用 store 的数据初始化方法（如 store.init()、store.fetchData() 等），这会在每次渲染时重复执行，极易导致死循环；如需初始化，必须放在 useEffect 内执行；
-- store.js 是纯 JavaScript 文件，禁止出现任何 JSX 语法（例如 <Icon />、<div> 等标签），也禁止从任何 UI 组件库引入 JSX 组件并作为字段值存储；
+- store.ts 是纯 JavaScript 文件，禁止出现任何 JSX 语法（例如 <Icon />、<div> 等标签），也禁止从任何 UI 组件库引入 JSX 组件并作为字段值存储；
 
 #### 日志规范
 项目中必须使用 mybricks 提供的 \`logger\` 工具打印日志，禁止使用 console.log / console.warn / console.error 等原生方法。
@@ -240,7 +226,7 @@ PopupVisible 装饰器说明：
   
   首先使用init-project来快速生成代码文件，节点代码中同步包含 JSDoc 注释，然后确认渲染情况，最后检查是否需要同步需求文档。
   
-  \`\`\`jsx
+  \`\`\`tsx
   import { appRef, Routes, Route } from "mybricks";
   import MainPage from "./pages/MainPage";
   import ViewPage from "./pages/ViewPage";
@@ -262,15 +248,14 @@ PopupVisible 装饰器说明：
   });
   \`\`\`
 
-  \`\`\`js
-  import { makeAutoObservable, PopupVisible } from "mybricks";
+  \`\`\`ts
+  import { makeAutoObservable } from "mybricks";
 
   class Store {
     constructor() {
       makeAutoObservable(this);
     }
-    
-    @PopupVisible
+
     detailModalVisible = false;
 
     btns = [
@@ -281,11 +266,11 @@ PopupVisible 装饰器说明：
   export default new Store();
   \`\`\`
 
-  \`\`\`jsx
+  \`\`\`tsx
   import { useEffect } from 'react';
   import { comRef, logger } from "mybricks";
   import { Button } from "xy-ui";
-  import store from "../store.js";
+  import store from "../store";
   import css from "./index.less";
 
   /**
@@ -406,8 +391,8 @@ PopupVisible 装饰器说明：
 编写或修改 appRef / comRef / popupRef 节点代码时，必须为每一个节点同步编写或更新对应的 JSDoc 注释说明。JSDoc 注释属于代码的一部分，承载原 README.md 中的代码可视化说明信息，必须与节点代码一起生成、一起维护。禁止只给页面节点、根节点或少数组件写注释。
 维护时机：
 - 必须维护（强约束）：节点缺少 JSDoc 注释；或现有注释内容与「注释编写规范」不符；或需求明确要求更新注释（此时必须重新逐行审查源码与注释的差异，确保注释完全对齐当前源码，包括 events/datasource/store 的 className 标识、字段、流程图等）；
-- 建议更新（结构或内容变化）：在 jsx 中新增、删除或重命名了 appRef/comRef 节点，或 Route 中注册的页面组件发生变化；export default 的根节点类型或子节点类型组合发生变化导致标题层级需调整；JSX 中新增、删除或修改了带事件 props（onClick 等）的元素，或其 className 发生变化；JSX 中新增、删除或修改了消费 store 数据（通过子节点渲染或 prop 传入）的元素，或其 className 发生变化；JSX 中新增、删除或修改了触发 datasource 调用的元素，或其 className 发生变化；某节点的 UI 结构、交互或业务含义发生明显变化；
-- 无需更新：jsx、store.js 未被修改，且现有 JSDoc 注释已正确反映当前源码的节点结构、事件与说明；仅修改了 style.less、service.js 等与节点行为无关的文件；
+- 建议更新（结构或内容变化）：在 tsx 中新增、删除或重命名了 appRef/comRef 节点，或 Route 中注册的页面组件发生变化；export default 的根节点类型或子节点类型组合发生变化导致标题层级需调整；JSX 中新增、删除或修改了带事件 props（onClick 等）的元素，或其 className 发生变化；JSX 中新增、删除或修改了消费 store 数据（通过子节点渲染或 prop 传入）的元素，或其 className 发生变化；JSX 中新增、删除或修改了触发 datasource 调用的元素，或其 className 发生变化；某节点的 UI 结构、交互或业务含义发生明显变化；
+- 无需更新：tsx、store.ts 未被修改，且现有 JSDoc 注释已正确反映当前源码的节点结构、事件与说明；仅修改了 style.less 等与节点行为无关的文件；
 <JSDoc 注释编写规范>
   <节点>
   按「在 JSX 中依赖顺序」为每个节点分别写出 JSDoc 注释。
@@ -435,18 +420,18 @@ PopupVisible 装饰器说明：
   - title：根据节点内容与名称写出简洁的语义化标题，体现节点职责，避免与组件名简单重复（如组件叫 SignIn 时 title 可用「登录页」而非「登录」）；
   - summary：对节点的用途、场景或关键行为做简短说明，补充 title 未涵盖的信息，避免与 title 重复或仅罗列 UI 元素；
   - type：app | page | com | popup，其中 app 对应 appRef，page 对应通过 Route 注册的 comRef（页面组件），com 对应 comRef（非路由页面），popup 对应 popupRef。
-  - datasource：该组件内触发的 dataSource.js 接口调用列表（找最近的组件，而不是页面）
-    > 触发机制：JSX 中的事件处理器或 React hooks 调用 store 方法，store 方法内部再调用 dataSource.js 中的函数发起 HTTP 请求。JSDoc 的 datasource 字段记录的是最终调用到 dataSource.js 中哪个函数。
-    > 判断标准：store 方法体内有 \`await dataSource.xxx()\` 或 \`dataSource.xxx()\` 调用，则该调用必须记录在 datasource 字段中，api 名称对应 dataSource.js 中的函数名。
+  - datasource：该组件内触发的 dataSource.ts 接口调用列表（找最近的组件，而不是页面）
+    > 触发机制：JSX 中的事件处理器或 React hooks 调用 store 方法，store 方法内部再调用 dataSource.ts 中的函数发起 HTTP 请求。JSDoc 的 datasource 字段记录的是最终调用到 dataSource.ts 中哪个函数。
+    > 判断标准：store 方法体内有 \`await dataSource.xxx()\` 或 \`dataSource.xxx()\` 调用，则该调用必须记录在 datasource 字段中，api 名称对应 dataSource.ts 中的函数名。
     1. datasource 不一定能稳定归属到某个 JSX 标签，因此写在最近的 appRef/comRef/popupRef 节点 JSDoc 中
     2. 每条接口调用用缩进对象结构描述，包含以下字段：
       className（对应触发接口调用的元素 className）:
-        api（dataSource.js 中导出的真实函数名，如 signIn、fetchUserList 等）:
+        api（dataSource.ts 中导出的真实函数名，如 signIn、fetchUserList 等）:
           desc: 用途说明
     3. 特殊情况：当接口调用由 React hooks（如 useEffect）在组件初始化时发起、不属于任何具体交互元素时，使用「root」作为标识，表示「该组件挂载时的初始化请求」；如果接口调用是由某个具体的交互元素（如按钮、表单）触发的，必须使用该元素的 className 作为标识，禁止错误地归到「root」下
     4. 【严禁重复】datasource 注释必须以 com 节点为最小单位归属：接口调用发生在哪个 comRef/popupRef 的 JSX 作用域内，就只写在该节点注释中，其父节点禁止重复声明。
     5. 无接口调用直接省略 datasource 字段，禁止出现「(无接口调用)」或空对象，不写即代表无调用
-    6. 【强制扫描】编写 datasource 注释前，必须读取对应的 store.js 文件，检查每个 store 方法体内是否有 dataSource.xxx() 的调用；凡是有调用的，无论由按钮触发还是由 useEffect 触发，都必须记录到 datasource 字段中。
+    6. 【强制扫描】编写 datasource 注释前，必须读取对应的 store.ts 文件，检查每个 store 方法体内是否有 dataSource.xxx() 的调用；凡是有调用的，无论由按钮触发还是由 useEffect 触发，都必须记录到 datasource 字段中。
   - store：该组件内消费的store数据列表（找最近的组件，而不是页面）
     1. store 不一定能稳定归属到某个 JSX 标签，因此写在最近的 appRef/comRef/popupRef 节点 JSDoc 中；如果 store 数据直接渲染在 JSX 标签上，用该标签的 className 作为标识；【强制前提】渲染 store 数据的元素必须有 className，如果源码中缺少，必须先在代码中补上 className，再写注释
       - 在子节点中直接渲染：\`<div className={css.xxx}>{store.xxx}</div>\`
@@ -492,39 +477,61 @@ PopupVisible 装饰器说明：
   </节点说明>
 </JSDoc 注释编写规范>
 
-<基于 jsx 的 JSDoc 注释示例>
-如果某一个组件源代码如下（包含 dataSource.js 接口文件、store.js 状态管理文件、各页面的 jsx 文件），可以看到有三个comRef（其中两个为页面节点）、一个appRef，所以需要为一个app节点、两个页面节点、一个组件节点分别补充 JSDoc 注释。每个 appRef / comRef / popupRef 声明都必须有自己的 JSDoc 注释。
+<基于 tsx 的 JSDoc 注释示例>
+如果某一个组件源代码如下（包含 dataSource.ts 接口文件、store.ts 状态管理文件、各页面的 tsx 文件），可以看到有三个comRef（其中两个为页面节点）、一个appRef，所以需要为一个app节点、两个页面节点、一个组件节点分别补充 JSDoc 注释。每个 appRef / comRef / popupRef 声明都必须有自己的 JSDoc 注释。
 
-注意：datasource 字段记录的 api 名称，必须是 dataSource.js 文件中真实导出的函数名。判断是否需要写 datasource，关键是看 store.js 中的方法体内是否有 dataSource.xxx() 的调用。
+注意：datasource 字段记录的 api 名称，必须是 dataSource.ts 文件中真实导出的函数名。判断是否需要写 datasource，关键是看 store.ts 中的方法体内是否有 dataSource.xxx() 的调用。
 
-\`\`\`js
-// dataSource.js —— 项目唯一的接口文件，所有 HTTP 请求都定义在这里
-export async function signIn(params) {
-  return await fetch('/api/sign-in', { method: 'POST', body: JSON.stringify(params) });
+\`\`\`ts
+// dataSource.ts —— 项目唯一的接口文件，所有 HTTP 请求都定义在这里
+import { DataSource } from "mybricks";
+
+interface LoginParams {
+  username: string;
+  password: string;
 }
 
-export async function signUp(params) {
-  return await fetch('/api/sign-up', { method: 'POST', body: JSON.stringify(params) });
+interface LoginResult {
+  status: number;
+  data?: {
+    token: string;
+    user: {
+      id: number;
+      name: string;
+    };
+  };
 }
+
+class MyDatasource extends DataSource {
+  async signIn(params: LoginParams): Promise<LoginResult> {
+    return this.axios.post("/api/sign-in", params);
+  }
+
+  async signUp(params: LoginParams): Promise<LoginResult> {
+    return this.axios.post("/api/sign-up", params);
+  }
+}
+
+export default new MyDatasource();
 \`\`\`
 
-\`\`\`js
-// pages/SignIn/store.js —— 登录页 store，内部调用 dataSource.js 的 signIn 函数
-import dataSource from '../../dataSource.js';
+\`\`\`ts
+// pages/SignIn/store.ts —— 登录页 store，内部调用 dataSource.ts 的 signIn 函数
+import dataSource from '../../dataSource';
 import { makeAutoObservable } from 'mybricks';
 
 class Store {
   constructor() {
     makeAutoObservable(this);
   }
-  welcomeMsg = '';
-  userType = '';
-  loading = false;
+  welcomeMsg: string = '';
+  userType: string = '';
+  loading: boolean = false;
 
-  async signIn(params) {
+  async signIn(params): Promise<void> {
     this.loading = true;
     try {
-      const res = await dataSource.signIn(params); // 调用 dataSource.js 中的 signIn
+      const res = await dataSource.signIn(params); // 调用 dataSource.ts 中的 signIn
       this.welcomeMsg = res.welcomeMsg;
       this.userType = res.userType;
     } finally {
@@ -536,21 +543,21 @@ class Store {
 export default new Store();
 \`\`\`
 
-\`\`\`js
-// pages/SignUp/store.js —— 注册页 store，内部调用 dataSource.js 的 signUp 函数
-import dataSource from '../../dataSource.js';
+\`\`\`ts
+// pages/SignUp/store.ts —— 注册页 store，内部调用 dataSource.ts 的 signUp 函数
+import dataSource from '../../dataSource';
 import { makeAutoObservable } from 'mybricks';
 
 class Store {
   constructor() {
     makeAutoObservable(this);
   }
-  loading = false;
+  loading: boolean = false;
 
-  async signUp(params) {
+  async signUp(): Promise<void> {
     this.loading = true;
     try {
-      await dataSource.signUp(params); // 调用 dataSource.js 中的 signUp
+      await dataSource.signUp(); // 调用 dataSource.ts 中的 signUp
     } finally {
       this.loading = false;
     }
@@ -560,10 +567,10 @@ class Store {
 export default new Store();
 \`\`\`
 
-\`\`\`jsx
-// pages/SignIn/index.jsx 和 pages/SignUp/index.jsx 合并展示
-import signInStore from './pages/SignIn/store.js';
-import signUpStore from './pages/SignUp/store.js';
+\`\`\`tsx
+// pages/SignIn/index.tsx 和 pages/SignUp/index.tsx 合并展示
+import signInStore from './pages/SignIn/store';
+import signUpStore from './pages/SignUp/store';
 import { comRef, appRef, Routes, Route } from 'mybricks'
 
 /**
@@ -624,7 +631,7 @@ const SignUp = comRef(() => {
  *       desc: 点击登录按钮调用登录接口（signInStore.signIn 内部调用 dataSource.signIn）
  * store:
  *   loginInfo:
- *     /pages/SignIn/store.js:
+ *     /pages/SignIn/store.ts:
  *       welcomeMsg:
  *         desc: 展示欢迎语
  *       userType:
@@ -670,7 +677,7 @@ export default appRef(() => {
   )
 })
 \`\`\`
-</基于 jsx 的 JSDoc 注释示例>
+</基于 tsx 的 JSDoc 注释示例>
 `,
     requirementGuide: `<requirement.md 文档编写规范>
 更新时机：
