@@ -105,13 +105,13 @@ export class HTTPHistory implements History {
 
   // ── 版本快照 ──────────────────────────────────────────────────────────────
 
-  async listVersions(key: string): Promise<VersionRecord[]> {
-    const res = await fetch(`${this.baseUrl}/versions?key=${encodeURIComponent(key)}`, {
+  async listVersions(key: string, params: { pageSize: number; pageNum: number }): Promise<{ total: number; list: VersionRecord[] }> {
+    const res = await fetch(`${this.baseUrl}/versions?key=${encodeURIComponent(key)}&pageSize=${params.pageSize}&pageNum${params.pageNum}`, {
       headers: this.defaultHeaders(),
     });
-    if (!res.ok) return [];
+    if (!res.ok) return { list: [], total: 0 };
     const data = await res.json();
-    return data.versions ?? [];
+    return data
   }
 
   async addVersion(key: string, record: VersionRecord, files: VersionFile[]): Promise<void> {

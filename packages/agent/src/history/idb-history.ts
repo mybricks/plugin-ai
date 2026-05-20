@@ -174,23 +174,85 @@ export class IDBHistory implements History {
   // listVersions / addVersion 的 key 参数同为 agentKey，用于版本记录的分区隔离。
   // getVersion / getVersionFiles / updateVersion 以 versionId（uuid）精确定位，不需要 key。
 
-  async listVersions(key: string): Promise<VersionRecord[]> {
+  async listVersions(
+    key: string,
+    params: { pageSize: number; pageNum: number }
+  ): Promise<{ total: number; list: VersionRecord[] }> {
     const db = await this.getDB();
+    const { pageSize, pageNum } = params ?? {};
+    const isPaginated = pageSize !== undefined && pageNum !== undefined;
+
     return new Promise((resolve, reject) => {
       const tx = db.transaction(this.versionMetaStoreName, "readonly");
       const store = tx.objectStore(this.versionMetaStoreName);
       const index = store.index("by_agentKey_createdAt");
       // IDBKeyRange: agentKey === key，createdAt 任意 → 范围 [key, -∞] ~ [key, +∞]
       const range = IDBKeyRange.bound([key, -Infinity], [key, Infinity]);
-      const req = index.getAll(range);
-      req.onsuccess = () => {
-        // 结果已按 [agentKey, createdAt] 升序（IDB 默认升序），去掉内部 agentKey 字段后返回
-        const results: VersionRecord[] = (req.result ?? []).map(
-          ({ agentKey: _agentKey, ...rest }) => rest as VersionRecord
-        );
-        resolve(results);
+
+      // 先获取总数
+      const countReq = index.count(range);
+      countReq.onerror = () => reject(countReq.error);
+      countReq.onsuccess = () => {
+        const total = countReq.result;
+
+        if (!isPaginated) {
+          // 无分页参数时返回全量数据（按 createdAt 降序，最新在前）
+          const list: VersionRecord[] = [];
+          const allCursorReq = index.openCursor(range, "prev");
+          allCursorReq.onerror = () => reject(allCursorReq.error);
+          allCursorReq.onsuccess = () => {
+            const cursor = allCursorReq.result;
+            if (!cursor) {
+              resolve({ total, list });
+              return;
+            }
+            const { agentKey: _agentKey, ...rest } = cursor.value;
+            list.push(rest as VersionRecord);
+            cursor.continue();
+          };
+          return;
+        }
+
+        // 原生游标分页：跳过 offset 条，只读取 pageSize 条
+        const offset = (pageNum! - 1) * pageSize!;
+        const list: VersionRecord[] = [];
+        let advanced = false;
+
+        // 按 createdAt 降序遍历，最新记录在前
+        const cursorReq = index.openCursor(range, "prev");
+        cursorReq.onerror = () => reject(cursorReq.error);
+        cursorReq.onsuccess = () => {
+          const cursor = cursorReq.result;
+
+          if (!cursor) {
+            console.log('[listVersion]', {
+              total,
+              list
+            })
+            resolve({ total, list });
+            return;
+          }
+
+          // 跳过 offset 条（仅执行一次）
+          if (offset > 0 && !advanced) {
+            advanced = true;
+            cursor.advance(offset);
+            return;
+          }
+
+          if (list.length < pageSize!) {
+            const { agentKey: _agentKey, ...rest } = cursor.value;
+            list.push(rest as VersionRecord);
+            cursor.continue();
+          } else {
+            console.log('[listVersion]', {
+              total,
+              list
+            })
+            resolve({ total, list });
+          }
+        };
       };
-      req.onerror = () => reject(req.error);
     });
   }
 
