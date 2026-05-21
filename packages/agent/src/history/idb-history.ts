@@ -225,10 +225,6 @@ export class IDBHistory implements History {
           const cursor = cursorReq.result;
 
           if (!cursor) {
-            console.log('[listVersion]', {
-              total,
-              list
-            })
             resolve({ total, list });
             return;
           }
@@ -245,10 +241,6 @@ export class IDBHistory implements History {
             list.push(rest as VersionRecord);
             cursor.continue();
           } else {
-            console.log('[listVersion]', {
-              total,
-              list
-            })
             resolve({ total, list });
           }
         };
