@@ -1,5 +1,7 @@
 import React from "react";
 import { CodeAgent, IDBHistory } from "../../../agent/src";
+import { splitFrontmatter, getFrontmatterString, getFrontmatterStringArray } from "../../../agent/src/utils/frontmatter";
+import { GLOB_TOOL_NAME } from "../../../agent/src/code-agent/tools";
 import type { Tool, Sandbox, CodeAgentPlugin, CodeAgentPromptOptions, History, BoundHistory, TurnSender, AdditionalDirectory, AgentsMdConfig, SkillFile } from "../../../agent/src";
 import type { PromptSections } from "../prompts";
 import type { RequestAsStreamFn } from "../../../request/src";
@@ -336,24 +338,48 @@ function connectToAI(
   }
 
   let agentRef: CodeAgent | undefined;
-  const getEnabledAdditionalDirectories = (): AdditionalDirectory[] => {
+
+  /** 解析 .agents/agent.md，提取 title / description / permissions / body */
+  const parseAgentMdFrontmatter = (content: string): {
+    title?: string;
+    description?: string;
+    permissions?: string[];
+    body: string;
+  } => {
+    const { fmText, body } = splitFrontmatter(content);
+    const title = getFrontmatterString(fmText, 'title') ?? undefined;
+    const description = getFrontmatterString(fmText, 'description') ?? undefined;
+    const permissions = getFrontmatterStringArray(fmText, 'permissions') ?? undefined;
+    return { title, description, permissions, body };
+  };
+
+  const getEnabledAdditionalDirectories = async (): Promise<AdditionalDirectory[]> => {
     const enabledPlugins = agentRef?.getEnabledPlugins()
       ?? effectivePlugins?.filter((p) => p.enabled !== false)
       ?? [];
-    return enabledPlugins.flatMap((p) => p.additionalDirectories ?? []);
+    const results = await Promise.all(
+      enabledPlugins.map(async (p) => {
+        const fn = p.additionalDirectories;
+        if (!fn) return [];
+        return await fn();
+      })
+    );
+    return results.flat();
   };
-  const buildAgentsMdConfig = (): AgentsMdConfig[] => {
+  const buildAgentsMdConfig = async (): Promise<AgentsMdConfig[]> => {
     const config: AgentsMdConfig[] = [];
     const rootAgentsMd = agentsMd?.trim();
     if (rootAgentsMd) {
       config.push({ path: "agents.md", content: rootAgentsMd });
     }
-    for (const dir of getEnabledAdditionalDirectories()) {
-      const content = dir.agentsMd?.trim();
-      if (!content) continue;
+    for (const dir of await getEnabledAdditionalDirectories()) {
+      if (!dir.agentsMd?.trim()) continue;
+      const { body } = splitFrontmatter(dir.agentsMd);
+      const bodyContent = body.trim();
+      if (!bodyContent) continue;
       config.push({
         path: `${dir.path}agents.md`,
-        content,
+        content: bodyContent,
       });
     }
     return config;
@@ -368,7 +394,7 @@ function connectToAI(
     // ── getFiles：主空间 + 所有扩展目录文件合并 ──────────────────────────────
     getFiles: async () => {
       const mainFiles = await designer.getFiles();
-      const additionalDirectories = getEnabledAdditionalDirectories();
+      const additionalDirectories = await getEnabledAdditionalDirectories();
       if (!additionalDirectories.length) return mainFiles;
       const extraFiles = (await Promise.all(
         additionalDirectories.map(async (dir) => {
@@ -385,7 +411,7 @@ function connectToAI(
 
     // ── updateFiles：按路径前缀分组分发 ──────────────────────────────────────
     updateFiles: async (files) => {
-      const additionalDirectories = getEnabledAdditionalDirectories();
+      const additionalDirectories = await getEnabledAdditionalDirectories();
       if (!additionalDirectories.length) return designer.updateFiles(files);
       const mainFiles: typeof files = [];
       const extraGroups = new Map<AdditionalDirectory, typeof files>();
@@ -411,7 +437,7 @@ function connectToAI(
 
     // ── deleteFiles：按路径前缀分组分发 ──────────────────────────────────────
     deleteFiles: async (paths) => {
-      const additionalDirectories = getEnabledAdditionalDirectories();
+      const additionalDirectories = await getEnabledAdditionalDirectories();
       if (!additionalDirectories.length) return designer.deleteFiles(paths);
       const mainPaths: string[] = [];
       const extraGroups = new Map<AdditionalDirectory, string[]>();
@@ -437,9 +463,9 @@ function connectToAI(
 
     getContext: async () => buildDesignerContext(designerRef.current, promptSections, { codeRules, designRules }),
 
-    // ── getUserContext：主项目空间 + 扩展目录描述 + 宿主自定义上下文 ──────────
+    // ── getUserContext：主项目空间 + 扩展目录文件列表 + 宿主自定义上下文 ──────────
     getUserContext: async () => {
-      const additionalDirectories = getEnabledAdditionalDirectories();
+      const additionalDirectories = await getEnabledAdditionalDirectories();
       const summarizeFiles = (files: Array<{ path: string; content: string }>) => {
         const suffixMap: Record<string, number> = {};
         for (const f of files) {
@@ -473,6 +499,7 @@ function connectToAI(
         sections.push([
           '## 前端工程',
           'MyBricks的前端工程项目，需要遵循前端开发规范进行开发。',
+          '权限：读取、写入',
           '当前没有任何代码文件。可以使用类似 `index.tsx` 的路径来操作文件。',
         ].join('\n'));
       } else {
@@ -484,6 +511,7 @@ function connectToAI(
         sections.push([
           '## 前端工程',
           'MyBricks的前端工程项目，需要遵循前端开发规范进行开发。',
+          '权限：读取、写入',
           `总计：${mainFiles.length} 个文件（${suffixSummary}）`,
           '文件：',
           fileList,
@@ -495,10 +523,21 @@ function connectToAI(
           const suffixSummary = summarizeFiles(files);
           const countDesc = files.length === 0
             ? '当前没有任何代码文件。'
-            : `总计：${files.length} 个文件（${suffixSummary}）。当前不展开文件列表，请按需搜索或读取目录下的具体文件。`;
+            : `总计：${files.length} 个文件（${suffixSummary}）。当前不展开文件列表，可使用 ${GLOB_TOOL_NAME} 工具（如 \`${dir.path}**/*\`）查询文件列表，再按需读取具体文件。`;
+
+          // 直接从 agentsMd 字段解析 frontmatter（宿主显式传入的规则内容）
+          const agentMeta = dir.agentsMd ? parseAgentMdFrontmatter(dir.agentsMd) : null;
+
+          const displayTitle = agentMeta?.title ?? dir.path;
+          const displayDesc = agentMeta?.description;
+          const perms = agentMeta?.permissions;
+          const permLabelMap: Record<string, string> = { read: '读取', write: '写入', bash: '执行 bash 命令' };
+          const permParts = perms?.map((p) => permLabelMap[p] ?? p) ?? [];
+
           return [
-            `工程${index + 1}，虚拟目录为\`${normalizeDirectoryPath(dir.path)}\``,
-            dir.description ? `说明：\n${dir.description}` : undefined,
+            `工程${index + 1}「${displayTitle}」，虚拟目录为\`${normalizeDirectoryPath(dir.path)}\``,
+            displayDesc ? `说明：${displayDesc}` : undefined,
+            permParts.length ? `权限：${permParts.join('、')}` : undefined,
             countDesc,
             `可以使用类似 \`${examplePath(dir.path)}\` 的完整路径来读取或修改文件。`,
           ].filter(Boolean).join('\n');

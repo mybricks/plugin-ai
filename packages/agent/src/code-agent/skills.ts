@@ -46,18 +46,7 @@ export interface SkillFile {
 
 // ─── 元信息解析 ───────────────────────────────────────────────────────────────
 
-/**
- * 解析 SKILL.md YAML frontmatter，提取指定字段。
- * 仅做最小化解析（正则匹配），不引入 YAML 解析库依赖。
- */
-function parseFrontmatterField(content: string, field: string): string | null {
-  const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!fmMatch) return null;
-  const fmText = fmMatch[1]!;
-  const fieldMatch = fmText.match(new RegExp(`^${field}:\\s*(.+)$`, "m"));
-  if (!fieldMatch) return null;
-  return fieldMatch[1]!.trim().replace(/^["']|["']$/g, "");
-}
+import { splitFrontmatter, getFrontmatterString } from "../utils/frontmatter";
 
 /**
  * 解析 SkillFile 的展示元信息（name、description、whenToUse）。
@@ -78,11 +67,12 @@ export function resolveSkillMeta(
   description: string;
   whenToUse: string | null;
 } {
-  const fmName = parseFrontmatterField(skillMdContent, "name");
-  const fmDescription = parseFrontmatterField(skillMdContent, "description");
+  const { fmText } = splitFrontmatter(skillMdContent);
+  const fmName = getFrontmatterString(fmText, "name");
+  const fmDescription = getFrontmatterString(fmText, "description");
   const fmWhenToUse =
-    parseFrontmatterField(skillMdContent, "when_to_use") ??
-    parseFrontmatterField(skillMdContent, "whenToUse");
+    getFrontmatterString(fmText, "when_to_use") ??
+    getFrontmatterString(fmText, "whenToUse");
 
   const name = fmName ?? fallbackName;
 

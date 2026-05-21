@@ -3,6 +3,7 @@ import { Sender, SenderRef } from "../../components/sender";
 import { MentionTag } from "../../components/mention";
 import { context } from "../../../context";
 import { ChatPanel } from "../chat-panel";
+import type { ChatPanelRef } from "../chat-panel";
 import type { MessageRecord } from "../use-session";
 import css from "../chat-panel/index.less";
 
@@ -67,6 +68,12 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
   const [currentComId, setCurrentComId] = useState<string | undefined>(undefined);
   const [instances, setInstances] = useState<ComInstance[]>([]);
   const disabledSenderRef = useRef<SenderRef>(null);
+  const panelRefs = useRef(new Map<string, ChatPanelRef | null>());
+  const currentComIdRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    currentComIdRef.current = currentComId;
+  }, [currentComId]);
 
   const handleFocus = useCallback((focus: any) => {
     if (!focus) {
@@ -88,6 +95,20 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
     });
   }, []);
 
+  const ensureInstance = useCallback((comId: string, focus?: any) => {
+    const focusSnapshot = focus ?? { comId };
+    setCurrentComId(comId);
+    setInstances((prev) => {
+      const existing = prev.find((inst) => inst.comId === comId);
+      if (existing) {
+        return prev.map((inst) =>
+          inst.comId === comId ? { ...inst, focusSnapshot: { ...inst.focusSnapshot, ...focusSnapshot } } : inst
+        );
+      }
+      return [...prev, { comId, focusSnapshot }];
+    });
+  }, []);
+
   useEffect(() => {
     if (context.currentFocus) {
       handleFocus(context.currentFocus);
@@ -95,13 +116,18 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
 
     const unFocus = context.events.on("focus", handleFocus);
     const unDisplay = context.events.on("aiViewDisplay", () => {
-      if (!currentComId) {
+      if (!currentComIdRef.current) {
         setTimeout(() => disabledSenderRef.current?.focus());
       }
     });
+    const unAppendInput = context.events.on("appendInput", ({ comId, content }: { comId: string; content: string }) => {
+      if (!comId || !content) return;
+      ensureInstance(comId);
+      setTimeout(() => panelRefs.current.get(comId)?.appendInput(content));
+    });
 
-    return () => { unFocus(); unDisplay(); };
-  }, [handleFocus, currentComId]);
+    return () => { unFocus(); unDisplay(); unAppendInput(); };
+  }, [handleFocus, ensureInstance]);
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -135,6 +161,9 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
             style={{ display: comId === currentComId ? "contents" : "none", height: "100%" }}
           >
             <ChatPanel
+              ref={(ref) => {
+                panelRefs.current.set(comId, ref);
+              }}
               agent={agent}
               user={user}
               copilot={copilot}

@@ -12,7 +12,7 @@ import { DEFAULT_PLUGIN_SKILLS } from "./skills/default";
 
 import { context } from "./context";
 import { setupSandbox } from "./sandbox";
-import type { Designer, Hooks, RegistSandBoxConfig, PluginGetUserContextMessage } from "./sandbox";
+import type { Designer, Hooks, RegistSandBoxConfig, PluginGetUserContextMessage, SendToAgentParams } from "./sandbox";
 import { ChatPanelList, ChatStartView, ComChatStartView } from "./ui/chat";
 import { ensureAIPanelOpen, ensureFocusComId } from "./utils/ensure-ai-panel-open";
 
@@ -51,6 +51,10 @@ export interface PluginAIController {
    * 下一个 turn 开始时生效（skills / tools / agents 会重新合并）。
    */
   disablePlugin(name: string): void;
+  /** 向指定 comId 的 Agent 发送消息，复用 sandbox helpers.sendToAgent 的队列/聚焦逻辑。 */
+  requestAI(comId: string, params: SendToAgentParams): void;
+  /** 向指定 comId 的对话输入框追加文本。 */
+  appendInput(comId: string, content: string): void;
 }
 
 /** pluginAI() 返回值，顶层为 Mybricks 插件标准属性，controller 为扩展控制接口 */
@@ -263,6 +267,14 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
       },
       disablePlugin(name: string) {
         context.disablePlugin(name);
+      },
+      requestAI(comId: string, params: SendToAgentParams) {
+        window._sandbox_?.helpers.sendToAgent(comId, params);
+      },
+      appendInput(comId: string, content: string) {
+        ensureAIPanelOpen(comId).then(() => {
+          context.appendInput(comId, content);
+        });
       },
     },
     contributes: {

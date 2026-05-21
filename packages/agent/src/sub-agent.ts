@@ -1,5 +1,6 @@
 import type { Agent } from "./agent";
 import type { Tool } from "./types";
+import { splitFrontmatter, getFrontmatterString, getFrontmatterStringArray } from "./utils/frontmatter";
 
 /** 与 `createSubAgentTool` 注册的 `name` 一致，供 UI 等侧注册渲染器使用 */
 export const CALL_SUB_AGENT_TOOL_NAME = "call-sub-agent";
@@ -64,40 +65,6 @@ export interface SubAgentConfig {
 // ─── 解析 ─────────────────────────────────────────────────────────────────────
 
 /**
- * 从 subAgent md 文件内容中解析单个 frontmatter 字符串字段。
- * 仅做最小化解析（正则匹配），不引入 YAML 解析库依赖。
- */
-function parseFrontmatterString(fmText: string, field: string): string | null {
-  const match = fmText.match(new RegExp(`^${field}:\\s*(.+)$`, "m"));
-  if (!match) return null;
-  return match[1]!.trim().replace(/^["']|["']$/g, "");
-}
-
-/**
- * 从 subAgent md 文件内容中解析 frontmatter 字符串数组字段。
- *
- * 支持两种格式：
- *   - 逗号分隔（推荐）：`tools: Read, Glob, Grep`
- *   - 内联数组：`tools: [Read, Glob, Grep]`
- */
-function parseFrontmatterStringArray(fmText: string, field: string): string[] | null {
-  // 内联数组格式：field: [a, b, c]
-  const inlineMatch = fmText.match(new RegExp(`^${field}:\\s*\\[([^\\]]+)\\]`, "m"));
-  if (inlineMatch) {
-    return inlineMatch[1]!.split(",").map((s) => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
-  }
-
-  // 逗号分隔格式：field: a, b, c（值不以 [ 开头，不以换行开头）
-  const commaMatch = fmText.match(new RegExp(`^${field}:\\s*([^\\[\\n][^\\n]*)$`, "m"));
-  if (commaMatch) {
-    const values = commaMatch[1]!.split(",").map((s) => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
-    if (values.length > 0) return values;
-  }
-
-  return null;
-}
-
-/**
  * 解析 subAgent 主入口 md 文件，提取 frontmatter 配置和系统提示词正文。
  */
 export interface SubAgentMeta {
@@ -126,26 +93,20 @@ export interface SubAgentMeta {
  * @param fallbackName 回退名称（SubAgentConfig.name）
  */
 export function resolveSubAgentMeta(content: string, fallbackName: string): SubAgentMeta {
-  const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  const fmText = fmMatch?.[1] ?? "";
+  const { fmText, body } = splitFrontmatter(content);
 
-  const name = parseFrontmatterString(fmText, "name") ?? fallbackName;
+  const name = getFrontmatterString(fmText, "name") ?? fallbackName;
   const description =
-    parseFrontmatterString(fmText, "description") ?? name;
-  const aiRole = parseFrontmatterString(fmText, "aiRole") ?? parseFrontmatterString(fmText, "ai_role");
-  const title = parseFrontmatterString(fmText, "title");
+    getFrontmatterString(fmText, "description") ?? name;
+  const aiRole = getFrontmatterString(fmText, "aiRole") ?? getFrontmatterString(fmText, "ai_role");
+  const title = getFrontmatterString(fmText, "title");
 
-  const tools = parseFrontmatterStringArray(fmText, "tools");
-  const disallowedTools = parseFrontmatterStringArray(fmText, "disallowedTools") ??
-    parseFrontmatterStringArray(fmText, "disallowed_tools");
-  const skills = parseFrontmatterStringArray(fmText, "skills");
+  const tools = getFrontmatterStringArray(fmText, "tools");
+  const disallowedTools = getFrontmatterStringArray(fmText, "disallowedTools") ??
+    getFrontmatterStringArray(fmText, "disallowed_tools");
+  const skills = getFrontmatterStringArray(fmText, "skills");
 
-  // 正文：去掉 frontmatter 部分
-  const system = fmMatch
-    ? content.slice(fmMatch[0].length).replace(/^\r?\n/, "").trimEnd()
-    : content.trimEnd();
-
-  return { name, description, system, tools, disallowedTools, aiRole, title, skills };
+  return { name, description, system: body, tools, disallowedTools, aiRole, title, skills };
 }
 
 // ─── createSubAgentTool ────────────────────────────────────────────────────────

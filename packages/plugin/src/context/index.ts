@@ -99,6 +99,11 @@ class Context {
     this.events.emit("disabled", value);
   }
 
+  /** 向指定 comId 的输入框追加内容。ChatPanelList 会负责确保面板存在。 */
+  appendInput(comId: string, content: string) {
+    this.events.emit("appendInput", { comId, content });
+  }
+
   /** 插件启停覆盖值，用于影响后续新建的 CodeAgent 实例。 */
   private _pluginEnabledOverrides = new Map<string, boolean>();
 

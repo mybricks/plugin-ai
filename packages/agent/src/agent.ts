@@ -397,8 +397,6 @@ function buildIterationBaseMessages(
     ? computeHandoffTurnIds(historyTurns, options.mask)
     : new Set<string>();
 
-  console.log('historyTurns, compactRecord', historyTurns, compactRecord)
-
   const historyMessages = turnsToMessages(historyTurns, compactRecord, handoffTurnIds);
 
   // ── prompt cache 断点 ────────────────────────────────────────────────────

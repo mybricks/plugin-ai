@@ -39,11 +39,21 @@ export interface AdditionalDirectory {
    */
   path: string;
   /**
-   * 目录描述，由 framework 自动注入到每轮 getUserContext 中，
-   * 让 LLM 了解该目录的用途，例如 "产品设计规范文档"。
+   * 该扩展目录对应的 agents.md 内容（项目规范/约束），由宿主直接传入。
+   *
+   * 支持 YAML frontmatter，框架会从中解析目录元信息注入到 getUserContext：
+   * ```yaml
+   * ---
+   * title: 设计规范
+   * description: 产品设计规范文档，包含组件设计准则
+   * permissions: read, write
+   * ---
+   * （可选：正文为 agents.md 规则内容，会注入到 LLM 上下文）
+   * ```
+   * - `title`/`description`：展示在每轮 getUserContext 中，让 LLM 了解目录用途
+   * - `permissions`：逗号分隔，可选值 `read`/`write`/`bash`；仅作提示约束，
+   *   实际能力边界由 updateFiles/deleteFiles 回调是否存在决定
    */
-  description?: string;
-  /** 该扩展目录对应的 agents.md 内容 */
   agentsMd?: string;
   /** 读取该目录下的文件列表 */
   getFiles: () => Promise<Array<{ path: string; content: string }>>;
@@ -102,10 +112,13 @@ export interface CodeAgentPlugin {
   /** 插件内置工具，合并到顶层 tools（工具名自动加 pluginName_ 前缀） */
   tools?: Tool[];
   /**
-   * 插件额外挂载目录。
+   * 插件额外挂载目录（异步工厂函数）。
    * 仅在插件启用时参与文件读取、写入、删除和 user context 注入。
+   *
+   * 每个 turn 开始时调用，可根据运行时状态动态决定挂载哪些目录。
+   * 返回空数组表示本轮不挂载任何额外目录。
    */
-  additionalDirectories?: AdditionalDirectory[];
+  additionalDirectories?: () => Promise<AdditionalDirectory[]>;
 }
 
 // ─── 沙箱接口 ─────────────────────────────────────────────────────────────────
