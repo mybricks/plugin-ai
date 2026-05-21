@@ -312,8 +312,12 @@ export interface History {
   /**
    * 获取该 agentKey 下所有版本的元数据列表，按 createdAt 升序排列。
    * 不含 files 内容（files 通过 getVersionFiles 单独读取）。
+   * 支持分页参数 { pageSize, pageNum }，不传时返回全量数据。
    */
-  listVersions(key: string): Promise<VersionRecord[]>;
+  listVersions(
+    key: string,
+    params?: { pageSize?: number; pageNum?: number }
+  ): Promise<{ total: number; list: VersionRecord[] }>;
 
   /**
    * 追加一条新版本记录（metadata + files 原子写入）。
@@ -352,7 +356,7 @@ export interface History {
  */
 export interface BoundHistory {
   // ── 版本快照 ──────────────────────────────────────────────────────────────
-  listVersions(): Promise<VersionRecord[]>;
+  listVersions(params?: { pageSize?: number; pageNum?: number }): Promise<{ total: number; list: VersionRecord[] }>;
   addVersion(record: VersionRecord, files: VersionFile[]): Promise<void>;
   getVersionFiles(versionId: string): Promise<VersionFile[]>;
   getVersion(versionId: string): Promise<VersionRecord | null>;
@@ -368,7 +372,7 @@ export interface BoundHistory {
  */
 export function bindHistory(history: History, agentKey: string): BoundHistory {
   return {
-    listVersions: () => history.listVersions(agentKey),
+    listVersions: (params) => history.listVersions(agentKey, params),
     addVersion: (record, files) => history.addVersion(agentKey, record, files),
     getVersionFiles: (versionId) => history.getVersionFiles(versionId),
     getVersion: (versionId) => history.getVersion(versionId),
