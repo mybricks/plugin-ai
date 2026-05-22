@@ -114,6 +114,11 @@ export interface PluginAIParams {
        * store 内置响应式能力
        */
       type: 'native' | 'store'
+    },
+    /** 开发、调试 工作区 */
+    workspace?: {
+      /** 代码编辑器内复制回调 */
+      onCodeEditorCopy: () => { filename: string; code: string; }
     }
   }
   /** LLM 配置（自定义渠道时使用） */
