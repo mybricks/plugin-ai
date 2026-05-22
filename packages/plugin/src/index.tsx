@@ -65,6 +65,30 @@ export interface PluginAIAPI {
 
 // ─── plugin 主入口 ────────────────────────────────────────────────────────────
 
+interface FileModules {
+  /** 基于babel的自定义插件 */
+  babelPlugins?: ((params: { filename: string }) => ((params: any) => any))[]
+  /** 获取依赖信息 */
+  getDependencies?: (params: any) => Record<string, any>
+  /** 入口文件 */
+  entryFile: string
+}
+
+interface FrontendFileModules extends FileModules {
+  /** 模块类型 */
+  type: 'frontend'
+  /** 画布 */
+  canvas?: {
+    width?: number
+    height?: number
+  },
+}
+
+interface BackendFileModules extends FileModules {
+  /** 模块类型 */
+  type: 'backend'
+}
+
 export interface PluginAIParams {
   name?: string;
   user?: { name?: string; avatar?: string };
@@ -96,25 +120,7 @@ export interface PluginAIParams {
   getUserContextMessage?: PluginGetUserContextMessage;
   /** 组件运行时扩展 */
   componentRuntime?: {
-    /** 基于babel的自定义插件 */
-    babelPlugins?: ((params: { filename: string }) => ((params: any) => any))[]
-    /** 获取依赖信息 */
-    getDependencies?: (params: any) => Record<string, any>
-    /** 入口文件 */
-    entryFile?: string
-    /** 画布 */
-    canvas?: {
-      width?: number
-      height?: number
-    },
-    /** 数据响应式配置 */
-    reactivity?: {
-      /**
-       * native 原生（react hooks，提示词中不做特别说明）
-       * store 内置响应式能力
-       */
-      type: 'native' | 'store'
-    },
+    modules: Record<string, FrontendFileModules | BackendFileModules>
     /** 开发、调试 工作区 */
     workspace?: {
       /** 代码编辑器内复制回调 */
