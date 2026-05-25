@@ -3,6 +3,7 @@ import { AboutItem, ChannelType, getChannelLabel } from "./Modal";
 import css from "./index.less";
 
 interface AboutProps {
+  name?: string;
   version?: string;
   items?: AboutItem[];
   channel?: ChannelType;
@@ -10,6 +11,7 @@ interface AboutProps {
 }
 
 export const About: React.FC<AboutProps> = ({
+  name,
   version,
   items = [],
   channel = "infra",
@@ -19,7 +21,7 @@ export const About: React.FC<AboutProps> = ({
     <div className={css.about}>
       <div className={css.aboutLogo}>
         <span className={css.aboutLogoText}>
-          Vibe<em>UI</em>
+          {name || <>Vibe<em>UI</em></>}
         </span>
         {version && <span className={css.aboutLogoVersion}>{version}</span>}
       </div>

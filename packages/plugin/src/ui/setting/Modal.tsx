@@ -69,6 +69,7 @@ export interface SettingModalProps {
   onChange?: (value: SettingValue) => void;
   onSave?: (value: SettingValue) => void;
   channels?: ChannelType[];
+  name?: string;
   version?: string;
   aboutItems?: AboutItem[];
 }
@@ -83,6 +84,7 @@ export const SettingModal: React.FC<SettingModalProps> = ({
   onChange,
   onSave,
   channels,
+  name,
   version,
   aboutItems,
 }) => {
@@ -143,6 +145,7 @@ export const SettingModal: React.FC<SettingModalProps> = ({
         <div className={css.mainContent}>
           {activeTab === "about" && (
             <About
+              name={name}
               version={version}
               items={aboutItems}
               channel={effectiveChannel}
