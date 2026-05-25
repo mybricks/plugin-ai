@@ -29,6 +29,28 @@ const readFileToBase64 = (file: File): Promise<string> => {
   })
 }
 
+const getImageSize = (file: File): Promise<{ width: number; height: number }> => {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const url = URL.createObjectURL(file);
+
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      });
+    };
+
+    image.onerror = (event) => {
+      URL.revokeObjectURL(url);
+      reject(event);
+    };
+
+    image.src = url;
+  })
+}
+
 const PendingQueue = ({ queue, onRemove }: { queue: QueueItem[]; onRemove?: (id: string) => void }) => {
   const [expanded, setExpanded] = useState(true);
   if (!queue.length) return null;
@@ -251,9 +273,21 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     return false;
   }
 
-  const updateAttachmentsByFile = (file: File) => {
+  const updateAttachmentsByFile = async (file: File) => {
     if (file.size > 5000 * 1024) {
       message.info(`当前文件大小 ${(file.size / 1024).toFixed(2)}K，超过了5000K，建议您截取页面中的某个区域作为附件`)
+      return;
+    }
+
+    try {
+      const { width, height } = await getImageSize(file);
+      if (width > 8000 || height > 8000) {
+        message.info(`当前图片尺寸 ${width}x${height}px，宽高任一不得大于8000px`);
+        return;
+      }
+    } catch (event) {
+      console.error("[@mybricks/plugin-ai - 读取图片尺寸失败]", event);
+      message.error("读取图片尺寸失败，请重试");
       return;
     }
 

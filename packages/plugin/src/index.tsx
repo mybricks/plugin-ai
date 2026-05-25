@@ -19,7 +19,7 @@ import { ensureAIPanelOpen, ensureFocusComId } from "./utils/ensure-ai-panel-ope
 // ─── 工具类型重导出 ────────────────────────────────────────────────────────────
 
 export { CodeAgent, IDBHistory } from "../../agent/src";
-export type { AdditionalDirectory, AgentEventMap, AgentsMdConfig, CodeAgentPlugin, SkillFile } from "../../agent/src";
+export type { AdditionalDirectory, AgentEventMap, AgentsMdConfig, CodeAgentPlugin, SkillFile, VirtualFile } from "../../agent/src";
 export { createRequestAsStream, createOnUpload } from "../../request/src";
 export type { RequestAsStreamFn } from "../../request/src";
 export { openSetting, closeSetting, SettingModal } from "./ui/setting";
@@ -103,8 +103,20 @@ export interface PluginAIParams {
     codeRules?: string;
     designRules?: string;
   };
-  /** agents.md 内容，对标 CLAUDE.md，作为独立 user context 注入 */
-  agentsMd?: string;
+  /**
+   * 注入到根工程虚拟 FS 的文件（每个 turn 调用一次）。
+   * 典型用途：在根工程放 `.agent/agent.md` 提供项目规范，LLM 可通过 `read_file` 读取。
+   * 同路径下 virtualFiles 优先级高于真实文件。
+   *
+   * @example
+   * ```ts
+   * virtualFiles: async () => [{
+   *   path: ".agent/agent.md",
+   *   content: "# 项目规范\n...",
+   * }]
+   * ```
+   */
+  virtualFiles?: () => Promise<import("../../agent/src").VirtualFile[]>;
   /** 技能文件列表，挂载为虚拟 .agent/skills/ 目录，LLM 通过 use_skill 工具按需加载 */
   skills?: SkillFile[];
   /** 插件列表，会将内部 skills / agents / tools / additionalDirectories 合并进 CodeAgent 顶层配置 */
@@ -146,7 +158,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     onUpload,
     onDownload,
     codingConfig,
-    agentsMd,
+    virtualFiles,
     skills,
     plugins,
     promptSections,
@@ -241,7 +253,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
 
   setupSandbox({
     requestAsStream,
-    agentsMd,
+    virtualFiles,
     skills: mergedSkills,
     plugins,
     promptSections: mergedPromptSections,
