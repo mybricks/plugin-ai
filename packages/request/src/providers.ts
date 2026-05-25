@@ -26,9 +26,26 @@ export interface LLMProvidersOptions {
 }
 
 const STORAGE_KEY_PREFIX = "plugin-ai:llm-selection:";
+const OPENAI_CHAT_COMPLETIONS_PATH = "/v1/chat/completions";
+const ANTHROPIC_MESSAGES_PATH = "/v1/messages";
+const PROVIDER_ENDPOINTS: Record<ProviderConfig["format"], string> = {
+  openai: OPENAI_CHAT_COMPLETIONS_PATH,
+  anthropic: ANTHROPIC_MESSAGES_PATH,
+};
 
 function getStorageKey(agentKey: string): string {
   return `${STORAGE_KEY_PREFIX}${agentKey}`;
+}
+
+function normalizeProviderRequestUrl(format: ProviderConfig["format"], url: string): string {
+  const endpoint = PROVIDER_ENDPOINTS[format];
+  let baseUrl = url.trim().replace(/\/+$/, "");
+  Object.values(PROVIDER_ENDPOINTS).forEach((path) => {
+    baseUrl = baseUrl.replace(new RegExp(`${path}$`), "");
+  });
+  if (!baseUrl) return "";
+  if (baseUrl.endsWith("/v1")) return `${baseUrl}${endpoint.replace(/^\/v1/, "")}`;
+  return `${baseUrl}${endpoint}`;
 }
 
 function loadSelection(agentKey: string): ModelSelection | null {
@@ -52,7 +69,7 @@ function validateProviderConfig(config: ProviderConfig): string | null {
   if (!config.baseUrl?.trim()) return "missing baseUrl";
   if (!config.apiKey?.trim()) return "missing apiKey";
   try {
-    new URL(config.baseUrl);
+    new URL(normalizeProviderRequestUrl(config.format, config.baseUrl));
   } catch {
     return `invalid baseUrl: ${config.baseUrl}`;
   }
@@ -184,7 +201,7 @@ export class LLMProviders {
       const isKimi = provider.providerId === 'kimi';
       const extraParams = isKimi ? { thinking: { type: 'disabled' } } : undefined;
       const requestBody = formatRequestBody(provider.format, sanitizeMessages(messages), model, tools, extraParams);
-      const response = await fetch(provider.baseUrl, {
+      const response = await fetch(normalizeProviderRequestUrl(provider.format, provider.baseUrl), {
         signal: controller.signal,
         method: "POST",
         headers: {

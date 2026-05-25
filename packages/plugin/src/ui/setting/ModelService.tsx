@@ -27,7 +27,7 @@ const PRESET_PROVIDERS: Array<{ key: string; label: string; logo?: string; apiKe
     apiKeyUrl: "https://openrouter.ai/keys",
     config: {
       providerId: "openrouter",
-      baseUrl: "https://openrouter.ai/api/v1/chat/completions",
+      baseUrl: "https://openrouter.ai/api",
       models: [
         { id: "z-ai/glm-5.1", name: "GLM 5.1" },
         { id: "z-ai/glm-5", name: "GLM 5" },
@@ -43,13 +43,36 @@ const PRESET_PROVIDERS: Array<{ key: string; label: string; logo?: string; apiKe
     apiKeyUrl: "https://platform.moonshot.cn/console/api-keys",
     config: {
       providerId: "kimi",
-      baseUrl: "https://api.moonshot.cn/v1/chat/completions",
+      baseUrl: "https://api.moonshot.cn",
       models: [
         { id: "kimi-k2.6", name: "kimi-k2.6" },
       ],
     },
   },
 ];
+
+const OPENAI_CHAT_COMPLETIONS_PATH = "/v1/chat/completions";
+const ANTHROPIC_MESSAGES_PATH = "/v1/messages";
+const PROVIDER_ENDPOINTS: Record<ProviderConfig["format"], string> = {
+  openai: OPENAI_CHAT_COMPLETIONS_PATH,
+  anthropic: ANTHROPIC_MESSAGES_PATH,
+};
+
+function normalizeProviderRequestUrl(format: ProviderConfig["format"], url: string): string {
+  const endpoint = PROVIDER_ENDPOINTS[format];
+  const baseUrl = normalizeApiBaseUrl(url);
+  if (!baseUrl) return "";
+  if (baseUrl.endsWith("/v1")) return `${baseUrl}${endpoint.replace(/^\/v1/, "")}`;
+  return `${baseUrl}${endpoint}`;
+}
+
+function normalizeApiBaseUrl(url: string): string {
+  let normalized = url.trim().replace(/\/+$/, "");
+  Object.values(PROVIDER_ENDPOINTS).forEach((path) => {
+    normalized = normalized.replace(new RegExp(`${path}$`), "");
+  });
+  return normalized;
+}
 
 const EyeIcon: React.FC<{ visible: boolean }> = ({ visible }: { visible: boolean }) =>
   visible ? (
@@ -201,7 +224,7 @@ const ProviderEditModal: React.FC<{
     onSave({
       format: "openai",
       providerId: providerId.trim(),
-      baseUrl: baseUrl.trim(),
+      baseUrl: normalizeApiBaseUrl(baseUrl),
       apiKey: apiKey.trim(),
       models: provider?.models || [],
     });
@@ -417,18 +440,22 @@ export const ModelService: React.FC<ModelServiceProps> = ({ value, onChange, onS
     // 在保存前，确保所有 preset providers 的模型都被完整保存
     const mergedProviders = (localValue.providers || []).map((p: ProviderConfig) => {
       const preset = PRESET_PROVIDERS.find(pr => pr.key === p.providerId);
+      const normalizedProvider = {
+        ...p,
+        baseUrl: normalizeApiBaseUrl(p.baseUrl),
+      };
       if (preset) {
         // 全量替换：用户模型 + preset 模型（去重）
-        const userModelIds = new Set((p.models || []).map((m: ModelConfig) => m.id));
+        const userModelIds = new Set((normalizedProvider.models || []).map((m: ModelConfig) => m.id));
         const presetModels = (preset.config.models || []).filter(
           (m: ModelConfig) => !userModelIds.has(m.id)
         );
         return {
-          ...p,
-          models: [...(p.models || []), ...presetModels]
+          ...normalizedProvider,
+          models: [...(normalizedProvider.models || []), ...presetModels]
         };
       }
-      return p;
+      return normalizedProvider;
     });
     
     const valueToSave = { ...localValue, providers: mergedProviders };
@@ -601,12 +628,12 @@ export const ModelService: React.FC<ModelServiceProps> = ({ value, onChange, onS
                       type="text"
                       className={css.nativeInput}
                       placeholder="请输入 API 基础地址，如 https://openrouter.ai/api"
-                      value={activeProvider.baseUrl?.replace(/\/v1\/chat\/completions$/, "") || ""}
-                      onChange={(e) => updateProviderConfig(activeProviderId, { baseUrl: e.target.value })}
+                      value={normalizeApiBaseUrl(activeProvider.baseUrl || "")}
+                      onChange={(e) => updateProviderConfig(activeProviderId, { baseUrl: normalizeApiBaseUrl(e.target.value) })}
                     />
                     {activeProvider.baseUrl && (
                       <div className={css.formTip}>
-                        预览: {activeProvider.baseUrl.replace(/\/v1\/chat\/completions$/, "")}/v1/chat/completions
+                        预览: {normalizeProviderRequestUrl(activeProvider.format, activeProvider.baseUrl)}
                       </div>
                     )}
                   </div>

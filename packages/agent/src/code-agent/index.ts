@@ -24,6 +24,40 @@ export type { SubAgentConfig };
 export type { SkillFile };
 export { resolveSkillMeta, USE_SKILL_TOOL_NAME };
 
+// ─── VirtualFile ─────────────────────────────────────────────────────────────
+
+/**
+ * 虚拟文件：挂载到虚拟 FS、不落到 sandbox 真实存储的文件。
+ *
+ * 同路径下 virtualFiles 优先级高于 sandbox.getFiles 返回的文件（virtual 总是赢）。
+ *
+ * 权限模型：
+ * - `permissions.read`   — 是否允许 read_file 工具读取（默认 true）
+ * - `permissions.write`  — 是否允许 write_file / edit_file 等工具写入（默认 false）
+ * - `permissions.delete` — 是否允许 delete_file 工具删除（默认 false）
+ *
+ * 可见性（与权限正交）：
+ * - `visible: true`（默认）— 出现在 glob / 文件列表统计中
+ * - `visible: false`      — read_file 仍可读，但不进工程文件列表（典型：skills 内部文件）
+ */
+export interface VirtualFile {
+  /** 路径（相对工程根 / 相对 dir.path，由调用方决定） */
+  path: string;
+  /** 文件内容 */
+  content: string;
+  /** 文件权限，未填时默认 read:true, write:false, delete:false */
+  permissions?: {
+    read?: boolean;
+    write?: boolean;
+    delete?: boolean;
+  };
+  /**
+   * 是否在文件列表（getUserContext 文件统计、glob、grep）中可见。
+   * 默认 true；设为 false 时 read_file 仍可访问，但不出现在文件枚举中。
+   */
+  visible?: boolean;
+}
+
 // ─── Plugin 配置 ─────────────────────────────────────────────────────────────
 
 /**
@@ -39,22 +73,21 @@ export interface AdditionalDirectory {
    */
   path: string;
   /**
-   * 该扩展目录对应的 agents.md 内容（项目规范/约束），由宿主直接传入。
+   * 该目录的虚拟文件（路径相对 dir.path）。
    *
-   * 支持 YAML frontmatter，框架会从中解析目录元信息注入到 getUserContext：
-   * ```yaml
-   * ---
-   * title: 设计规范
-   * description: 产品设计规范文档，包含组件设计准则
-   * permissions: read, write
-   * ---
-   * （可选：正文为 agents.md 规则内容，会注入到 LLM 上下文）
+   * 典型用途：在此目录下放一个 `.agent/agent.md`，作为 LLM 可读的规则文档：
+   * ```ts
+   * virtualFiles: async () => [{
+   *   path: ".agent/agent.md",
+   *   content: "该工程的开发规范...",
+   * }]
    * ```
-   * - `title`/`description`：展示在每轮 getUserContext 中，让 LLM 了解目录用途
-   * - `permissions`：逗号分隔，可选值 `read`/`write`/`bash`；仅作提示约束，
-   *   实际能力边界由 updateFiles/deleteFiles 回调是否存在决定
+   *
+   * - 路径会被自动拼接 dir.path 前缀（setup 层负责）
+   * - 同路径下 virtualFiles 优先级高于 getFiles 返回的真实文件
+   * - 未填 permissions 时默认只读（write/delete 必须显式开启）
    */
-  agentsMd?: string;
+  virtualFiles?: () => Promise<VirtualFile[]>;
   /** 读取该目录下的文件列表 */
   getFiles: () => Promise<Array<{ path: string; content: string }>>;
   /**
@@ -95,8 +128,6 @@ export interface CodeAgentPlugin {
   version?: string;
   /** 插件描述（可选，展示/调试用） */
   description?: string;
-  /** 项目级规则 */
-  agentsMd?: never;
   /**
    * 初始启用状态，默认 true（全部启用）。
    * 设为 false 可让插件以禁用状态注册，需调用 enablePlugin(name) 后才会在 turn 中生效。
@@ -138,6 +169,13 @@ export interface Sandbox {
    * 删除文件。失败时 reject（抛出错误）。
    */
   deleteFiles(paths: string[]): Promise<void>;
+  /**
+   * 虚拟文件：挂载到虚拟 FS、不落到真实存储。
+   * 同路径下优先级高于 getFiles 返回的文件。
+   * 每个 turn 开始时调用一次。
+   * 可选：现有 Sandbox 实现不传不受影响（向下兼容）。
+   */
+  virtualFiles?: () => Promise<VirtualFile[]>;
   /**
    * 获取当前动态上下文信息（代码规则、主题等项目信息）。
    * 返回的文本内容会通过 getContextMessages 注入到 LLM 上下文中。
@@ -291,8 +329,8 @@ function buildEnvironmentSection(skills?: SkillFile[], subAgents?: SubAgentConfi
  * 初始化时可传入：
  *   - `sandbox`   — 沙箱（文件读写）
  *   - `tools`     — 额外自定义工具（如 check_design_status）
- *   - `agentsMd`  — 项目级 agents.md 规则文档，由基础 Agent 作为独立 user context 注入
- *   - `skills`    — 技能文件列表，挂载为虚拟文件系统，LLM 按需读取
+ *   - `virtualFiles` — 注入到虚拟 FS 的文件（如根工程 `.agent/agent.md` 规则文档）；由 Sandbox.virtualFiles 承载
+ *   - `skills`    — 技能文件列表，挂载为虚拟 .agent/skills/ 目录，LLM 按需读取
  *   - `subAgents` — 子 Agent 配置列表，注册 call-sub-agent 工具
  *   - `plugins`   — 插件列表（仅支持 skills / agents / tools / additionalDirectories）
  */
@@ -338,24 +376,72 @@ export class CodeAgent extends Agent {
     // super() 之后再把它同步到真实的 this._enabledPluginNames 引用。
     const enabledNamesRef = { current: new Set<string>() };
 
+    // 虚拟文件路径判断辅助
+    const normPath = (p: string) => p.replace(/^\/+/, '');
+
+    // 每次需要时动态计算所有 virtualFiles（skills + sandbox.virtualFiles）
+    const collectAllVirtualFiles = async (): Promise<VirtualFile[]> => {
+      const enabledPluginSkills = plugins
+        .filter((p) => enabledNamesRef.current.has(p.name))
+        .flatMap((p) => p.skills ?? []);
+      const allSkills = [...baseSkills, ...enabledPluginSkills];
+      const skillVirtualFiles: VirtualFile[] = allSkills.flatMap((s) =>
+        s.files.map((f) => ({
+          path: `${SKILLS_PREFIX}${s.name}/${f.path}`,
+          content: f.content,
+          permissions: { read: true, write: false, delete: false },
+          visible: false,
+        }))
+      );
+      const sandboxVirtualFiles = (await sandbox?.virtualFiles?.()) ?? [];
+      return [...skillVirtualFiles, ...sandboxVirtualFiles];
+    };
+
     const wrappedSandbox: Sandbox | undefined = sandbox
       ? {
           getFiles: async () => {
+            // virtual 总是赢：先展开真实文件，再用 virtual 覆盖
             const realFiles = await sandbox.getFiles();
-            const enabledPluginSkills = plugins
-              .filter((p) => enabledNamesRef.current.has(p.name))
-              .flatMap((p) => p.skills ?? []);
-            const allSkills = [...baseSkills, ...enabledPluginSkills];
-            const skillFiles = allSkills.flatMap((s) =>
-              s.files.map((f) => ({
-                path: `${SKILLS_PREFIX}${s.name}/${f.path}`,
-                content: f.content,
-              }))
+            const allVirtual = await collectAllVirtualFiles();
+            const merged = new Map<string, { path: string; content: string }>(
+              realFiles.map(f => [normPath(f.path), f])
             );
-            return [...realFiles, ...skillFiles];
+            allVirtual.forEach((vf) => {
+              merged.set(normPath(vf.path), { path: vf.path, content: vf.content });
+            });
+            return Array.from(merged.values());
           },
-          updateFiles: sandbox.updateFiles.bind(sandbox),
-          deleteFiles: sandbox.deleteFiles.bind(sandbox),
+
+          virtualFiles: collectAllVirtualFiles,
+
+          updateFiles: async (files) => {
+            const allVirtual = await collectAllVirtualFiles();
+            const virtualMap = new Map<string, VirtualFile>(
+              allVirtual.map(vf => [normPath(vf.path), vf])
+            );
+            for (const file of files) {
+              const vf = virtualMap.get(normPath(file.path));
+              if (vf && !vf.permissions?.write) {
+                throw new Error(`${file.path} is a virtual file (read-only)`);
+              }
+            }
+            return sandbox.updateFiles(files);
+          },
+
+          deleteFiles: async (paths) => {
+            const allVirtual = await collectAllVirtualFiles();
+            const virtualMap = new Map<string, VirtualFile>(
+              allVirtual.map(vf => [normPath(vf.path), vf])
+            );
+            for (const p of paths) {
+              const vf = virtualMap.get(normPath(p));
+              if (vf && !vf.permissions?.delete) {
+                throw new Error(`${p} is a virtual file (cannot be deleted)`);
+              }
+            }
+            return sandbox.deleteFiles(paths);
+          },
+
           ...(sandbox.getContext ? { getContext: sandbox.getContext.bind(sandbox) } : {}),
           ...(sandbox.getUserContext ? { getUserContext: sandbox.getUserContext.bind(sandbox) } : {}),
         }

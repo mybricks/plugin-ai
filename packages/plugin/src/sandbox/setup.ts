@@ -2,7 +2,7 @@ import React from "react";
 import { CodeAgent, IDBHistory } from "../../../agent/src";
 import { splitFrontmatter, getFrontmatterString, getFrontmatterStringArray } from "../../../agent/src/utils/frontmatter";
 import { GLOB_TOOL_NAME } from "../../../agent/src/code-agent/tools";
-import type { Tool, Sandbox, CodeAgentPlugin, CodeAgentPromptOptions, History, BoundHistory, TurnSender, AdditionalDirectory, AgentsMdConfig, SkillFile } from "../../../agent/src";
+import type { Tool, Sandbox, CodeAgentPlugin, CodeAgentPromptOptions, History, BoundHistory, TurnSender, AdditionalDirectory, AgentsMdConfig, SkillFile, VirtualFile } from "../../../agent/src";
 import type { PromptSections } from "../prompts";
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { Designer, RegistSandBoxConfig } from "./types";
@@ -111,7 +111,12 @@ declare global {
 
 export interface SetupSandboxParams {
   requestAsStream: RequestAsStreamFn;
-  agentsMd?: string;
+  /**
+   * 注入到根工程虚拟 FS 的文件（每个 turn 调用一次）。
+   * 典型用途：在根工程放 `.agent/agent.md` 提供项目规范。
+   * 同路径下 virtualFiles 优先级高于 designer.getFiles() 返回的真实文件。
+   */
+  virtualFiles?: () => Promise<VirtualFile[]>;
   skills?: SkillFile[];
   plugins?: CodeAgentPlugin[];
   promptSections?: PromptSections;
@@ -139,12 +144,12 @@ export interface SetupSandboxParams {
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
 export function setupSandbox(params: SetupSandboxParams): void {
-  const { requestAsStream, agentsMd, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, codeRules, designRules, getUserContextMessage, history, sender } = params;
+  const { requestAsStream, virtualFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, codeRules, designRules, getUserContextMessage, history, sender } = params;
 
   window._sandbox_ = {
     // ── sandbox → Plugin ──────────────────────────────────────────────────────
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
-      return connectToAI(comId, config, { requestAsStream, agentsMd, skills, plugins, promptOptions: promptSections?.agent, promptSections, tools, codeRules, designRules, getUserContextMessage, history, sender });
+      return connectToAI(comId, config, { requestAsStream, virtualFiles, skills, plugins, promptOptions: promptSections?.agent, promptSections, tools, codeRules, designRules, getUserContextMessage, history, sender });
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
@@ -195,7 +200,8 @@ export function setupSandbox(params: SetupSandboxParams): void {
 
 interface PluginParams {
   requestAsStream: RequestAsStreamFn;
-  agentsMd?: string;
+  /** 注入到根工程虚拟 FS 的文件（每个 turn 调用一次） */
+  virtualFiles?: () => Promise<VirtualFile[]>;
   skills?: SkillFile[];
   plugins?: CodeAgentPlugin[];
   promptOptions?: CodeAgentPromptOptions;
@@ -323,7 +329,7 @@ async function buildDesignerContext(
 function connectToAI(
   comId: string,
   { designer, hooks }: RegistSandBoxConfig,
-  { requestAsStream, agentsMd, skills, plugins, promptOptions, promptSections, tools, codeRules, designRules, getUserContextMessage, history, sender }: PluginParams
+  { requestAsStream, virtualFiles, skills, plugins, promptOptions, promptSections, tools, codeRules, designRules, getUserContextMessage, history, sender }: PluginParams
 ): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
   const runtimeContext: SkillRuntimeContext = { designer, codeRules, designRules };
@@ -339,7 +345,7 @@ function connectToAI(
 
   let agentRef: CodeAgent | undefined;
 
-  /** 解析 .agents/agent.md，提取 title / description / permissions / body */
+  /** 解析 .agent/agent.md，提取 title / description / permissions / body */
   const parseAgentMdFrontmatter = (content: string): {
     title?: string;
     description?: string;
@@ -368,19 +374,18 @@ function connectToAI(
   };
   const buildAgentsMdConfig = async (): Promise<AgentsMdConfig[]> => {
     const config: AgentsMdConfig[] = [];
-    const rootAgentsMd = agentsMd?.trim();
-    if (rootAgentsMd) {
-      config.push({ path: "agents.md", content: rootAgentsMd });
-    }
-    for (const dir of await getEnabledAdditionalDirectories()) {
-      if (!dir.agentsMd?.trim()) continue;
-      const { body } = splitFrontmatter(dir.agentsMd);
-      const bodyContent = body.trim();
-      if (!bodyContent) continue;
-      config.push({
-        path: `${dir.path}agents.md`,
-        content: bodyContent,
-      });
+    // 从 sandbox.virtualFiles 中收集所有 .agent/agent.md 文件
+    const allVirtualFiles = (await sandbox.virtualFiles?.()) ?? [];
+    for (const vf of allVirtualFiles) {
+      const normalizedPath = vf.path.replace(/^\/+/, '');
+      // 根工程：.agent/agent.md
+      // 扩展工程：<dir.path>.agent/agent.md（如 sub-project/.agent/agent.md）
+      if (normalizedPath === '.agent/agent.md' || normalizedPath.endsWith('/.agent/agent.md')) {
+        const { body } = splitFrontmatter(vf.content);
+        const bodyContent = body.trim();
+        if (!bodyContent) continue;
+        config.push({ path: normalizedPath, content: bodyContent });
+      }
     }
     return config;
   };
@@ -407,6 +412,23 @@ function connectToAI(
         })
       )).flat();
       return [...mainFiles, ...extraFiles];
+    },
+
+    // ── virtualFiles：顶层 + 各 additionalDirectory 的 virtualFiles 合并 ─────
+    virtualFiles: async () => {
+      const rootVirtualFiles = (await virtualFiles?.()) ?? [];
+      const additionalDirectories = await getEnabledAdditionalDirectories();
+      const dirVirtualFiles = (await Promise.all(
+        additionalDirectories.map(async (dir) => {
+          const files = (await dir.virtualFiles?.()) ?? [];
+          // 路径加上 dir.path 前缀
+          return files.map((vf) => ({
+            ...vf,
+            path: vf.path.startsWith(dir.path) ? vf.path : `${dir.path}${vf.path}`,
+          }));
+        })
+      )).flat();
+      return [...rootVirtualFiles, ...dirVirtualFiles];
     },
 
     // ── updateFiles：按路径前缀分组分发 ──────────────────────────────────────
@@ -482,12 +504,13 @@ function connectToAI(
       const ensureTrailingSlash = (path: string) => path.endsWith('/') ? path : `${path}/`;
       const examplePath = (dirPath: string) => `${ensureTrailingSlash(normalizeDirectoryPath(dirPath))}src/index.ts`;
 
-      const [mainFiles, extraDirectoryInfos] = await Promise.all([
+      const [mainFiles, extraDirectoryInfos, allVirtualFiles] = await Promise.all([
         designer.getFiles(),
         Promise.all(additionalDirectories.map(async (dir) => ({
           dir,
           files: await dir.getFiles(),
         }))),
+        sandbox.virtualFiles?.() ?? Promise.resolve([] as VirtualFile[]),
       ]);
 
       const projectCount = 1 + additionalDirectories.length;
@@ -525,8 +548,14 @@ function connectToAI(
             ? '当前没有任何代码文件。'
             : `总计：${files.length} 个文件（${suffixSummary}）。当前不展开文件列表，可使用 ${GLOB_TOOL_NAME} 工具（如 \`${dir.path}**/*\`）查询文件列表，再按需读取具体文件。`;
 
-          // 直接从 agentsMd 字段解析 frontmatter（宿主显式传入的规则内容）
-          const agentMeta = dir.agentsMd ? parseAgentMdFrontmatter(dir.agentsMd) : null;
+          // 从 sandbox.virtualFiles 中找该目录下的 .agent/agent.md，解析 frontmatter
+          // 根工程：.agent/agent.md；扩展工程：<dir.path>.agent/agent.md
+          const dirAgentMdPath = `${dir.path.replace(/\/$/, '')}/.agent/agent.md`;
+          const dirAgentMd = allVirtualFiles.find((vf) => {
+            const normalizedPath = vf.path.replace(/^\/+/, '');
+            return normalizedPath === dirAgentMdPath;
+          });
+          const agentMeta = dirAgentMd ? parseAgentMdFrontmatter(dirAgentMd.content) : null;
 
           const displayTitle = agentMeta?.title ?? dir.path;
           const displayDesc = agentMeta?.description;
