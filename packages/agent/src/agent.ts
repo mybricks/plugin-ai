@@ -176,6 +176,14 @@ export interface AgentOptions {
   summary?: {
     /** 是否启用自动摘要，默认 true（未传 summary 配置时） */
     enabled: boolean;
+    /**
+     * 是否启用建议选项（best-effort，依赖 summary.enabled 为 true）。
+     * 在 autoSummary fork 的同一次 LLM 调用中，让 LLM 判断需求是否完成；
+     * 若未完成则输出 <ask> 块，解析后写入 TurnRecord.suggestions。
+     * 前端只在最后一条 turn 上展示，用户发下一轮消息后自然消失。
+     * 默认 false。
+     */
+    suggestions?: boolean;
   };
   /**
    * compact 配置。
@@ -1461,10 +1469,10 @@ export class Agent {
    * best-effort：异步执行，调用方用 .catch() 静默失败。
    */
   private async _runAutoSummary(turn: TurnRecord): Promise<void> {
-    const SUMMARY_PROMPT = `IMPORTANT: 不要调用工具！
-你有两个任务
+    const suggestionsEnabled = this.options.summary?.suggestions === true;
 
-1. 生成一份总结
+    // ── 任务1：生成总结 ───────────────────────────────────────────────────────
+    const TASK_SUMMARY = `1. 生成一份总结
 <总结生成规则>
 用 1-3 句话对本轮对话进行总结，内容用 <summary></summary> 标签包裹。
 关注点：做了什么有效的事情。
@@ -1476,9 +1484,10 @@ export class Agent {
 2. 将字体调整至卡通风格字体；
 </summary>
 
-</总结生成规则>
+</总结生成规则>`;
 
-2. 为后续对话生成一份「可延续对话摘要」。目标是让另一个 agent 读完这份摘要后，能无缝接手并继续当前工作。
+    // ── 任务2：可延续对话摘要 ─────────────────────────────────────────────────
+    const TASK_HANDOFF = `2. 为后续对话生成一份「可延续对话摘要」。目标是让另一个 agent 读完这份摘要后，能无缝接手并继续当前工作。
 
 <可延续对话摘要生成规则>
 请基于下方对话历史，严格按照以下模板输出（保留二级标题与结构，只填写各节内容），并将整份摘要用 <handoff></handoff> 标签包裹：
@@ -1511,10 +1520,32 @@ export class Agent {
 2. 语言精炼，避免重复；相关文件尽量列出真实路径或文件名。
 3. 直接输出上述模板的填写结果，不要额外解释。
 
-</可延续对话摘要生成规则>
+</可延续对话摘要生成规则>`;
 
+    // ── 任务3：建议选项（可选，由 suggestions.enabled 控制） ──────────────────
+    // TODO: 在此处填写 suggestions 的提示词。
+    // 格式要求：LLM 判断需求是否完成，若未完成则输出如下格式的 <ask> 块，完成时不输出：
+    //
+    // <ask>
+    // <desc>对这组建议的说明（可选）</desc>
+    // <option>建议选项1</option>
+    // <option>建议选项2</option>
+    // </ask>
+    const TASK_SUGGESTIONS = suggestionsEnabled ? `
+3. TODO: [在此填写建议选项任务的提示词]
+` : "";
+
+    const taskCount = suggestionsEnabled ? "三" : "两";
+    const SUMMARY_PROMPT = `IMPORTANT: 不要调用工具！
+你有${taskCount}个任务
+
+${TASK_SUMMARY}
+
+${TASK_HANDOFF}
+${TASK_SUGGESTIONS}
 IMPORTANT: 不要调用工具！
 `;
+
     const fork = this.createFork({ tools: [], turnsSlice: { from: "end", count: 1 }, retry: { maxRetries: 0 } });
     (fork as any).options.getUserContextMessages = undefined;
     (fork as any).options.formatUserMessage = undefined;
@@ -1542,16 +1573,42 @@ IMPORTANT: 不要调用工具！
     const handoffMatch = lastContent.match(/<handoff>([\s\S]*?)<\/handoff>/);
     const handoffText = handoffMatch?.[1].trim() ?? "";
 
-    if (!summaryText && !handoffText) return;
+    // 解析 <ask>...</ask>（建议选项，仅 suggestions.enabled 时生效）
+    // 解析失败只 log，不影响 summary/handoff 的写入和后续流程
+    let suggestionsResult: TurnRecord["suggestions"] | undefined;
+    if (suggestionsEnabled) {
+      try {
+        const askMatch = lastContent.match(/<ask>([\s\S]*?)<\/ask>/);
+        if (askMatch) {
+          const inner = askMatch[1];
+          // <desc> 可选；[\s\S]*? 兼容换行/缩进等各种 LLM 输出格式
+          const descMatch = inner.match(/<desc>([\s\S]*?)<\/desc>/);
+          const desc = descMatch?.[1].trim();
+          // matchAll 拿到所有 <option>，trim() 清理首尾空白
+          const options = [...inner.matchAll(/<option>([\s\S]*?)<\/option>/g)]
+            .map(m => m[1].trim())
+            .filter(Boolean);
+          if (options.length > 0) {
+            suggestionsResult = { options, ...(desc ? { desc } : {}) };
+          }
+        }
+      } catch (e) {
+        console.warn("[Agent] suggestions parse failed:", e);
+      }
+    }
+
+    if (!summaryText && !handoffText && !suggestionsResult) return;
 
     if (summaryText) turn.summary = summaryText;
     if (handoffText) turn.handoff = handoffText;
+    if (suggestionsResult) turn.suggestions = suggestionsResult;
 
     const { history, key } = this.options;
     if (history && key) {
       await history.update(key, turn.id, {
         ...(summaryText ? { summary: summaryText } : {}),
         ...(handoffText ? { handoff: handoffText } : {}),
+        ...(suggestionsResult ? { suggestions: suggestionsResult } : {}),
       });
     }
 

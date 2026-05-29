@@ -42,7 +42,7 @@ export interface ChatPanelProps {
 
 export interface ChatPanelRef {
   focus: () => void;
-  appendInput: (content: string) => void;
+  appendInput: SenderRef["appendInput"];
 }
 
 // ─── ChatPanel ────────────────────────────────────────────────────────────────
@@ -87,8 +87,8 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     focus: () => {
       senderRef.current?.focus();
     },
-    appendInput: (content: string) => {
-      senderRef.current?.appendInput(content);
+    appendInput: (params) => {
+      senderRef.current?.appendInput(params);
     },
   }), []);
 

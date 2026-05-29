@@ -1,4 +1,5 @@
 import type { CodeAgent, Sandbox } from "../../../agent/src";
+import type { SendToAgentParams } from "../sandbox";
 import type { Designer, Hooks } from "../sandbox/types";
 import { AIRequestQueue } from "./queue";
 import type { LLMProviders } from "../../../request/src";
@@ -100,8 +101,8 @@ class Context {
   }
 
   /** 向指定 comId 的输入框追加内容。ChatPanelList 会负责确保面板存在。 */
-  appendInput(comId: string, content: string) {
-    this.events.emit("appendInput", { comId, content });
+  appendInput(comId: string, input: string | SendToAgentParams) {
+    this.events.emit("appendInput", { comId, input });
   }
 
   /** 插件启停覆盖值，用于影响后续新建的 CodeAgent 实例。 */

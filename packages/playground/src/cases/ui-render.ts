@@ -1,6 +1,6 @@
 import type { TestCase } from "./types";
 import { makeScriptedRequest } from "../lib/scripted-request";
-import { makeTextHistory } from "../lib/fixtures";
+import { makeTextHistory, makeTurn } from "../lib/fixtures";
 
 // ─── 富文本 markdown 内容 ──────────────────────────────────────────────────────
 
@@ -157,6 +157,34 @@ const historyWithLinks = makeTextHistory([
   },
 ]);
 
+// ─── 用户消息预设历史（包含 10 张图片） ─────────────────────────────────────────
+
+const makeSvgImageDataUrl = (label: string, bg: string, fg: string) => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="160" viewBox="0 0 240 160"><rect width="240" height="160" rx="18" fill="${bg}"/><circle cx="56" cy="54" r="22" fill="${fg}" opacity=".9"/><path d="M24 132 82 82l38 34 28-24 68 40H24Z" fill="${fg}" opacity=".55"/><text x="120" y="88" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="#fff">${label}</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+};
+
+const tenImageAttachments = [
+  { type: "image", content: makeSvgImageDataUrl("01", "#2563eb", "#93c5fd") },
+  { type: "image", content: makeSvgImageDataUrl("02", "#059669", "#86efac") },
+  { type: "image", content: makeSvgImageDataUrl("03", "#dc2626", "#fca5a5") },
+  { type: "image", content: makeSvgImageDataUrl("04", "#7c3aed", "#c4b5fd") },
+  { type: "image", content: makeSvgImageDataUrl("05", "#ea580c", "#fdba74") },
+  { type: "image", content: makeSvgImageDataUrl("06", "#0891b2", "#67e8f9") },
+  { type: "image", content: makeSvgImageDataUrl("07", "#be123c", "#fda4af") },
+  { type: "image", content: makeSvgImageDataUrl("08", "#4d7c0f", "#bef264") },
+  { type: "image", content: makeSvgImageDataUrl("09", "#4338ca", "#a5b4fc") },
+  { type: "image", content: makeSvgImageDataUrl("10", "#a16207", "#fde68a") },
+] satisfies Array<{ type: "image"; content: string }>;
+
+const historyWithTenImages = [
+  makeTurn({
+    userText: "请根据这 10 张参考图，提炼一套页面视觉风格。",
+    attachments: tenImageAttachments,
+    content: "我已经收到 10 张参考图，会从色彩、构图、层次和组件质感几个方向做归纳。",
+  }),
+];
+
 // ─── Cases ────────────────────────────────────────────────────────────────────
 
 /** Markdown 富文本渲染：一级/多级列表 + 表格 + 代码块 */
@@ -193,6 +221,30 @@ export const userMessageWithLinksCase: TestCase = {
       chunks: ["好的，基于上面两个链接的内容，", "我来给你输出一份完整的性能优化报告。\n\n", ...RICH_CHUNKS],
       ttftMs: 300,
       chunkDelayMs: 18,
+    },
+  ]),
+};
+
+/** 用户消息含 10 张图片：验证多图片附件展示与请求消息结构 */
+export const userMessageWithTenImagesCase: TestCase = {
+  id: "ui-user-ten-images",
+  name: "用户消息含 10 张图片",
+  group: "UI 渲染",
+  description: "预设历史中用户消息包含 10 个图片附件，验证多图缩略图展示、预览与请求 messages 结构。",
+  expectedBehavior:
+    "用户气泡下方展示 10 张图片缩略图；点击缩略图可预览；Inspector 中用户消息 content 数组包含 1 个 text 和 10 个 image_url。",
+  initialTurns: historyWithTenImages,
+  request: makeScriptedRequest([
+    {
+      type: "content",
+      chunks: [
+        "我会把这 10 张图作为同一组参考来分析：",
+        "\n\n- 统一提取主色和辅助色",
+        "\n- 对比图片里的留白、圆角和卡片层级",
+        "\n- 输出可复用的页面视觉规范",
+      ],
+      ttftMs: 200,
+      chunkDelayMs: 25,
     },
   ]),
 };

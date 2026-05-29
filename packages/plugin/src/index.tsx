@@ -4,7 +4,7 @@ import pkg from "../../../package.json";
 console.log(`%c ${pkg.name} %c@${pkg.version}`, `color:#FFF;background:#fa6400`, ``, ``);
 
 import { CodeAgent, IDBHistory } from "../../agent/src";
-import type { CodeAgentPlugin, SkillFile, TurnSender } from "../../agent/src";
+import type { AgentOptions, CodeAgentPlugin, SkillFile, TurnSender } from "../../agent/src";
 import { createRequestAsStream, createOnUpload, LLMProviders } from "../../request/src";
 import type { RequestAsStreamFn, ProviderConfig } from "../../request/src";
 import { resolvePromptOptions, type PromptSections } from "./prompts";
@@ -53,8 +53,8 @@ export interface PluginAIController {
   disablePlugin(name: string): void;
   /** 向指定 comId 的 Agent 发送消息，复用 sandbox helpers.sendToAgent 的队列/聚焦逻辑。 */
   requestAI(comId: string, params: SendToAgentParams): void;
-  /** 向指定 comId 的对话输入框追加文本。 */
-  appendInput(comId: string, content: string): void;
+  /** 向指定 comId 的对话输入框追加文本或图片附件。 */
+  appendInput(comId: string, input: string | SendToAgentParams): void;
 }
 
 /** pluginAI() 返回值，顶层为 Mybricks 插件标准属性，controller 为扩展控制接口 */
@@ -130,6 +130,12 @@ export interface PluginAIParams {
    * 返回内容会拼接到内置项目空间上下文后，作为 user context 注入给 CodeAgent。
    */
   getUserContextMessage?: PluginGetUserContextMessage;
+  /**
+   * 外部自定义用户消息格式化函数。入参是经过 plugin sandbox 标准处理后的参数
+   * （例如已追加 focus 信息、focus meta、sender），返回值会作为最终发给 CodeAgent 的用户消息。
+   * TODO: 当前仅返回值中的 message 会生效，attachments/meta/sender 的处理语义需要再评估。
+   */
+  formatUserMessage?: AgentOptions["formatUserMessage"];
   /** 组件运行时扩展 */
   componentRuntime?: {
     modules: Record<string, FrontendFileModules | BackendFileModules>
@@ -164,6 +170,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     promptSections,
     tools,
     getUserContextMessage,
+    formatUserMessage,
     componentRuntime,
     llm,
     history,
@@ -259,6 +266,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     promptSections: mergedPromptSections,
     tools,
     getUserContextMessage,
+    formatUserMessage,
     availableLibraries: codingConfig?.availableLibraries ?? [],
     themes: codingConfig?.themes ?? [],
     codeRules: codingConfig?.codeRules,
@@ -294,9 +302,9 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
       requestAI(comId: string, params: SendToAgentParams) {
         window._sandbox_?.helpers.sendToAgent(comId, params);
       },
-      appendInput(comId: string, content: string) {
+      appendInput(comId: string, input: string | SendToAgentParams) {
         ensureAIPanelOpen(comId).then(() => {
-          context.appendInput(comId, content);
+          context.appendInput(comId, input);
         });
       },
     },

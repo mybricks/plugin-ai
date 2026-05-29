@@ -208,6 +208,18 @@ export interface TurnRecord {
    */
   handoff?: string;
 
+  /**
+   * 本轮的 AI 生成建议选项（由 autoSummary fork 异步写入）。
+   * 仅当 AgentOptions.suggestions.enabled 为 true 时生成。
+   * 前端只在该 turn 为最后一条时展示，用户发下一轮消息后自然消失。
+   */
+  suggestions?: {
+    /** LLM 对这组建议的说明（可选），如"模型异常结束了" */
+    desc?: string;
+    /** 可点击的建议列表，点击后作为用户消息发送 */
+    options: string[];
+  };
+
 }
 
 export type LLMIteration = Exclude<TurnRecord["iterations"][number], WarmupIter>;

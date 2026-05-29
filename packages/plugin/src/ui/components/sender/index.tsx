@@ -9,7 +9,11 @@ import { Mention, Attachments } from "../types";
 import { ChatMode, type ChatModeType } from "../chat-mode";
 import type { QueueItem } from "../../context/queue";
 import type { ModelSelection } from "../../../../../request/src/providers";
+import type { SendToAgentParams } from "../../../sandbox";
 import css from "./index.less"
+
+const MAX_IMAGE_SIZE_MB = 3.5;
+const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
 
 const readFileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -160,7 +164,7 @@ interface SenderProps {
 
 interface SenderRef {
   focus: () => void;
-  appendInput: (content: string) => void;
+  appendInput: (params: string | SendToAgentParams) => void;
   // TODO: 目前仅展示聚焦组件且单个比较简单直接set即可，后续可通过输入框@唤起选择多个
   setMentions: (mentions: Mention[]) => void;
 }
@@ -175,7 +179,19 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const [vibeCoding, setVibeCoding] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  const appendInput = (content: string) => {
+  const appendInput = (params: string | SendToAgentParams) => {
+    const content = typeof params === "string" ? params : params.message;
+    const nextAttachments = typeof params === "string"
+      ? undefined
+      : params.attachments?.filter((attachment) => attachment.type === "image").map((attachment) => ({
+          type: "image" as const,
+          content: attachment.content,
+        }));
+
+    if (nextAttachments?.length) {
+      setAttachments((prev) => [...prev, ...nextAttachments]);
+    }
+
     if (!content) {
       return;
     }
@@ -274,8 +290,8 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   }
 
   const updateAttachmentsByFile = async (file: File) => {
-    if (file.size > 5000 * 1024) {
-      message.info(`当前文件大小 ${(file.size / 1024).toFixed(2)}K，超过了5000K，建议您截取页面中的某个区域作为附件`)
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      message.info(`当前文件大小 ${(file.size / 1024 / 1024).toFixed(2)}MB，超过了${MAX_IMAGE_SIZE_MB}MB，建议您截取页面中的某个区域作为附件`)
       return;
     }
 

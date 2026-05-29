@@ -5,6 +5,7 @@ import { context } from "../../../context";
 import { ChatPanel } from "../chat-panel";
 import type { ChatPanelRef } from "../chat-panel";
 import type { MessageRecord } from "../use-session";
+import type { SendToAgentParams } from "../../../sandbox";
 import css from "../chat-panel/index.less";
 
 interface User {
@@ -120,10 +121,10 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
         setTimeout(() => disabledSenderRef.current?.focus());
       }
     });
-    const unAppendInput = context.events.on("appendInput", ({ comId, content }: { comId: string; content: string }) => {
-      if (!comId || !content) return;
+    const unAppendInput = context.events.on("appendInput", ({ comId, input }: { comId: string; input: string | SendToAgentParams }) => {
+      if (!comId) return;
       ensureInstance(comId);
-      setTimeout(() => panelRefs.current.get(comId)?.appendInput(content));
+      setTimeout(() => panelRefs.current.get(comId)?.appendInput(input));
     });
 
     return () => { unFocus(); unDisplay(); unAppendInput(); };

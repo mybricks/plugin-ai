@@ -98,6 +98,8 @@
     user-select: text;
     cursor: text;
     margin-top: 6px;
+    box-sizing: border-box;
+    min-width: 0;
     max-width: calc(100% - 32px);
     background: var(--mybricks-bg-color-main, #FFF);
     color: var(--mybricks-text-color-main, #333);
@@ -115,8 +117,11 @@
     }
 
     .attachments-list {
+      max-width: 100%;
       padding-top: 8px;
+      flex-wrap: wrap;
       justify-content: flex-end;
+      align-content: flex-start;
     }
   }
 

@@ -44,7 +44,7 @@ import {
   maxStepsCase,
 } from "./edge-cases";
 import { compactTriggerCase, compactWithToolsCase, compactWarmupByUsageCase, compactErrorCase, compactEmptyResponseCase, compactNoContentCase, compactInfiniteCase, compactRetrySuccessErrorCase, compactRetrySuccessTagCase, compactBinaryExpandSuccessCase, compactMidTurnErrorRetryCase } from "./compact";
-import { markdownRichCase, userMessageWithLinksCase, streamingMarkdownCase, toolThenEmptyContentCase, assistantMessageWithLinksCase } from "./ui-render";
+import { markdownRichCase, userMessageWithLinksCase, userMessageWithTenImagesCase, streamingMarkdownCase, toolThenEmptyContentCase, assistantMessageWithLinksCase } from "./ui-render";
 import { multiEditSameFileCase, multiEditPartialSuccessCase } from "./multi-edit";
 import { editDoomLoopCase, editNoDoomLoopCase } from "./edit-doom-loop";
 import { editFewLinesCase } from "./edit-few-lines";
@@ -141,6 +141,7 @@ export const ALL_CASES: TestCase[] = [
   // UI 渲染
   markdownRichCase,
   userMessageWithLinksCase,
+  userMessageWithTenImagesCase,
   streamingMarkdownCase,
   assistantMessageWithLinksCase,
   // 异常检测—工具后空 content

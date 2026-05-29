@@ -88,6 +88,21 @@ export function getListFocusIndex(el: Element): { index: number; total: number }
   return null;
 }
 
+function getComponentHierarchy(el: Element, maxDepth = 5): string[] {
+  const names: string[] = [];
+  let current: Element | null = el;
+
+  while (current && names.length < maxDepth) {
+    const comName = current.getAttribute('data-com-name');
+    if (comName && names[names.length - 1] !== comName) {
+      names.push(comName);
+    }
+    current = current.parentElement;
+  }
+
+  return names.reverse();
+}
+
 /**
  * 根据当前聚焦的 DOM 元素生成完整的选区信息文本（含组件名、列表序号、DOM 摘要），
  * 用于填入 agent 的上下文。
@@ -104,7 +119,7 @@ export function buildFocusInfo(el: Element): string {
   } else if (type === 'popup') {
     typeDesc = '弹层'
   }
-  const comName = el.closest(`[data-com-name]`)?.getAttribute('data-com-name') ?? '';
+  const componentHierarchy = getComponentHierarchy(el);
   let selectors: string[] = [];
   try {
     selectors = JSON.parse(el.getAttribute('data-zone-selector') ?? '[]');
@@ -115,10 +130,15 @@ export function buildFocusInfo(el: Element): string {
   const listInfo = getListFocusIndex(el);
   const listInfoLine = listInfo ? `（第 ${listInfo.index} 项 / 共 ${listInfo.total} 项）` : '';
   const metaLines: string[] = [];
-  if (comName) metaLines.push(`所属组件:${comName}`);
-  if (selectors.length > 0) metaLines.push(`(${selectors.join(' ')})`);
-  const metaStr = metaLines.length > 0 ? `\n${metaLines.join('；')}` : '';
-  return `注意：用户当前聚焦到了一个${typeDesc}${listInfoLine}。${metaStr}
+  if (selectors.length > 0) metaLines.push(`类名：${selectors.join(' ')}`);
+  if (componentHierarchy.length > 0) {
+    metaLines.push([
+      '以下是该区域往上查找5层React组件的信息：',
+      `${componentHierarchy.join(' -> ')} -> 当前区域`,
+    ].join('\n'));
+  }
+  const metaStr = metaLines.length > 0 ? `\n${metaLines.join('\n')}` : '';
+  return `注意：用户当前聚焦到了一个${typeDesc}${listInfoLine}。需求大概率和这个区域有关系，如果非必要不超出这个区域。${metaStr}
 以下是该区域到子节点的 DOM 结构摘要：
 ${domSummary}
   `.trim();

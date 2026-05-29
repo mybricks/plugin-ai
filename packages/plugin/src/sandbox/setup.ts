@@ -2,7 +2,7 @@ import React from "react";
 import { CodeAgent, IDBHistory } from "../../../agent/src";
 import { splitFrontmatter, getFrontmatterString, getFrontmatterStringArray } from "../../../agent/src/utils/frontmatter";
 import { GLOB_TOOL_NAME } from "../../../agent/src/code-agent/tools";
-import type { Tool, Sandbox, CodeAgentPlugin, CodeAgentPromptOptions, History, BoundHistory, TurnSender, AdditionalDirectory, AgentsMdConfig, SkillFile, VirtualFile } from "../../../agent/src";
+import type { Tool, Sandbox, CodeAgentPlugin, CodeAgentPromptOptions, History, BoundHistory, TurnSender, AdditionalDirectory, AgentsMdConfig, SkillFile, VirtualFile, AgentOptions } from "../../../agent/src";
 import type { PromptSections } from "../prompts";
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { Designer, RegistSandBoxConfig } from "./types";
@@ -131,6 +131,12 @@ export interface SetupSandboxParams {
    * 并拼接到内置项目空间上下文后一起注入给 CodeAgent。
    */
   getUserContextMessage?: PluginGetUserContextMessage;
+  /**
+   * 外部自定义用户消息格式化函数。入参是经过 plugin sandbox 标准处理后的参数
+   * （例如已追加 focus 信息、focus meta、sender），返回值会作为最终发给 CodeAgent 的用户消息。
+   * TODO: 当前仅返回值中的 message 会生效，attachments/meta/sender 的处理语义需要再评估。
+   */
+  formatUserMessage?: AgentOptions["formatUserMessage"];
   /** 透传给 CodeAgent 的历史记录实现，不传时使用内置 IDBHistory */
   history?: History;
   /** 消息发送者信息，注入到每条用户消息中，UI 展示时优先使用 */
@@ -144,12 +150,12 @@ export interface SetupSandboxParams {
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
 export function setupSandbox(params: SetupSandboxParams): void {
-  const { requestAsStream, virtualFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, codeRules, designRules, getUserContextMessage, history, sender } = params;
+  const { requestAsStream, virtualFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, codeRules, designRules, getUserContextMessage, formatUserMessage, history, sender } = params;
 
   window._sandbox_ = {
     // ── sandbox → Plugin ──────────────────────────────────────────────────────
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
-      return connectToAI(comId, config, { requestAsStream, virtualFiles, skills, plugins, promptOptions: promptSections?.agent, promptSections, tools, codeRules, designRules, getUserContextMessage, history, sender });
+      return connectToAI(comId, config, { requestAsStream, virtualFiles, skills, plugins, promptOptions: promptSections?.agent, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, history, sender });
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
@@ -210,6 +216,7 @@ interface PluginParams {
   codeRules?: string;
   designRules?: string;
   getUserContextMessage?: PluginGetUserContextMessage;
+  formatUserMessage?: AgentOptions["formatUserMessage"];
   history?: History;
   sender?: TurnSender;
 }
@@ -329,7 +336,7 @@ async function buildDesignerContext(
 function connectToAI(
   comId: string,
   { designer, hooks }: RegistSandBoxConfig,
-  { requestAsStream, virtualFiles, skills, plugins, promptOptions, promptSections, tools, codeRules, designRules, getUserContextMessage, history, sender }: PluginParams
+  { requestAsStream, virtualFiles, skills, plugins, promptOptions, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, history, sender }: PluginParams
 ): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
   const runtimeContext: SkillRuntimeContext = { designer, codeRules, designRules };
@@ -599,7 +606,7 @@ function connectToAI(
     skills: runtimeSkills,
     plugins: effectivePlugins,
     subAgents: [],
-    formatUserMessage: (params) => {
+    formatUserMessage: async (params) => {
       const focusSnapshot = context.currentFocus;
       const ele = focusSnapshot?.focusArea?.ele;
       const focusInfoText = ele ? buildFocusInfo(ele) : undefined;
@@ -612,11 +619,20 @@ function connectToAI(
           focusArea: focusSnapshot.focusArea ? { title: focusSnapshot.focusArea.title } : undefined,
         }
       } : {};
-      return {
+      const sandboxFormattedParams = {
         message: focusInfoText ? `${params.message}\n\n${focusInfoText}` : params.message,
         attachments: params.attachments,
         meta: { ...params.meta, ...focusMeta },
         ...(sender ? { sender } : {}),
+      };
+      if (!formatUserMessage) return sandboxFormattedParams;
+
+      const userFormattedParams = await formatUserMessage(sandboxFormattedParams);
+      return {
+        ...sandboxFormattedParams,
+        // TODO: 这里需要再考虑 formatUserMessage 的扩展语义。
+        // 目前 pluginAI 侧只让返回值中的 message 生效，attachments/meta/sender 暂不接管。
+        message: userFormattedParams.message,
       };
     },
   });
