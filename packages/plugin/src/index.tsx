@@ -28,7 +28,7 @@ export type { Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, 
 // ProviderConfig / ModelConfig 已由 request 包导出，此处仅导出 plugin 专属类型
 export type { SettingValue } from "./ui/setting";
 export { ChatPanel, ChatPanelList, ChatStartView, ComChatStartView } from "./ui/chat";
-export type { ChatPanelProps, ChatPanelRef, ChatPanelListProps, ChatStartViewProps, ComChatStartViewProps } from "./ui/chat";
+export type { ChatPanelProps, ChatPanelRef, ChatPanelListProps, ChatStartViewProps, ComChatStartViewProps, InputState } from "./ui/chat";
 export * from "./preset";
 
 // ─── PluginAI 实例 API ────────────────────────────────────────────────────────
@@ -55,6 +55,11 @@ export interface PluginAIController {
   requestAI(comId: string, params: SendToAgentParams): void;
   /** 向指定 comId 的对话输入框追加文本或图片附件。 */
   appendInput(comId: string, input: string | SendToAgentParams): void;
+  /**
+   * 获取指定 comId 对话框的当前输入草稿（文本 + 附件 + mentions）。
+   * 不传 comId 时返回当前活跃面板的草稿；面板未挂载时返回 undefined。
+   */
+  getInput(comId?: string): import("./ui/components/sender").InputState | undefined;
 }
 
 /** pluginAI() 返回值，顶层为 Mybricks 插件标准属性，controller 为扩展控制接口 */
@@ -306,6 +311,9 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
         ensureAIPanelOpen(comId).then(() => {
           context.appendInput(comId, input);
         });
+      },
+      getInput(comId?: string) {
+        return context.getInput(comId);
       },
     },
     contributes: {

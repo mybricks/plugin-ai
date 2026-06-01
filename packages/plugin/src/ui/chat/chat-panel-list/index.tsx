@@ -127,7 +127,19 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
       setTimeout(() => panelRefs.current.get(comId)?.appendInput(input));
     });
 
-    return () => { unFocus(); unDisplay(); unAppendInput(); };
+    // 注册 inputGetter，供 context.getInput() 调用（与 appendInput 同构，反向读取）
+    context.registerInputGetter((comId?: string) => {
+      const targetComId = comId ?? currentComIdRef.current;
+      if (!targetComId) return undefined;
+      return panelRefs.current.get(targetComId)?.getInput();
+    });
+
+    return () => {
+      unFocus();
+      unDisplay();
+      unAppendInput();
+      context.registerInputGetter(undefined);
+    };
   }, [handleFocus, ensureInstance]);
 
   return (

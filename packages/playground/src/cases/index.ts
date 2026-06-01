@@ -48,7 +48,7 @@ import { markdownRichCase, userMessageWithLinksCase, userMessageWithTenImagesCas
 import { multiEditSameFileCase, multiEditPartialSuccessCase } from "./multi-edit";
 import { editDoomLoopCase, editNoDoomLoopCase } from "./edit-doom-loop";
 import { editFewLinesCase } from "./edit-few-lines";
-import { summaryBasicCase, summaryEmptyResponseCase } from "./summary";
+import { summaryBasicCase, summaryEmptyResponseCase, suggestionsDisplayCase } from "./summary";
 import {
   webFetchBasicCase,
   webFetchFormatCase,
@@ -76,6 +76,7 @@ export const ALL_CASES: TestCase[] = [
   compactMidTurnErrorRetryCase,
   multiEditPartialSuccessCase,
   skillUseThenContinueCase,
+  suggestionsDisplayCase,
   // ─── 网络中断 ───────────────────────────────────
   networkErrorDelayedCase,
   toolCallArgsMidErrorCase,

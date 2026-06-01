@@ -219,6 +219,8 @@ export interface TurnRecord {
     /** 可点击的建议列表，点击后作为用户消息发送 */
     options: string[];
   };
+  /** 用户是否主动关闭了本轮建议展示。 */
+  suggestionsDismissed?: boolean;
 
 }
 

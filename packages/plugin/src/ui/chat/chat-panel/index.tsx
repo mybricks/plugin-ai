@@ -1,5 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { Sender, SenderRef, SenderProps } from "../../components/sender";
+import { Sender, SenderRef, SenderProps, InputState } from "../../components/sender";
 import { context } from "../../../context";
 import type { QueueItem } from "../../../context/queue";
 import type { CodeAgent } from "../../../../../agent/src";
@@ -43,6 +43,8 @@ export interface ChatPanelProps {
 export interface ChatPanelRef {
   focus: () => void;
   appendInput: SenderRef["appendInput"];
+  /** 获取输入框当前草稿内容 */
+  getInput: SenderRef["getInput"];
 }
 
 // ─── ChatPanel ────────────────────────────────────────────────────────────────
@@ -90,6 +92,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     appendInput: (params) => {
       senderRef.current?.appendInput(params);
     },
+    getInput: () => senderRef.current?.getInput() ?? { message: "", attachments: [], mentions: [] },
   }), []);
 
   // 同步历史 + 订阅事件 + turn 滚底

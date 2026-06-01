@@ -74,6 +74,7 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
           toolRendererMap={toolRendererMap}
           renderUserMessage={renderUserMessage}
           onRetry={index === messages.length - 1 ? onRetry : undefined}
+          isLast={index === messages.length - 1}
           agent={agent}
         />
       ))}
@@ -83,13 +84,14 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
 
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
-const MessageBubble = ({ record, user, copilot, toolRendererMap, renderUserMessage, onRetry, agent }: {
+const MessageBubble = ({ record, user, copilot, toolRendererMap, renderUserMessage, onRetry, isLast, agent }: {
   record: MessageRecord;
   user?: User;
   copilot?: User;
   toolRendererMap: Map<string, ToolRenderer>;
   renderUserMessage?: (record: MessageRecord) => React.ReactNode;
   onRetry?: (turnId: string) => void;
+  isLast?: boolean;
   agent?: CodeAgent;
 }) => {
   // 重试状态：{ attempt, maxRetries } 或 null
@@ -274,6 +276,11 @@ const MessageBubble = ({ record, user, copilot, toolRendererMap, renderUserMessa
                 )}
               </div>
             )}
+
+            {/* 建议选项（仅最后一条 turn、且 suggestions 已就绪时展示） */}
+            {isLast && record.suggestions && !record.suggestionsDismissed && agent && (
+              <SuggestionsBlock turnId={record.id} suggestions={record.suggestions} agent={agent} />
+            )}
           </div>
         </section>
       </div>
@@ -423,5 +430,72 @@ class AutoScroller {
     this.container?.removeEventListener("scroll", this.handleScroll.bind(this));
   }
 }
+
+// ─── SuggestionsBlock ──────────────────────────────────────────────────────────
+
+const SuggestionsBlock = ({
+  turnId,
+  suggestions,
+  agent,
+}: {
+  turnId: string;
+  suggestions: { desc?: string; options: string[] };
+  agent: CodeAgent;
+}) => {
+  const handleClick = (option: string) => {
+    agent.requestAI({ message: option });
+  };
+  const handleDismiss = () => {
+    void agent.dismissSuggestions(turnId);
+  };
+
+  return (
+    <div className={css["suggestions-message"]}>
+      <div className={css["suggestions-block"]}>
+        <div className={css["suggestions-desc"]}>
+          <span className={css["suggestions-header-title"]}>[ 智能建议 ]</span>
+          {suggestions.desc && <span className={css["suggestions-desc-text"]}>{suggestions.desc}</span>}
+        </div>
+        <div className={css["suggestions-options"]}>
+          {suggestions.options.map((opt, i) => (
+            <div
+              key={i}
+              role="button"
+              tabIndex={0}
+              className={css["suggestion-option"]}
+              onClick={() => handleClick(opt)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  handleClick(opt);
+                }
+              }}
+              title={opt}
+              style={{ animationDelay: `${i * 60}ms` }}
+            >
+              <span className={css["suggestion-option-text"]}>{opt}</span>
+            </div>
+          ))}
+          <div
+            role="button"
+            tabIndex={0}
+            className={classNames(css["suggestion-option"], css["suggestion-option-dismiss"])}
+            onClick={handleDismiss}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                handleDismiss();
+              }
+            }}
+            title="以上都不需要"
+            style={{ animationDelay: `${suggestions.options.length * 60}ms` }}
+          >
+            <span className={css["suggestion-option-text"]}>以上都不需要</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export { MessageList };

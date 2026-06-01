@@ -39,6 +39,42 @@ autoSummary fork 使用 turnsSlice: { from: "end", count: 1 } 只看最后一轮
 packages/agent/src/agent.ts（_runAutoSummary 方法）
 </handoff>`;
 
+const SUGGESTIONS_RESPONSE = `<summary>
+本轮读取了 App.tsx 并给出初步分析。
+1. 调用了 read_file 工具读取文件内容；
+2. Agent 已完成主回复，但还可以继续做验证或改动。
+</summary>
+
+<handoff>
+## 目标
+
+验证 autoSummary 生成 suggestions 后，ChatPanel 能在最后一条消息展示建议选项。
+
+## 重要指示
+
+- 这是 playground P0 测试用例，用于验证 suggestions 展示和点击入口
+
+## 关键发现
+
+suggestions 通过 turn:suggestions 事件异步写入当前 MessageRecord。
+
+## 完成情况
+
+已完成：主 turn 有工具调用并成功结束；summary fork 返回 <ask> 建议块。
+
+## 相关文件
+
+packages/agent/src/agent.ts（_runAutoSummary 方法）
+packages/plugin/src/ui/chat/messages/index.tsx（SuggestionsBlock）
+</handoff>
+
+<ask>
+  <desc>本轮已经读取并分析了文件，可以选择继续验证或直接推进修改。</desc>
+  <option>继续检查相关文件并给出改动建议</option>
+  <option>运行一次构建验证当前状态</option>
+  <option>基于刚才的分析直接修改 App.tsx</option>
+</ask>`;
+
 function makeSummaryAwareRequest(): TestCase["request"] {
   return async (params: any) => {
     const msgs = params.messages ?? [];
@@ -121,4 +157,70 @@ export const summaryEmptyResponseCase: TestCase = {
     params.emits.complete?.("");
   }) as TestCase["request"],
   summaryOptions: { enabled: true },
+};
+
+/** suggestions 展示（summary fork 返回 <ask>，ChatPanel 渲染可点击选项） */
+export const suggestionsDisplayCase: TestCase = {
+  id: "suggestions-display",
+  name: "suggestions 展示",
+  group: "Summary",
+  priority: "P0",
+  description:
+    "主 turn 先调用 read_file，再正常回复；turn 完成后 summary fork 返回 <summary>、<handoff> 和 <ask>，用于验证最后一条消息下方展示建议选项。",
+  expectedBehavior:
+    "发送消息后先看到 read_file 工具卡片和主回复；约 800ms 后最后一条消息下方出现说明文案和 3 个建议按钮，点击任一按钮会作为下一轮用户消息发送。",
+  initialTurns: makeTextHistory([
+    { user: "先看看 App.tsx", assistant: "可以，我会先读取文件。" },
+  ]),
+  request: async (params: any) => {
+    const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+    const msgs = params.messages ?? [];
+    const lastUserMsg = [...msgs].reverse().find((m: any) => m.role === "user");
+    const isSummaryFork =
+      typeof lastUserMsg?.content === "string" &&
+      lastUserMsg.content.includes("IMPORTANT: 不要调用工具");
+
+    if (isSummaryFork) {
+      await delay(800);
+      for (const chunk of SUGGESTIONS_RESPONSE.match(/.{1,35}/g) ?? []) {
+        await delay(15);
+        params.emits.write(chunk);
+      }
+      params.emits.onFinishReason?.("stop");
+      params.emits.complete?.("");
+      return;
+    }
+
+    const hasReadResult = msgs.some(
+      (m: any) =>
+        m.role === "tool" &&
+        typeof m.content === "string" &&
+        m.content.includes("App")
+    );
+
+    if (!hasReadResult) {
+      await delay(300);
+      params.emits.onToolCallStream?.({
+        index: 0,
+        id: "c_suggestion_read_1",
+        name: "read_file",
+        argsChunk: "",
+      });
+      params.emits.onToolCalls?.([
+        { id: "c_suggestion_read_1", name: "read_file", args: { path: "src/App.tsx" } },
+      ]);
+      params.emits.onFinishReason?.("tool_calls");
+      params.emits.complete?.("");
+      return;
+    }
+
+    const reply = "我已经读取了 App.tsx，并完成了初步检查。这个场景会在 turn 完成后异步展示 suggestions。";
+    for (const chunk of reply.match(/.{1,12}/g) ?? []) {
+      await delay(25);
+      params.emits.write(chunk);
+    }
+    params.emits.onFinishReason?.("stop");
+    params.emits.complete?.("");
+  },
+  summaryOptions: { enabled: true, suggestions: true },
 };

@@ -55,6 +55,30 @@ export type AgentEventMap = {
   };
 
   /**
+   * autoSummary 生成的建议选项写入完成后触发（异步，turn:complete 之后）。
+   * 仅当 AgentOptions.summary.suggestions 为 true 且 LLM 输出了 <ask> 块时触发。
+   * UI 侧收到后将 suggestions 写入对应 MessageRecord，只在最后一条 turn 展示。
+   */
+  "turn:suggestions": {
+    /** 对应的 TurnRecord.id */
+    turnId: string;
+    suggestions: {
+      /** LLM 对这组建议的说明（可选） */
+      desc?: string;
+      /** 可点击的建议列表，点击后作为用户消息发送 */
+      options: string[];
+    };
+  };
+
+  /**
+   * 用户主动关闭建议选项后触发。
+   */
+  "turn:suggestions:dismiss": {
+    /** 对应的 TurnRecord.id */
+    turnId: string;
+  };
+
+  /**
    * Doom loop 警告：检测到连续 N 次完全相同的工具调用序列（相同 name + args，且顺序一致）。
    * 触发后循环将中断并进入 turn:error。
    *   - `toolName`  重复的工具名

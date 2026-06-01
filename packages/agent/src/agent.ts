@@ -760,6 +760,21 @@ export class Agent {
     return this.turns;
   }
 
+  /** 主动关闭某轮建议选项展示。 */
+  async dismissSuggestions(turnId: string): Promise<void> {
+    const turn = this.turns.find((t) => t.id === turnId);
+    if (turn) {
+      turn.suggestionsDismissed = true;
+    }
+
+    const { history, key } = this.options;
+    if (history && key) {
+      await history.update(key, turnId, { suggestionsDismissed: true });
+    }
+
+    this.events.emit("turn:suggestions:dismiss", { turnId });
+  }
+
   /** 获取 compact 记录（供 UI 或外部读取） */
   getCompactRecord(): CompactRecord | null {
     return this.compactRecord;
@@ -1469,10 +1484,9 @@ export class Agent {
    * best-effort：异步执行，调用方用 .catch() 静默失败。
    */
   private async _runAutoSummary(turn: TurnRecord): Promise<void> {
-    const suggestionsEnabled = this.options.summary?.suggestions === true;
-
+    const suggestionsEnabled = this.options.summary?.suggestions !== false;
     // ── 任务1：生成总结 ───────────────────────────────────────────────────────
-    const TASK_SUMMARY = `1. 生成一份总结
+    const TASK_SUMMARY = `${suggestionsEnabled ? "2" : "1"}. 生成一份总结
 <总结生成规则>
 用 1-3 句话对本轮对话进行总结，内容用 <summary></summary> 标签包裹。
 关注点：做了什么有效的事情。
@@ -1487,7 +1501,7 @@ export class Agent {
 </总结生成规则>`;
 
     // ── 任务2：可延续对话摘要 ─────────────────────────────────────────────────
-    const TASK_HANDOFF = `2. 为后续对话生成一份「可延续对话摘要」。目标是让另一个 agent 读完这份摘要后，能无缝接手并继续当前工作。
+    const TASK_HANDOFF = `${suggestionsEnabled ? "3" : "2"}. 为后续对话生成一份「可延续对话摘要」。目标是让另一个 agent 读完这份摘要后，能无缝接手并继续当前工作。
 
 <可延续对话摘要生成规则>
 请基于下方对话历史，严格按照以下模板输出（保留二级标题与结构，只填写各节内容），并将整份摘要用 <handoff></handoff> 标签包裹：
@@ -1532,17 +1546,50 @@ export class Agent {
     // <option>建议选项2</option>
     // </ask>
     const TASK_SUGGESTIONS = suggestionsEnabled ? `
-3. TODO: [在此填写建议选项任务的提示词]
+1. 根据本轮的模型输出和操作内容，生成「下一步建议选项」
+<下一步建议选项生成规则>
+建议的内容格式为一句话 + 3个及以下的选项指令，内容用 <ask></ask> 标签包裹。
+
+只在满足以下任一情况时输出 <ask>
+1. 本轮需求没有完全完成，存在明确待继续的工作；
+2. 任务已完成，但存在关联性强且高价值的下一步。
+否则不要输出 <ask>
+
+注意：所有建议需要和本轮对话有高度相关性，不要过度揣测和建议，只提供最实用的建议。
+option 的内容必须清晰，必须是一个描述清晰的需求，用于之后给到的模型。
+
+输出格式：
+<ask>
+  <desc>一句话说明为什么建议这些下一步</desc>
+  <option>可直接发送的用户指令 1</option>
+  <option>可直接发送的用户指令 2</option>
+</ask>
+
+比如：内容异常，并没有完成
+<ask>
+  <desc>发现本轮任务异常结束了，可以选择继续让模型操作</desc>
+  <option>继续完成刚才未做完的部分</option>
+</ask>
+注意：任务异常结束，只有一个建议选项，就是继续完成。
+
+比如：发现多个相关的可深入方向
+<ask>
+  <desc>文本大小已经调整完毕，同时发现有几个建议的方向，可以选择一个进行。</desc>
+  <option>商品价格改成千分位展示，避免内容过长</option>
+  <option>把商品标题也改成更小的大小</option>
+</ask>
+注意：用户调整大小是因为太挤了，所以格式化和其他字体调小是有高度关联性的建议。
+
+</下一步建议选项生成规则>
 ` : "";
 
     const taskCount = suggestionsEnabled ? "三" : "两";
     const SUMMARY_PROMPT = `IMPORTANT: 不要调用工具！
 你有${taskCount}个任务
 
-${TASK_SUMMARY}
+${suggestionsEnabled ? `${TASK_SUGGESTIONS}\n\n` : ""}${TASK_SUMMARY}
 
 ${TASK_HANDOFF}
-${TASK_SUGGESTIONS}
 IMPORTANT: 不要调用工具！
 `;
 
@@ -1551,8 +1598,54 @@ IMPORTANT: 不要调用工具！
     (fork as any).options.formatUserMessage = undefined;
 
     let lastContent = "";
+    let suggestionsResult: TurnRecord["suggestions"] | undefined;
+    const { history, key } = this.options;
+
+    const parseSuggestions = (content: string): TurnRecord["suggestions"] | undefined => {
+      try {
+        const askMatch = content.match(/<ask\b[^>]*>([\s\S]*?)<\/ask>/i);
+        if (!askMatch) return undefined;
+
+        const inner = askMatch[1];
+        // <desc> 可选；[\s\S]*? 兼容换行/缩进等各种 LLM 输出格式
+        const descMatch = inner.match(/<desc\b[^>]*>([\s\S]*?)<\/desc>/i);
+        const desc = descMatch?.[1].trim();
+        // 不使用 matchAll + spread：低编译目标下 iterator spread 可能被转成按 length 展开，导致结果为空。
+        const options: string[] = [];
+        const optionRe = /<option\b[^>]*>([\s\S]*?)<\/option>/gi;
+        let optionMatch: RegExpExecArray | null;
+        while ((optionMatch = optionRe.exec(inner)) !== null) {
+          const option = optionMatch[1].trim();
+          if (option) options.push(option);
+        }
+
+        if (options.length === 0) return undefined;
+        return { options, ...(desc ? { desc } : {}) };
+      } catch (e) {
+        console.warn("[Agent] suggestions parse failed:", e);
+        return undefined;
+      }
+    };
+
+    const emitSuggestionsOnce = (suggestions: TurnRecord["suggestions"]) => {
+      if (suggestionsResult) return;
+      suggestionsResult = suggestions;
+      turn.suggestions = suggestions;
+
+      if (history && key) {
+        void history.update(key, turn.id, { suggestions }).catch((e) => {
+          console.warn("[Agent] suggestions history update failed:", e);
+        });
+      }
+
+      this.events.emit("turn:suggestions", { turnId: turn.id, suggestions });
+    };
+
     fork.events.on("llm:content", ({ content }) => {
       lastContent = content;
+      if (!suggestionsEnabled || suggestionsResult || !content.includes("</ask>")) return;
+      const suggestions = parseSuggestions(content);
+      if (suggestions) emitSuggestionsOnce(suggestions);
     });
 
     try {
@@ -1573,28 +1666,10 @@ IMPORTANT: 不要调用工具！
     const handoffMatch = lastContent.match(/<handoff>([\s\S]*?)<\/handoff>/);
     const handoffText = handoffMatch?.[1].trim() ?? "";
 
-    // 解析 <ask>...</ask>（建议选项，仅 suggestions.enabled 时生效）
-    // 解析失败只 log，不影响 summary/handoff 的写入和后续流程
-    let suggestionsResult: TurnRecord["suggestions"] | undefined;
-    if (suggestionsEnabled) {
-      try {
-        const askMatch = lastContent.match(/<ask>([\s\S]*?)<\/ask>/);
-        if (askMatch) {
-          const inner = askMatch[1];
-          // <desc> 可选；[\s\S]*? 兼容换行/缩进等各种 LLM 输出格式
-          const descMatch = inner.match(/<desc>([\s\S]*?)<\/desc>/);
-          const desc = descMatch?.[1].trim();
-          // matchAll 拿到所有 <option>，trim() 清理首尾空白
-          const options = [...inner.matchAll(/<option>([\s\S]*?)<\/option>/g)]
-            .map(m => m[1].trim())
-            .filter(Boolean);
-          if (options.length > 0) {
-            suggestionsResult = { options, ...(desc ? { desc } : {}) };
-          }
-        }
-      } catch (e) {
-        console.warn("[Agent] suggestions parse failed:", e);
-      }
+    // 兜底：若 streaming 阶段没来得及解析，完整返回后再解析一次。
+    if (suggestionsEnabled && !suggestionsResult) {
+      const suggestions = parseSuggestions(lastContent);
+      if (suggestions) emitSuggestionsOnce(suggestions);
     }
 
     if (!summaryText && !handoffText && !suggestionsResult) return;
@@ -1603,7 +1678,6 @@ IMPORTANT: 不要调用工具！
     if (handoffText) turn.handoff = handoffText;
     if (suggestionsResult) turn.suggestions = suggestionsResult;
 
-    const { history, key } = this.options;
     if (history && key) {
       await history.update(key, turn.id, {
         ...(summaryText ? { summary: summaryText } : {}),

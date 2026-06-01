@@ -3,6 +3,7 @@ import type { SendToAgentParams } from "../sandbox";
 import type { Designer, Hooks } from "../sandbox/types";
 import { AIRequestQueue } from "./queue";
 import type { LLMProviders } from "../../../request/src";
+import type { InputState } from "../ui/components/sender";
 
 /** LLM 设置值类型（避免循环依赖） */
 export interface SettingValue {
@@ -103,6 +104,24 @@ class Context {
   /** 向指定 comId 的输入框追加内容。ChatPanelList 会负责确保面板存在。 */
   appendInput(comId: string, input: string | SendToAgentParams) {
     this.events.emit("appendInput", { comId, input });
+  }
+
+  // ─── 输入框草稿读取 ────────────────────────────────────────────────────────
+
+  /** 由 ChatPanelList 注册：comId → InputState 的同步 getter */
+  private _inputGetter?: (comId?: string) => InputState | undefined;
+
+  /** ChatPanelList mount 后注册 getter；unmount 时传 undefined 清空 */
+  registerInputGetter(getter: ((comId?: string) => InputState | undefined) | undefined) {
+    this._inputGetter = getter;
+  }
+
+  /**
+   * 获取指定 comId 对话框的当前输入草稿（文本 + 附件 + mentions）。
+   * 不传 comId 时返回当前活跃面板的草稿；面板不存在时返回 undefined。
+   */
+  getInput(comId?: string): InputState | undefined {
+    return this._inputGetter?.(comId);
   }
 
   /** 插件启停覆盖值，用于影响后续新建的 CodeAgent 实例。 */

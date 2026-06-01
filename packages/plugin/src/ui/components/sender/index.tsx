@@ -162,11 +162,22 @@ interface SenderProps {
   };
 }
 
+export interface InputState {
+  /** 输入框当前文本（未发送的草稿） */
+  message: string;
+  /** 当前附件列表（含上传中的占位项） */
+  attachments: AttachmentItem[];
+  /** 当前 @提及 / focus mentions */
+  mentions: Mention[];
+}
+
 interface SenderRef {
   focus: () => void;
   appendInput: (params: string | SendToAgentParams) => void;
   // TODO: 目前仅展示聚焦组件且单个比较简单直接set即可，后续可通过输入框@唤起选择多个
   setMentions: (mentions: Mention[]) => void;
+  /** 获取输入框当前草稿内容（文本 + 附件 + mentions） */
+  getInput: () => InputState;
 }
 
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
@@ -234,8 +245,13 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         setMentions(mentions)
         setVibeCoding(mentions[0]?.vibeCoding || false);
       },
+      getInput: () => ({
+        message: inputEditorRef.current?.textContent ?? "",
+        attachments: [...attachments],
+        mentions: [...mentions],
+      }),
     };
-  }, []);
+  }, [attachments, mentions]);
 
   const send = () => {
     const inputContent = inputEditorRef.current!.textContent;
@@ -521,4 +537,4 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 })
 
 export { Sender }
-export type { SenderRef, SenderProps }
+export type { SenderRef, SenderProps, InputState }

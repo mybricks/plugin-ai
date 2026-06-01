@@ -32,7 +32,8 @@ export interface TestCase {
     contextWindow?: number;
   };
   summaryOptions?: {
-    enabled?: boolean;
+    enabled: boolean;
+    suggestions?: boolean;
   };
   /** 覆盖 CodeAgent 的其他配置（maxSteps、doomLoopThreshold 等） */
   agentOptions?: {

@@ -346,6 +346,20 @@ export function useSession(agent: Agent | undefined) {
           iters[iters.length - 1] = { ...last, status, content, endTime };
           return { ...r, iterations: iters };
         });
+      }),
+
+      // turn:suggestions → autoSummary 异步写入 suggestions 后更新对应 MessageRecord
+      a.events.on("turn:suggestions", ({ turnId, suggestions }) => {
+        setMessages((prev) =>
+          prev.map((r) => (r.id === turnId ? { ...r, suggestions } : r))
+        );
+      }),
+
+      // turn:suggestions:dismiss → 用户主动关闭建议展示
+      a.events.on("turn:suggestions:dismiss", ({ turnId }) => {
+        setMessages((prev) =>
+          prev.map((r) => (r.id === turnId ? { ...r, suggestionsDismissed: true } : r))
+        );
       })
     );
 

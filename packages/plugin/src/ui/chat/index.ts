@@ -1,5 +1,6 @@
 export { ChatPanel } from "./chat-panel";
 export type { ChatPanelProps, ChatPanelRef } from "./chat-panel";
+export type { InputState } from "../components/sender";
 
 export { ChatPanelList } from "./chat-panel-list";
 export type { ChatPanelListProps } from "./chat-panel-list";
