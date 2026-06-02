@@ -469,7 +469,7 @@
   border: 1px solid transparent;
   border-radius: 6px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.15s;
   text-align: left;
   user-select: none;
   outline: none;
@@ -477,13 +477,25 @@
 
   &:hover,
   &:focus-visible {
-    background: var(--mybricks-bg-color-main, #FFF);
-    border-color: var(--mybricks-border-color-main, #E6E6E6);
+    background: var(--mybricks-primary-color-light, rgba(250, 100, 0, 0.06));
+    border-color: var(--mybricks-primary-color, #fa6400);
+    color: var(--mybricks-primary-color, #fa6400);
+
+    .suggestion-option-text {
+      color: var(--mybricks-primary-color, #fa6400);
+    }
   }
 
   &:active {
     transform: translateY(1px);
-    background: var(--mybricks-bg-color-secondary, #F5F5F5);
+    background: var(--mybricks-primary-color-light, rgba(250, 100, 0, 0.1));
+  }
+
+  &.suggestion-option-disabled {
+    opacity: 0.4 !important;
+    cursor: not-allowed;
+    pointer-events: none;
+    animation: none;
   }
 }
 

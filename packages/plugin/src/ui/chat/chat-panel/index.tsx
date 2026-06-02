@@ -7,6 +7,7 @@ import type { LLMProviders, ModelSelection } from "../../../../../request/src/pr
 import { useSession } from "../use-session";
 import { MessageList } from "../messages";
 import { Header } from "./header";
+import { ChatPanelProvider } from "./context";
 import type { MessageRecord } from "../use-session";
 import css from "./index.less";
 
@@ -163,50 +164,51 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     );
   };
 
-  return (
-    <div className={css["chat-panel"]}>
-      {header ? <Header title={title} onClear={onClear} onExport={onExportHistory} /> : null}
+  const isDisabled = !agent || disabled || contextDisabled;
 
-      <div className={css["messages-area"]}>
-        <MessageList
-          ref={messageListRef}
-          messages={messages}
-          user={user}
-          copilot={copilot}
-          agent={agent}
-          renderUserMessage={renderUserMessage}
-          onRetry={(id: string) => {
-            if (!agent) return;
-            context.aiQueue.clearQueue(agentKey);
-            context.aiQueue.send(
-              agentKey,
-              async () => {
-                context.aiQueue.registerAbort(agentKey, () => agent.abort());
-                await agent.retry(id);
-              },
-              { message: "" }
-            );
-          }}
+  return (
+    <ChatPanelProvider value={{ user, copilot, disabled: isDisabled, renderUserMessage }}>
+      <div className={css["chat-panel"]}>
+        {header ? <Header title={title} onClear={onClear} onExport={onExportHistory} /> : null}
+
+        <div className={css["messages-area"]}>
+          <MessageList
+            ref={messageListRef}
+            messages={messages}
+            agent={agent}
+            onRetry={(id: string) => {
+              if (!agent) return;
+              context.aiQueue.clearQueue(agentKey);
+              context.aiQueue.send(
+                agentKey,
+                async () => {
+                  context.aiQueue.registerAbort(agentKey, () => agent.abort());
+                  await agent.retry(id);
+                },
+                { message: "" }
+              );
+            }}
+          />
+        </div>
+
+        <Sender
+          ref={senderRef}
+          loading={loading}
+          placeholder={`您好，我是${context.name}，请详细描述您的需求`}
+          disabled={isDisabled}
+          mode="mention"
+          chatMode={null}
+          onSend={onSend}
+          onChatModeChange={() => {}}
+          onUpload={onUpload ?? context.pluginParams.onUpload}
+          onStop={() => context.aiQueue.stop(agentKey)}
+          pendingQueue={pendingQueue}
+          onRemoveFromQueue={(id: string) => context.aiQueue.removeFromQueue(agentKey, id)}
+          renderFocus={renderFocus}
+          modelSelector={modelSelector}
         />
       </div>
-
-      <Sender
-        ref={senderRef}
-        loading={loading}
-        placeholder={`您好，我是${context.name}，请详细描述您的需求`}
-        disabled={!agent || disabled || contextDisabled}
-        mode="mention"
-        chatMode={null}
-        onSend={onSend}
-        onChatModeChange={() => {}}
-        onUpload={onUpload ?? context.pluginParams.onUpload}
-        onStop={() => context.aiQueue.stop(agentKey)}
-        pendingQueue={pendingQueue}
-        onRemoveFromQueue={(id: string) => context.aiQueue.removeFromQueue(agentKey, id)}
-        renderFocus={renderFocus}
-        modelSelector={modelSelector}
-      />
-    </div>
+    </ChatPanelProvider>
   );
 });
 

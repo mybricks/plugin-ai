@@ -16,11 +16,11 @@ type ThemeMode = "light" | "dark" | "none";
 
 const THEME_KEY = "pg-theme";
 const THEME_ORDER: ThemeMode[] = ["light", "dark", "none"];
-const THEME_ICONS: Record<ThemeMode, string> = { light: "☀️", dark: "🌙", none: "🔍" };
+const THEME_ICONS: Record<ThemeMode, string> = { light: "Light", dark: "Dark", none: "None" };
 const THEME_TIPS: Record<ThemeMode, string> = {
-  light: "浅色模式（CSS 变量已注入）",
-  dark: "暗黑模式（CSS 变量已注入）",
-  none: "默认值模式（无 CSS 变量注入，验证 fallback）",
+  light: "Light mode (CSS variables injected)",
+  dark: "Dark mode (CSS variables injected)",
+  none: "Default mode (no CSS variables, verify fallback)",
 };
 
 function useTheme() {
@@ -54,23 +54,36 @@ function ThemeToggle({ mode, onCycle }: { mode: ThemeMode; onCycle: () => void }
   );
 }
 
+// ─── Disabled Toggle ──────────────────────────────────────────────────────────
+
+function useChatDisabled() {
+  const [disabled, setDisabled] = useState(false);
+
+  const toggle = useCallback(() => {
+    setDisabled(v => !v);
+  }, []);
+
+  return { disabled, toggle };
+}
+
+function DisabledToggle({ disabled, onToggle }: { disabled: boolean; onToggle: () => void }) {
+  return (
+    <button
+      className={`pg-disabled-toggle${disabled ? " active" : ""}`}
+      onClick={onToggle}
+      title={disabled ? "Disabled: input is blocked" : "Enabled: input is available"}
+    >
+      <span className="pg-disabled-label">Disabled</span>
+      <span className="pg-disabled-state">{disabled ? "ON" : "OFF"}</span>
+    </button>
+  );
+}
+
 const P0_CASES = ALL_CASES.filter(c => c.priority === "P0");
 const P0_GROUPS = groupCases(P0_CASES);
 const OTHER_CASES = ALL_CASES.filter(c => c.priority !== "P0");
 const OTHER_GROUPS = groupCases(OTHER_CASES);
-const GROUP_ICONS: Record<string, string> = {
-  "P0 核心场景": "🔴",
-  "网络中断": "🌐",
-  "工具调用": "🔧",
-  "多轮 ReAct": "🔁",
-  "消息遮蔽": "🎭",
-  "异常检测": "⚠️",
-  "Compact": "🗜️",
-  "Skill 技能": "🧠",
-  "WebFetch": "🔗",
-  "UI 渲染": "🎨",
-  "设置": "⚙️",
-};
+const GROUP_ICONS: Record<string, string> = {};
 
 // ─── FS Viewer ────────────────────────────────────────────────────────────────
 
@@ -101,7 +114,7 @@ function FSViewer({ memFS }: { memFS: MemFS | null }) {
   return (
     <div className="pg-fs-viewer">
       <div className="pg-fs-header">
-        <span className="pg-fs-title">📁 MemFS</span>
+        <span className="pg-fs-title">MemFS</span>
         <span className="pg-case-count">{files.length} files</span>
       </div>
       <div className="pg-fs-body">
@@ -139,7 +152,7 @@ function InspectorPanel({ snapshots }: { snapshots: RequestSnapshot[] }) {
   return (
     <div className="pg-inspector">
       <div className="pg-inspector-header">
-        <span className="pg-inspector-title">🔍 Request Inspector</span>
+        <span className="pg-inspector-title">Request Inspector</span>
         <span className="pg-case-count">{snapshots.length} calls</span>
       </div>
 
@@ -206,6 +219,7 @@ function InspectorPanel({ snapshots }: { snapshots: RequestSnapshot[] }) {
 
 export default function App() {
   const { mode, cycle: cycleTheme } = useTheme();
+  const { disabled: chatDisabled, toggle: toggleDisabled } = useChatDisabled();
 
   // 从 URL 读取初始 case（?case=xxx）
   const initialCaseId = new URLSearchParams(window.location.search).get("case");
@@ -263,11 +277,12 @@ export default function App() {
             <button
               className="pg-setting-btn"
               onClick={() => openSetting()}
-              title="打开设置"
+              title="Open settings"
             >
-              ⚙️ 设置
+              Settings
             </button>
           )}
+          <DisabledToggle disabled={chatDisabled} onToggle={toggleDisabled} />
           <ThemeToggle mode={mode} onCycle={cycleTheme} />
         </div>
       </header>
@@ -277,13 +292,13 @@ export default function App() {
         {/* Case 侧边栏 */}
         <aside className="pg-sidebar">
           <div className="pg-sidebar-header">
-            <span className="pg-sidebar-title">🧪 Test Cases</span>
+            <span className="pg-sidebar-title">Test Cases</span>
             <span className="pg-case-count">{ALL_CASES.length}</span>
           </div>
           {/* WebFetch URL 输入框 */}
           {showWebFetchInput && (
             <div className="pg-webfetch-input-wrap">
-              <label className="pg-webfetch-label">🔗 URL</label>
+              <label className="pg-webfetch-label">URL</label>
               <input
                 type="url"
                 className="pg-webfetch-input"
@@ -300,7 +315,7 @@ export default function App() {
             ].map(([group, cases]) => (
               <div key={group} className="pg-group">
                 <div className="pg-group-label">
-                  {GROUP_ICONS[group] ?? "📁"} {group}
+                  {GROUP_ICONS[group] ? GROUP_ICONS[group] + " " : ""}{group}
                 </div>
                 {cases.map((c) => (
                   <button
@@ -331,7 +346,7 @@ export default function App() {
                 <span className="pg-expected-label">预期行为</span>
                 <span className="pg-expected-text">{activeCase.expectedBehavior}</span>
               </div>
-              <button className="pg-reset-btn" onClick={handleReset}>↺ 重置</button>
+              <button className="pg-reset-btn" onClick={handleReset}>Reset</button>
             </div>
           </div>
         )}
@@ -340,7 +355,7 @@ export default function App() {
           {/* ChatPanel 列 */}
           <div className="pg-chat-col">
             {agent ? (
-              <ChatPanel agent={agent as any} title="playground" header={true} />
+              <ChatPanel agent={agent as any} title="playground" header={true} disabled={chatDisabled} />
             ) : (
               <div className="pg-loading">加载中…</div>
             )}

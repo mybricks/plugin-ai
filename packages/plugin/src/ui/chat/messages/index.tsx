@@ -10,29 +10,22 @@ import type { CodeAgent } from "../../../../../agent/src";
 import { getToolRenderer } from "./tool-renders/index";
 import type { ToolRenderer } from "./tool-renders/index";
 import { DefaultToolRenderer } from "./tool-renders/renders";
+import { useChatPanel } from "../chat-panel/context";
 import "./tool-renders/register";
 import css from "./index.less";
 
 const md = markdownit();
 
-interface User {
-  name?: string;
-  avatar?: string;
-}
-
 export interface MessageListProps {
   messages: MessageRecord[];
-  user?: User;
-  copilot?: User;
   agent?: CodeAgent;
-  renderUserMessage?: (record: MessageRecord) => React.ReactNode;
   onRetry?: (turnId: string) => void;
 }
 
 type MessageListRef = { scrollToBottom: () => void };
 
 const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
-  function MessageListInner({ messages, user, copilot, agent, renderUserMessage, onRetry }, ref) {
+  function MessageListInner({ messages, agent, onRetry }, ref) {
   const mainRef = useRef<HTMLElement>(null);
   const scrollerRef = useRef<AutoScroller | null>(null);
 
@@ -69,10 +62,7 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
         <MessageBubble
           key={record.id}
           record={record}
-          user={user}
-          copilot={copilot}
           toolRendererMap={toolRendererMap}
-          renderUserMessage={renderUserMessage}
           onRetry={index === messages.length - 1 ? onRetry : undefined}
           isLast={index === messages.length - 1}
           agent={agent}
@@ -84,16 +74,15 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
 
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
-const MessageBubble = ({ record, user, copilot, toolRendererMap, renderUserMessage, onRetry, isLast, agent }: {
+const MessageBubble = ({ record, toolRendererMap, onRetry, isLast, agent }: {
   record: MessageRecord;
-  user?: User;
-  copilot?: User;
   toolRendererMap: Map<string, ToolRenderer>;
-  renderUserMessage?: (record: MessageRecord) => React.ReactNode;
   onRetry?: (turnId: string) => void;
   isLast?: boolean;
   agent?: CodeAgent;
 }) => {
+  const { user, copilot, renderUserMessage } = useChatPanel();
+
   // 重试状态：{ attempt, maxRetries } 或 null
   const [retryState, setRetryState] = useState<{ attempt: number; maxRetries: number } | null>(null);
 
@@ -442,10 +431,14 @@ const SuggestionsBlock = ({
   suggestions: { desc?: string; options: string[] };
   agent: CodeAgent;
 }) => {
+  const { disabled } = useChatPanel();
+
   const handleClick = (option: string) => {
+    if (disabled) return;
     agent.requestAI({ message: option });
   };
   const handleDismiss = () => {
+    if (disabled) return;
     void agent.dismissSuggestions(turnId);
   };
 
@@ -461,8 +454,8 @@ const SuggestionsBlock = ({
             <div
               key={i}
               role="button"
-              tabIndex={0}
-              className={css["suggestion-option"]}
+              tabIndex={disabled ? -1 : 0}
+              className={classNames(css["suggestion-option"], { [css["suggestion-option-disabled"]]: disabled })}
               onClick={() => handleClick(opt)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
@@ -470,7 +463,6 @@ const SuggestionsBlock = ({
                   handleClick(opt);
                 }
               }}
-              title={opt}
               style={{ animationDelay: `${i * 60}ms` }}
             >
               <span className={css["suggestion-option-text"]}>{opt}</span>
@@ -478,8 +470,8 @@ const SuggestionsBlock = ({
           ))}
           <div
             role="button"
-            tabIndex={0}
-            className={classNames(css["suggestion-option"], css["suggestion-option-dismiss"])}
+            tabIndex={disabled ? -1 : 0}
+            className={classNames(css["suggestion-option"], css["suggestion-option-dismiss"], { [css["suggestion-option-disabled"]]: disabled })}
             onClick={handleDismiss}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
@@ -487,7 +479,6 @@ const SuggestionsBlock = ({
                 handleDismiss();
               }
             }}
-            title="以上都不需要"
             style={{ animationDelay: `${suggestions.options.length * 60}ms` }}
           >
             <span className={css["suggestion-option-text"]}>以上都不需要</span>
