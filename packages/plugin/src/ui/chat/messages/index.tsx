@@ -446,7 +446,7 @@ const SuggestionsBlock = ({
     <div className={css["suggestions-message"]}>
       <div className={css["suggestions-block"]}>
         <div className={css["suggestions-desc"]}>
-          <span className={css["suggestions-header-title"]}>[ 智能建议 ]</span>
+          <span className={css["suggestions-header-title"]}>[ 对下一步的建议 ]</span>
           {suggestions.desc && <span className={css["suggestions-desc-text"]}>{suggestions.desc}</span>}
         </div>
         <div className={css["suggestions-options"]}>

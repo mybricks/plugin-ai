@@ -747,7 +747,14 @@ export class Agent {
       const loadedIds = new Set(loadedTurns.map((turn) => turn.id));
       const activeTurns = this.turns.filter((turn) => !turn.endTime && !loadedIds.has(turn.id));
       this.turns = [...loadedTurns, ...activeTurns];
-      this.compactRecord = await history.loadCompact(key);
+      let compactRecord = await history.loadCompact(key);
+      if (compactRecord && typeof compactRecord === "string") {
+        try {
+          const parsed = JSON.parse(compactRecord as any);
+          if (parsed && "upToTurnId" in parsed) compactRecord = parsed;
+        } catch {}
+      }
+      this.compactRecord = compactRecord;
     }
   }
 
@@ -1550,17 +1557,19 @@ export class Agent {
     // <option>建议选项2</option>
     // </ask>
     const TASK_SUGGESTIONS = suggestionsEnabled ? `
-1. 根据本轮的模型输出和操作内容，生成「下一步建议选项」
+1. 根据本轮的模型输出和操作内容，判断是否要生成「下一步建议选项」
 <下一步建议选项生成规则>
 建议的内容格式为一句话 + 3个及以下的选项指令，内容用 <ask></ask> 标签包裹。
 
 只在满足以下任一情况时输出 <ask>
-1. 本轮需求没有完全完成，存在明确待继续的工作；
-2. 任务已完成，但存在关联性强且高价值的下一步。
+1. 本轮需求出现异常/未完成情况，没有完成既定目标，也没有告知用户未完成的原因或者询问；
 否则不要输出 <ask>
 
-注意：所有建议需要和本轮对话有高度相关性，不要过度揣测和建议，只提供最实用的建议。
-option 的内容必须清晰，必须是一个描述清晰的需求，用于之后给到的模型。
+注意：所有建议需要和本轮对话有高度相关性，不允许揣测，关注执行情况，基于既定的事实和记录，提供建议。
+1. 基于事实：基于执行情况，禁止揣测操作什么命令控制台、校验服务，根本没有这个能力；
+2. 易于理解：option 的内容必须清晰，必须是一个描述清晰的需求，这个指令会作为下一步的指令给到用户；
+
+重要：宁可不推荐，也不要推荐不合理的建议！
 
 输出格式：
 <ask>
@@ -1576,13 +1585,13 @@ option 的内容必须清晰，必须是一个描述清晰的需求，用于之�
 </ask>
 注意：任务异常结束，只有一个建议选项，就是继续完成。
 
-比如：发现多个相关的可深入方向
+比如：发现当前还有部分需求没有实现
 <ask>
-  <desc>文本大小已经调整完毕，同时发现有几个建议的方向，可以选择一个进行。</desc>
-  <option>商品价格改成千分位展示，避免内容过长</option>
-  <option>把商品标题也改成更小的大小</option>
+  <desc>文本大小已经调整完毕，但是距离完成目标建议处理下溢出情况</desc>
+  <option>继续实现下文本溢出功能</option>
 </ask>
-注意：用户调整大小是因为太挤了，所以格式化和其他字体调小是有高度关联性的建议。
+
+比如：发现需要用户提供材料、或者选择方案才能继续进行，不要提供建议，输出里已经有对用户的询问内容了。
 
 </下一步建议选项生成规则>
 ` : "";

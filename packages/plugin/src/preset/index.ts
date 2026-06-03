@@ -1,2 +1,2 @@
-export { commonCodePreset } from "./common-code";
-export type { PluginAIPreset } from "./common-code";
+export { fullStackAppPromptBuilder, fullStackAppPromptSection } from "./full-stack-app";
+export type { FullStackAppDatabaseType, FullStackAppPromptBuilderOptions } from "./full-stack-app";

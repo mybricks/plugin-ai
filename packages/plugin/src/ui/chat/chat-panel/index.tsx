@@ -103,7 +103,9 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     // 先订阅再同步历史，避免面板挂载瞬间错过新请求事件。
     const unsubSession = subscribeSession(agent, { onTurnStart: scrollToBottom, onTurnEnd: scrollToBottom });
     syncAgent(agent).catch(console.error);
-    return unsubSession;
+    return () => {
+      unsubSession?.();
+    };
   }, [agent, syncAgent, subscribeSession]);
 
   // aiViewDisplay 时自动聚焦输入框

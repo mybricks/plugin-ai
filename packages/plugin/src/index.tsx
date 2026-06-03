@@ -13,7 +13,7 @@ import { DEFAULT_PLUGIN_SKILLS } from "./skills/default";
 import { context } from "./context";
 import { setupSandbox } from "./sandbox";
 import type { Designer, Hooks, RegistSandBoxConfig, PluginGetUserContextMessage, SendToAgentParams } from "./sandbox";
-import { ChatPanelList, ChatStartView, ComChatStartView } from "./ui/chat";
+import { ChatPanelList } from "./ui/chat/chat-panel-list";
 import { ensureAIPanelOpen, ensureFocusComId } from "./utils/ensure-ai-panel-open";
 
 // ─── 工具类型重导出 ────────────────────────────────────────────────────────────
@@ -24,11 +24,11 @@ export { createRequestAsStream, createOnUpload } from "../../request/src";
 export type { RequestAsStreamFn } from "../../request/src";
 export { openSetting, closeSetting, SettingModal } from "./ui/setting";
 export type { SettingModalProps } from "./ui/setting";
-export type { Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams, PluginGetUserContextMessage } from "./sandbox";
+export type { Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams, PluginGetUserContextMessage, VirtualFilesRuntimeContext } from "./sandbox";
 // ProviderConfig / ModelConfig 已由 request 包导出，此处仅导出 plugin 专属类型
 export type { SettingValue } from "./ui/setting";
-export { ChatPanel, ChatPanelList, ChatStartView, ComChatStartView } from "./ui/chat";
-export type { ChatPanelProps, ChatPanelRef, ChatPanelListProps, ChatStartViewProps, ComChatStartViewProps, InputState } from "./ui/chat";
+export { ChatPanel } from "./ui/chat";
+export type { ChatPanelProps, ChatPanelRef, InputState } from "./ui/chat";
 export * from "./preset";
 
 // ─── PluginAI 实例 API ────────────────────────────────────────────────────────
@@ -115,13 +115,13 @@ export interface PluginAIParams {
    *
    * @example
    * ```ts
-   * virtualFiles: async () => [{
+   * virtualFiles: async (context) => [{
    *   path: ".agent/agent.md",
    *   content: "# 项目规范\n...",
    * }]
    * ```
    */
-  virtualFiles?: () => Promise<import("../../agent/src").VirtualFile[]>;
+  virtualFiles?: (context: import("./sandbox").VirtualFilesRuntimeContext) => Promise<import("../../agent/src").VirtualFile[]>;
   /** 技能文件列表，挂载为虚拟 .agent/skills/ 目录，LLM 通过 use_skill 工具按需加载 */
   skills?: SkillFile[];
   /** 插件列表，会将内部 skills / agents / tools / additionalDirectories 合并进 CodeAgent 顶层配置 */
@@ -150,6 +150,8 @@ export interface PluginAIParams {
       onCodeEditorCopy: () => { filename: string; code: string; }
     }
   }
+  /** 禁用调试环境列表 */
+  disallowedDebugEnvs?: string[];
   /** LLM 配置（自定义渠道时使用） */
   llm?: {
     providers?: import("./ui/setting").ProviderConfig[];
@@ -177,6 +179,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     getUserContextMessage,
     formatUserMessage,
     componentRuntime,
+    disallowedDebugEnvs,
     llm,
     history,
     sender,
@@ -274,6 +277,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     formatUserMessage,
     availableLibraries: codingConfig?.availableLibraries ?? [],
     themes: codingConfig?.themes ?? [],
+    disallowedDebugEnvs: disallowedDebugEnvs ?? [],
     codeRules: codingConfig?.codeRules,
     designRules: codingConfig?.designRules,
     componentRuntime,
@@ -324,12 +328,17 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
             return {
               availableLibraries: codingConfig?.availableLibraries ?? [],
               themes: codingConfig?.themes ?? [],
+              disallowedDebugEnvs: disallowedDebugEnvs ?? [],
               codeRules: codingConfig?.codeRules ?? "",
               designRules: codingConfig?.designRules ?? "",
             };
           };
 
           return {
+            // renderMessageBox(...args) {
+            //   console.log('...args', args)
+            //   return <div>12323</div>
+            // },
             focus(params: AiServiceFocusParams) {
               // TODO：没comId的，都是没用的聚焦，之前设计器出过一次bug，兼容下这种情况，不要写进去
               if (!params.comId && params.pageId) {

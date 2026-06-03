@@ -6,6 +6,7 @@ import type { Tool, Sandbox, CodeAgentPlugin, CodeAgentPromptOptions, History, B
 import type { PromptSections } from "../prompts";
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { Designer, RegistSandBoxConfig } from "./types";
+import { buildGuideUserContext } from "./context-builders";
 import { createCheckStatusTool } from "./tools/check-status";
 import { createInitProjectTool } from "./tools/init-project";
 import { LoadingView, type ComChatStartViewProps, type LoadingViewProps } from "../ui/chat";
@@ -54,6 +55,10 @@ export interface SandboxConfig {
    * 组件运行时扩展
    */
   componentRuntime?: any;
+  /**
+   * 禁用调试环境列表
+   */
+  disallowedDebugEnvs?: string[];
   codeRules?: string;
   designRules?: string;
 }
@@ -61,6 +66,10 @@ export interface SandboxConfig {
 type MaybePromise<T> = T | Promise<T>;
 
 export type PluginGetUserContextMessage = () => MaybePromise<string | null | undefined>;
+
+export interface VirtualFilesRuntimeContext {
+  getEffectiveLibrariesSection: (options?: { path?: string; moduleKey?: string }) => Promise<string>;
+}
 
 /**
  * connectToAI 的返回值。
@@ -116,7 +125,7 @@ export interface SetupSandboxParams {
    * 典型用途：在根工程放 `.agent/agent.md` 提供项目规范。
    * 同路径下 virtualFiles 优先级高于 designer.getFiles() 返回的真实文件。
    */
-  virtualFiles?: () => Promise<VirtualFile[]>;
+  virtualFiles?: (context: VirtualFilesRuntimeContext) => Promise<VirtualFile[]>;
   skills?: SkillFile[];
   plugins?: CodeAgentPlugin[];
   promptSections?: PromptSections;
@@ -124,6 +133,7 @@ export interface SetupSandboxParams {
   availableLibraries?: any[];
   themes?: any[];
   componentRuntime?: any;
+  disallowedDebugEnvs?: string[];
   codeRules?: string;
   designRules?: string;
   /**
@@ -150,7 +160,7 @@ export interface SetupSandboxParams {
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
 export function setupSandbox(params: SetupSandboxParams): void {
-  const { requestAsStream, virtualFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, codeRules, designRules, getUserContextMessage, formatUserMessage, history, sender } = params;
+  const { requestAsStream, virtualFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, formatUserMessage, history, sender } = params;
 
   window._sandbox_ = {
     // ── sandbox → Plugin ──────────────────────────────────────────────────────
@@ -192,12 +202,10 @@ export function setupSandbox(params: SetupSandboxParams): void {
 
     // ── Plugin → sandbox（静态配置）──────────────────────────────────────────
     config: {
-      promptSections,
       availableLibraries: availableLibraries ?? [],
       themes: themes ?? [],
       componentRuntime,
-      codeRules,
-      designRules,
+      disallowedDebugEnvs: disallowedDebugEnvs ?? [],
     },
   };
 }
@@ -207,7 +215,7 @@ export function setupSandbox(params: SetupSandboxParams): void {
 interface PluginParams {
   requestAsStream: RequestAsStreamFn;
   /** 注入到根工程虚拟 FS 的文件（每个 turn 调用一次） */
-  virtualFiles?: () => Promise<VirtualFile[]>;
+  virtualFiles?: (context: VirtualFilesRuntimeContext) => Promise<VirtualFile[]>;
   skills?: SkillFile[];
   plugins?: CodeAgentPlugin[];
   promptOptions?: CodeAgentPromptOptions;
@@ -256,81 +264,10 @@ function injectPluginRuntimeContext(
   };
 }
 
-function wrapRules(tag: string, value?: string): string {
-  const content = value?.trim();
-  return content ? `\n<${tag}>\n${content}\n</${tag}>\n` : '';
-}
-
 function formatLibraryDocs(libraries: Array<{ name: string; version?: string; usage: string }>): string {
   return libraries
-    .map((library) => `---\nname: ${library.name}\nversion: ${library.version ?? ''}\n---\n${library.usage}`)
-    .join('\n\n');
-}
-
-function hasPromptSectionContent(section?: object): boolean {
-  return Object.values(section ?? {}).some((value) =>
-    typeof value === 'string' && value.trim().length > 0
-  );
-}
-
-async function buildDesignerContext(
-  designer: Designer | undefined,
-  promptSections: PromptSections | undefined,
-  rules: { codeRules?: string; designRules?: string }
-): Promise<string | null> {
-  if (!designer) return null;
-
-  const developeGuide = promptSections?.developeGuide ?? {};
-  const designGuide = promptSections?.designGuide ?? {};
-  const documentGuide = promptSections?.documentGuide ?? {};
-
-  if (!hasPromptSectionContent(developeGuide)) return null;
-
-  const codeRulesSection = wrapRules('code_rules', rules.codeRules);
-  const designRulesSection = wrapRules('design_rules', rules.designRules);
-
-  const bestPracticesContent = [
-    codeRulesSection ? '#### 代码规范：\n' + codeRulesSection : undefined,
-    developeGuide.assetsUsageSection ? '#### 图片和图标使用：\n' + developeGuide.assetsUsageSection : undefined,
-    developeGuide.examplesSection ? '#### 开发示例：\n' + developeGuide.examplesSection : undefined,
-  ].filter(Boolean).join('\n');
-
-  const documentGuideContent = [
-    documentGuide.firstOfAll,
-    documentGuide.requirementGuide,
-  ].filter(Boolean).join('\n\n');
-
-  const libraries = await designer.getEffectiveLibraries();
-  const libraryDocsContent = formatLibraryDocs(libraries);
-
-  return [
-    '\n# 前端开发指南\n',
-    developeGuide.firstOfAll,
-    '\n## 项目架构\n',
-    developeGuide.architectureSection ?? '',
-    '\n## 环境变量\n',
-    [
-      '以下是系统注入的环境变量，可在组件代码中通过 `process.env.<变量名>` 访问，**禁止自行声明或覆盖这些变量**：\n',
-      '| 变量名 | 类型 | 设计态值 | 运行态值 | 说明 |',
-      '|--------|------|----------|----------|------|',
-      '| `process.env.POPUP_VISIBLE` | `boolean` | `true` | `false` | 控制浮层（弹窗/抽屉等）的默认显示状态。设计态下为 `true` 使浮层保持展开，方便设计者选中浮层内元素进行编辑；运行态下为 `false`，由业务逻辑控制显隐。**浮层组件必须将此变量与业务状态做 `||` 合并使用**，例如：`visible={process.env.POPUP_VISIBLE \\|\\| store.modalVisible}` |',
-      '| `process.env.POPUP_NODE` | `HTMLElement` | 设计器画布容器节点 | 页面容器节点 | 浮层的挂载容器。设计、运行态下均指向设计器画布，确保浮层渲染在画布内部。例如一些三方库的指定挂载节点：`getContainer={() => process.env.POPUP_NODE}` |',
-    ].join('\n') + '\n',
-    '\n## 最佳实践\n',
-    bestPracticesContent,
-    developeGuide.end,
-    '\n## 设计规范\n',
-    [designGuide.firstOfAll, designRulesSection].filter(Boolean).join('\n'),
-    ...(documentGuideContent ? [
-      '\n## 文档规范\n',
-      '<文档规范>\n',
-      documentGuideContent,
-      '\n</文档规范>\n',
-    ] : []),
-    '\n## 允许使用的类库\n',
-    '\n---\n\n',
-    libraryDocsContent,
-  ].join('');
+    .map((library) => `---\nname: ${library.name}\nversion: ${library.version ?? ""}\n---\n${library.usage}`)
+    .join("\n\n");
 }
 
 function connectToAI(
@@ -423,7 +360,12 @@ function connectToAI(
 
     // ── virtualFiles：顶层 + 各 additionalDirectory 的 virtualFiles 合并 ─────
     virtualFiles: async () => {
-      const rootVirtualFiles = (await virtualFiles?.()) ?? [];
+      const promptVirtualFiles = (await virtualFiles?.({
+        getEffectiveLibrariesSection: async (_options) => {
+          const libraries = await designerRef.current?.getEffectiveLibraries() ?? [];
+          return formatLibraryDocs(libraries);
+        },
+      })) ?? [];
       const additionalDirectories = await getEnabledAdditionalDirectories();
       const dirVirtualFiles = (await Promise.all(
         additionalDirectories.map(async (dir) => {
@@ -435,7 +377,7 @@ function connectToAI(
           }));
         })
       )).flat();
-      return [...rootVirtualFiles, ...dirVirtualFiles];
+      return [...promptVirtualFiles, ...dirVirtualFiles];
     },
 
     // ── updateFiles：按路径前缀分组分发 ──────────────────────────────────────
@@ -490,7 +432,7 @@ function connectToAI(
       await Promise.all(tasks);
     },
 
-    getContext: async () => buildDesignerContext(designerRef.current, promptSections, { codeRules, designRules }),
+    getContext: async () => buildGuideUserContext(designerRef.current, promptSections, { codeRules, designRules }),
 
     // ── getUserContext：主项目空间 + 扩展目录文件列表 + 宿主自定义上下文 ──────────
     getUserContext: async () => {

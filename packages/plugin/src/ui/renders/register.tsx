@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ChatStartView, type ChatStartViewProps, ComChatStartView, type ComChatStartViewProps, LoadingView, type LoadingViewProps } from "../chat";
+import { LoadingView, type LoadingViewProps } from "../chat/chat-start-view";
+import { ChatStartView, type ChatStartViewProps, ComChatStartView, type ComChatStartViewProps } from "../chat/chat-start-view";
 import { PrdRender, type PrdRenderProps } from "./prd-render";
 
 // ─── Shadow DOM 样式注入高阶组件 ───────────────────────────────────────────────
