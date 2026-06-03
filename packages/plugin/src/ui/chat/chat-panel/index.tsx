@@ -99,9 +99,10 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   // 同步历史 + 订阅事件 + turn 滚底
   useEffect(() => {
     if (!agent) return;
-    syncAgent(agent).catch(console.error);
     const scrollToBottom = () => messageListRef.current?.scrollToBottom();
+    // 先订阅再同步历史，避免面板挂载瞬间错过新请求事件。
     const unsubSession = subscribeSession(agent, { onTurnStart: scrollToBottom, onTurnEnd: scrollToBottom });
+    syncAgent(agent).catch(console.error);
     return unsubSession;
   }, [agent, syncAgent, subscribeSession]);
 

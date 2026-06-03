@@ -17,7 +17,18 @@ export interface Session {
 // ─── 辅助 ─────────────────────────────────────────────────────────────────────
 
 function turnsToMessageRecords(turns: TurnRecord[]): MessageRecord[] {
-  return turns.map((turn) => ({ ...turn }));
+  return turns.map((turn) => ({
+    ...turn,
+    // 进行中的 turn 尚未写入最终 status，UI 侧按 pending 展示。
+    status: turn.endTime ? turn.status : "pending",
+  }));
+}
+
+function findLastPendingId(records: MessageRecord[]): string | null {
+  for (let i = records.length - 1; i >= 0; i--) {
+    if (records[i].status === "pending") return records[i].id;
+  }
+  return null;
 }
 
 // ─── useSession ───────────────────────────────────────────────────────────────
@@ -40,7 +51,9 @@ export function useSession(agent: Agent | undefined) {
     syncedRef.current = true;
     await a.loadHistory();
     const records = turnsToMessageRecords(a.getTurns());
-    if (records.length) setMessages(records);
+    // 面板可能晚于请求打开，从 agent 快照恢复当前 pending turn。
+    pendingIdRef.current = findLastPendingId(records);
+    setMessages(records);
   }, []);
 
   /**
@@ -68,6 +81,13 @@ export function useSession(agent: Agent | undefined) {
     let pendingContent = "";
     let pendingThinking = "";
 
+    const syncFromAgentSnapshot = () => {
+      const records = turnsToMessageRecords(a.getTurns());
+      // 以 agent 内存记录为准，补齐面板挂载前已经发生的 turn/iteration。
+      pendingIdRef.current = findLastPendingId(records) ?? pendingIdRef.current;
+      setMessages(records);
+    };
+
     const update = (updater: (r: MessageRecord) => MessageRecord) => {
       // 在调用时立刻捕获 id，避免 setMessages updater 异步执行时 ref 已被清空
       const id = pendingIdRef.current;
@@ -88,6 +108,17 @@ export function useSession(agent: Agent | undefined) {
     };
 
     /** 更新最后一个 LLM iter */
+    const ensureLastLLMIter = () => {
+      update((r) => {
+        if (findLastLLMIterIndex(r.iterations) >= 0) return r;
+        // 如果面板错过 llm:start，收到内容时补一个 iter 承接流式输出。
+        return {
+          ...r,
+          iterations: [...r.iterations, { content: "", toolCalls: [], startTime: Date.now() }],
+        };
+      });
+    };
+
     const updateLastLLMIter = (
       updater: (iter: MessageRecord["iterations"][number]) => MessageRecord["iterations"][number]
     ) =>
@@ -130,7 +161,7 @@ export function useSession(agent: Agent | undefined) {
           status: "pending",
           iterations: [],
         };
-        setMessages((prev) => [...prev, record]);
+        setMessages((prev) => prev.some((r) => r.id === turnId) ? prev : [...prev, record]);
         opts?.onTurnStart?.();
       }),
 
@@ -159,6 +190,7 @@ export function useSession(agent: Agent | undefined) {
       }),
 
       a.events.on("llm:content", ({ content, thinkingContent }) => {
+        ensureLastLLMIter();
         pendingContent = content;
         if (thinkingContent !== undefined) pendingThinking = thinkingContent;
         updateLastLLMIter((iter) => ({
@@ -169,23 +201,15 @@ export function useSession(agent: Agent | undefined) {
         }));
       }),
 
-      a.events.on("llm:complete", ({ done, endTime }) => {
+      a.events.on("llm:complete", ({ done }) => {
         if (done) {
-          const finalContent = pendingContent;
           pendingContent = "";
           pendingThinking = "";
-          update((r) => {
-            const idx = findLastLLMIterIndex(r.iterations);
-            const iters = [...r.iterations];
-            if (idx >= 0) {
-              iters[idx] = { ...iters[idx], endTime, content: finalContent };
-            }
-            return { ...r, status: "success", iterations: iters };
-          });
+          syncFromAgentSnapshot();
           pendingIdRef.current = null;
           opts?.onTurnEnd?.();
         } else {
-          updateLastLLMIter((iter) => ({ ...iter, endTime }));
+          syncFromAgentSnapshot();
           pendingContent = "";
           pendingThinking = "";
         }
@@ -362,6 +386,9 @@ export function useSession(agent: Agent | undefined) {
         );
       })
     );
+
+    // 订阅建立后立即回放一次 agent 快照，覆盖面板未打开期间的请求状态。
+    syncFromAgentSnapshot();
 
     return () => {
       unsubsRef.current.forEach((u) => u());

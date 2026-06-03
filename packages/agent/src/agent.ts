@@ -742,7 +742,11 @@ export class Agent {
   async loadHistory(): Promise<void> {
     const { history, key } = this.options;
     if (history && key) {
-      this.turns = await history.load(key);
+      const loadedTurns = await history.load(key);
+      // 面板可能在请求进行中才挂载；此时未结束的 turn 还没持久化，不能被历史覆盖掉。
+      const loadedIds = new Set(loadedTurns.map((turn) => turn.id));
+      const activeTurns = this.turns.filter((turn) => !turn.endTime && !loadedIds.has(turn.id));
+      this.turns = [...loadedTurns, ...activeTurns];
       this.compactRecord = await history.loadCompact(key);
     }
   }
