@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useMemo, useState } from "react";
 import classNames from "classnames";
 import markdownit from "markdown-it";
+import { Image } from "antd";
 import { TextShimmer } from "../../components/text-shimmer";
 import { AttachmentsList } from "../../components/attachments";
 import { ElapsedTime } from "../../components/elapsed-time";
@@ -121,7 +122,7 @@ const MessageBubble = ({ record, toolRendererMap, onRetry, isLast, agent }: {
           )}
         </header>
         <section className={classNames(css["chat-message-container"], css["user-message"])}>
-          {renderUserMessage ? renderUserMessage(record) : <div className={css["user-message-text"]}>{record.userText}</div>}
+          {renderUserMessage ? renderUserMessage(record) : <UserMessageContent message={record.userText} />}
           {record.userAttachments.length > 0 && (
             <AttachmentsList
               className={css["attachments-list"]}
@@ -277,6 +278,14 @@ const MessageBubble = ({ record, toolRendererMap, onRetry, isLast, agent }: {
   )
 };
 
+const UserMessageContent = ({ message }: { message: string }) => {
+  if (/!\[[^\]]*]\([^)]+\)/.test(message)) {
+    return <BubbleMessage message={message} className={css["user-message-text"]} />;
+  }
+
+  return <div className={css["user-message-text"]}>{message}</div>;
+};
+
 // ─── ToolBubble ───────────────────────────────────────────────────────────────
 
 type UIToolRecord = Omit<ToolCallRecord, "status"> & { status: "pending" | "success" | "error" };
@@ -332,12 +341,67 @@ const ThinkingCard = ({
 
 // ─── BubbleMessage ────────────────────────────────────────────────────────────
 
-const BubbleMessage = ({ message }: { message: string }) => {
+const BubbleMessage = ({ message, className }: { message: string; className?: string }) => {
   const ref = useRef<HTMLDivElement>(null);
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewCurrent, setPreviewCurrent] = useState(0);
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
+
   useEffect(() => {
-    if (ref.current) ref.current.innerHTML = md.render(message);
+    if (!ref.current) return;
+
+    ref.current.innerHTML = md.render(message);
+
+    const nextImageUrls = Array.from(ref.current.querySelectorAll("img"))
+      .map((img) => img.getAttribute("src") ?? "")
+      .filter(Boolean);
+
+    setImageUrls((prev) => {
+      if (prev.length === nextImageUrls.length && prev.every((src, index) => src === nextImageUrls[index])) {
+        return prev;
+      }
+      return nextImageUrls;
+    });
   }, [message]);
-  return <div className={css['message-content']} ref={ref} />;
+
+  const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null;
+    const image = target?.closest?.("img") as HTMLImageElement | null;
+    if (!image) return;
+
+    const images = Array.from(ref.current?.querySelectorAll("img") ?? []);
+    const index = images.indexOf(image);
+    if (index === -1) return;
+
+    const nextImageUrls = images
+      .map((img) => img.getAttribute("src") ?? img.src ?? img.currentSrc ?? "")
+      .filter(Boolean);
+
+    event.preventDefault();
+    event.stopPropagation();
+    setImageUrls(nextImageUrls);
+    setPreviewCurrent(index);
+    setPreviewVisible(true);
+  };
+
+  return (
+    <>
+      <div className={classNames(css['message-content'], className)} ref={ref} onClick={handleClick} />
+      <div style={{ display: "none" }}>
+        <Image.PreviewGroup
+          preview={{
+            visible: previewVisible,
+            onVisibleChange: setPreviewVisible,
+            current: previewCurrent,
+          }}
+        >
+          {imageUrls.map((src, index) => (
+            <Image key={`${src}-${index}`} src={src} />
+          ))}
+        </Image.PreviewGroup>
+      </div>
+    </>
+  );
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

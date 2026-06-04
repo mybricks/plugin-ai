@@ -123,6 +123,17 @@
       justify-content: flex-end;
       align-content: flex-start;
     }
+
+    .message-content {
+      p {
+        margin: 0;
+      }
+
+      img {
+        max-width: min(100%, 420px);
+        margin: 4px 0;
+      }
+    }
   }
 
   // AI 消息气泡样式
@@ -231,6 +242,23 @@
     margin: 8px 0;
 
     code { background-color: transparent; padding: 0; font-size: 100%; }
+  }
+
+}
+
+.message-content {
+  img {
+    display: block;
+    width: auto;
+    max-width: min(100%, 520px);
+    max-height: 420px;
+    margin: 8px 0;
+    object-fit: contain;
+    box-sizing: border-box;
+    border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+    border-radius: 6px;
+    background: var(--mybricks-bg-color-main, #FFF);
+    cursor: zoom-in;
   }
 }
 
