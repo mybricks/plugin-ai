@@ -185,6 +185,11 @@ const historyWithTenImages = [
   }),
 ];
 
+// ─── 助手返回 Markdown 中包含图片 ─────────────────────────────────────────────
+
+const MARKDOWN_IMAGE_URL =
+  "https://p4-ec.eckwai.com/kos/nlav12333/aicode/talkImage/2026-06-04/render-feedback.0e0d6fc91991f859.png";
+
 // ─── Cases ────────────────────────────────────────────────────────────────────
 
 /** Markdown 富文本渲染：一级/多级列表 + 表格 + 代码块 */
@@ -242,6 +247,29 @@ export const userMessageWithTenImagesCase: TestCase = {
         "\n\n- 统一提取主色和辅助色",
         "\n- 对比图片里的留白、圆角和卡片层级",
         "\n- 输出可复用的页面视觉规范",
+      ],
+      ttftMs: 200,
+      chunkDelayMs: 25,
+    },
+  ]),
+};
+
+/** 助手消息 Markdown 含图片：验证返回消息内图片渲染 */
+export const assistantMessageWithMarkdownImageCase: TestCase = {
+  id: "ui-assistant-md-image",
+  name: "助手消息 Markdown 图片",
+  group: "UI 渲染",
+  description: "LLM 返回消息包含 Markdown 图片语法，验证图片在助手消息内容中的渲染效果。",
+  expectedBehavior:
+    "助手气泡正文中的 ![alt](url) 渲染为图片；Inspector 中助手消息 content 保留为包含 Markdown 图片语法的文本。",
+  initialTurns: [],
+  request: makeScriptedRequest([
+    {
+      type: "content",
+      chunks: [
+        "下面是这次渲染反馈图：\n\n",
+        `![render feedback](${MARKDOWN_IMAGE_URL})`,
+        "\n\n我会基于这张图继续检查布局、间距和视觉层级。",
       ],
       ttftMs: 200,
       chunkDelayMs: 25,

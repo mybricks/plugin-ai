@@ -40,11 +40,12 @@ import {
   doomLoopCase,
   doomLoopThreshold5Case,
   abortCase,
+  abortThenNextTurnAwarenessCase,
   retrySuccessCase,
   maxStepsCase,
 } from "./edge-cases";
 import { compactTriggerCase, compactWithToolsCase, compactWarmupByUsageCase, compactErrorCase, compactEmptyResponseCase, compactNoContentCase, compactInfiniteCase, compactRetrySuccessErrorCase, compactRetrySuccessTagCase, compactBinaryExpandSuccessCase, compactMidTurnErrorRetryCase } from "./compact";
-import { markdownRichCase, userMessageWithLinksCase, userMessageWithTenImagesCase, streamingMarkdownCase, toolThenEmptyContentCase, assistantMessageWithLinksCase } from "./ui-render";
+import { markdownRichCase, userMessageWithLinksCase, userMessageWithTenImagesCase, assistantMessageWithMarkdownImageCase, streamingMarkdownCase, toolThenEmptyContentCase, assistantMessageWithLinksCase } from "./ui-render";
 import { multiEditSameFileCase, multiEditPartialSuccessCase } from "./multi-edit";
 import { editDoomLoopCase, editNoDoomLoopCase } from "./edit-doom-loop";
 import { editFewLinesCase } from "./edit-few-lines";
@@ -77,6 +78,7 @@ export const ALL_CASES: TestCase[] = [
   multiEditPartialSuccessCase,
   skillUseThenContinueCase,
   suggestionsDisplayCase,
+  abortThenNextTurnAwarenessCase,
   // ─── 网络中断 ───────────────────────────────────
   networkErrorDelayedCase,
   toolCallArgsMidErrorCase,
@@ -143,6 +145,7 @@ export const ALL_CASES: TestCase[] = [
   markdownRichCase,
   userMessageWithLinksCase,
   userMessageWithTenImagesCase,
+  assistantMessageWithMarkdownImageCase,
   streamingMarkdownCase,
   assistantMessageWithLinksCase,
   // 异常检测—工具后空 content

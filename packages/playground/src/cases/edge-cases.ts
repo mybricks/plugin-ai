@@ -1,4 +1,5 @@
 import type { TestCase } from "./types";
+import type { RequestAsStreamFn } from "@request/types";
 import { makeScriptedRequest } from "../lib/scripted-request";
 
 // doom loop：连续重复同一组 tool_calls 序列。
@@ -66,6 +67,49 @@ export const abortCase: TestCase = {
       chunkDelayMs: 500,
     },
   ]),
+};
+
+const abortThenNextTurnAwarenessRequest: RequestAsStreamFn = async (params) => {
+  const hasInterruptedMessage = (params.messages ?? []).some(
+    (message: any) =>
+      message?.role === "user" &&
+      typeof message.content === "string" &&
+      message.content.includes("[Request interrupted by user]")
+  );
+
+  if (hasInterruptedMessage) {
+    params.emits.write("已感知上一轮被用户取消，本轮会基于取消后的上下文继续处理。");
+    params.emits.onFinishReason?.("stop");
+    params.emits.complete?.("");
+    return;
+  }
+
+  let cancelled = false;
+  params.emits.cancel(() => {
+    cancelled = true;
+  });
+
+  for (let i = 0; i < 20; i++) {
+    if (cancelled) return;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    if (cancelled) return;
+    params.emits.write(`第 ${i + 1} 段长输出，点击停止后再发送下一轮消息... `);
+  }
+
+  params.emits.onFinishReason?.("stop");
+  params.emits.complete?.("");
+};
+
+export const abortThenNextTurnAwarenessCase: TestCase = {
+  id: "abort-next-turn-awareness",
+  name: "取消后下一轮感知",
+  group: "异常检测",
+  priority: "P0",
+  description: "第一轮流式输出时点击停止，再发送下一轮消息，验证下一轮请求 messages 能感知上一轮被取消。",
+  expectedBehavior:
+    "第一轮点击停止后状态为 abort；第二轮 Inspector 的 messages 中包含 [Request interrupted by user]，助手回复“已感知上一轮被用户取消”。",
+  initialTurns: [],
+  request: abortThenNextTurnAwarenessRequest,
 };
 
 export const retrySuccessCase: TestCase = {
