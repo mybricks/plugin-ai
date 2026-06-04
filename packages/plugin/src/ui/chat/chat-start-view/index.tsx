@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import classNames from "classnames";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
+import { chipRegistry } from "../../../sandbox/setup";
 import type { CodeAgent } from "../../../../../agent/src";
 import { useSession } from "../use-session";
 import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
@@ -74,13 +75,15 @@ const ChatStartView = ({
   const onSend = (params: Parameters<SenderProps["onSend"]>[0]) => {
     if (loading || !agent || !comId) return;
     setEmpty(false);
+    const { message, attachments, chips } = params;
+    const meta = chips?.length ? { chips } : undefined;
 
     ensureAIPanelOpen(comId).then(() => {
       context.aiQueue.send(
         agentKey,
         async () => {
           context.aiQueue.registerAbort(agentKey, () => agent.abort());
-          await agent.requestAI(params);
+          await agent.requestAI({ message, attachments, ...(meta ? { meta } : {}) });
         },
         { message: params.message, attachments: params.attachments }
       );
@@ -107,6 +110,7 @@ const ChatStartView = ({
           placeholder={placeholder}
           attachmentsPrompt="根据附件中的图片内容进行设计开发，要求尽可能还原其中的各类设计细节以及功能"
           onUpload={onUpload}
+          chipTypes={chipRegistry.getAll()}
         />
       )}
     </div>

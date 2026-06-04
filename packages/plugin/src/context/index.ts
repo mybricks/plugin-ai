@@ -3,7 +3,9 @@ import type { SendToAgentParams } from "../sandbox";
 import type { Designer, Hooks } from "../sandbox/types";
 import { AIRequestQueue } from "./queue";
 import type { LLMProviders } from "../../../request/src";
-import type { InputState } from "../ui/components/sender";
+import type { SenderRef } from "../ui/components/sender";
+
+type SenderInputValue = ReturnType<SenderRef["getInput"]>;
 
 /** LLM 设置值类型（避免循环依赖） */
 export interface SettingValue {
@@ -101,18 +103,22 @@ class Context {
     this.events.emit("disabled", value);
   }
 
-  /** 向指定 comId 的输入框追加内容。ChatPanelList 会负责确保面板存在。 */
-  appendInput(comId: string, input: string | SendToAgentParams) {
+  /**
+   * 向指定 comId 的输入框追加内容。ChatPanelList 会负责确保面板存在。
+   * - string / SendToAgentParams：纯文本追加
+   * - { message, meta }：message 中可含 [[chip:id]] 占位符，meta.chips 提供实例数据
+   */
+  appendInput(comId: string, input: string | SendToAgentParams | { message: string; meta?: { chips?: import("../../../agent/src").ChatChipInstance[] } }) {
     this.events.emit("appendInput", { comId, input });
   }
 
   // ─── 输入框草稿读取 ────────────────────────────────────────────────────────
 
-  /** 由 ChatPanelList 注册：comId → InputState 的同步 getter */
-  private _inputGetter?: (comId?: string) => InputState | undefined;
+  /** 由 ChatPanelList 注册：comId → 输入框草稿 的同步 getter */
+  private _inputGetter?: (comId?: string) => SenderInputValue | undefined;
 
   /** ChatPanelList mount 后注册 getter；unmount 时传 undefined 清空 */
-  registerInputGetter(getter: ((comId?: string) => InputState | undefined) | undefined) {
+  registerInputGetter(getter: ((comId?: string) => SenderInputValue | undefined) | undefined) {
     this._inputGetter = getter;
   }
 
@@ -120,7 +126,7 @@ class Context {
    * 获取指定 comId 对话框的当前输入草稿（文本 + 附件 + mentions）。
    * 不传 comId 时返回当前活跃面板的草稿；面板不存在时返回 undefined。
    */
-  getInput(comId?: string): InputState | undefined {
+  getInput(comId?: string): SenderInputValue | undefined {
     return this._inputGetter?.(comId);
   }
 

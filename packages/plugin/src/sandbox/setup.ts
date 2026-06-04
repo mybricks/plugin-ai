@@ -1,5 +1,6 @@
 import React from "react";
 import { CodeAgent, IDBHistory } from "../../../agent/src";
+import { ChipRegistry } from "../../../agent/src";
 import { splitFrontmatter, getFrontmatterString, getFrontmatterStringArray } from "../../../agent/src/utils/frontmatter";
 import { GLOB_TOOL_NAME } from "../../../agent/src/code-agent/tools";
 import type { Tool, Sandbox, CodeAgentPlugin, CodeAgentPromptOptions, History, BoundHistory, TurnSender, AdditionalDirectory, AgentsMdConfig, SkillFile, VirtualFile, AgentOptions } from "../../../agent/src";
@@ -17,6 +18,13 @@ import { ensureAIPanelOpen, ensureFocusComId } from "../utils/ensure-ai-panel-op
 import { buildFocusInfo } from "../utils/focus-dom-summary";
 
 // ─── 类型定义 ─────────────────────────────────────────────────────────────────
+
+/**
+ * plugin-ai 全局 chip 注册表。
+ * 在 setup.ts 初始化时创建，供 chat-focus-view 等 UI 层注册 chip 类型，
+ * 并通过 wrapFormatUserMessage 自动挂入每个 CodeAgent 的 formatUserMessage 链。
+ */
+export const chipRegistry = new ChipRegistry();
 
 export interface SendToAgentParams {
   message: string;
@@ -548,7 +556,7 @@ function connectToAI(
     skills: runtimeSkills,
     plugins: effectivePlugins,
     subAgents: [],
-    formatUserMessage: async (params) => {
+    formatUserMessage: chipRegistry.wrapFormatUserMessage(async (params) => {
       const focusSnapshot = context.currentFocus;
       const ele = focusSnapshot?.focusArea?.ele;
       const focusInfoText = ele ? buildFocusInfo(ele) : undefined;
@@ -576,7 +584,7 @@ function connectToAI(
         // 目前 pluginAI 侧只让返回值中的 message 生效，attachments/meta/sender 暂不接管。
         message: userFormattedParams.message,
       };
-    },
+    }),
   });
   agentRef = agent;
 

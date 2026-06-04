@@ -14,6 +14,7 @@ import { context } from "./context";
 import { setupSandbox } from "./sandbox";
 import type { Designer, Hooks, RegistSandBoxConfig, PluginGetUserContextMessage, SendToAgentParams } from "./sandbox";
 import { ChatPanelList } from "./ui/chat/chat-panel-list";
+import { ComChatFocusView } from "./ui/chat/chat-focus-view";
 import { ensureAIPanelOpen, ensureFocusComId } from "./utils/ensure-ai-panel-open";
 
 // ─── 工具类型重导出 ────────────────────────────────────────────────────────────
@@ -28,7 +29,7 @@ export type { Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, 
 // ProviderConfig / ModelConfig 已由 request 包导出，此处仅导出 plugin 专属类型
 export type { SettingValue } from "./ui/setting";
 export { ChatPanel } from "./ui/chat";
-export type { ChatPanelProps, ChatPanelRef, InputState } from "./ui/chat";
+export type { ChatPanelProps, ChatPanelRef } from "./ui/chat";
 export * from "./preset";
 
 // ─── PluginAI 实例 API ────────────────────────────────────────────────────────
@@ -59,7 +60,7 @@ export interface PluginAIController {
    * 获取指定 comId 对话框的当前输入草稿（文本 + 附件 + mentions）。
    * 不传 comId 时返回当前活跃面板的草稿；面板未挂载时返回 undefined。
    */
-  getInput(comId?: string): import("./ui/components/sender").InputState | undefined;
+  getInput(comId?: string): ReturnType<import("./ui/components/sender").SenderRef["getInput"]> | undefined;
 }
 
 /** pluginAI() 返回值，顶层为 Mybricks 插件标准属性，controller 为扩展控制接口 */
@@ -335,9 +336,8 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
           };
 
           return {
-            // renderMessageBox(...args) {
-            //   console.log('...args', args)
-            //   return <div>12323</div>
+            // renderMessageBox() {
+            //   return <ComChatFocusView />;
             // },
             focus(params: AiServiceFocusParams) {
               // TODO：没comId的，都是没用的聚焦，之前设计器出过一次bug，兼容下这种情况，不要写进去

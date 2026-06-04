@@ -1,6 +1,7 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { Sender, SenderRef, SenderProps, InputState } from "../../components/sender";
+import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
+import { chipRegistry } from "../../../sandbox/setup";
 import type { QueueItem } from "../../../context/queue";
 import type { CodeAgent } from "../../../../../agent/src";
 import type { LLMProviders, ModelSelection } from "../../../../../request/src/providers";
@@ -93,7 +94,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     appendInput: (params) => {
       senderRef.current?.appendInput(params);
     },
-    getInput: () => senderRef.current?.getInput() ?? { message: "", attachments: [], mentions: [] },
+    getInput: () => senderRef.current?.getInput() ?? { message: "", attachments: [], mentions: [], chips: [] },
   }), []);
 
   // 同步历史 + 订阅事件 + turn 滚底
@@ -154,14 +155,15 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   };
 
   const onSend = (sendMessage: Parameters<SenderProps["onSend"]>[0]) => {
-    const { message, attachments } = sendMessage;
+    const { message, attachments, chips } = sendMessage;
     if (!agent) return;
+    const meta = chips?.length ? { chips } : undefined;
 
     context.aiQueue.send(
       agentKey,
       async () => {
         context.aiQueue.registerAbort(agentKey, () => agent.abort());
-        await agent.requestAI({ message, attachments });
+        await agent.requestAI({ message, attachments, ...(meta ? { meta } : {}) });
       },
       { message, attachments }
     );
@@ -209,6 +211,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
           onRemoveFromQueue={(id: string) => context.aiQueue.removeFromQueue(agentKey, id)}
           renderFocus={renderFocus}
           modelSelector={modelSelector}
+          chipTypes={chipRegistry.getAll()}
         />
       </div>
     </ChatPanelProvider>

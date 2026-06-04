@@ -2,6 +2,9 @@ export { Agent, AgentEvents, ForkAgent } from "./agent";
 export type { AgentOptions, AgentHooks, RequestAIOptions, MaskOptions, ForkOptions, ForkAgentOptions, CompactRecord, FormatUserMessageResult, AgentsMdConfig, AgentsMdConfigResolver } from "./agent";
 export { maskMessages } from "./mask";
 
+export { ChipRegistry } from "./chip";
+export type { ChatChipDef, ChatChipFormatContext, ChatChipInstance } from "./chip";
+
 export type { AgentEventMap } from "./events";
 export type { Message, History, Tool, TurnRecord, TurnSender, ToolCallRecord, ToolResult, VersionFile, VersionRecord, BoundHistory } from "./types";
 export { ToolValidationError, bindHistory } from "./types";

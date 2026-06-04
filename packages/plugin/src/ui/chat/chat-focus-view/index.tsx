@@ -1,0 +1,182 @@
+import React, { useEffect, useRef, useState } from "react";
+import { Sender, SenderRef, SenderProps } from "../../components/sender";
+import { context } from "../../../context";
+import { chipRegistry } from "../../../sandbox/setup";
+import type { ChatChipDef, ChatChipFormatContext } from "../../../../../agent/src";
+import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
+import { buildFocusInfo } from "../../../utils/focus-dom-summary";
+import css from "./index.less";
+
+export interface ChatFocusViewProps {
+  /** 上传文件回调，不传则回退到 context.pluginParams.onUpload */
+  onUpload?: (file: File) => Promise<string>;
+  /** 占位符文案 */
+  placeholder?: string;
+}
+
+// ─── focus-dom chip 类型定义 ──────────────────────────────────────────────────
+
+/**
+ * focus-dom chip：代表当前聚焦的 DOM 元素。
+ * - 无自定义 render，使用默认 chip 样式（label 文字）。
+ * - format：调用 buildFocusInfo 生成结构化选区信息文本，供 LLM 理解上下文。
+ *
+ * chip 实例的 data 字段格式：{ ele?: HTMLElement }
+ */
+const FOCUS_DOM_CHIP_TYPE = "focus-dom";
+
+const focusDomChipDef: ChatChipDef = {
+  type: FOCUS_DOM_CHIP_TYPE,
+  // 不传 render：使用默认 chip 样式（图标 + label）
+  format: ({ message, chips }: ChatChipFormatContext): string => {
+    // 按 DOM 元素去重：同一个 ele 的多个 chip 视为同一引用
+    // eleKey: ele 对象引用 → 短引用名（「元素1」「元素2」...）
+    const eleToKey = new Map<HTMLElement | undefined, string>();
+    const keyToInfo = new Map<string, { label: string; ele?: HTMLElement }>();
+    let counter = 1;
+
+    for (const chip of chips) {
+      const ele = chip.data?.ele as HTMLElement | undefined;
+      if (!eleToKey.has(ele)) {
+        const key = chip.label || `元素${counter++}`;
+        eleToKey.set(ele, key);
+        keyToInfo.set(key, { label: chip.label, ele });
+      }
+    }
+
+    // 把 message 中的 [[chip:id]] 替换为对应的短引用名
+    let resolved = message;
+    for (const chip of chips) {
+      const ele = chip.data?.ele as HTMLElement | undefined;
+      const key = eleToKey.get(ele) ?? chip.label;
+      resolved = resolved.split(`[[chip:${chip.id}]]`).join(key);
+    }
+
+    // 在消息末尾追加引用说明块（仅包含实际被引用的元素）
+    const refLines: string[] = [];
+    for (const [key, { ele }] of keyToInfo) {
+      const info = ele ? buildFocusInfo(ele) : "[当前聚焦元素]";
+      refLines.push(`Dom元素 ${key}：\n${info}`);
+    }
+
+    if (refLines.length === 0) return resolved;
+    return `${resolved}\n\n${refLines.join("\n\n")}`;
+  },
+};
+
+// 模块加载时一次性注册（chipRegistry 是单例，重复 register 同 type 会覆盖，幂等安全）
+chipRegistry.register(focusDomChipDef);
+
+/**
+ *
+ * 无需传入 comId，内部订阅 focus 事件，跟随 context.currentFocus 动态感知当前聚焦元素。
+ *
+ * 在标准 Sender 基础上，通过 renderActionPrefix 扩展插槽
+ * 在发送按钮左侧添加「追加到对话」按钮。
+ *
+ * - 「发送」：直接发起 AI 请求（同 chat-start-view 行为）
+ * - 「追加到对话」：将当前输入框文本追加到 chat-panel 的输入框中，
+ *    供用户在对话框里进一步编辑或批量积累后再发送
+ *
+ * 注意：附件暂不支持追加到对话框，仅在直接发送时携带。
+ * TODO: 实现附件追加链路（appendInput 目前只支持文本和 SendToAgentParams）
+ */
+const ChatFocusView = ({
+  onUpload,
+  placeholder = "描述需求，直接发送或追加到对话…",
+}: ChatFocusViewProps) => {
+  const senderRef = useRef<SenderRef>(null);
+
+  // 跟随 focus 事件动态解析当前聚焦的 comId 和 agent
+  const [focusParams, setFocusParams] = useState<AiServiceFocusParams | undefined>(
+    () => context.currentFocus
+  );
+
+  useEffect(() => {
+    const unsub = context.events.on("focus", (params: AiServiceFocusParams) => {
+      setFocusParams(params);
+    });
+    return unsub;
+  }, []);
+
+  const comId = focusParams?.comId ?? focusParams?.pageId;
+  const agentKey = comId ? context.getAgentKey(comId) : "";
+  const agent = comId ? context.agentMap.get(agentKey) : undefined;
+
+  const onSend: SenderProps["onSend"] = (params) => {
+    if (!agent || !comId) return;
+    const { message, attachments, chips } = params;
+    const meta = chips?.length ? { chips } : undefined;
+
+    ensureAIPanelOpen(comId).then(() => {
+      context.aiQueue.send(
+        agentKey,
+        async () => {
+          context.aiQueue.registerAbort(agentKey, () => agent.abort());
+          await agent.requestAI({ message, attachments, ...(meta ? { meta } : {}) });
+        },
+        { message: params.message, attachments: params.attachments }
+      );
+    });
+  };
+
+  const onAppendToChat = () => {
+    if (!comId) return;
+    const input = senderRef.current?.getInput();
+    const message = input?.message ?? "";
+
+    // 先确保 AI 面板已打开，再插入 chip + 文本
+    ensureAIPanelOpen(comId).then(() => {
+      const ele = focusParams?.focusArea?.ele;
+      const label = focusParams?.focusArea?.title ?? focusParams?.title ?? "当前聚焦元素";
+
+      const chipId = Math.random().toString(36).slice(2, 6);
+
+      const chip = { id: chipId, type: FOCUS_DOM_CHIP_TYPE, label, data: { ele } };
+      const suffix = message.trim() ? `，${message}` : "";
+
+      // appendInput 内部会解析 [[chip:id]] 并从 meta.chips 取实例渲染成 chip span
+      context.appendInput(comId, {
+        message: `对于 [[chip:${chipId}]]${suffix}`,
+        meta: { chips: [chip] },
+      });
+    });
+
+    // 清空输入框，方便用户继续追加更多内容
+    senderRef.current?.clear();
+  };
+
+  const renderActionPrefix = () => (
+    <button
+      className={css["append-btn"]}
+      title="追加到对话框，可与其他消息一起编辑后发送"
+      onClick={onAppendToChat}
+    >
+      <svg className={css["append-icon"]} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      </svg>
+      追加到对话
+    </button>
+  );
+
+  return (
+    <Sender
+      ref={senderRef}
+      variant="bubble"
+      onSend={onSend}
+      placeholder={placeholder}
+      onUpload={onUpload ?? context.pluginParams.onUpload}
+      renderActionPrefix={renderActionPrefix}
+      chipTypes={chipRegistry.getAll()}
+    />
+  );
+};
+
+/**
+ * ComChatFocusView — 无需任何 props，完全从 context 自动感知聚焦状态
+ */
+const ComChatFocusView = (props: Partial<ChatFocusViewProps>) => {
+  return <ChatFocusView {...props} />;
+};
+
+export { ChatFocusView, ComChatFocusView };

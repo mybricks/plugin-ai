@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState, useImperativeHandle, PropsWithoutRef, forwardRef } from "react"
+import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback } from "react"
+import ReactDOM from "react-dom"
 import classNames from "classnames";
 import { message } from "antd";
-import { Attachment, Loading, Send, Code } from "../icons";
+import { Attachment, Loading, Send } from "../icons";
 import { MentionTag } from "../mention";
 import { AttachmentsList } from "../attachments";
 import type { Attachment as AttachmentItem } from "../attachments";
@@ -10,6 +11,7 @@ import { ChatMode, type ChatModeType } from "../chat-mode";
 import type { QueueItem } from "../../context/queue";
 import type { ModelSelection } from "../../../../../request/src/providers";
 import type { SendToAgentParams } from "../../../sandbox";
+import type { ChatChipDef, ChatChipInstance } from "../../../../../agent/src";
 import css from "./index.less"
 
 const MAX_IMAGE_SIZE_MB = 3.5;
@@ -129,11 +131,75 @@ const ModelSelector = ({ modelSelector, disabled }: ModelSelectorProps) => {
   );
 };
 
+// ─── ChatChip ──────────────────────────────────────────────────────────────
+
+/**
+ * 渲染单个 chat chip 的 React 组件。
+ * 通过 ReactDOM.render 挂载到 contentEditable 内的 DOM 节点上。
+ */
+const ChipRemoveBtn = ({ onRemove }: { onRemove: () => void }) => (
+  <span
+    className={css.chipRemove}
+    onMouseDown={(e) => {
+      // 用 mousedown + preventDefault 避免触发 contentEditable 失焦
+      e.preventDefault();
+      e.stopPropagation();
+      onRemove();
+    }}
+  >
+    <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="currentColor">
+      <path d="M563.8 512l262.5-312.9c4.4-5.2.7-13.1-6.1-13.1h-79.8c-4.7 0-9.2 2.1-12.3 5.7L511.6 449.8 295.1 191.7c-3-3.6-7.5-5.7-12.3-5.7H203c-6.8 0-10.5 7.9-6.1 13.1L459.4 512 196.9 824.9A7.95 7.95 0 0 0 203 838h79.8c4.7 0 9.2-2.1 12.3-5.7l216.5-258.1 216.5 258.1c3 3.6 7.5 5.7 12.3 5.7h79.8c6.8 0 10.5-7.9 6.1-13.1L563.8 512z" />
+    </svg>
+  </span>
+);
+
+const ChatChipInner = ({ instance, chipDef, onRemove }: { instance: ChatChipInstance; chipDef?: ChatChipDef; onRemove: () => void }) => {
+  if (chipDef?.render) {
+    const rendered = chipDef.render(instance.data);
+    // 判断是否为 { color?, content } 对象
+    if (rendered && typeof rendered === 'object' && !React.isValidElement(rendered) && 'content' in rendered) {
+      const chipData = rendered as { color?: string; content: string };
+      return (
+        <span
+          className={classNames(css.chipDefault, { [css.hasCustomColor]: !!chipData.color })}
+          style={chipData.color ? { color: chipData.color, borderColor: chipData.color, backgroundColor: `${chipData.color}18` } : undefined}
+        >
+          {chipData.content}
+          <ChipRemoveBtn onRemove={onRemove} />
+        </span>
+      );
+    }
+    // JSX 直接返回时，外层包一个默认 chip 容器放删除按钮
+    return (
+      <span className={css.chipDefault}>
+        {rendered}
+        <ChipRemoveBtn onRemove={onRemove} />
+      </span>
+    );
+  }
+  // 无 render 时：使用默认 chip 样式（图标 + label）
+  return (
+    <span className={css.chip}>
+      <span className={css.chipIcon} aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none">
+          <rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.2" />
+          <path d="M5.5 5.5h5m-5 2.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+        </svg>
+      </span>
+      <span className={css.chipText}>{instance.label}</span>
+      <ChipRemoveBtn onRemove={onRemove} />
+    </span>
+  );
+};
+
+// ─── SenderProps ─────────────────────────────────────────────────────────────
+
 interface SenderProps {
   onSend: (message: {
     message: string;
     attachments: Attachments;
     mentions: Mention[];
+    chips?: ChatChipInstance[];
     [key: string]: any;
   }) => void;
   onMentionClick?: (mention: Mention) => void;
@@ -145,8 +211,8 @@ interface SenderProps {
   mode?: "mention"
   chatMode?: ChatModeType;
   onChatModeChange?: (chatMode: ChatModeType) => void;
-  /** 输入框风格：compact（紧凑，默认）| loose（松散，padding 更大）*/
-  variant?: 'compact' | 'loose';
+  /** 输入框风格：compact（紧凑，默认）| loose（松散，padding 更大）| bubble（悬浮气泡，最紧凑，无附件按钮）*/
+  variant?: 'compact' | 'loose' | 'bubble';
   /** 自定义图片上传函数，返回 CDN URL；不传则使用 base64 */
   onUpload?: (file: File) => Promise<string>;
   onStop?: () => void;
@@ -154,34 +220,130 @@ interface SenderProps {
   onRemoveFromQueue?: (id: string) => void;
   /** 输入框上方的 focus 信息渲染（mention 区域展示） */
   renderFocus?: () => React.ReactNode;
+  /** 在发送按钮左侧插入自定义操作（如「追加到对话」按钮），不影响发送按钮本身 */
+  renderActionPrefix?: () => React.ReactNode;
+  /** 自定义根元素类名，用于外部覆盖样式 */
+  className?: string;
   /** 模型选择器配置 */
   modelSelector?: {
     models: Array<ModelSelection & { modelName: string }>;
     selected?: ModelSelection | null;
     onSelect: (selection: ModelSelection) => void;
   };
-}
-
-export interface InputState {
-  /** 输入框当前文本（未发送的草稿） */
-  message: string;
-  /** 当前附件列表（含上传中的占位项） */
-  attachments: AttachmentItem[];
-  /** 当前 @提及 / focus mentions */
-  mentions: Mention[];
+  /**
+   * Chat chip 类型注册表（从 agent.getChipTypes() 获取）。
+   * 用于在输入框中渲染 chip。
+   */
+  chipTypes?: ChatChipDef[];
 }
 
 interface SenderRef {
   focus: () => void;
-  appendInput: (params: string | SendToAgentParams) => void;
+  /**
+   * 向输入框追加内容。
+   * - string / SendToAgentParams：纯文本追加（兼容旧用法）
+   * - { message, meta }：message 中可含 [[chip:id]] 占位符，
+   *   meta.chips 提供对应实例，appendInput 内部会将占位符渲染成 chip span。
+   */
+  appendInput: (params: string | SendToAgentParams | { message: string; meta?: { chips?: ChatChipInstance[] } }) => void;
   // TODO: 目前仅展示聚焦组件且单个比较简单直接set即可，后续可通过输入框@唤起选择多个
   setMentions: (mentions: Mention[]) => void;
-  /** 获取输入框当前草稿内容（文本 + 附件 + mentions） */
-  getInput: () => InputState;
+  /** 获取输入框当前草稿内容（文本 + 附件 + mentions + chips） */
+  getInput: () => {
+    /** 输入框当前文本（含 [[chip:id]] 占位符） */
+    message: string;
+    /** 当前附件列表（含上传中的占位项） */
+    attachments: AttachmentItem[];
+    /** 当前 @提及 / focus mentions */
+    mentions: Mention[];
+    /** 当前 chat chip 实例列表 */
+    chips: ChatChipInstance[];
+  };
+  /** 清空输入框内容和附件 */
+  clear: () => void;
+  /**
+   * 在当前光标位置插入一个 chat chip。
+   * chipTypes prop 中必须有对应 type 的注册，否则只展示 label。
+   */
+  insertChip: (instance: ChatChipInstance) => void;
 }
 
+// ─── Chat chip 挂载容器工厂 ────────────────────────────────────────────────────────────────────
+
+/** 卸载 chip 容器内的 React */
+function unmountChipContainer(wrapper: HTMLSpanElement) {
+  const inner = wrapper.firstChild as HTMLElement | null;
+  if (inner) ReactDOM.unmountComponentAtNode(inner);
+}
+
+/**
+ * 创建 chip 的 DOM 容器 span，并用 ReactDOM.render 挂载 ChatChipInner。
+ * 返回的 span 可直接插入 contentEditable editor。
+ */
+function createChipContainer(
+  instance: ChatChipInstance,
+  chipDef: ChatChipDef | undefined,
+  onRemove: () => void
+): HTMLSpanElement {
+  const wrapper = document.createElement('span');
+  wrapper.contentEditable = 'false';
+  wrapper.dataset.chipId = instance.id;
+  wrapper.className = css.chipWrapper;
+  const inner = document.createElement('span');
+  wrapper.appendChild(inner);
+  ReactDOM.render(<ChatChipInner instance={instance} chipDef={chipDef} onRemove={onRemove} />, inner);
+  return wrapper;
+}
+
+// ─── 序列化 editor childNodes ─────────────────────────────────────────────────
+
+function serializeEditorContent(editor: HTMLDivElement, chipMap: Map<string, ChatChipInstance>): { message: string; chips: ChatChipInstance[] } {
+  const instances: ChatChipInstance[] = [];
+  let msg = '';
+  editor.childNodes.forEach(child => {
+    if (child.nodeType === Node.TEXT_NODE) {
+      msg += child.textContent ?? '';
+    } else if (child instanceof HTMLElement && child.dataset.chipId) {
+      const id = child.dataset.chipId;
+      const inst = chipMap.get(id);
+      if (inst) {
+        instances.push(inst);
+        msg += `[[chip:${id}]]`;
+      }
+    }
+  });
+  return { message: msg, chips: instances };
+}
+
+function getClipboardText(data: DataTransfer): string {
+  const plain = data.getData('text/plain');
+  if (plain) return plain;
+
+  const html = data.getData('text/html');
+  if (!html) return '';
+
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  return doc.body.innerText || doc.body.textContent || '';
+}
+
+function focusEditorAtEnd(editor: HTMLDivElement) {
+  editor.focus();
+
+  const selection = window.getSelection();
+  if (!selection) return;
+
+  const range = document.createRange();
+  range.selectNodeContents(editor);
+  range.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+// ─── Sender ──────────────────────────────────────────────────────────────────
+
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
-  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue, renderFocus, modelSelector } = props;
+  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue, renderFocus, renderActionPrefix, modelSelector, className, chipTypes = [] } = props;
+  const isBubble = variant === 'bubble';
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [inputContent, setInputContent] = useState<string | null>(null);
@@ -190,14 +352,34 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const [vibeCoding, setVibeCoding] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  const appendInput = (params: string | SendToAgentParams) => {
+  /** chat chip 实例 Map：id → ChatChipInstance */
+  const chipMapRef = useRef<Map<string, ChatChipInstance>>(new Map());
+
+  /** chipTypes 的 Map 形式（type → def），方便查找 */
+  const chipTypesMapRef = useRef<Map<string, ChatChipDef>>(new Map());
+  useEffect(() => {
+    chipTypesMapRef.current = new Map(chipTypes.map(def => [def.type, def]));
+  }, [chipTypes]);
+
+  /** 根据当前 editor DOM 同步 inputContent 状态 */
+  const syncInputContent = useCallback(() => {
+    if (!inputEditorRef.current) return;
+    const { message } = serializeEditorContent(inputEditorRef.current, chipMapRef.current);
+    setInputContent(message || null);
+  }, []);
+
+  const appendInput = (params: string | SendToAgentParams | { message: string; meta?: { chips?: ChatChipInstance[] } }) => {
     const content = typeof params === "string" ? params : params.message;
     const nextAttachments = typeof params === "string"
       ? undefined
-      : params.attachments?.filter((attachment) => attachment.type === "image").map((attachment) => ({
+      : (params as SendToAgentParams).attachments?.filter((attachment) => attachment.type === "image").map((attachment) => ({
           type: "image" as const,
           content: attachment.content,
         }));
+    // chip 实例表：从 meta.chips 构建，供解析占位符时使用
+    const incomingChips: Map<string, ChatChipInstance> = new Map(
+      ((params as any)?.meta?.chips as ChatChipInstance[] | undefined)?.map((c) => [c.id, c]) ?? []
+    );
 
     if (nextAttachments?.length) {
       setAttachments((prev) => [...prev, ...nextAttachments]);
@@ -214,63 +396,168 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
     editor.focus();
     const selection = window.getSelection();
-    const activeRange = selection?.rangeCount ? selection.getRangeAt(0) : undefined;
-    const useActiveRange = !!activeRange && editor.contains(activeRange.commonAncestorContainer);
-    const range = useActiveRange ? activeRange! : document.createRange();
 
-    if (!useActiveRange) {
-      range.selectNodeContents(editor);
-      range.collapse(false);
-      selection?.removeAllRanges();
-      selection?.addRange(range);
-    }
-
-    range.deleteContents();
-    const textNode = document.createTextNode(content);
-    range.insertNode(textNode);
-    range.setStartAfter(textNode);
-    range.setEndAfter(textNode);
+    // 始终追加到末尾
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
     selection?.removeAllRanges();
     selection?.addRange(range);
-    setInputContent(editor.textContent);
+
+    if (incomingChips.size > 0) {
+      // 有 chip 实例：按 [[chip:id]] 分割，交替插入文本节点和 chip span
+      const parts = content.split(/(\[\[chip:[^\]]+\]\])/);
+      for (const part of parts) {
+        const match = part.match(/^\[\[chip:([^\]]+)\]\]$/);
+        if (match) {
+          const instance = incomingChips.get(match[1]);
+          if (instance) {
+            chipMapRef.current.set(instance.id, instance);
+            const def = chipTypesMapRef.current.get(instance.type);
+            const onRemove = () => {
+              const chipEl = editor.querySelector<HTMLSpanElement>(`[data-chip-id="${instance.id}"]`);
+              if (chipEl) {
+                unmountChipContainer(chipEl);
+                chipEl.parentNode?.removeChild(chipEl);
+              }
+              chipMapRef.current.delete(instance.id);
+              syncInputContent();
+            };
+            const chipEl = createChipContainer(instance, def, onRemove);
+            range.insertNode(chipEl);
+            range.setStartAfter(chipEl);
+            range.setEndAfter(chipEl);
+          }
+        } else if (part) {
+          const textNode = document.createTextNode(part);
+          range.insertNode(textNode);
+          range.setStartAfter(textNode);
+          range.setEndAfter(textNode);
+        }
+      }
+    } else {
+      // 纯文本追加（兼容旧用法）
+      const textNode = document.createTextNode(content);
+      range.insertNode(textNode);
+      range.setStartAfter(textNode);
+      range.setEndAfter(textNode);
+    }
+
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    syncInputContent();
   }
+
+  /** 在当前光标位置插入一个 chat chip */
+  const insertChip = useCallback((instance: ChatChipInstance) => {
+    const editor = inputEditorRef.current;
+    if (!editor) return;
+
+    // 存入 chipMap
+    chipMapRef.current.set(instance.id, instance);
+
+    const def = chipTypesMapRef.current.get(instance.type);
+
+    // 点击删除按钮时：卸载 React、从 DOM 移除、清理 chipMap、同步内容
+    const onRemove = () => {
+      const chipEl = editor.querySelector<HTMLSpanElement>(`[data-chip-id="${instance.id}"]`);
+      if (chipEl) {
+        unmountChipContainer(chipEl);
+        chipEl.parentNode?.removeChild(chipEl);
+      }
+      chipMapRef.current.delete(instance.id);
+      syncInputContent();
+    };
+
+    const chipEl = createChipContainer(instance, def, onRemove);
+
+    // 插入到当前光标位置
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      // 确保光标在 editor 内
+      if (editor.contains(range.commonAncestorContainer)) {
+        range.deleteContents();
+        range.insertNode(chipEl);
+        // 把光标移到 chip 之后
+        range.setStartAfter(chipEl);
+        range.setEndAfter(chipEl);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      } else {
+        editor.appendChild(chipEl);
+      }
+    } else {
+      // 无选区：追加到末尾
+      editor.appendChild(chipEl);
+    }
+
+    syncInputContent();
+    editor.focus();
+  }, [syncInputContent]);
 
   useImperativeHandle(ref, () => {
     return {
       focus: () => {
-        inputEditorRef.current!.focus()
+        if (inputEditorRef.current) {
+          focusEditorAtEnd(inputEditorRef.current);
+        }
       },
       appendInput,
       setMentions: (mentions) => {
         setMentions(mentions)
         setVibeCoding(mentions[0]?.vibeCoding || false);
       },
-      getInput: () => ({
-        message: inputEditorRef.current?.textContent ?? "",
-        attachments: [...attachments],
-        mentions: [...mentions],
-      }),
+      getInput: () => {
+        const editor = inputEditorRef.current;
+        if (!editor) {
+          return { message: "", attachments: [...attachments], mentions: [...mentions], chips: [] };
+        }
+        const { message, chips } = serializeEditorContent(editor, chipMapRef.current);
+        return {
+          message,
+          attachments: [...attachments],
+          mentions: [...mentions],
+          chips,
+        };
+      },
+      clear: () => {
+        if (inputEditorRef.current) {
+          // 卸载所有 chip 的 React 实例
+          inputEditorRef.current.querySelectorAll<HTMLSpanElement>(`[data-chip-id]`).forEach(unmountChipContainer);
+          inputEditorRef.current.textContent = "";
+        }
+        chipMapRef.current.clear();
+        setInputContent("");
+        setAttachments([]);
+      },
+      insertChip,
     };
-  }, [attachments, mentions]);
+  }, [attachments, mentions, insertChip]);
 
   const send = () => {
-    const inputContent = inputEditorRef.current!.textContent;
+    const editor = inputEditorRef.current!;
+    const { message: serializedMessage, chips } = serializeEditorContent(editor, chipMapRef.current);
     const hasUploadingAttachment = attachments.some((a) => a.uploading);
-    if (inputContent && !disabled && !uploading && !hasUploadingAttachment) {
+    if (serializedMessage && !disabled && !uploading && !hasUploadingAttachment) {
       props.onSend({
-        message: inputContent,
+        message: serializedMessage,
         attachments,
         mentions,
+        ...(chips.length > 0 ? { chips } : {}),
       })
 
+      // 清空输入框（卸载 chip React 实例后清空 DOM）
+      editor.querySelectorAll<HTMLSpanElement>(`[data-chip-id]`).forEach(unmountChipContainer);
+      editor.textContent = "";
+      chipMapRef.current.clear();
       setAttachments([]);
       setInputContent("");
-      inputEditorRef.current!.textContent = "";
     }
   }
 
   const onInput = () => {
-    setInputContent(inputEditorRef.current!.textContent)
+    syncInputContent();
   }
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -284,6 +571,47 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       } else {
         event.preventDefault();
         send();
+      }
+      return;
+    }
+
+    // ── 整体删除 chat chip ──────────────────────────────────────────────
+    const selection = window.getSelection();
+    if (!selection || !selection.rangeCount) return;
+    const range = selection.getRangeAt(0);
+
+    if (event.key === 'Backspace') {
+      // 光标紧贴 chip 右侧：当前节点是文本节点且 offset=0，prevSibling 是 chip
+      const { startContainer, startOffset } = range;
+      if (startOffset === 0) {
+        const prev = startContainer.previousSibling as HTMLElement | null;
+        if (prev && prev.dataset?.chipId) {
+          event.preventDefault();
+          const id = prev.dataset.chipId;
+          unmountChipContainer(prev as HTMLSpanElement);
+          prev.parentNode?.removeChild(prev);
+          chipMapRef.current.delete(id);
+          syncInputContent();
+          return;
+        }
+      }
+    }
+
+    if (event.key === 'Delete') {
+      // 光标紧贴 chip 左侧：nextSibling 是 chip
+      const { endContainer, endOffset } = range;
+      const textLen = endContainer.textContent?.length ?? 0;
+      if (endOffset === textLen) {
+        const next = endContainer.nextSibling as HTMLElement | null;
+        if (next && next.dataset?.chipId) {
+          event.preventDefault();
+          const id = next.dataset.chipId;
+          unmountChipContainer(next as HTMLSpanElement);
+          next.parentNode?.removeChild(next);
+          chipMapRef.current.delete(id);
+          syncInputContent();
+          return;
+        }
       }
     }
   }
@@ -422,19 +750,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     if (disabled || uploading) {
       return;
     }
-    const file = event.clipboardData.files[0];
-    if (file?.type.startsWith('image/')) {
-      if (checkAttachmentsLimit()) {
-        return;
-      }
-      updateAttachmentsByFile(file);
-    } else {
-      const content = event.clipboardData.getData('text/plain');
 
-      if (!content) {
-        return;
-      }
-
+    const content = getClipboardText(event.clipboardData);
+    if (content) {
       const selection = window.getSelection();
 
       if (!selection?.rangeCount) {
@@ -447,8 +765,19 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       range.insertNode(textNode);
       range.setStartAfter(textNode);
       range.setEndAfter(textNode);
+      selection.removeAllRanges();
+      selection.addRange(range);
 
-      setInputContent(inputEditorRef.current!.textContent)
+      syncInputContent();
+      return;
+    }
+
+    const file = event.clipboardData.files[0];
+    if (file?.type.startsWith('image/')) {
+      if (checkAttachmentsLimit()) {
+        return;
+      }
+      updateAttachmentsByFile(file);
     }
   }
 
@@ -460,7 +789,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   }
 
   return (
-    <div className={classNames(css.container, { [css.loose]: variant === 'loose' })}>
+    <div className={classNames(css.container, { [css.loose]: variant === 'loose', [css.bubble]: variant === 'bubble' }, className)}>
       {pendingQueue && pendingQueue.length > 0 && (
         <PendingQueue queue={pendingQueue} onRemove={onRemoveFromQueue} />
       )}
@@ -500,9 +829,11 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           <div className={classNames(css.leftArea, {
             [css.disabled]: disabled || uploading
           })}>
-            <div data-zone-type="ai-request" className={css.attachmentButton} onClick={uploadAttachment}>
-              <Attachment />
-            </div>
+            {!isBubble && (
+              <div data-zone-type="ai-request" className={css.attachmentButton} onClick={uploadAttachment}>
+                <Attachment />
+              </div>
+            )}
             {/* 模式切换，暂时去除 */}
             {/* {chatMode ? <ChatMode disabled={disabled} chatMode={chatMode} onChange={onChatModeChange} /> : null} */}
             {modelSelector && modelSelector.models.length > 0 && (
@@ -510,6 +841,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
             )}
           </div>
           <div className={css.rightArea}>
+            {renderActionPrefix?.()}
             <div data-zone-type="ai-request" className={classNames(css.sendButtonContainer, {
               [css.disabled]: !loading && (disabled || !inputContent || uploading || attachments.some((a) => a.uploading))
             })} onClick={send}>
@@ -537,4 +869,4 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 })
 
 export { Sender }
-export type { SenderRef, SenderProps, InputState }
+export type { SenderRef, SenderProps }

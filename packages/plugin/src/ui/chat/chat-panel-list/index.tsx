@@ -42,11 +42,50 @@ const FocusTag = ({ focus }: { focus: any }) => {
   );
 };
 
+// ─── 用户消息中的 chip 标签（与 FocusTag 样式一致）─────────────────────────────
+
+const ChipTag = ({ label }: { label: string }) => (
+  <span className={css["focus-tag"]}>
+    <span className={css["focus-tag-icon"]} aria-hidden="true">
+      <svg viewBox="0 0 16 16" fill="none">
+        <rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.2" />
+        <path d="M5.5 5.5h5m-5 2.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      </svg>
+    </span>
+    <span className={css["focus-tag-text"]}>{label}</span>
+  </span>
+);
+
+/**
+ * 解析 userText 中的 [[chip:id]] 占位符，从 meta.chips 查实例，渲染成 ChipTag。
+ * 其余文本段直接渲染为文字。
+ */
+function renderUserTextWithChips(userText: string, chips?: { id: string; label: string }[]): React.ReactNode {
+  if (!chips?.length || !userText.includes("[[chip:")) {
+    return userText;
+  }
+  const chipMap = new Map(chips.map((c) => [c.id, c]));
+  const parts = userText.split(/(\[\[chip:[^\]]+\]\])/);
+  return (
+    <>
+      {parts.map((part, i) => {
+        const match = part.match(/^\[\[chip:([^\]]+)\]\]$/);
+        if (match) {
+          const chip = chipMap.get(match[1]);
+          return chip ? <ChipTag key={i} label={chip.label} /> : null;
+        }
+        return part ? <React.Fragment key={i}>{part}</React.Fragment> : null;
+      })}
+    </>
+  );
+}
+
 // ─── 默认 renderUserMessage ────────────────────────────────────────────────────
 // 渲染 focus 信息 + 消息文本
 
 const pluginRenderUserMessage = (record: MessageRecord) => {
   const focus = record.meta?.focus;
+  const chips = record.meta?.chips as { id: string; label: string }[] | undefined;
   return (
     <span>
       {focus && (
@@ -55,7 +94,7 @@ const pluginRenderUserMessage = (record: MessageRecord) => {
           {" "}
         </span>
       )}
-      {record.userText}
+      {renderUserTextWithChips(record.userText, chips)}
     </span>
   );
 };
@@ -121,10 +160,10 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
         setTimeout(() => disabledSenderRef.current?.focus());
       }
     });
-    const unAppendInput = context.events.on("appendInput", ({ comId, input }: { comId: string; input: string | SendToAgentParams }) => {
+    const unAppendInput = context.events.on("appendInput", ({ comId, input }: { comId: string; input: Parameters<typeof context.appendInput>[1] }) => {
       if (!comId) return;
       ensureInstance(comId);
-      setTimeout(() => panelRefs.current.get(comId)?.appendInput(input));
+      setTimeout(() => panelRefs.current.get(comId)?.appendInput(input as any));
     });
 
     // 注册 inputGetter，供 context.getInput() 调用（与 appendInput 同构，反向读取）
