@@ -709,7 +709,6 @@ export class Agent {
    */
   protected compactRecord: CompactRecord | null = null;
   private _abortController: AbortController | null = null;
-
   /** 确保 _abortController 存在且可用；如已失效或不存在则新建 */
   private _ensureAbortController(): AbortController {
     if (!this._abortController || this._abortController.signal.aborted) {

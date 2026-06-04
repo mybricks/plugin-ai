@@ -556,13 +556,14 @@ export function turnsToMessages(
     // 用 iterations 重建 ReAct 序列（向后兼容：无 iterations 时降级到简单 assistant 消息）
     if (turn.iterations?.length) {
       for (const iter of getLLMIterations(turn.iterations)) {
-        if (iter.toolCalls.length > 0) {
+        const completedToolCalls = iter.toolCalls.filter((tc) => tc.status !== "pending");
+        if (completedToolCalls.length > 0) {
           // assistant 消息带 tool_calls
           const assistantMsg: Message = {
             role: "assistant",
             content: iter.content ?? "",
             ...(iter.thinkingContent ? { reasoning_content: iter.thinkingContent } : {}),
-            tool_calls: iter.toolCalls.map((tc) => ({
+            tool_calls: completedToolCalls.map((tc) => ({
               id: tc.callId,
               type: "function" as const,
               function: {
@@ -573,7 +574,7 @@ export function turnsToMessages(
           };
           messages.push(assistantMsg);
           // 每个工具调用对应一条 tool 消息
-          for (const tc of iter.toolCalls) {
+          for (const tc of completedToolCalls) {
             const toolResult = tc.status === "error"
               ? `Error: ${tc.error}`
               : tc.result?.output ?? "";
