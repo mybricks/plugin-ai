@@ -62,7 +62,7 @@ export interface ChatChipDef {
  * 使用方式：
  * ```ts
  * const chipRegistry = new ChipRegistry();
- * chipRegistry.register(focusDomChipDef);
+ * chipRegistry.register(domChipDef);
  *
  * const agent = new CodeAgent({
  *   formatUserMessage: chipRegistry.wrapFormatUserMessage(externalFormatUserMessage),
@@ -112,7 +112,7 @@ export class ChipRegistry {
         }
 
         let message = params.message as string;
-        for (const [type, groupChips] of typeGroups) {
+        for (const [type, groupChips] of Array.from(typeGroups)) {
           const def = this._types.get(type);
           if (def) {
             message = def.format({ message, chips: groupChips });

@@ -2,9 +2,9 @@ import React, { useEffect, useRef, useState } from "react";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
 import { chipRegistry } from "../../../sandbox/setup";
-import type { ChatChipDef, ChatChipFormatContext } from "../../../../../agent/src";
+import type { ChatChipDef } from "../../../../../agent/src";
 import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
-import { buildFocusInfo } from "../../../utils/focus-dom-summary";
+import { formatDomChipMessage } from "../../../utils/dom-info";
 import css from "./index.less";
 
 export interface ChatFocusViewProps {
@@ -14,58 +14,25 @@ export interface ChatFocusViewProps {
   placeholder?: string;
 }
 
-// ─── focus-dom chip 类型定义 ──────────────────────────────────────────────────
+// ─── dom chip 类型定义 ────────────────────────────────────────────────────────
 
 /**
- * focus-dom chip：代表当前聚焦的 DOM 元素。
+ * dom chip：代表当前聚焦的 DOM 元素。
  * - 无自定义 render，使用默认 chip 样式（label 文字）。
- * - format：调用 buildFocusInfo 生成结构化选区信息文本，供 LLM 理解上下文。
+ * - format：提取 DOM 类名、代码位置与结构摘要，供 LLM 理解上下文。
  *
  * chip 实例的 data 字段格式：{ ele?: HTMLElement }
  */
-const FOCUS_DOM_CHIP_TYPE = "focus-dom";
+const DOM_CHIP_TYPE = "dom";
 
-const focusDomChipDef: ChatChipDef = {
-  type: FOCUS_DOM_CHIP_TYPE,
+const domChipDef: ChatChipDef = {
+  type: DOM_CHIP_TYPE,
   // 不传 render：使用默认 chip 样式（图标 + label）
-  format: ({ message, chips }: ChatChipFormatContext): string => {
-    // 按 DOM 元素去重：同一个 ele 的多个 chip 视为同一引用
-    // eleKey: ele 对象引用 → 短引用名（「元素1」「元素2」...）
-    const eleToKey = new Map<HTMLElement | undefined, string>();
-    const keyToInfo = new Map<string, { label: string; ele?: HTMLElement }>();
-    let counter = 1;
-
-    for (const chip of chips) {
-      const ele = chip.data?.ele as HTMLElement | undefined;
-      if (!eleToKey.has(ele)) {
-        const key = chip.label || `元素${counter++}`;
-        eleToKey.set(ele, key);
-        keyToInfo.set(key, { label: chip.label, ele });
-      }
-    }
-
-    // 把 message 中的 [[chip:id]] 替换为对应的短引用名
-    let resolved = message;
-    for (const chip of chips) {
-      const ele = chip.data?.ele as HTMLElement | undefined;
-      const key = eleToKey.get(ele) ?? chip.label;
-      resolved = resolved.split(`[[chip:${chip.id}]]`).join(key);
-    }
-
-    // 在消息末尾追加引用说明块（仅包含实际被引用的元素）
-    const refLines: string[] = [];
-    for (const [key, { ele }] of keyToInfo) {
-      const info = ele ? buildFocusInfo(ele) : "[当前聚焦元素]";
-      refLines.push(`Dom元素 ${key}：\n${info}`);
-    }
-
-    if (refLines.length === 0) return resolved;
-    return `${resolved}\n\n${refLines.join("\n\n")}`;
-  },
+  format: formatDomChipMessage,
 };
 
 // 模块加载时一次性注册（chipRegistry 是单例，重复 register 同 type 会覆盖，幂等安全）
-chipRegistry.register(focusDomChipDef);
+chipRegistry.register(domChipDef);
 
 /**
  *
@@ -83,7 +50,7 @@ chipRegistry.register(focusDomChipDef);
  */
 const ChatFocusView = ({
   onUpload,
-  placeholder = "描述需求，直接发送或追加到对话…",
+  placeholder = "描述需求，追加到对话批量处理或者立即发送",
 }: ChatFocusViewProps) => {
   const senderRef = useRef<SenderRef>(null);
 
@@ -132,12 +99,14 @@ const ChatFocusView = ({
 
       const chipId = Math.random().toString(36).slice(2, 6);
 
-      const chip = { id: chipId, type: FOCUS_DOM_CHIP_TYPE, label, data: { ele } };
+      const chip = { id: chipId, type: DOM_CHIP_TYPE, label, data: { ele } };
       const suffix = message.trim() ? `，${message}` : "";
+      const panelInput = context.getInput(comId);
+      const prefix = panelInput?.message?.trim() ? "\n" : "";
 
       // appendInput 内部会解析 [[chip:id]] 并从 meta.chips 取实例渲染成 chip span
       context.appendInput(comId, {
-        message: `对于 [[chip:${chipId}]]${suffix}`,
+        message: `${prefix}对于 [[chip:${chipId}]]${suffix}`,
         meta: { chips: [chip] },
       });
     });

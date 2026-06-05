@@ -115,6 +115,7 @@ permissions:
 ├─ backend                 # 必选，服务端代码入口，自动渲染 MyBricks 前端项目
 |  ├─ index.ts             # 必选，服务入口，在这里创建 Hono app
 |  ├─ db.ts                # 可选，数据库连接文件，仅在需要数据库时创建
+|  ├─ middlewares          # 可选，服务端中间件目录，仅在需要时创建
 |  ├─ routes               # 可选，按业务域和路由拆分，一个文件一个业务路由，比如 /api/user 存放到 user.ts 中
 |  |  └── user.ts
 \`\`\``,
@@ -502,7 +503,7 @@ permissions:
   - write
 ---`,
     guideSection: `# 服务端工程规范
-注意：这是一个 serverless 工程，各类 crypto、fs、path 等 nodejs 模块都禁止使用。
+注意：这是一个 serverless 工程，各类 crypto、fs、path 等 nodejs 模块都禁止使用。如果需要 hash 等能力，可以走数据库相关能力。
 
 ## 服务端编写规范
 1. 后端接口路径统一挂在 \`api\` scope 下，例如 \`/api/todos\`、\`/api/users/:id\`。
@@ -511,8 +512,10 @@ permissions:
 4. 涉及数据库时，数据库表结构由工具调用进行准备；业务代码只负责查询和写入，不要在接口处理函数中执行建表逻辑。
 5. 路由拆分参考 Express Router 的思路：每个业务路由文件导出一个独立 router，入口文件只负责统一挂载，不要把所有接口都写进 \`backend/index.ts\`。
 
-## 最佳实践
-1. 如果需要 hash 等能力，可以走数据库相关能力。`,
+## 日志规范
+1. 必须包含服务启动日志，以及在有路由的情况下，需要统一的请求中间件；
+2. 必要时可以单独拆分一个logger文件；
+`,
     environmentVariablesSection: `以下是系统注入的后端环境变量，可在服务端代码中通过 \`process.env.<变量名>\` 访问，禁止自行声明或覆盖这些变量。
 
 | 变量名 | 类型 | 设计态值 | 运行态值 | 说明 |
@@ -557,11 +560,49 @@ export const pool = createPool({
     examplesSection: `1. 入口文件
 \`\`\`ts
 import { Hono } from "hono";
+import { logger } from "mybricks";
 import todoRoutes from "./routes/todo";
 
 const app = new Hono();
+const serverLogger = logger.child({ module: "backend" });
 
+const createRequestId = () => {
+  return \`\${Date.now().toString(36)}-\${Math.random().toString(36).slice(2, 8)}\`;
+};
+
+const requestHandle = async (c, next) => {
+  const requestId = c.req.header("x-request-id") ?? createRequestId();
+  const startedAt = Date.now();
+  const requestLogger = serverLogger.child({
+    requestId,
+    method: c.req.method,
+    path: c.req.path,
+  });
+
+  c.set("logger", requestLogger);
+  c.header("x-request-id", requestId);
+
+  try {
+    await next();
+  } catch (error) {
+    requestLogger.error({ error }, "服务端请求异常");
+
+    return c.json(
+      { success: false, message: "服务异常，请稍后重试" },
+      500,
+    );
+  } finally {
+    requestLogger.info({
+      status: c.res.status,
+      duration: Date.now() - startedAt,
+    }, "服务端请求完成");
+  }
+};
+
+app.use("*", requestHandle);
 app.route("/api/todos", todoRoutes);
+
+serverLogger.info("server start");
 
 export default app;
 \`\`\`
@@ -579,11 +620,13 @@ interface Todo {
 const todoRoutes = new Hono();
 
 todoRoutes.get("/", async (c) => {
+  const routeLogger = c.get("logger").child({ route: "todos", action: "list" });
+
   try {
     const items: Todo[] = [];
-
     return c.json({ success: true, data: { items } });
   } catch (error) {
+    routeLogger.error({ error }, "查询任务列表失败");
     return c.json({ success: false, message: "查询任务列表失败" }, 500);
   }
 });

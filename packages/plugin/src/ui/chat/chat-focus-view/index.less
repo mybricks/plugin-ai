@@ -1,31 +1,36 @@
 /*! plugin-ai-comp-view-anchor */
 
-// 「追加到对话」按钮：与发送按钮同高(25px)，线框胶囊风格，主题色系
-// 布局由 Sender 的 renderActionPrefix 插槽注入
+// 「追加到对话」按钮：沿用功能，视觉贴近远端 preset button。
 .append-btn {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  height: 25px;
+  justify-content: center;
+  gap: 4px;
+  height: 27px;
   padding: 0 10px;
-  margin-right: 4px;
-  border-radius: 25px;
-  border: 1px solid var(--mybricks-color-primary, #FA6400);
-  background: transparent;
-  color: var(--mybricks-color-primary, #FA6400);
+  border: 1px solid rgba(205, 214, 230, 0.5);
+  border-radius: 999px;
+  background: var(--mybricks-bg-color-main, rgba(255, 255, 255, 0.94));
+  color: var(--mybricks-text-color-main, #535b6f);
   font-size: 12px;
+  font-weight: 500;
   line-height: 1;
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
-  transition: background 0.15s;
+  box-shadow: none;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.15s, color 0.15s;
 
   &:hover {
-    background: rgba(250, 100, 0, 0.06);
+    transform: translateY(-1px);
+    border-color: var(--mybricks-color-primary, #FA6400);
+    color: var(--mybricks-color-primary, #FA6400);
+    box-shadow: var(--mybricks-shadow-main, rgba(16, 24, 40, 0.16) 0 12px 22px);
   }
 
   &:active {
-    background: rgba(250, 100, 0, 0.14);
+    transform: translateY(0);
+    filter: brightness(0.98);
   }
 
   .append-icon {

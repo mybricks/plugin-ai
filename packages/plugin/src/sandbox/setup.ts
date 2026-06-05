@@ -15,7 +15,7 @@ import type { PrdRenderProps } from "../ui/renders/prd-render";
 import { LoadingViewWithStyles, ComChatStartViewWithStyles, PrdRenderWithStyles } from "../ui/renders/register";
 import { context } from "../context";
 import { ensureAIPanelOpen, ensureFocusComId } from "../utils/ensure-ai-panel-open";
-import { buildFocusInfo } from "../utils/focus-dom-summary";
+import { buildFocusInfo } from "../utils/dom-info";
 
 // ─── 类型定义 ─────────────────────────────────────────────────────────────────
 
@@ -559,7 +559,8 @@ function connectToAI(
     formatUserMessage: chipRegistry.wrapFormatUserMessage(async (params) => {
       const focusSnapshot = context.currentFocus;
       const ele = focusSnapshot?.focusArea?.ele;
-      const focusInfoText = ele ? buildFocusInfo(ele) : undefined;
+      const hasDomChip = (params.meta?.chips ?? []).some((chip: any) => chip?.type === "dom");
+      const focusInfoText = ele && !hasDomChip ? buildFocusInfo(ele) : undefined;
       const focusMeta = focusSnapshot ? {
         focus: {
           comId: focusSnapshot.comId,

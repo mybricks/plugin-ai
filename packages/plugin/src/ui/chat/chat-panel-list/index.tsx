@@ -45,7 +45,7 @@ const FocusTag = ({ focus }: { focus: any }) => {
 // ─── 用户消息中的 chip 标签（与 FocusTag 样式一致）─────────────────────────────
 
 const ChipTag = ({ label }: { label: string }) => (
-  <span className={css["focus-tag"]}>
+  <span className={`${css["focus-tag"]} ${css["dom-chip-tag"]}`}>
     <span className={css["focus-tag-icon"]} aria-hidden="true">
       <svg viewBox="0 0 16 16" fill="none">
         <rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.2" />

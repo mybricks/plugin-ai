@@ -179,7 +179,7 @@ const ChatChipInner = ({ instance, chipDef, onRemove }: { instance: ChatChipInst
   }
   // 无 render 时：使用默认 chip 样式（图标 + label）
   return (
-    <span className={css.chip}>
+    <span className={classNames(css.chip, { [css.domChip]: instance.type === "dom" })}>
       <span className={css.chipIcon} aria-hidden="true">
         <svg viewBox="0 0 16 16" fill="none">
           <rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.2" />

@@ -1,7 +1,5 @@
 import type { CodeAgentPromptOptions } from "../../../agent/src";
-// import { MYBRICKS_PROMPT_SECTIONS } from "./mybricks";
-// import { MYBRICKS_SPEC_FIRST_PROMPT_SECTIONS } from "./mybricks-spec-first";
-import { MYBRICKS_JSDOC_PROMPT_SECTIONS } from './mybricks-jsdoc'
+import { MYBRICKS_PROMPT_SECTIONS } from './mybricks'
 
 export type { MybricksPromptSections } from "./mybricks";
 
@@ -75,8 +73,7 @@ export interface PromptSections {
  * 返回完整的 PromptSections，未传的字段均有默认值填充。
  */
 export function resolveDefaultPromptSections(input?: PromptSections): Required<PromptSections> {
-  // const D = MYBRICKS_PROMPT_SECTIONS;
-  const D = MYBRICKS_JSDOC_PROMPT_SECTIONS;
+  const D = MYBRICKS_PROMPT_SECTIONS;
   const result: any = {};
   for (const key of Object.keys(D) as (keyof typeof D)[]) {
     result[key] = { ...D[key], ...input?.[key as keyof PromptSections] };
