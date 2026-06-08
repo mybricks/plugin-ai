@@ -64,11 +64,13 @@ export function fullStackAppPromptBuilder(options: FullStackAppPromptBuilderOpti
           path: "backend/.agent/agent.md",
           content: [
             fullStackAppPromptSection.backend.metaSection,
-            '## 服务端规范',
+            '# 服务端规范',
             fullStackAppPromptSection.backend.guideSection,
+            '## 代码规范',
+            fullStackAppPromptSection.backend.codeRulesSection,
             '## 环境变量',
             fullStackAppPromptSection.backend.environmentVariablesSection,
-            "## 可用的三方库",
+            "## 服务端框架",
             fullStackAppPromptSection.backend.honoUsageSection,
             dbType === "MySQL"
               ? fullStackAppPromptSection.backend.mysqlUsageSection

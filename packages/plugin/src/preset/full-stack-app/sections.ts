@@ -502,20 +502,18 @@ permissions:
   - read
   - write
 ---`,
-    guideSection: `# 服务端工程规范
-注意：这是一个 serverless 工程，各类 crypto、fs、path 等 nodejs 模块都禁止使用。如果需要 hash 等能力，可以走数据库相关能力。
+    guideSection: `注意：这是一个 serverless 工程，各类 crypto、fs、path 等 nodejs 模块都禁止使用。如果需要 hash 等能力，可以走数据库相关能力。`,
+    codeRulesSection: `1. 后端接口路径统一挂在 \`api\` scope 下，例如 \`/api/todos\`、\`/api/users/:id\`。
+2. 路由处理函数中必须做好参数校验和异常捕获，避免未处理异常直接暴露给用户。
+3. 涉及数据库时，数据库表结构由工具调用进行准备；业务代码只负责查询和写入，不要在接口处理函数中执行建表逻辑。
+4. 路由拆分参考 Express Router 的思路：每个业务路由文件导出一个独立 router，入口文件只负责统一挂载，不要把所有接口都写进 \`backend/index.ts\`。
 
-## 服务端编写规范
-1. 后端接口路径统一挂在 \`api\` scope 下，例如 \`/api/todos\`、\`/api/users/:id\`。
-2. 服务端返回统一使用 JSON，成功返回 \`{ success: true, data }\`，失败返回 \`{ success: false, message }\`，并设置合理 HTTP 状态码。
-3. 路由处理函数中必须做好参数校验和异常捕获，避免未处理异常直接暴露给用户。
-4. 涉及数据库时，数据库表结构由工具调用进行准备；业务代码只负责查询和写入，不要在接口处理函数中执行建表逻辑。
-5. 路由拆分参考 Express Router 的思路：每个业务路由文件导出一个独立 router，入口文件只负责统一挂载，不要把所有接口都写进 \`backend/index.ts\`。
-
-## 日志规范
+### 日志规范
 1. 必须包含服务启动日志，以及在有路由的情况下，需要统一的请求中间件；
 2. 必要时可以单独拆分一个logger文件；
-`,
+
+### 路由返回规范
+1. 服务端返回统一使用 JSON，成功返回 \`{ success: true, data }\`，失败返回 \`{ success: false, message }\`，并设置合理 HTTP 状态码。`,
     environmentVariablesSection: `以下是系统注入的后端环境变量，可在服务端代码中通过 \`process.env.<变量名>\` 访问，禁止自行声明或覆盖这些变量。
 
 | 变量名 | 类型 | 设计态值 | 运行态值 | 说明 |
