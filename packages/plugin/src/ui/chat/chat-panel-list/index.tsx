@@ -27,33 +27,20 @@ interface ComInstance {
   focusSnapshot: any;
 }
 
-const FocusTag = ({ focus }: { focus: any }) => {
-  const label = focus?.focusArea?.title ?? focus?.title ?? "元素";
+const getDomLabel = (focus: any) => focus?.focusArea?.title ?? focus?.title ?? "元素";
+
+const DomTag = ({ label, className }: { label: string; className?: string }) => {
   return (
-    <span className={css["focus-tag"]}>
-      <span className={css["focus-tag-icon"]} aria-hidden="true">
-        <svg viewBox="0 0 16 16" fill="none">
-          <rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.2" />
-          <path d="M5.5 5.5h5m-5 2.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-        </svg>
-      </span>
+    <span className={`${css["focus-tag"]}${className ? ` ${className}` : ""}`}>
       <span className={css["focus-tag-text"]}>{label}</span>
     </span>
   );
 };
 
-// ─── 用户消息中的 chip 标签（与 FocusTag 样式一致）─────────────────────────────
+// ─── 用户消息中的 dom chip 标签（与 renderFocus 的 DomTag 一致）───────────────
 
-const ChipTag = ({ label }: { label: string }) => (
-  <span className={`${css["focus-tag"]} ${css["dom-chip-tag"]}`}>
-    <span className={css["focus-tag-icon"]} aria-hidden="true">
-      <svg viewBox="0 0 16 16" fill="none">
-        <rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.2" />
-        <path d="M5.5 5.5h5m-5 2.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-      </svg>
-    </span>
-    <span className={css["focus-tag-text"]}>{label}</span>
-  </span>
+const DomChipTag = ({ label }: { label: string }) => (
+  <DomTag label={label} className={css["dom-chip-tag"]} />
 );
 
 /**
@@ -72,7 +59,7 @@ function renderUserTextWithChips(userText: string, chips?: { id: string; label: 
         const match = part.match(/^\[\[chip:([^\]]+)\]\]$/);
         if (match) {
           const chip = chipMap.get(match[1]);
-          return chip ? <ChipTag key={i} label={chip.label} /> : null;
+          return chip ? <DomChipTag key={i} label={chip.label} /> : null;
         }
         return part ? <React.Fragment key={i}>{part}</React.Fragment> : null;
       })}
@@ -225,7 +212,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
               renderFocus={focusSnapshot ? () => (
                 <>
                   <span>对于 </span>
-                  <FocusTag focus={focusSnapshot} />
+                  <DomTag label={getDomLabel(focusSnapshot)} />
                 </>
               ) : undefined}
             />

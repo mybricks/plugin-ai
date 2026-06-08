@@ -177,15 +177,9 @@ const ChatChipInner = ({ instance, chipDef, onRemove }: { instance: ChatChipInst
       </span>
     );
   }
-  // 无 render 时：使用默认 chip 样式（图标 + label）
+  // 无 render 时：使用默认 chip 样式。dom chip 是 DomTag 的输入态封装，多一个删除按钮。
   return (
     <span className={classNames(css.chip, { [css.domChip]: instance.type === "dom" })}>
-      <span className={css.chipIcon} aria-hidden="true">
-        <svg viewBox="0 0 16 16" fill="none">
-          <rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.2" />
-          <path d="M5.5 5.5h5m-5 2.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-        </svg>
-      </span>
       <span className={css.chipText}>{instance.label}</span>
       <ChipRemoveBtn onRemove={onRemove} />
     </span>

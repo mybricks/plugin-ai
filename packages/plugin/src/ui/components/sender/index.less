@@ -402,15 +402,14 @@
             }
           }
 
-          // 默认 chip 样式（无 render 时，图标 + label）
+          // 默认 chip 样式（无 render 时，label + 删除）
           .chip {
             display: inline-flex;
             align-items: center;
-            gap: 3px;
             height: 18px;
             padding: 0 4px 0 5px;
             border-radius: 4px;
-            font-size: 10px;
+            font-size: 11px;
             line-height: 1;
             color: var(--mybricks-color-primary, #FA6400);
             border: 1px solid var(--mybricks-color-primary, #FA6400);
@@ -420,26 +419,8 @@
             white-space: nowrap;
             box-sizing: border-box;
 
-            .chipIcon {
-              display: inline-flex;
-              align-items: center;
-              justify-content: center;
-              flex: 0 0 11px;
-              width: 11px;
-              height: 11px;
-
-              svg {
-                width: 11px;
-                height: 11px;
-              }
-            }
-
             &.domChip {
               padding-left: 6px;
-
-              .chipIcon {
-                display: none;
-              }
             }
 
             .chipText {

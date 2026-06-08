@@ -571,7 +571,7 @@ function connectToAI(
         }
       } : {};
       const sandboxFormattedParams = {
-        message: focusInfoText ? `${params.message}\n\n${focusInfoText}` : params.message,
+        message: focusInfoText ? `<用户需求>${params.message}<用户需求/>\n\n${focusInfoText}` : params.message,
         attachments: params.attachments,
         meta: { ...params.meta, ...focusMeta },
         ...(sender ? { sender } : {}),

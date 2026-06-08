@@ -139,7 +139,6 @@ function buildDomChipInfo(label: string, ele?: Element): string {
   if (!ele) {
     return [
       `- ${label}：`,
-      " - 相关类名：未知",
       " - 代码位置：未知",
       " - 该区域到叶子节点的Dom结构摘要：未知",
     ].join("\n");
@@ -147,8 +146,7 @@ function buildDomChipInfo(label: string, ele?: Element): string {
 
   return [
     `- ${label}：`,
-    ` - 相关类名：${getDomClassNames(ele)}`,
-    ` - 代码位置：${getDomCodeLocation(ele)}`,
+    ` - 相关代码：${getDomCodeLocation(ele)}`,
     " - 该区域到叶子节点的Dom结构摘要：",
     indentText(extractDomSummary(ele), "   "),
   ].join("\n");
@@ -175,23 +173,23 @@ export function buildFocusInfo(el: Element): string {
   } else if (type === "popup") {
     typeDesc = "弹层";
   }
-  let selectors: string[] = [];
-  try {
-    selectors = JSON.parse(el.getAttribute("data-zone-selector") ?? "[]");
-  } catch (error) {
-    // ignore parse error
-  }
+  // let selectors: string[] = [];
+  // try {
+  //   selectors = JSON.parse(el.getAttribute("data-zone-selector") ?? "[]");
+  // } catch (error) {
+  //   // ignore parse error
+  // }
   const domSummary = extractDomSummary(el);
   const listInfo = getListFocusIndex(el);
   const listInfoLine = listInfo ? `（第 ${listInfo.index} 项 / 共 ${listInfo.total} 项）` : "";
   const metaLines: string[] = [];
-  if (selectors.length > 0) metaLines.push(`类名：${selectors.join(" ")}`);
-  metaLines.push(`文件定位：${getDomCodeLocation(el)}`);
+  // if (selectors.length > 0) metaLines.push(`类名：${selectors.join(" ")}`);
+  metaLines.push(`区域相关代码：${getDomCodeLocation(el)}`);
   const metaStr = metaLines.length > 0 ? `\n${metaLines.join("\n")}` : "";
   return `<focus-attention>
 注意：用户当前聚焦到了一个${typeDesc}${listInfoLine}。上面的需求大概率和这部分聚焦区域有关联，尽量不超出此聚焦区域。
 ${metaStr}
-以下是该区域到子节点的 DOM 结构摘要，用于辅助定位问题：
+以下是该区域到子节点的 DOM 结构摘要，用于辅助定位元素和问题：
 ${domSummary}
 </focus-attention>
   `.trim();

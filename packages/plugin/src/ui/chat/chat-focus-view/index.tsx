@@ -100,13 +100,13 @@ const ChatFocusView = ({
       const chipId = Math.random().toString(36).slice(2, 6);
 
       const chip = { id: chipId, type: DOM_CHIP_TYPE, label, data: { ele } };
-      const suffix = message.trim() ? `，${message}` : "";
+      const suffix = message.trim() ? `${message}` : "";
       const panelInput = context.getInput(comId);
       const prefix = panelInput?.message?.trim() ? "\n" : "";
 
       // appendInput 内部会解析 [[chip:id]] 并从 meta.chips 取实例渲染成 chip span
       context.appendInput(comId, {
-        message: `${prefix}对于 [[chip:${chipId}]]${suffix}`,
+        message: `${prefix}对于 [[chip:${chipId}]] ${suffix}；`,
         meta: { chips: [chip] },
       });
     });
