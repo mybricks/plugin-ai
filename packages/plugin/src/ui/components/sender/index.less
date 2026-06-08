@@ -139,7 +139,8 @@
   // 用于悬浮 chat-focus-view 场景：贴近 AiEditPanel 视觉，但保留输入区 + 底部工具栏结构
   &.bubble {
     width: 320px;
-    padding: 8px 4px;
+    // padding: 8px 4px;
+    padding: 0px;
 
     .editor {
       width: 100%;
@@ -159,15 +160,15 @@
 
       .input {
         min-height: 28px;
-        padding: 8px 15px 4px;
+        padding: 8px 12px 4px;
         line-height: 20px;
 
         .inputEditorContainer {
-          min-height: 28px;
+          min-height: 40px;
           max-height: 128px;
           overflow-y: auto;
           overflow-x: hidden;
-          font-size: 14px;
+          font-size: 12px;
           line-height: 20px;
 
           .inputEditor {
@@ -182,7 +183,7 @@
             top: 4px;
             left: 0;
             color: var(--mybricks-text-color-main, #535b6f);
-            font-size: 14px;
+            font-size: 12px;
             line-height: 20px;
             opacity: 0.48;
           }
@@ -193,7 +194,7 @@
         display: flex;
         justify-content: space-between;
         align-items: flex-end;
-        padding: 0 15px 8px;
+        padding: 0 12px 8px;
         margin: 0;
 
         .leftArea {
