@@ -233,6 +233,8 @@ interface SenderProps {
 
 interface SenderRef {
   focus: () => void;
+  /** 当前输入框是否可以被外部自动追加内容 */
+  canAppendInput: () => boolean;
   /**
    * 向输入框追加内容。
    * - string / SendToAgentParams：纯文本追加（兼容旧用法）
@@ -287,6 +289,26 @@ function createChipContainer(
   wrapper.appendChild(inner);
   ReactDOM.render(<ChatChipInner instance={instance} chipDef={chipDef} onRemove={onRemove} />, inner);
   return wrapper;
+}
+
+function updateChipWrapperSpacing(editor: HTMLDivElement) {
+  let previousSignificantNodeIsChip = false;
+  editor.childNodes.forEach((child) => {
+    if (child instanceof HTMLElement && child.dataset.chipId) {
+      child.classList.toggle(css.chipWrapperTightLeft, previousSignificantNodeIsChip);
+      previousSignificantNodeIsChip = true;
+      return;
+    }
+
+    if (child.nodeType === Node.TEXT_NODE) {
+      if ((child.textContent ?? "").length > 0) {
+        previousSignificantNodeIsChip = false;
+      }
+      return;
+    }
+
+    previousSignificantNodeIsChip = false;
+  });
 }
 
 // ─── 序列化 editor childNodes ─────────────────────────────────────────────────
@@ -358,6 +380,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   /** 根据当前 editor DOM 同步 inputContent 状态 */
   const syncInputContent = useCallback(() => {
     if (!inputEditorRef.current) return;
+    updateChipWrapperSpacing(inputEditorRef.current);
     const { message } = serializeEditorContent(inputEditorRef.current, chipMapRef.current);
     setInputContent(message || null);
   }, []);
@@ -497,6 +520,10 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           focusEditorAtEnd(inputEditorRef.current);
         }
       },
+      canAppendInput: () => {
+        const editor = inputEditorRef.current;
+        return !!(!disabled && editor?.isConnected && editor.getClientRects().length > 0);
+      },
       appendInput,
       setMentions: (mentions) => {
         setMentions(mentions)
@@ -507,6 +534,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         if (!editor) {
           return { message: "", attachments: [...attachments], mentions: [...mentions], chips: [] };
         }
+        updateChipWrapperSpacing(editor);
         const { message, chips } = serializeEditorContent(editor, chipMapRef.current);
         return {
           message,
@@ -527,7 +555,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       },
       insertChip,
     };
-  }, [attachments, mentions, insertChip]);
+  }, [attachments, mentions, insertChip, disabled]);
 
   const send = () => {
     const editor = inputEditorRef.current!;

@@ -6,6 +6,8 @@ import { ChatPanel } from "../chat-panel";
 import type { ChatPanelRef } from "../chat-panel";
 import type { MessageRecord } from "../use-session";
 import type { SendToAgentParams } from "../../../sandbox";
+import type { ChatChipInstance } from "../../../../../agent/src";
+import { createDomChip, DOM_CHIP_TYPE } from "../../../utils/dom-info";
 import css from "../chat-panel/index.less";
 
 interface User {
@@ -39,8 +41,11 @@ const DomTag = ({ label, className }: { label: string; className?: string }) => 
 
 // ─── 用户消息中的 dom chip 标签（与 renderFocus 的 DomTag 一致）───────────────
 
-const DomChipTag = ({ label }: { label: string }) => (
-  <DomTag label={label} className={css["dom-chip-tag"]} />
+const DomChipTag = ({ label, tightLeft }: { label: string; tightLeft?: boolean }) => (
+  <DomTag
+    label={label}
+    className={`${css["dom-chip-tag"]}${tightLeft ? ` ${css["dom-chip-tag-tight-left"]}` : ""}`}
+  />
 );
 
 /**
@@ -53,17 +58,32 @@ function renderUserTextWithChips(userText: string, chips?: { id: string; label: 
   }
   const chipMap = new Map(chips.map((c) => [c.id, c]));
   const parts = userText.split(/(\[\[chip:[^\]]+\]\])/);
+  let previousRenderedNodeIsChip = false;
   return (
     <>
       {parts.map((part, i) => {
         const match = part.match(/^\[\[chip:([^\]]+)\]\]$/);
         if (match) {
           const chip = chipMap.get(match[1]);
-          return chip ? <DomChipTag key={i} label={chip.label} /> : null;
+          if (!chip) return null;
+          const node = <DomChipTag key={i} label={chip.label} tightLeft={previousRenderedNodeIsChip} />;
+          previousRenderedNodeIsChip = true;
+          return node;
         }
-        return part ? <React.Fragment key={i}>{part}</React.Fragment> : null;
+        if (!part) return null;
+        previousRenderedNodeIsChip = false;
+        return <React.Fragment key={i}>{part}</React.Fragment>;
       })}
     </>
+  );
+}
+
+function isLastSegmentSameDomChip(message: string, chips: ChatChipInstance[] | undefined, ele: HTMLElement): boolean {
+  const lastChip = chips?.[chips.length - 1];
+  return !!(
+    lastChip?.type === DOM_CHIP_TYPE &&
+    lastChip.data?.ele === ele &&
+    message.trim().endsWith(`[[chip:${lastChip.id}]]`)
   );
 }
 
@@ -97,6 +117,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
   const disabledSenderRef = useRef<SenderRef>(null);
   const panelRefs = useRef(new Map<string, ChatPanelRef | null>());
   const currentComIdRef = useRef<string | undefined>(undefined);
+  const appendFocusChipTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     currentComIdRef.current = currentComId;
@@ -136,12 +157,42 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
     });
   }, []);
 
+  const appendFocusChipIfNeeded = useCallback((focus: AiServiceFocusParams) => {
+    const comId = focus.comId ?? focus.pageId;
+    const ele = focus.focusArea?.ele;
+    if (!comId || !ele) return;
+
+    if (appendFocusChipTimerRef.current) {
+      clearTimeout(appendFocusChipTimerRef.current);
+    }
+
+    appendFocusChipTimerRef.current = setTimeout(() => {
+      const panel = panelRefs.current.get(comId);
+      if (!panel?.canAppendInput()) return;
+
+      const input = panel?.getInput();
+      const message = input?.message ?? "";
+      if (!message.trim()) return;
+      if (isLastSegmentSameDomChip(message, input?.chips, ele)) return;
+
+      const chip = createDomChip(focus);
+      panel?.appendInput({
+        message: `[[chip:${chip.id}]]`,
+        meta: { chips: [chip] },
+      });
+    }, 120);
+  }, []);
+
   useEffect(() => {
     if (context.currentFocus) {
       handleFocus(context.currentFocus);
+      appendFocusChipIfNeeded(context.currentFocus);
     }
 
-    const unFocus = context.events.on("focus", handleFocus);
+    const unFocus = context.events.on("focus", (focus: AiServiceFocusParams) => {
+      handleFocus(focus);
+      appendFocusChipIfNeeded(focus);
+    });
     const unDisplay = context.events.on("aiViewDisplay", () => {
       if (!currentComIdRef.current) {
         setTimeout(() => disabledSenderRef.current?.focus());
@@ -164,9 +215,12 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
       unFocus();
       unDisplay();
       unAppendInput();
+      if (appendFocusChipTimerRef.current) {
+        clearTimeout(appendFocusChipTimerRef.current);
+      }
       context.registerInputGetter(undefined);
     };
-  }, [handleFocus, ensureInstance]);
+  }, [handleFocus, appendFocusChipIfNeeded, ensureInstance]);
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>

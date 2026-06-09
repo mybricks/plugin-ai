@@ -4,7 +4,7 @@ import { context } from "../../../context";
 import { chipRegistry } from "../../../sandbox/setup";
 import type { ChatChipDef } from "../../../../../agent/src";
 import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
-import { formatDomChipMessage } from "../../../utils/dom-info";
+import { createDomChip, DOM_CHIP_TYPE, formatDomChipMessage } from "../../../utils/dom-info";
 import css from "./index.less";
 
 export interface ChatFocusViewProps {
@@ -23,8 +23,6 @@ export interface ChatFocusViewProps {
  *
  * chip 实例的 data 字段格式：{ ele?: HTMLElement }
  */
-const DOM_CHIP_TYPE = "dom";
-
 const domChipDef: ChatChipDef = {
   type: DOM_CHIP_TYPE,
   // 不传 render：使用默认 chip 样式（图标 + label）
@@ -66,6 +64,11 @@ const ChatFocusView = ({
     return unsub;
   }, []);
 
+  useEffect(() => {
+    const timer = setTimeout(() => senderRef.current?.focus());
+    return () => clearTimeout(timer);
+  }, [focusParams]);
+
   const comId = focusParams?.comId ?? focusParams?.pageId;
   const agentKey = comId ? context.getAgentKey(comId) : "";
   const agent = comId ? context.agentMap.get(agentKey) : undefined;
@@ -94,19 +97,14 @@ const ChatFocusView = ({
 
     // 先确保 AI 面板已打开，再插入 chip + 文本
     ensureAIPanelOpen(comId).then(() => {
-      const ele = focusParams?.focusArea?.ele;
-      const label = focusParams?.focusArea?.title ?? focusParams?.title ?? "当前聚焦元素";
-
-      const chipId = Math.random().toString(36).slice(2, 6);
-
-      const chip = { id: chipId, type: DOM_CHIP_TYPE, label, data: { ele } };
+      const chip = createDomChip(focusParams);
       const suffix = message.trim() ? `${message}` : "";
       const panelInput = context.getInput(comId);
       const prefix = panelInput?.message?.trim() ? "\n" : "";
 
       // appendInput 内部会解析 [[chip:id]] 并从 meta.chips 取实例渲染成 chip span
       context.appendInput(comId, {
-        message: `${prefix}对于 [[chip:${chipId}]] ${suffix}；`,
+        message: `${prefix}对于[[chip:${chip.id}]]${suffix}；`,
         meta: { chips: [chip] },
       });
     });

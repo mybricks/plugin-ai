@@ -44,6 +44,8 @@ export interface ChatPanelProps {
 
 export interface ChatPanelRef {
   focus: () => void;
+  /** 当前输入框是否可以被外部自动追加内容 */
+  canAppendInput: () => boolean;
   appendInput: SenderRef["appendInput"];
   /** 获取输入框当前草稿内容 */
   getInput: SenderRef["getInput"];
@@ -91,6 +93,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     focus: () => {
       senderRef.current?.focus();
     },
+    canAppendInput: () => senderRef.current?.canAppendInput() ?? false,
     appendInput: (params) => {
       senderRef.current?.appendInput(params);
     },

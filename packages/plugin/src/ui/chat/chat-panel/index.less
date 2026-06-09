@@ -57,9 +57,18 @@
   box-sizing: border-box;
 }
 
-.dom-chip-tag,
-.dom-chip-tag span {
-  color: var(--mybricks-color-primary, #FA6400) !important;
+.dom-chip-tag {
+  margin: 0 3px;
+  vertical-align: middle;
+
+  &,
+  span {
+    color: var(--mybricks-color-primary, #FA6400) !important;
+  }
+}
+
+.dom-chip-tag-tight-left {
+  margin-left: 0;
 }
 
 .focus-tag-icon {

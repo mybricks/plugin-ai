@@ -1,5 +1,7 @@
 import type { ChatChipFormatContext, ChatChipInstance } from "../../../agent/src";
 
+export const DOM_CHIP_TYPE = "dom";
+
 /** 单段文本在 DOM 摘要中的最大字符数 */
 const DOM_SUMMARY_SINGLE_TEXT_MAX = 20;
 /** 选区 DOM 摘要总最大字符数，超出时裁剪中间部分 */
@@ -8,6 +10,15 @@ const DOM_SUMMARY_TOTAL_MAX = 300;
 interface DomLoc {
   codeLine?: { start?: number; end?: number };
   files?: { jsx?: string; less?: string };
+}
+
+export function createDomChip(focus?: AiServiceFocusParams): ChatChipInstance {
+  return {
+    id: Math.random().toString(36).slice(2, 8),
+    type: DOM_CHIP_TYPE,
+    label: focus?.focusArea?.title ?? focus?.title ?? "当前聚焦元素",
+    data: { ele: focus?.focusArea?.ele },
+  };
 }
 
 /**
@@ -217,13 +228,22 @@ export function formatDomChipMessage({ message, chips }: ChatChipFormatContext):
   for (const chip of chips) {
     const ele = getChipElement(chip);
     const label = eleToLabel.get(ele) ?? "Dom节点";
-    resolved = resolved.split(`[[chip:${chip.id}]]`).join(label);
+    resolved = resolved.split(`[[chip:${chip.id}]]`).join(` ${label} `);
   }
+  resolved = normalizeDomChipSpacing(resolved);
 
   if (labelToInfo.size === 0) return resolved;
 
   const infoLines = Array.from(labelToInfo).map(([label, { ele }]) => buildDomChipInfo(label, ele));
   return `${resolved}\n\nDom节点说明：\n${infoLines.join("\n")}`;
+}
+
+function normalizeDomChipSpacing(text: string): string {
+  return text
+    .replace(/[ \t]+/g, " ")
+    .replace(/ +([，。！？；：,.!?;:])/g, "$1")
+    .replace(/([（([{]) +/g, "$1")
+    .trim();
 }
 
 function getChipElement(chip: ChatChipInstance): Element | undefined {
