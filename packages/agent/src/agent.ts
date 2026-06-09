@@ -81,12 +81,12 @@ export interface AgentHooks {
    * 用户发送消息后、一轮 turn 开始时的钩子，在构建 turn 级消息快照之前调用。
    * 可用于初始化快照、收集日志等准备工作。
    */
-  beforeTurn?: (params: { message: string; attachments: any[] }) => Promise<void> | void;
+  beforeTurn?: (params: { message: string; attachments: any[]; meta?: any; extra?: Record<string, any> }) => Promise<void> | void;
   /**
    * 每次 LLM 请求前触发（每个 step 都会调用）。
    * 可用于动态修改请求参数、注入上下文等。
    */
-  beforeRequest?: (params: { meta?: any }) => Promise<void> | void;
+  beforeRequest?: (params: { meta?: any; extra?: Record<string, any> }) => Promise<void> | void;
   /**
    * 每轮 turn 结束后的钩子（无论成功、取消还是错误）。
    * 在 turn:complete / turn:abort / turn:error 事件触发后同步调用。
@@ -227,6 +227,7 @@ export interface FormatUserMessageResult {
   message: string;
   attachments?: any[];
   meta?: Record<string, any>;
+  extra?: Record<string, any>;
   sender?: TurnSender;
 }
 
@@ -280,6 +281,8 @@ export interface RequestAIOptions {
   attachments?: any[];
   /** UI 附加元数据，存入 TurnRecord.meta，不参与 LLM 上下文构建 */
   meta?: Record<string, any>;
+  /** 业务扩展字段，存入 TurnRecord.extra，不参与 LLM 上下文构建 */
+  extra?: Record<string, any>;
   [key: string]: any;
 }
 
@@ -836,7 +839,7 @@ export class Agent {
 
     // 统一走 _runTurn，由它根据 turn.iterations 决定是否跑 beforeTurn/warmup
     await this._runTurn(turn, {
-      userParams: { message: turn.userText, attachments: turn.userAttachments, meta: turn.meta },
+      userParams: { message: turn.userText, attachments: turn.userAttachments, meta: turn.meta, extra: turn.extra },
       persistMode: "update",
     });
   }
@@ -850,7 +853,7 @@ export class Agent {
   private async _runTurn(
     turn: TurnRecord,
     opts: {
-      userParams: { message: string; attachments?: any[]; meta?: any };
+      userParams: { message: string; attachments?: any[]; meta?: any; extra?: Record<string, any> };
       llmRest?: Record<string, any>;
       persistMode: TurnPersistMode;
     }
@@ -867,7 +870,12 @@ export class Agent {
     if (isFromStart) {
       // 执行 beforeTurn hook
       try {
-        await this.options.hooks?.beforeTurn?.({ message: userParams.message, attachments: userParams.attachments ?? [] });
+        await this.options.hooks?.beforeTurn?.({
+          message: userParams.message,
+          attachments: userParams.attachments ?? [],
+          meta: userParams.meta,
+          extra: userParams.extra,
+        });
       } catch (e) {
         console.warn("[Agent] hooks.beforeTurn failed:", e);
       }
@@ -897,8 +905,8 @@ export class Agent {
     messageSnapshot: TurnMessageSnapshot;
     /** 当前 turn 记录（用于写入迭代结果、持久化） */
     turn: TurnRecord;
-    /** 用户侧消息参数（message、attachments、meta），用于组装消息和 turn:start 事件 */
-    userParams: { message: string; attachments?: any[]; meta?: any };
+    /** 用户侧消息参数（message、attachments、meta、extra），用于组装消息和 hooks */
+    userParams: { message: string; attachments?: any[]; meta?: any; extra?: Record<string, any> };
     /** 透传给 callLLM 的其余参数（aiRole 等） */
     llmRest?: Record<string, any>;
     /** 本次执行对持久化层的写入语义：新 turn 首次保存 append，retry 复用旧 turn update */
@@ -996,6 +1004,7 @@ export class Agent {
         try {
           await this.options.hooks?.beforeRequest?.({
             meta: userParams.meta,
+            extra: userParams.extra,
           });
         } catch (e) {
           console.warn("[Agent] hooks.beforeRequest failed:", e);
@@ -1311,7 +1320,7 @@ export class Agent {
     // rest.aiRole = "image";
     
     // ── 格式化用户消息（在构建 TurnRecord 之前执行，格式化结果写入 turn）
-    // formatUserMessage 返回 { message, attachments?, meta? }，可覆盖原始参数
+    // formatUserMessage 返回 { message, attachments?, meta?, extra? }，可覆盖原始参数
     // 注意：turn.userText 保留原始 message（UI 展示用），LLM 收到的是 formattedParams.message
     let formattedParams = params;
     if (this.options.formatUserMessage) {
@@ -1322,6 +1331,7 @@ export class Agent {
           message: result.message,
           ...(result.attachments !== undefined ? { attachments: result.attachments } : {}),
           ...(result.meta !== undefined ? { meta: { ...params.meta, ...result.meta } } : {}),
+          ...(result.extra !== undefined ? { extra: { ...params.extra, ...result.extra } } : {}),
           ...(result.sender !== undefined ? { sender: result.sender } : {}),
         };
       } catch (e) {
@@ -1329,9 +1339,10 @@ export class Agent {
       }
     }
 
-    // ── 构建本轮 TurnRecord（使用格式化后的 attachments / meta）
+    // ── 构建本轮 TurnRecord（使用格式化后的 attachments / meta / extra）
     const turnId = `turn-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const formattedMeta = formattedParams.meta;
+    const formattedExtra = formattedParams.extra;
     const formattedAttachments = formattedParams.attachments ?? attachments ?? [];
     const userAttachments = formattedAttachments.map((a: any) => ({
       type: a.type ?? "image",
@@ -1345,6 +1356,7 @@ export class Agent {
       ...(formattedParams.message !== message ? { userFormattedText: formattedParams.message } : {}),
       userAttachments,
       ...(formattedMeta ? { meta: formattedMeta } : {}),
+      ...(formattedExtra ? { extra: formattedExtra } : {}),
       ...(formattedParams.sender ? { sender: formattedParams.sender } : {}),
       iterations: [],
       status: "success",
@@ -1363,7 +1375,7 @@ export class Agent {
     this.turns.push(turn);
 
     await this._runTurn(turn, {
-      userParams: { message, attachments: formattedParams.attachments ?? attachments, meta: formattedMeta },
+      userParams: { message, attachments: formattedParams.attachments ?? attachments, meta: formattedMeta, extra: formattedExtra },
       llmRest: rest,
       persistMode: "append",
     });

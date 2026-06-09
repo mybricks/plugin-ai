@@ -150,6 +150,11 @@ export interface TurnRecord {
    */
   meta?: Record<string, any>;
   /**
+   * 用户消息的业务扩展字段（调用方透传，不参与 LLM 上下文构建）。
+   * 可用于存储 trace、来源、业务对象 ID 等，供 hooks 和历史记录读取。
+   */
+  extra?: Record<string, any>;
+  /**
    * 消息发送者信息（由 formatUserMessage 注入，UI 展示时优先使用）。
    * 不传时 UI 兜底使用 ChatPanel 的 user prop。
    */

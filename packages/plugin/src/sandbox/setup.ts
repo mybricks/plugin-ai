@@ -29,6 +29,7 @@ export const chipRegistry = new ChipRegistry();
 export interface SendToAgentParams {
   message: string;
   attachments?: { type: string; content: string; title?: string; size?: number }[];
+  extra?: Record<string, any>;
 }
 
 export interface SandboxHelpers {
@@ -192,9 +193,10 @@ export function setupSandbox(params: SetupSandboxParams): void {
               await agent.requestAI({
                 message: params.message,
                 attachments: params.attachments ?? [],
+                ...(params.extra ? { extra: params.extra } : {}),
               });
             },
-            { message: params.message, attachments: params.attachments ?? [] }
+            { message: params.message, attachments: params.attachments ?? [], ...(params.extra ? { extra: params.extra } : {}) }
           );
         });
       },
@@ -574,6 +576,7 @@ function connectToAI(
         message: focusInfoText ? `<用户需求>${params.message}<用户需求/>\n\n${focusInfoText}` : params.message,
         attachments: params.attachments,
         meta: { ...params.meta, ...focusMeta },
+        ...(params.extra ? { extra: params.extra } : {}),
         ...(sender ? { sender } : {}),
       };
       if (!formatUserMessage) return sandboxFormattedParams;
