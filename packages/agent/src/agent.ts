@@ -1199,6 +1199,12 @@ export class Agent {
    *   - options = 继承主 Agent options，forkOptions 可覆盖 tools
    *
    * 可用于 autoSummary、autoCompact、subAgent 等场景。
+   *
+   * TODO: fork 机制存在设计缺陷——ForkAgent 继承自 Agent 而非 CodeAgent。
+   *   fork 出来的实例天然缺失 CodeAgent 的沙箱、插件、工具等完整上下文；
+   *   目前通过把 CodeAgent 的 getEnvironmentSection、getContextMessages 等能力以闭包形式
+   *   打包进 options 来变通传递，是绕路而非真正的 fork。
+   *   真正的 subAgent 机制应该 fork 出一个完整的 CodeAgent 实例，需要重新设计。
    */
   createFork(forkOptions?: ForkAgentOptions): ForkAgent {
     const { turnsSlice, tools, aiRole, mask, retry, mode } = forkOptions ?? {};
@@ -1243,6 +1249,8 @@ export class Agent {
       ...(retry !== undefined ? { retry: retry === false ? { maxRetries: 0 } : retry } : {}),
       // fork 是 worker agent，不需要讨论模式
       disabledModes: [AgentModeEnum.Plan],
+      // fork 不注入环境提示词（模式说明、skills 等），getEnvironmentSection 是 CodeAgent 的箭头函数，this 永远指向父实例，无法感知 fork 的 disabledModes
+      getEnvironmentSection: undefined,
       // fork 强制关闭 summary/compact，防止 summary fork / compact fork 再递归创建 fork。
       summary: { enabled: false },
       compact: { enabled: false },
