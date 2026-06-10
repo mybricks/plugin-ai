@@ -311,6 +311,8 @@ export async function getModeReminder(params: {
   getFiles: () => Promise<Array<{ path: string; content: string }>>;
 }): Promise<string> {
   const availableModes = getAvailableAgentModes(params);
+  const hasPlanMode = availableModes.includes(AgentModeEnum.Plan);
+  if (!hasPlanMode) return "";
   try {
     const files = await params.getFiles();
     return buildModeReminder({

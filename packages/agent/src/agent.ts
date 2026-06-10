@@ -1241,6 +1241,8 @@ export class Agent {
       ...(mask !== undefined ? { mask } : {}),
       // retry：不传=继承父；传了则覆盖（false 或具体配置）
       ...(retry !== undefined ? { retry: retry === false ? { maxRetries: 0 } : retry } : {}),
+      // fork 是 worker agent，不需要讨论模式
+      disabledModes: [AgentModeEnum.Plan],
       // fork 强制关闭 summary/compact，防止 summary fork / compact fork 再递归创建 fork。
       summary: { enabled: false },
       compact: { enabled: false },
