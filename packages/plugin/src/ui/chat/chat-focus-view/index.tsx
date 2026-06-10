@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
 import { chipRegistry } from "../../../sandbox/setup";
-import type { ChatChipDef } from "../../../../../agent/src";
+import type { AgentMode, ChatChipDef } from "../../../../../agent/src";
+import { AgentModeEnum } from "../../../../../agent/src";
 import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
 import { createDomChip, DOM_CHIP_TYPE, formatDomChipMessage } from "../../../utils/dom-info";
 import css from "./index.less";
@@ -72,10 +73,13 @@ const ChatFocusView = ({
   const comId = focusParams?.comId ?? focusParams?.pageId;
   const agentKey = comId ? context.getAgentKey(comId) : "";
   const agent = comId ? context.agentMap.get(agentKey) : undefined;
+  const availableModes = agent?.getAvailableModes() ?? [AgentModeEnum.Build];
+  const showChatMode = availableModes.length > 1;
+  const [chatMode, setChatMode] = useState<AgentMode>(() => availableModes[0] ?? AgentModeEnum.Build);
 
   const onSend: SenderProps["onSend"] = (params) => {
     if (!agent || !comId) return;
-    const { message, attachments, chips } = params;
+    const { message, attachments, chips, mode } = params;
     const meta = chips?.length ? { chips } : undefined;
 
     ensureAIPanelOpen(comId).then(() => {
@@ -83,7 +87,7 @@ const ChatFocusView = ({
         agentKey,
         async () => {
           context.aiQueue.registerAbort(agentKey, () => agent.abort());
-          await agent.requestAI({ message, attachments, ...(meta ? { meta } : {}) });
+          await agent.requestAI({ message, attachments, ...(mode ? { mode } : {}), ...(meta ? { meta } : {}) });
         },
         { message: params.message, attachments: params.attachments }
       );
@@ -131,6 +135,10 @@ const ChatFocusView = ({
       ref={senderRef}
       variant="bubble"
       onSend={onSend}
+      chatMode={showChatMode ? chatMode : null}
+      onChatModeChange={(nextMode: AgentMode | null) => {
+        if (nextMode) setChatMode(nextMode);
+      }}
       placeholder={placeholder}
       onUpload={onUpload ?? context.pluginParams.onUpload}
       renderActionPrefix={renderActionPrefix}

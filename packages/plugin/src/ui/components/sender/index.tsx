@@ -8,10 +8,12 @@ import { AttachmentsList } from "../attachments";
 import type { Attachment as AttachmentItem } from "../attachments";
 import { Mention, Attachments } from "../types";
 import { ChatMode, type ChatModeType } from "../chat-mode";
-import type { QueueItem } from "../../context/queue";
+import { ModelSelector } from "../model-selector";
+import type { ModelSelectorProps } from "../model-selector";
+import type { QueueItem } from "../../../context/queue";
 import type { ModelSelection } from "../../../../../request/src/providers";
 import type { SendToAgentParams } from "../../../sandbox";
-import type { ChatChipDef, ChatChipInstance } from "../../../../../agent/src";
+import type { AgentMode, ChatChipDef, ChatChipInstance } from "../../../../../agent/src";
 import css from "./index.less"
 
 const MAX_IMAGE_SIZE_MB = 3.5;
@@ -94,43 +96,6 @@ const PendingQueue = ({ queue, onRemove }: { queue: QueueItem[]; onRemove?: (id:
   );
 };
 
-interface ModelSelectorProps {
-  modelSelector: NonNullable<SenderProps['modelSelector']>;
-  disabled?: boolean;
-}
-
-const ModelSelector = ({ modelSelector, disabled }: ModelSelectorProps) => {
-  const { models, selected: initialSelected, onSelect } = modelSelector;
-  
-  // 内部维护 selected 状态，实现响应式
-  const [selected, setSelected] = useState<ModelSelection | null | undefined>(initialSelected);
-
-  // 同步外部 initialSelected 的变化
-  useEffect(() => {
-    setSelected(initialSelected);
-  }, [initialSelected]);
-
-  return (
-    <select
-      className={css.modelSelect}
-      disabled={disabled}
-      value={selected ? `${selected.providerId}|${selected.modelId}` : ''}
-      onChange={(e) => {
-        const [providerId, modelId] = e.target.value.split('|');
-        const newSelected = { providerId, modelId };
-        setSelected(newSelected);
-        onSelect(newSelected);
-      }}
-    >
-      {models.map((m) => (
-        <option key={`${m.providerId}|${m.modelId}`} value={`${m.providerId}|${m.modelId}`}>
-          {m.modelName}
-        </option>
-      ))}
-    </select>
-  );
-};
-
 // ─── ChatChip ──────────────────────────────────────────────────────────────
 
 /**
@@ -194,6 +159,7 @@ interface SenderProps {
     attachments: Attachments;
     mentions: Mention[];
     chips?: ChatChipInstance[];
+    mode?: AgentMode;
     [key: string]: any;
   }) => void;
   onMentionClick?: (mention: Mention) => void;
@@ -216,6 +182,11 @@ interface SenderProps {
   renderFocus?: () => React.ReactNode;
   /** 在发送按钮左侧插入自定义操作（如「追加到对话」按钮），不影响发送按钮本身 */
   renderActionPrefix?: () => React.ReactNode;
+  /**
+   * ⚠️ 试验性 API，后续版本将移除。
+   * 在附件上传按钮之后插入自定义渲染内容。
+   */
+  renderAttachmentSuffix?: () => React.ReactNode;
   /** 自定义根元素类名，用于外部覆盖样式 */
   className?: string;
   /** 模型选择器配置 */
@@ -358,7 +329,7 @@ function focusEditorAtEnd(editor: HTMLDivElement) {
 // ─── Sender ──────────────────────────────────────────────────────────────────
 
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
-  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue, renderFocus, renderActionPrefix, modelSelector, className, chipTypes = [] } = props;
+  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue, renderFocus, renderActionPrefix, renderAttachmentSuffix, modelSelector, className, chipTypes = [] } = props;
   const isBubble = variant === 'bubble';
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
@@ -566,6 +537,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         message: serializedMessage,
         attachments,
         mentions,
+        ...(chatMode ? { mode: chatMode } : {}),
         ...(chips.length > 0 ? { chips } : {}),
       })
 
@@ -856,8 +828,8 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
                 <Attachment />
               </div>
             )}
-            {/* 模式切换，暂时去除 */}
-            {/* {chatMode ? <ChatMode disabled={disabled} chatMode={chatMode} onChange={onChatModeChange} /> : null} */}
+            {renderAttachmentSuffix?.()}
+            {chatMode ? <ChatMode disabled={disabled} chatMode={chatMode} onChange={onChatModeChange} /> : null}
             {modelSelector && modelSelector.models.length > 0 && (
               <ModelSelector modelSelector={modelSelector} disabled={disabled || uploading || loading} />
             )}

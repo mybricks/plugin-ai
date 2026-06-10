@@ -20,7 +20,7 @@ import { ensureAIPanelOpen, ensureFocusComId } from "./utils/ensure-ai-panel-ope
 // ─── 工具类型重导出 ────────────────────────────────────────────────────────────
 
 export { CodeAgent, IDBHistory } from "../../agent/src";
-export type { AdditionalDirectory, AgentEventMap, AgentsMdConfig, CodeAgentPlugin, SkillFile, VirtualFile } from "../../agent/src";
+export type { AdditionalDirectory, AgentEventMap, AgentsMdConfig, CodeAgentPlugin, SkillFile, UnifiedFile } from "../../agent/src";
 export { createRequestAsStream, createOnUpload } from "../../request/src";
 export type { RequestAsStreamFn } from "../../request/src";
 export { openSetting, closeSetting, SettingModal } from "./ui/setting";
@@ -122,7 +122,7 @@ export interface PluginAIParams {
    * }]
    * ```
    */
-  virtualFiles?: (context: import("./sandbox").VirtualFilesRuntimeContext) => Promise<import("../../agent/src").VirtualFile[]>;
+  virtualFiles?: (context: import("./sandbox").VirtualFilesRuntimeContext) => Promise<import("../../agent/src").UnifiedFile[]>;
   /** 技能文件列表，挂载为虚拟 .agent/skills/ 目录，LLM 通过 use_skill 工具按需加载 */
   skills?: SkillFile[];
   /** 插件列表，会将内部 skills / agents / tools / additionalDirectories 合并进 CodeAgent 顶层配置 */
@@ -142,6 +142,8 @@ export interface PluginAIParams {
    * TODO: 当前仅返回值中的 message 会生效，attachments/meta/sender 的处理语义需要再评估。
    */
   formatUserMessage?: AgentOptions["formatUserMessage"];
+  /** 禁用的 Agent 运行模式；当只剩一种可用模式时隐藏模式切换器且不注册切换工具。 */
+  disabledModes?: AgentOptions["disabledModes"];
   /** 组件运行时扩展 */
   componentRuntime?: {
     modules: Record<string, FrontendFileModules | BackendFileModules>
@@ -153,6 +155,11 @@ export interface PluginAIParams {
   }
   /** 禁用调试环境列表 */
   disallowedDebugEnvs?: string[];
+  /**
+   * ⚠️ 试验性 API，后续版本将移除。
+   * 在 Sender 附件上传按钮之后插入自定义渲染内容。
+   */
+  renderAttachmentSuffix?: () => React.ReactNode;
   /** LLM 配置（自定义渠道时使用） */
   llm?: {
     providers?: import("./ui/setting").ProviderConfig[];
@@ -179,11 +186,13 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     tools,
     getUserContextMessage,
     formatUserMessage,
+    disabledModes,
     componentRuntime,
     disallowedDebugEnvs,
     llm,
     history,
     sender,
+    renderAttachmentSuffix,
   } = params;
 
   const mergedPromptSections = resolvePromptOptions(promptSections);
@@ -224,7 +233,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
 
   context.name = name;
   context.setPluginKey(pluginKey);
-  context.pluginParams = { name, user, onUpload: upload, onDownload: download };
+  context.pluginParams = { name, user, onUpload: upload, onDownload: download, renderAttachmentSuffix };
 
   // ── 调试工具：导入历史记录 ─────────────────────────────────────────────────
 
@@ -276,6 +285,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     tools,
     getUserContextMessage,
     formatUserMessage,
+    disabledModes,
     availableLibraries: codingConfig?.availableLibraries ?? [],
     themes: codingConfig?.themes ?? [],
     disallowedDebugEnvs: disallowedDebugEnvs ?? [],

@@ -1,7 +1,8 @@
 import type { Tool, ToolResult } from "../../../types";
-import type { ToolExecutionContext } from "../../../agent";
+import type { ToolExecutionContext } from "../../../types";
 import { ToolValidationError } from "../../../types";
 import type { Sandbox } from "../../index";
+import { checkMultiEditFilePermission } from "../../../mode-manager";
 import { READ_TOOL_NAME } from "../read";
 import { WRITE_TOOL_NAME } from "../write";
 import { EDIT_TOOL_NAME } from "../edit";
@@ -104,7 +105,7 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
       },
       required: ["edits"],
     },
-    validate(params: { edits?: Array<{ path?: string; old_str?: string; new_str?: string; replace_all?: boolean }> }) {
+    validate(params: { edits?: Array<{ path?: string; old_str?: string; new_str?: string; replace_all?: boolean }> }, ctx?: ToolExecutionContext) {
       if (!Array.isArray(params.edits) || params.edits.length === 0) {
         throw new ToolValidationError("edits is required and must be a non-empty array");
       }
@@ -120,6 +121,7 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
           throw new ToolValidationError(`edits[${i}].new_str is required`);
         }
       }
+      checkMultiEditFilePermission(params, ctx);
     },
     async execute(
       params: { edits: Array<{ path: string; old_str: string; new_str: string; replace_all?: boolean }> },

@@ -1,23 +1,37 @@
 import React, { useState } from "react";
-import { Dropdown } from "antd";
+import classNames from "classnames";
+import { Popup } from "../popup";
+import { AgentModeEnum } from "../../../../../agent/src";
 import css from "./index.less";
-import { Agent, Vibe, Check } from "../icons";
 
-export type ChatModeType = "agent" | "vibe" | null;
+// build = 智能体（默认执行）| plan = 讨论（先规划再执行）
+export type ChatModeType = typeof AgentModeEnum.Build | typeof AgentModeEnum.Plan | null;
 
 const CHAT_MODE_MAP: Record<
   NonNullable<ChatModeType>,
-  { icon: React.ReactNode; title: string; shortcut?: string }
+  { title: string; description: string }
 > = {
-  agent: {
-    icon: <Agent />,
-    title: "Agent",
+  [AgentModeEnum.Build]: {
+    title: "Agent模式",
+    description: "直接执行，快速完成修改",
   },
-  vibe: {
-    icon: <Vibe />,
-    title: "Vibe",
+  [AgentModeEnum.Plan]: {
+    title: "Plan模式",
+    description: "先制定方案，再决定是否执行",
   },
 };
+
+const ChatModeIcon = ({ mode }: { mode: NonNullable<ChatModeType> }) => (
+  mode === AgentModeEnum.Build ? (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M9 2L4 9h4l-1 5 5-7H8l1-5z" fill="currentColor" stroke="currentColor" strokeWidth="0.3" strokeLinejoin="round"/>
+    </svg>
+  ) : (
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M2.5 4h11M2.5 8h7M2.5 12h9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  )
+);
 
 interface ChatModeProps {
   disabled?: boolean;
@@ -36,69 +50,55 @@ const ChatMode = (props: ChatModeProps) => {
   const current = CHAT_MODE_MAP[chatMode];
 
   return (
-    <button
-      type="button"
+    <Popup
+      open={open}
+      onOpenChange={setOpen}
       disabled={disabled}
-      className={css.trigger}
-      onClick={() => {
-        onChange?.(chatMode === "agent" ? "vibe" : "agent");
-      }}
+      placement="top-start"
+      trigger={
+        <div 
+          className={classNames(css.trigger, { 
+            [css.disabled]: disabled,
+          })}
+        >
+          <span className={classNames(css.iconSlot, { [css.agentIconSlot]: chatMode === AgentModeEnum.Build })}>
+            <ChatModeIcon mode={chatMode} />
+          </span>
+          <span className={css.triggerText}>{current.title}</span>
+          <svg className={css.arrow} viewBox="0 0 1024 1024" width="10" height="10" fill="currentColor">
+            <path d="M512 714.666667c-8.533333 0-17.066667-2.133333-23.466667-8.533334l-341.333333-341.333333c-12.8-12.8-12.8-32 0-44.8 12.8-12.8 32-12.8 44.8 0l320 317.866667 317.866667-320c12.8-12.8 32-12.8 44.8 0 12.8 12.8 12.8 32 0 44.8L533.333333 704c-4.266667 8.533333-12.8 10.666667-21.333333 10.666667z" />
+          </svg>
+        </div>
+      }
     >
-      <span className={css.triggerIcon}>{current.icon}</span>
-      <span className={css.triggerTitle}>{current.title}</span>
-    </button>
-  )
-
-  // const overlay = (
-  //   <div className={css.dropdown} role="menu">
-  //     {(Object.keys(CHAT_MODE_MAP) as NonNullable<ChatModeType>[]).map((key) => {
-  //       const item = CHAT_MODE_MAP[key];
-  //       const isActive = chatMode === key;
-  //       return (
-  //         <div
-  //           key={key}
-  //           className={css.item}
-  //           role="menuitem"
-  //           onClick={() => {
-  //             onChange?.(key);
-  //             setOpen(false);
-  //           }}
-  //         >
-  //           <span className={css.itemIcon}>{item.icon}</span>
-  //           <span className={css.itemTitle}>{item.title}</span>
-  //           {item.shortcut ? (
-  //             <span className={css.itemShortcut}>{item.shortcut}</span>
-  //           ) : null}
-  //           {isActive ? (
-  //             <span className={css.itemCheck} aria-hidden>
-  //               <Check />
-  //             </span>
-  //           ) : null}
-  //         </div>
-  //       );
-  //     })}
-  //   </div>
-  // );
-
-  // return (
-  //   <Dropdown
-  //     disabled={disabled}
-  //     overlay={overlay}
-  //     trigger={["click"]}
-  //     visible={open}
-  //     onVisibleChange={setOpen}
-  //     getPopupContainer={(node) => node?.parentElement ?? document.body}
-  //   >
-  //     <button
-  //       type="button"
-  //       disabled={disabled}
-  //       className={css.trigger}
-  //     >
-  //       <span className={css.triggerIcon}>{current.icon}</span>
-  //       <span className={css.triggerTitle}>{current.title}</span>
-  //     </button>
-  //   </Dropdown>
-  // );
+      <div className={css.menu}>
+        {(Object.keys(CHAT_MODE_MAP) as NonNullable<ChatModeType>[]).map((key) => {
+          const item = CHAT_MODE_MAP[key];
+          const isSelected = chatMode === key;
+          return (
+            <div
+              key={key}
+              className={classNames(css.item, { [css.selected]: isSelected })}
+              onClick={() => {
+                onChange?.(key);
+                setOpen(false);
+              }}
+            >
+              <div className={css.itemContent}>
+                <div className={css.itemTitle}>
+                  <span className={css.itemIcon}>
+                    <ChatModeIcon mode={key} />
+                  </span>
+                  <span>{item.title}</span>
+                </div>
+                <div className={css.itemDesc}>{item.description}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Popup>
+  );
 };
 
 export { ChatMode };

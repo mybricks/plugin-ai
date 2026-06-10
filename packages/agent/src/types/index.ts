@@ -1,5 +1,3 @@
-import type { AgentEvents } from "./events";
-
 // ─── TokenUsage（通用 token 用量格式） ────────────────────────────────────────
 
 /**
@@ -16,6 +14,15 @@ export type TokenUsage = {
   };
   model?: string;
 };
+
+// ─── AgentMode（运行模式）────────────────────────────────────────────────────
+
+/**
+ * Agent 运行模式。
+ * - build：智能体模式，允许直接修改，适合快速修改和简单直接的任务
+ * - plan：讨论模式，修改之前先讨论方案，方案通过后再进行操作
+ */
+export type AgentMode = "build" | "plan";
 
 // ─── Message（LLM 请求格式） ──────────────────────────────────────────────────
 
@@ -186,6 +193,8 @@ export interface TurnRecord {
         thinkingContent?: string;
         /** 本 step 实际使用的 aiRole（未指定时为空） */
         aiRole?: string;
+        /** 本 step 实际运行的 Agent 模式 */
+        mode?: AgentMode;
         /** 本次 LLM 请求的 token 用量 */
         usage?: TokenUsage;
       }
@@ -607,3 +616,18 @@ export function turnsToMessages(
 
   return messages;
 }
+
+export type {
+  AgentHooks,
+  AgentOptions,
+  AgentsMdConfig,
+  AgentsMdConfigResolver,
+  ForkAgentOptions,
+  ForkOptions,
+  FormatUserMessageResult,
+  LLMCallResult,
+  RequestAIOptions,
+  ToolExecutionContext,
+  TurnMessageSnapshot,
+  TurnPersistMode,
+} from "./agent";

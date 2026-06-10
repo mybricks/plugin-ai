@@ -1,6 +1,8 @@
 import type { Tool, ToolResult } from "../../../types";
+import type { ToolExecutionContext } from "../../../types";
 import { ToolValidationError } from "../../../types";
 import type { Sandbox } from "../../index";
+import { checkMultiWriteFilePermission } from "../../../mode-manager";
 import { WRITE_TOOL_NAME } from "../write";
 import { EDIT_TOOL_NAME } from "../edit";
 import { MULTI_EDIT_TOOL_NAME } from "../multi-edit";
@@ -42,7 +44,7 @@ IMPORTANT: All string values must use raw Unicode characters. Never escape any c
       },
       required: ["files"],
     },
-    validate(params: { files?: Array<{ path?: string; content?: string }> }) {
+    validate(params: { files?: Array<{ path?: string; content?: string }> }, ctx?: ToolExecutionContext) {
       if (!Array.isArray(params.files) || params.files.length === 0) {
         throw new ToolValidationError("files must be a non-empty array");
       }
@@ -55,6 +57,7 @@ IMPORTANT: All string values must use raw Unicode characters. Never escape any c
           throw new ToolValidationError(`files[${i}].content is required`);
         }
       }
+      checkMultiWriteFilePermission(params, ctx);
     },
     async execute(params: { files: Array<{ path: string; content: string }> }): Promise<ToolResult> {
       try {

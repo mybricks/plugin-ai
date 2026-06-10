@@ -26,8 +26,6 @@ export async function buildGuideUserContext(
 
   const developeGuide = promptSections?.developeGuide ?? {};
 
-  console.log("buildGuideUserContext", { developeGuide }, !developeGuide.firstOfAll?.trim());
-  
   if (!developeGuide.firstOfAll?.trim()) return null;
 
   const designGuide = promptSections?.designGuide ?? {};

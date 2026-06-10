@@ -58,6 +58,8 @@ import {
   webFetchHttpErrorCase,
 } from "./web-fetch";
 import { settingCase } from "./setting";
+import { modelSwitchCase } from "./model-switch";
+import { disabledModesPlanCase } from "./disabled-modes";
 import {
   grepDefaultFilesCase,
   grepContentGlobCase,
@@ -152,6 +154,8 @@ export const ALL_CASES: TestCase[] = [
   toolThenEmptyContentCase,
   // 设置
   settingCase,
+  modelSwitchCase,
+  disabledModesPlanCase,
   // Grep 搜索
   grepDefaultFilesCase,
   grepContentGlobCase,

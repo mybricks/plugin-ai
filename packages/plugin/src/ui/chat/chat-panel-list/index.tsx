@@ -240,6 +240,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
             onSend={() => {}}
             onChatModeChange={() => {}}
             onUpload={onUpload ?? context.pluginParams.onUpload}
+            renderAttachmentSuffix={context.pluginParams.renderAttachmentSuffix}
           />
         </>
       )}
@@ -269,6 +270,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
                   <DomTag label={getDomLabel(focusSnapshot)} />
                 </>
               ) : undefined}
+              renderAttachmentSuffix={context.pluginParams.renderAttachmentSuffix}
             />
           </div>
         );

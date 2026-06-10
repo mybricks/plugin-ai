@@ -1,4 +1,4 @@
-import type { TokenUsage, TurnSender } from "./types";
+import type { AgentMode, TokenUsage, TurnSender } from "./types";
 
 // ─── SSE 风格事件类型 ─────────────────────────────────────────────────────────
 //
@@ -89,6 +89,17 @@ export type AgentEventMap = {
     toolName: string;
     args: any;
     count: number;
+  };
+
+  /**
+   * Agent 运行模式变更。
+   * - build：智能体，允许直接修改
+   * - plan：讨论，先讨论方案，方案通过后再操作
+   */
+  "mode:change": {
+    mode: AgentMode;
+    previousMode: AgentMode;
+    reason?: string;
   };
 
   // ── 单次 LLM 调用（每个 step 各触发一组：llm:start → llm:content × N → llm:complete）──

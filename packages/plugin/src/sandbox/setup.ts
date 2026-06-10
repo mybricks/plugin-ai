@@ -1,9 +1,9 @@
 import React from "react";
-import { CodeAgent, IDBHistory } from "../../../agent/src";
+import { AGENT_INTERNAL_FILE_EXCLUDE, CodeAgent, IDBHistory, isFileExcluded } from "../../../agent/src";
 import { ChipRegistry } from "../../../agent/src";
 import { splitFrontmatter, getFrontmatterString, getFrontmatterStringArray } from "../../../agent/src/utils/frontmatter";
 import { GLOB_TOOL_NAME } from "../../../agent/src/code-agent/tools";
-import type { Tool, Sandbox, CodeAgentPlugin, CodeAgentPromptOptions, History, BoundHistory, TurnSender, AdditionalDirectory, AgentsMdConfig, SkillFile, VirtualFile, AgentOptions } from "../../../agent/src";
+import type { Tool, Sandbox, CodeAgentPlugin, CodeAgentPromptOptions, History, BoundHistory, TurnSender, AdditionalDirectory, AgentsMdConfig, SkillFile, UnifiedFile, AgentOptions, AgentMode } from "../../../agent/src";
 import type { PromptSections } from "../prompts";
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { Designer, RegistSandBoxConfig } from "./types";
@@ -30,6 +30,7 @@ export interface SendToAgentParams {
   message: string;
   attachments?: { type: string; content: string; title?: string; size?: number }[];
   extra?: Record<string, any>;
+  mode?: AgentMode;
 }
 
 export interface SandboxHelpers {
@@ -134,7 +135,7 @@ export interface SetupSandboxParams {
    * 典型用途：在根工程放 `.agent/agent.md` 提供项目规范。
    * 同路径下 virtualFiles 优先级高于 designer.getFiles() 返回的真实文件。
    */
-  virtualFiles?: (context: VirtualFilesRuntimeContext) => Promise<VirtualFile[]>;
+  virtualFiles?: (context: VirtualFilesRuntimeContext) => Promise<UnifiedFile[]>;
   skills?: SkillFile[];
   plugins?: CodeAgentPlugin[];
   promptSections?: PromptSections;
@@ -156,6 +157,8 @@ export interface SetupSandboxParams {
    * TODO: 当前仅返回值中的 message 会生效，attachments/meta/sender 的处理语义需要再评估。
    */
   formatUserMessage?: AgentOptions["formatUserMessage"];
+  /** 禁用的 Agent 运行模式；当只剩一种可用模式时隐藏模式切换器且不注册切换工具。 */
+  disabledModes?: AgentOptions["disabledModes"];
   /** 透传给 CodeAgent 的历史记录实现，不传时使用内置 IDBHistory */
   history?: History;
   /** 消息发送者信息，注入到每条用户消息中，UI 展示时优先使用 */
@@ -169,12 +172,12 @@ export interface SetupSandboxParams {
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
 export function setupSandbox(params: SetupSandboxParams): void {
-  const { requestAsStream, virtualFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, formatUserMessage, history, sender } = params;
+  const { requestAsStream, virtualFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, sender } = params;
 
   window._sandbox_ = {
     // ── sandbox → Plugin ──────────────────────────────────────────────────────
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
-      return connectToAI(comId, config, { requestAsStream, virtualFiles, skills, plugins, promptOptions: promptSections?.agent, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, history, sender });
+      return connectToAI(comId, config, { requestAsStream, virtualFiles, skills, plugins, promptOptions: promptSections?.agent, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, sender });
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
@@ -194,9 +197,10 @@ export function setupSandbox(params: SetupSandboxParams): void {
                 message: params.message,
                 attachments: params.attachments ?? [],
                 ...(params.extra ? { extra: params.extra } : {}),
+                ...(params.mode ? { mode: params.mode } : {}),
               });
             },
-            { message: params.message, attachments: params.attachments ?? [], ...(params.extra ? { extra: params.extra } : {}) }
+            { message: params.message, attachments: params.attachments ?? [], ...(params.extra ? { extra: params.extra } : {}), ...(params.mode ? { mode: params.mode } : {}) }
           );
         });
       },
@@ -225,7 +229,7 @@ export function setupSandbox(params: SetupSandboxParams): void {
 interface PluginParams {
   requestAsStream: RequestAsStreamFn;
   /** 注入到根工程虚拟 FS 的文件（每个 turn 调用一次） */
-  virtualFiles?: (context: VirtualFilesRuntimeContext) => Promise<VirtualFile[]>;
+  virtualFiles?: (context: VirtualFilesRuntimeContext) => Promise<UnifiedFile[]>;
   skills?: SkillFile[];
   plugins?: CodeAgentPlugin[];
   promptOptions?: CodeAgentPromptOptions;
@@ -235,6 +239,7 @@ interface PluginParams {
   designRules?: string;
   getUserContextMessage?: PluginGetUserContextMessage;
   formatUserMessage?: AgentOptions["formatUserMessage"];
+  disabledModes?: AgentOptions["disabledModes"];
   history?: History;
   sender?: TurnSender;
 }
@@ -283,7 +288,7 @@ function formatLibraryDocs(libraries: Array<{ name: string; version?: string; us
 function connectToAI(
   comId: string,
   { designer, hooks }: RegistSandBoxConfig,
-  { requestAsStream, virtualFiles, skills, plugins, promptOptions, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, history, sender }: PluginParams
+  { requestAsStream, virtualFiles, skills, plugins, promptOptions, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, sender }: PluginParams
 ): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
   const runtimeContext: SkillRuntimeContext = { designer, codeRules, designRules };
@@ -328,9 +333,9 @@ function connectToAI(
   };
   const buildAgentsMdConfig = async (): Promise<AgentsMdConfig[]> => {
     const config: AgentsMdConfig[] = [];
-    // 从 sandbox.virtualFiles 中收集所有 .agent/agent.md 文件
-    const allVirtualFiles = (await sandbox.virtualFiles?.()) ?? [];
-    for (const vf of allVirtualFiles) {
+    // 从 sandbox.getFiles() 中收集所有 .agent/agent.md 文件
+    const allFiles = await sandbox.getFiles();
+    for (const vf of allFiles) {
       const normalizedPath = vf.path.replace(/^\/+/, '');
       // 根工程：.agent/agent.md
       // 扩展工程：<dir.path>.agent/agent.md（如 sub-project/.agent/agent.md）
@@ -350,50 +355,77 @@ function connectToAI(
   };
 
   const sandbox: Sandbox = {
-    // ── getFiles：主空间 + 所有扩展目录文件合并 ──────────────────────────────
-    getFiles: async () => {
+    // ── getFiles：主空间 + 扩展目录真实文件 + 顶层只读文件 + 扩展目录只读文件 ──
+    getFiles: async (options?) => {
+      // 1. 主工程真实文件（可读可写可删）
       const mainFiles = await designer.getFiles();
+      const realMainFiles: UnifiedFile[] = mainFiles.map(f => ({
+        path: f.path,
+        content: f.content,
+        permissions: { read: true, write: true, delete: true },
+      }));
+
+      // 2. 扩展目录真实文件（可读，write/delete 取决于是否有对应方法）
       const additionalDirectories = await getEnabledAdditionalDirectories();
-      if (!additionalDirectories.length) return mainFiles;
-      const extraFiles = (await Promise.all(
+      const realExtraFiles: UnifiedFile[] = (await Promise.all(
         additionalDirectories.map(async (dir) => {
           const files = await dir.getFiles();
           return files.map(f => ({
-            // 若 getFiles 返回的 path 不含前缀则自动补上
             path: f.path.startsWith(dir.path) ? f.path : `${dir.path}${f.path}`,
             content: f.content,
+            permissions: {
+              read: true,
+              write: !!dir.updateFiles,
+              delete: !!dir.deleteFiles,
+            },
           }));
         })
       )).flat();
-      return [...mainFiles, ...extraFiles];
-    },
 
-    // ── virtualFiles：顶层 + 各 additionalDirectory 的 virtualFiles 合并 ─────
-    virtualFiles: async () => {
+      // 3. 顶层只读文件（如 .agent/agent.md 项目规范）
       const promptVirtualFiles = (await virtualFiles?.({
         getEffectiveLibrariesSection: async (_options) => {
           const libraries = await designerRef.current?.getEffectiveLibraries() ?? [];
           return formatLibraryDocs(libraries);
         },
       })) ?? [];
-      const additionalDirectories = await getEnabledAdditionalDirectories();
-      const dirVirtualFiles = (await Promise.all(
+      const readonlyTopFiles: UnifiedFile[] = promptVirtualFiles.map(f => ({
+        path: f.path,
+        content: f.content,
+        permissions: { read: true, write: false, delete: false },
+      }));
+
+      // 4. 扩展目录只读文件（由各 additionalDirectory.virtualFiles 提供）
+      const readonlyExtraFiles: UnifiedFile[] = (await Promise.all(
         additionalDirectories.map(async (dir) => {
           const files = (await dir.virtualFiles?.()) ?? [];
-          // 路径加上 dir.path 前缀
-          return files.map((vf) => ({
-            ...vf,
-            path: vf.path.startsWith(dir.path) ? vf.path : `${dir.path}${vf.path}`,
+          return files.map(f => ({
+            path: f.path.startsWith(dir.path) ? f.path : `${dir.path}${f.path}`,
+            content: f.content,
+            permissions: { read: true, write: false, delete: false },
           }));
         })
       )).flat();
-      return [...promptVirtualFiles, ...dirVirtualFiles];
+
+      // 合并：只读文件覆盖同路径真实文件
+      const normPath = (p: string) => p.replace(/^\/+/, '');
+      const merged = new Map<string, UnifiedFile>(
+        [...realMainFiles, ...realExtraFiles].map(f => [normPath(f.path), f])
+      );
+      [...readonlyTopFiles, ...readonlyExtraFiles].forEach(f => {
+        merged.set(normPath(f.path), f);
+      });
+
+      const all = Array.from(merged.values());
+      return options?.exclude ? all.filter(f => !isFileExcluded(f, options.exclude)) : all;
     },
 
     // ── updateFiles：按路径前缀分组分发 ──────────────────────────────────────
     updateFiles: async (files) => {
       const additionalDirectories = await getEnabledAdditionalDirectories();
-      if (!additionalDirectories.length) return designer.updateFiles(files);
+      if (!additionalDirectories.length) {
+        return designer.updateFiles(files)
+      };
       const mainFiles: typeof files = [];
       const extraGroups = new Map<AdditionalDirectory, typeof files>();
       for (const file of files) {
@@ -447,7 +479,7 @@ function connectToAI(
     // ── getUserContext：主项目空间 + 扩展目录文件列表 + 宿主自定义上下文 ──────────
     getUserContext: async () => {
       const additionalDirectories = await getEnabledAdditionalDirectories();
-      const summarizeFiles = (files: Array<{ path: string; content: string }>) => {
+      const summarizeFiles = (files: UnifiedFile[]) => {
         const suffixMap: Record<string, number> = {};
         for (const f of files) {
           const dotIdx = f.path.lastIndexOf('.');
@@ -463,14 +495,21 @@ function connectToAI(
       const ensureTrailingSlash = (path: string) => path.endsWith('/') ? path : `${path}/`;
       const examplePath = (dirPath: string) => `${ensureTrailingSlash(normalizeDirectoryPath(dirPath))}src/index.ts`;
 
-      const [mainFiles, extraDirectoryInfos, allVirtualFiles] = await Promise.all([
-        designer.getFiles(),
+      // 获取全量文件（含只读文件），用于查找 agent.md；同时过滤 .agent/ 以获取展示用文件列表
+      const [allFiles, displayFiles, extraDirectoryInfos] = await Promise.all([
+        sandbox.getFiles(),
+        sandbox.getFiles({ exclude: AGENT_INTERNAL_FILE_EXCLUDE }),
         Promise.all(additionalDirectories.map(async (dir) => ({
           dir,
-          files: await dir.getFiles(),
+          files: (await dir.getFiles()).filter((file) => !isFileExcluded(file, AGENT_INTERNAL_FILE_EXCLUDE)),
         }))),
-        sandbox.virtualFiles?.() ?? Promise.resolve([] as VirtualFile[]),
       ]);
+
+      // 展示给用户的主工程文件列表（过滤 .agent/ 目录）
+      const mainFiles = displayFiles.filter(f => {
+        const p = f.path.replace(/^\/+/, '');
+        return !additionalDirectories.some(d => p.startsWith(d.path));
+      });
 
       const projectCount = 1 + additionalDirectories.length;
       const sections: string[] = [
@@ -507,10 +546,10 @@ function connectToAI(
             ? '当前没有任何代码文件。'
             : `总计：${files.length} 个文件（${suffixSummary}）。当前不展开文件列表，可使用 ${GLOB_TOOL_NAME} 工具（如 \`${dir.path}**/*\`）查询文件列表，再按需读取具体文件。`;
 
-          // 从 sandbox.virtualFiles 中找该目录下的 .agent/agent.md，解析 frontmatter
+          // 从 sandbox.getFiles() 中找该目录下的 .agent/agent.md，解析 frontmatter
           // 根工程：.agent/agent.md；扩展工程：<dir.path>.agent/agent.md
           const dirAgentMdPath = `${dir.path.replace(/\/$/, '')}/.agent/agent.md`;
-          const dirAgentMd = allVirtualFiles.find((vf) => {
+          const dirAgentMd = allFiles.find((vf) => {
             const normalizedPath = vf.path.replace(/^\/+/, '');
             return normalizedPath === dirAgentMdPath;
           });
@@ -558,6 +597,7 @@ function connectToAI(
     skills: runtimeSkills,
     plugins: effectivePlugins,
     subAgents: [],
+    disabledModes,
     formatUserMessage: chipRegistry.wrapFormatUserMessage(async (params) => {
       const focusSnapshot = context.currentFocus;
       const ele = focusSnapshot?.focusArea?.ele;

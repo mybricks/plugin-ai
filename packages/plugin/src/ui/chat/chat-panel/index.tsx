@@ -3,7 +3,8 @@ import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
 import { chipRegistry } from "../../../sandbox/setup";
 import type { QueueItem } from "../../../context/queue";
-import type { CodeAgent } from "../../../../../agent/src";
+import type { AgentMode, CodeAgent } from "../../../../../agent/src";
+import { AgentModeEnum } from "../../../../../agent/src";
 import type { LLMProviders, ModelSelection } from "../../../../../request/src/providers";
 import { useSession } from "../use-session";
 import { MessageList } from "../messages";
@@ -40,6 +41,11 @@ export interface ChatPanelProps {
   renderFocus?: () => React.ReactNode;
   /** 是否禁用发送输入框 */
   disabled?: boolean;
+  /**
+   * ⚠️ 试验性 API，后续版本将移除。
+   * 在附件上传按钮之后插入自定义渲染内容。
+   */
+  renderAttachmentSuffix?: () => React.ReactNode;
 }
 
 export interface ChatPanelRef {
@@ -63,6 +69,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   renderUserMessage,
   renderFocus,
   disabled = false,
+  renderAttachmentSuffix,
 }, ref) => {
   const agentKey = agent?.key ?? "";
 
@@ -70,6 +77,9 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   const [loading, setLoading] = useState(() => context.aiQueue.isLoading(agentKey));
   const [pendingQueue, setPendingQueue] = useState<QueueItem[]>(() => context.aiQueue.getQueue(agentKey));
   const [contextDisabled, setContextDisabled] = useState(() => context.disabled);
+  const availableModes = agent?.getAvailableModes() ?? [AgentModeEnum.Build];
+  const showChatMode = availableModes.length > 1;
+  const [chatMode, setChatMode] = useState<AgentMode>(() => availableModes[0] ?? AgentModeEnum.Build);
 
   // 模型选择器状态
   const modelSelector = useMemo(() => {
@@ -106,9 +116,12 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     const scrollToBottom = () => messageListRef.current?.scrollToBottom();
     // 先订阅再同步历史，避免面板挂载瞬间错过新请求事件。
     const unsubSession = subscribeSession(agent, { onTurnStart: scrollToBottom, onTurnEnd: scrollToBottom });
+    // 同步 agent 内部的 mode 变化（如 requestAI 带 mode 参数）
+    const unsubMode = agent.events.on("mode:change", ({ mode }) => setChatMode(mode));
     syncAgent(agent).catch(console.error);
     return () => {
       unsubSession?.();
+      unsubMode();
     };
   }, [agent, syncAgent, subscribeSession]);
 
@@ -157,22 +170,35 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     }
   };
 
+  // 统一入口：带 mode 调用 requestAI 时同步更新 Sender UI
   const onSend = (sendMessage: Parameters<SenderProps["onSend"]>[0]) => {
-    const { message, attachments, chips } = sendMessage;
+    const { message, attachments, chips, mode } = sendMessage;
     if (!agent) return;
     const meta = chips?.length ? { chips } : undefined;
-
     context.aiQueue.send(
       agentKey,
       async () => {
         context.aiQueue.registerAbort(agentKey, () => agent.abort());
-        await agent.requestAI({ message, attachments, ...(meta ? { meta } : {}) });
+        await agent.requestAI({ message, attachments, ...(mode ? { mode } : {}), ...(meta ? { meta } : {}) });
       },
       { message, attachments }
     );
   };
 
   const isDisabled = !agent || disabled || contextDisabled;
+  const canExecutePlan = Boolean(agent && !isDisabled && availableModes.includes(AgentModeEnum.Build));
+
+  const onExecutePlan = () => {
+    if (!agent || !canExecutePlan) return;
+    context.aiQueue.send(
+      agentKey,
+      async () => {
+        context.aiQueue.registerAbort(agentKey, () => agent.abort());
+        await agent.requestAI({ message: "按照当前方案开始实现", mode: AgentModeEnum.Build });
+      },
+      { message: "按照当前方案开始实现" }
+    );
+  };
 
   return (
     <ChatPanelProvider value={{ user, copilot, disabled: isDisabled, renderUserMessage }}>
@@ -184,6 +210,8 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
             ref={messageListRef}
             messages={messages}
             agent={agent}
+            onExecutePlan={onExecutePlan}
+            canExecutePlan={canExecutePlan}
             onRetry={(id: string) => {
               if (!agent) return;
               context.aiQueue.clearQueue(agentKey);
@@ -205,14 +233,17 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
           placeholder={`您好，我是${context.name}，请详细描述您的需求`}
           disabled={isDisabled}
           mode="mention"
-          chatMode={null}
+          chatMode={showChatMode ? chatMode : null}
           onSend={onSend}
-          onChatModeChange={() => {}}
+          onChatModeChange={(nextMode: AgentMode | null) => {
+            if (nextMode) setChatMode(nextMode);
+          }}
           onUpload={onUpload ?? context.pluginParams.onUpload}
           onStop={() => context.aiQueue.stop(agentKey)}
           pendingQueue={pendingQueue}
           onRemoveFromQueue={(id: string) => context.aiQueue.removeFromQueue(agentKey, id)}
           renderFocus={renderFocus}
+          renderAttachmentSuffix={renderAttachmentSuffix}
           modelSelector={modelSelector}
           chipTypes={chipRegistry.getAll()}
         />

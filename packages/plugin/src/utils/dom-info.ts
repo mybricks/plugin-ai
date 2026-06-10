@@ -111,18 +111,28 @@ function safeParseJson<T>(value: string | null): T | undefined {
   }
 }
 
+function getClosestDomLoc<T extends DomLoc>(el: Element): T | undefined {
+  let current: Element | null = el;
+  while (current) {
+    const loc = safeParseJson<T>(current.getAttribute("data-loc"));
+    if (loc) return loc;
+    current = current.parentElement;
+  }
+  return undefined;
+}
+
 function getDomClassNames(el: Element): string {
   const attrClassNames = el.getAttribute("data-zone-classnames");
   if (attrClassNames?.trim()) return attrClassNames;
 
-  const loc = safeParseJson<DomLoc & { cn?: string[] }>(el.getAttribute("data-loc"));
+  const loc = getClosestDomLoc<DomLoc & { cn?: string[] }>(el);
   if (loc?.cn?.length) return loc.cn.join(",");
 
   return "无";
 }
 
 function getDomCodeLocation(el: Element): string {
-  const loc = safeParseJson<DomLoc>(el.getAttribute("data-loc"));
+  const loc = getClosestDomLoc<DomLoc>(el);
   const jsxFile = loc?.files?.jsx;
   const lessFile = loc?.files?.less;
   const startLine = loc?.codeLine?.start;

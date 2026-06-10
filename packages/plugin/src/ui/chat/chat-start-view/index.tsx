@@ -3,7 +3,8 @@ import classNames from "classnames";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
 import { chipRegistry } from "../../../sandbox/setup";
-import type { CodeAgent } from "../../../../../agent/src";
+import type { AgentMode, CodeAgent } from "../../../../../agent/src";
+import { AgentModeEnum } from "../../../../../agent/src";
 import { useSession } from "../use-session";
 import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
 import css from "./index.less";
@@ -53,6 +54,9 @@ const ChatStartView = ({
   const [loading, setLoading] = useState(() => context.aiQueue.isLoading(agentKey));
   const [empty, setEmpty] = useState(true);
   const [contextDisabled, setContextDisabled] = useState(() => context.disabled);
+  const availableModes = agent?.getAvailableModes() ?? [AgentModeEnum.Build];
+  const showChatMode = availableModes.length > 1;
+  const [chatMode, setChatMode] = useState<AgentMode>(() => availableModes[0] ?? AgentModeEnum.Build);
 
   const { syncAgent, subscribeSession } = useSession(agent);
 
@@ -75,7 +79,7 @@ const ChatStartView = ({
   const onSend = (params: Parameters<SenderProps["onSend"]>[0]) => {
     if (loading || !agent || !comId) return;
     setEmpty(false);
-    const { message, attachments, chips } = params;
+    const { message, attachments, chips, mode } = params;
     const meta = chips?.length ? { chips } : undefined;
 
     ensureAIPanelOpen(comId).then(() => {
@@ -83,7 +87,7 @@ const ChatStartView = ({
         agentKey,
         async () => {
           context.aiQueue.registerAbort(agentKey, () => agent.abort());
-          await agent.requestAI({ message, attachments, ...(meta ? { meta } : {}) });
+          await agent.requestAI({ message, attachments, ...(mode ? { mode } : {}), ...(meta ? { meta } : {}) });
         },
         { message: params.message, attachments: params.attachments }
       );
@@ -107,6 +111,10 @@ const ChatStartView = ({
           disabled={loading || contextDisabled}
           onSend={onSend}
           variant="loose"
+          chatMode={showChatMode ? chatMode : null}
+          onChatModeChange={(nextMode: AgentMode | null) => {
+            if (nextMode) setChatMode(nextMode);
+          }}
           placeholder={placeholder}
           attachmentsPrompt="根据附件中的图片内容进行设计开发，要求尽可能还原其中的各类设计细节以及功能"
           onUpload={onUpload}

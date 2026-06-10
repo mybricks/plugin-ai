@@ -10,6 +10,8 @@ import {
   createSkillTool,
   USE_SKILL_TOOL_NAME,
 } from "./tools";
+import { getModeReminder, getActivePlanFile } from "../mode-manager";
+import { splitFrontmatter } from "../utils/frontmatter";
 import { getCodeAgentSystemPrompt, type CodeAgentPromptOptions } from "./prompt";
 export type { CodeAgentPromptOptions };
 import { type SkillFile, resolveSkillMeta } from "./skills";
@@ -24,24 +26,19 @@ export type { SubAgentConfig };
 export type { SkillFile };
 export { resolveSkillMeta, USE_SKILL_TOOL_NAME };
 
-// ─── VirtualFile ─────────────────────────────────────────────────────────────
+// ─── UnifiedFile ────────────────────────────────────────────────────────────
 
 /**
- * 虚拟文件：挂载到虚拟 FS、不落到 sandbox 真实存储的文件。
- *
- * 同路径下 virtualFiles 优先级高于 sandbox.getFiles 返回的文件（virtual 总是赢）。
+ * 统一文件模型。所有来源的文件（真实工程文件、只读规范文档、skills 等）
+ * 都用此结构表示，通过权限字段区分行为，而不是通过不同的概念。
  *
  * 权限模型：
  * - `permissions.read`   — 是否允许 read_file 工具读取（默认 true）
  * - `permissions.write`  — 是否允许 write_file / edit_file 等工具写入（默认 false）
  * - `permissions.delete` — 是否允许 delete_file 工具删除（默认 false）
- *
- * 可见性（与权限正交）：
- * - `visible: true`（默认）— 出现在 glob / 文件列表统计中
- * - `visible: false`      — read_file 仍可读，但不进工程文件列表（典型：skills 内部文件）
  */
-export interface VirtualFile {
-  /** 路径（相对工程根 / 相对 dir.path，由调用方决定） */
+export interface UnifiedFile {
+  /** 路径（相对工程根） */
   path: string;
   /** 文件内容 */
   content: string;
@@ -51,12 +48,42 @@ export interface VirtualFile {
     write?: boolean;
     delete?: boolean;
   };
-  /**
-   * 是否在文件列表（getUserContext 文件统计、glob、grep）中可见。
-   * 默认 true；设为 false 时 read_file 仍可访问，但不出现在文件枚举中。
-   */
-  visible?: boolean;
 }
+
+export type FileExclude = RegExp | string;
+
+export interface GetFilesOptions {
+  /**
+   * 可选过滤规则，命中的文件会被排除。
+   *
+   * - RegExp：匹配标准化后的文件路径
+   * - string：匹配标准化后的完整路径或目录前缀
+   */
+  exclude?: FileExclude | FileExclude[];
+}
+
+export const AGENT_INTERNAL_FILE_EXCLUDE = /(^|\/)\.agent(\/|$)/;
+
+const normalizeFilePath = (path: string) => path.replace(/\\/g, '/').replace(/^\/+/, '');
+
+export const isFileExcluded = (file: UnifiedFile, exclude?: GetFilesOptions["exclude"]): boolean => {
+  if (!exclude) return false;
+  const excludes = Array.isArray(exclude) ? exclude : [exclude];
+  const normalizedPath = normalizeFilePath(file.path);
+
+  return excludes.some((pattern) => {
+    if (pattern instanceof RegExp) {
+      pattern.lastIndex = 0;
+      return pattern.test(normalizedPath);
+    }
+
+    const normalizedPattern = normalizeFilePath(pattern);
+    const directoryPattern = normalizedPattern.endsWith('/')
+      ? normalizedPattern
+      : `${normalizedPattern}/`;
+    return normalizedPath === normalizedPattern || normalizedPath.startsWith(directoryPattern);
+  });
+};
 
 // ─── Plugin 配置 ─────────────────────────────────────────────────────────────
 
@@ -87,9 +114,9 @@ export interface AdditionalDirectory {
    * - 同路径下 virtualFiles 优先级高于 getFiles 返回的真实文件
    * - 未填 permissions 时默认只读（write/delete 必须显式开启）
    */
-  virtualFiles?: () => Promise<VirtualFile[]>;
-  /** 读取该目录下的文件列表 */
-  getFiles: () => Promise<Array<{ path: string; content: string }>>;
+  virtualFiles?: () => Promise<UnifiedFile[]>;
+  /** 读取该目录下的文件列表（返回带权限的统一文件模型） */
+  getFiles: () => Promise<UnifiedFile[]>;
   /**
    * 写入文件（可选）。
    * 不传则视为只读目录，LLM 尝试写入时框架抛出错误。
@@ -160,7 +187,12 @@ export interface CodeAgentPlugin {
  * 额外的设计器状态、日志等能力通过 tools 参数注入，CodeAgent 本身不感知。
  */
 export interface Sandbox {
-  getFiles(): Promise<Array<{ path: string; content: string }>>;
+  /**
+   * 获取文件列表（统一文件模型，包含所有来源的文件）。
+   * @param options.exclude 可选过滤规则，命中的文件会被排除。
+   *   典型用途：`exclude: /(^|\/)\.agent(\/|$)/` 过滤任意层级内部文件，用于向用户展示的文件列表。
+   */
+  getFiles(options?: GetFilesOptions): Promise<UnifiedFile[]>;
   /**
    * 写入文件。失败时 reject（抛出错误）。
    */
@@ -169,13 +201,6 @@ export interface Sandbox {
    * 删除文件。失败时 reject（抛出错误）。
    */
   deleteFiles(paths: string[]): Promise<void>;
-  /**
-   * 虚拟文件：挂载到虚拟 FS、不落到真实存储。
-   * 同路径下优先级高于 getFiles 返回的文件。
-   * 每个 turn 开始时调用一次。
-   * 可选：现有 Sandbox 实现不传不受影响（向下兼容）。
-   */
-  virtualFiles?: () => Promise<VirtualFile[]>;
   /**
    * 获取当前动态上下文信息（代码规则、主题等项目信息）。
    * 返回的文本内容会通过 getContextMessages 注入到 LLM 上下文中。
@@ -199,7 +224,7 @@ export interface CodeAgentOptions extends Omit<AgentOptions, "system"> {
    * 沙箱，提供文件读写工具的底层实现。
    * 通常由 plugin 侧通过 window._registSandBox_ 注入。
    */
-  sandbox?: Sandbox;
+  sandbox: Sandbox;
   /**
    * 系统提示词定制选项（可覆盖内置默认值）。
    */
@@ -329,8 +354,8 @@ function buildEnvironmentSection(skills?: SkillFile[], subAgents?: SubAgentConfi
  * 初始化时可传入：
  *   - `sandbox`   — 沙箱（文件读写）
  *   - `tools`     — 额外自定义工具（如 check_design_status）
- *   - `virtualFiles` — 注入到虚拟 FS 的文件（如根工程 `.agent/agent.md` 规则文档）；由 Sandbox.virtualFiles 承载
- *   - `skills`    — 技能文件列表，挂载为虚拟 .agent/skills/ 目录，LLM 按需读取
+ *   - `virtualFiles` — 只读文件（如根工程 `.agent/agent.md` 规则文档），由 Sandbox.virtualFiles 承载，合并进统一文件模型
+ *   - `skills`    — 技能文件列表，挂载为 .agent/skills/ 目录（只读），LLM 按需读取
  *   - `subAgents` — 子 Agent 配置列表，注册 call-sub-agent 工具
  *   - `plugins`   — 插件列表（仅支持 skills / agents / tools / additionalDirectories）
  */
@@ -343,6 +368,8 @@ export class CodeAgent extends Agent {
    * enablePlugin / disablePlugin 调用时即时更新，下一个 turn 生效。
    */
   private _enabledPluginNames: Set<string>;
+  /** sandbox 实例，供 getPlanFile 等实例方法使用 */
+  private _sandbox: Sandbox;
   /**
    * 顶层基础资源（来自 options.skills / options.subAgents / options.tools，不含 plugin 部分）。
    * 不参与动态重算，始终全量参与每次 turn 的资源合并。
@@ -376,90 +403,87 @@ export class CodeAgent extends Agent {
     // super() 之后再把它同步到真实的 this._enabledPluginNames 引用。
     const enabledNamesRef = { current: new Set<string>() };
 
-    // 虚拟文件路径判断辅助
+    // 虚拟路径判断辅助
     const normPath = (p: string) => p.replace(/^\/+/, '');
 
-    // 每次需要时动态计算所有 virtualFiles（skills + sandbox.virtualFiles）
-    const collectAllVirtualFiles = async (): Promise<VirtualFile[]> => {
+    // 收集 skills 文件（只读，不可列出）
+    const collectSkillFiles = (): UnifiedFile[] => {
       const enabledPluginSkills = plugins
         .filter((p) => enabledNamesRef.current.has(p.name))
         .flatMap((p) => p.skills ?? []);
       const allSkills = [...baseSkills, ...enabledPluginSkills];
-      const skillVirtualFiles: VirtualFile[] = allSkills.flatMap((s) =>
+      return allSkills.flatMap((s) =>
         s.files.map((f) => ({
           path: `${SKILLS_PREFIX}${s.name}/${f.path}`,
           content: f.content,
           permissions: { read: true, write: false, delete: false },
-          visible: false,
         }))
       );
-      const sandboxVirtualFiles = (await sandbox?.virtualFiles?.()) ?? [];
-      return [...skillVirtualFiles, ...sandboxVirtualFiles];
     };
 
-    const wrappedSandbox: Sandbox | undefined = sandbox
-      ? {
-          getFiles: async () => {
-            // virtual 总是赢：先展开真实文件，再用 virtual 覆盖
-            const realFiles = await sandbox.getFiles();
-            const allVirtual = await collectAllVirtualFiles();
-            const merged = new Map<string, { path: string; content: string }>(
-              realFiles.map(f => [normPath(f.path), f])
-            );
-            allVirtual.forEach((vf) => {
-              merged.set(normPath(vf.path), { path: vf.path, content: vf.content });
-            });
-            return Array.from(merged.values());
-          },
+    // 全量文件（sandbox.getFiles 已包含真实文件 + 只读文件）+ skills 文件并入一张 map
+    // 覆盖顺序：sandbox.getFiles 结果 < skills（skills 最优先）
+    const getAllFiles = async (): Promise<UnifiedFile[]> => {
+      const baseFiles = await sandbox.getFiles();
+      const skillFiles = collectSkillFiles();
+      if (!skillFiles.length) return baseFiles;
+      const merged = new Map<string, UnifiedFile>(
+        baseFiles.map(f => [normPath(f.path), f])
+      );
+      skillFiles.forEach(f => {
+        merged.set(normPath(f.path), f);
+      });
+      return Array.from(merged.values());
+    };
 
-          virtualFiles: collectAllVirtualFiles,
+    const wrappedSandbox: Sandbox = {
+      getFiles: async (options?) => {
+        const all = await getAllFiles();
+        return options?.exclude ? all.filter(f => !isFileExcluded(f, options.exclude)) : all;
+      },
 
-          updateFiles: async (files) => {
-            const allVirtual = await collectAllVirtualFiles();
-            const virtualMap = new Map<string, VirtualFile>(
-              allVirtual.map(vf => [normPath(vf.path), vf])
-            );
-            for (const file of files) {
-              const vf = virtualMap.get(normPath(file.path));
-              if (vf && !vf.permissions?.write) {
-                throw new Error(`${file.path} is a virtual file (read-only)`);
-              }
-            }
-            return sandbox.updateFiles(files);
-          },
-
-          deleteFiles: async (paths) => {
-            const allVirtual = await collectAllVirtualFiles();
-            const virtualMap = new Map<string, VirtualFile>(
-              allVirtual.map(vf => [normPath(vf.path), vf])
-            );
-            for (const p of paths) {
-              const vf = virtualMap.get(normPath(p));
-              if (vf && !vf.permissions?.delete) {
-                throw new Error(`${p} is a virtual file (cannot be deleted)`);
-              }
-            }
-            return sandbox.deleteFiles(paths);
-          },
-
-          ...(sandbox.getContext ? { getContext: sandbox.getContext.bind(sandbox) } : {}),
-          ...(sandbox.getUserContext ? { getUserContext: sandbox.getUserContext.bind(sandbox) } : {}),
+      updateFiles: async (files) => {
+        const allFiles = await getAllFiles();
+        const fileMap = new Map<string, UnifiedFile>(
+          allFiles.map(f => [normPath(f.path), f])
+        );
+        for (const file of files) {
+          const existing = fileMap.get(normPath(file.path));
+          if (existing?.permissions && !existing.permissions.write) {
+            throw new Error(`${file.path} is read-only`);
+          }
         }
-      : undefined;
+        return sandbox.updateFiles(files);
+      },
 
-    const sandboxTools: Tool[] = wrappedSandbox
-      ? [
-          createReadTool(wrappedSandbox),
-          createWriteTool(wrappedSandbox),
-          createEditTool(wrappedSandbox),
-          createMultiEditTool(wrappedSandbox),
-          createDeleteTool(wrappedSandbox),
-          createGrepTool(wrappedSandbox),
-        ]
-      : [];
+      deleteFiles: async (paths) => {
+        const allFiles = await getAllFiles();
+        const fileMap = new Map<string, UnifiedFile>(
+          allFiles.map(f => [normPath(f.path), f])
+        );
+        for (const p of paths) {
+          const existing = fileMap.get(normPath(p));
+          if (existing?.permissions && !existing.permissions.delete) {
+            throw new Error(`${p} cannot be deleted`);
+          }
+        }
+        return sandbox.deleteFiles(paths);
+      },
 
-    // ── sandbox.getContext 作为 getContextMessages ────────────────────────────
-      const base = {
+      ...(sandbox.getContext ? { getContext: sandbox.getContext.bind(sandbox) } : {}),
+      ...(sandbox.getUserContext ? { getUserContext: sandbox.getUserContext.bind(sandbox) } : {}),
+    };
+
+    const sandboxTools: Tool[] = [
+      createReadTool(wrappedSandbox),
+      createWriteTool(wrappedSandbox),
+      createEditTool(wrappedSandbox),
+      createMultiEditTool(wrappedSandbox),
+      createDeleteTool(wrappedSandbox),
+      createGrepTool(wrappedSandbox),
+    ];
+
+    const base = {
       skills: baseSkills,
       subAgents: baseSubAgents,
       tools: [...sandboxTools, ...baseUserTools],
@@ -489,25 +513,63 @@ export class CodeAgent extends Agent {
       system: finalSystem,
       getContextMessages,
       getUserContextMessages,
-      environmentSection: () => {
+      getEnvironmentSection: async ({ mode, previousMode }) => {
         const { skills, subAgents } = this._getEnabledResources();
-        return buildEnvironmentSection(
+        // 1. skills/subAgents/日期等环境信息
+        const baseSection = buildEnvironmentSection(
           skills.length ? skills : undefined,
           subAgents.length ? subAgents : undefined,
         );
+        // 2. 模式提示词（规则文本 + 动态计划文件感知）
+        const modeSection = await getModeReminder({
+          mode,
+          previousMode,
+          disabledModes: agentOptions.disabledModes,
+          getFiles: wrappedSandbox.getFiles.bind(wrappedSandbox),
+        });
+        return [baseSection, modeSection].filter(Boolean).join("\n\n");
       },
       tools: base.tools,
     });
 
     this._plugins = plugins;
     this._base = base;
+    this._sandbox = sandbox;
     this._enabledPluginNames = new Set(
       plugins.filter((p) => p.enabled !== false).map((p) => p.name)
     );
-
     enabledNamesRef.current = this._enabledPluginNames;
 
     this._rebuildDynamicTools();
+  }
+
+  /**
+   * 获取当前活跃的计划文件（status: active）。
+   * 扫描 .agent/plans/ 目录，取日期最新的活跃计划文件。
+   * 若不存在活跃计划则返回 null。
+   */
+  async getPlanFile(): Promise<{ path: string; content: string } | null> {
+    return getActivePlanFile(this._sandbox.getFiles.bind(this._sandbox));
+  }
+
+  /**
+   * 将指定计划文件的 status 改为 abandoned（废弃）。
+   * 修改 frontmatter 中的 status 字段后，通过 sandbox.updateFiles 写回。
+   */
+  async abandonPlan(path: string, content: string): Promise<void> {
+    const { fmText, body } = splitFrontmatter(content);
+    if (!fmText) return; // 无 frontmatter，无法操作
+
+    // 替换 status 字段，不存在则追加
+    let newFmText: string;
+    if (/^status\s*:/m.test(fmText)) {
+      newFmText = fmText.replace(/^(status\s*:).+$/m, "$1 abandoned");
+    } else {
+      newFmText = `${fmText}\nstatus: abandoned`;
+    }
+
+    const newContent = `---\n${newFmText}\n---\n${body}`;
+    await this._sandbox.updateFiles([{ path, content: newContent }]);
   }
 
   private _getEnabledResources(): {

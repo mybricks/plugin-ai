@@ -487,41 +487,13 @@
       .leftArea {
         display: flex;
         align-items: center;
-        gap: 4px;
-
-        .modelSelect {
-          appearance: none;
-          padding: 3px 20px 3px 8px;
-          font-size: 11px;
-          color: var(--mybricks-text-color-main, #333);
-          background: var(--mybricks-bg-color-main, #FFF);
-          border: 1px solid var(--mybricks-shadow-main, rgba(0, 0, 0, 0.2));
-          border-radius: 4px;
-          outline: none;
-          cursor: pointer;
-          max-width: 120px;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-
-          &:hover {
-            border-color: var(--mybricks-shadow-main, rgba(0, 0, 0, 0.2));
-          }
-
-          &:disabled {
-            cursor: default;
-            opacity: 0.5;
-          }
-        }
+        gap: 6px;
 
         .attachmentButton {
           overflow: hidden;
           display: flex;
           align-items: center;
           justify-content: center;
-          // width: 32px;
-          // border-radius: 20px;
-          // height: 32px;
           width: 25px;
           height: 25px;
           border-radius: 50%;
@@ -534,18 +506,12 @@
           
 
           svg {
-            width: 18px;
-            height: 18px;
-            // color: rgba(0, 0, 0, .6);
+            width: 14px;
+            height: 14px;
             color: var(--mybricks-text-color-main, #333);
-
-            // * {
-            //   cursor: pointer !important;
-            // }
           }
 
           &:hover {
-            // background-color: rgba(0, 0, 0, .09);
             background: var(--mybricks-bg-color-hover, #FDFDFD);
           }
 

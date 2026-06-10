@@ -1,7 +1,8 @@
 import type { Tool, ToolResult } from "../../../types";
-import type { ToolExecutionContext } from "../../../agent";
+import type { ToolExecutionContext } from "../../../types";
 import { ToolValidationError } from "../../../types";
 import type { Sandbox } from "../../index";
+import { checkEditFilePermission } from "../../../mode-manager";
 import { READ_TOOL_NAME } from "../read";
 import { WRITE_TOOL_NAME } from "../write";
 import { replaceInContent } from "./replace";
@@ -101,7 +102,7 @@ export function createEditTool(adapter: Sandbox): Tool {
       },
       required: ["path", "old_str", "new_str"],
     },
-    validate(params: { path?: string; old_str?: string; new_str?: string }) {
+    validate(params: { path?: string; old_str?: string; new_str?: string }, ctx?: ToolExecutionContext) {
       if (!params.path || typeof params.path !== "string" || !params.path.trim()) {
         throw new ToolValidationError("path is required and must be a non-empty string");
       }
@@ -111,6 +112,7 @@ export function createEditTool(adapter: Sandbox): Tool {
       if (params.new_str === undefined || params.new_str === null) {
         throw new ToolValidationError("new_str is required");
       }
+      checkEditFilePermission(params, ctx);
     },
     async execute(
       params: { path: string; old_str: string; new_str: string; replace_all?: boolean },

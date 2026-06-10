@@ -1,5 +1,5 @@
 export { Agent, AgentEvents, ForkAgent } from "./agent";
-export type { AgentOptions, AgentHooks, RequestAIOptions, MaskOptions, ForkOptions, ForkAgentOptions, CompactRecord, FormatUserMessageResult, AgentsMdConfig, AgentsMdConfigResolver } from "./agent";
+export type { AgentMode, AgentOptions, AgentHooks, RequestAIOptions, MaskOptions, ForkOptions, ForkAgentOptions, CompactRecord, FormatUserMessageResult, AgentsMdConfig, AgentsMdConfigResolver } from "./agent";
 export { maskMessages } from "./mask";
 
 export { ChipRegistry } from "./chip";
@@ -9,9 +9,10 @@ export type { AgentEventMap } from "./events";
 export type { Message, History, Tool, TurnRecord, TurnSender, ToolCallRecord, ToolResult, VersionFile, VersionRecord, BoundHistory } from "./types";
 export { ToolValidationError, bindHistory } from "./types";
 
-export { CodeAgent } from "./code-agent";
-export type { AdditionalDirectory, CodeAgentOptions, CodeAgentPlugin, CodeAgentPromptOptions, Sandbox, SkillFile, VirtualFile } from "./code-agent";
+export { AGENT_INTERNAL_FILE_EXCLUDE, CodeAgent, isFileExcluded } from "./code-agent";
+export type { AdditionalDirectory, CodeAgentOptions, CodeAgentPlugin, CodeAgentPromptOptions, FileExclude, GetFilesOptions, Sandbox, SkillFile, UnifiedFile } from "./code-agent";
 export { READ_TOOL_NAME, WRITE_TOOL_NAME, MULTI_WRITE_TOOL_NAME, EDIT_TOOL_NAME, MULTI_EDIT_TOOL_NAME, DELETE_TOOL_NAME, GREP_TOOL_NAME, GLOB_TOOL_NAME, USE_SKILL_TOOL_NAME } from "./code-agent/tools";
+export { SWITCH_MODE_TOOL_NAME, getAvailableAgentModes, AgentModeEnum } from "./mode-manager";
 
 export { IDBHistory } from "./history/idb-history";
 export { HTTPHistory } from "./history/http-history";

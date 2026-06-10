@@ -1,6 +1,8 @@
 import type { Tool, ToolResult } from "../../../types";
+import type { ToolExecutionContext } from "../../../types";
 import { ToolValidationError } from "../../../types";
 import type { Sandbox } from "../../index";
+import { checkDeleteFilePermission } from "../../../mode-manager";
 import { READ_TOOL_NAME } from "../read";
 
 export const DELETE_TOOL_NAME = "delete_file";
@@ -33,13 +35,14 @@ export function createDeleteTool(adapter: Sandbox): Tool {
       },
       required: ["paths"],
     },
-    validate(params: { paths?: string[]; force?: boolean }) {
+    validate(params: { paths?: string[]; force?: boolean }, ctx?: ToolExecutionContext) {
       if (!Array.isArray(params.paths) || params.paths.length === 0) {
         throw new ToolValidationError("paths is required and must be a non-empty array");
       }
       if (params.paths.some((p) => typeof p !== "string" || !p.trim())) {
         throw new ToolValidationError("every path in paths must be a non-empty string");
       }
+      checkDeleteFilePermission(params, ctx);
     },
     async execute(params: { paths: string[]; force?: boolean }): Promise<ToolResult> {
       const files = await adapter.getFiles();

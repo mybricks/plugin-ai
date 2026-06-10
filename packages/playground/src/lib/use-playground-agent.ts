@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { CodeAgent } from "@agent/code-agent";
+import { LLMProviders } from "@request/providers";
 import type { RequestAsStreamFn } from "@request/types";
 import { MockHistory } from "./mock-history";
 import { MemFS } from "./mem-fs";
@@ -22,6 +23,11 @@ export function usePlaygroundAgent(
   ) => {
     agentRef.current?.abort();
     context.agentMap.delete(AGENT_KEY);
+    context.setLLMProviders(
+      testCase.llmProviders?.length
+        ? new LLMProviders({ providers: testCase.llmProviders, agentKey: AGENT_KEY })
+        : undefined
+    );
 
     const fs = new MemFS(testCase.initialFiles);
     const mockHistory = new MockHistory(testCase.initialTurns);
@@ -39,6 +45,7 @@ export function usePlaygroundAgent(
       ...(testCase.agentOptions?.retry ? { retry: testCase.agentOptions.retry } : {}),
       ...(testCase.agentOptions?.maxSteps ? { maxSteps: testCase.agentOptions.maxSteps } : {}),
       ...(testCase.agentOptions?.doomLoopThreshold ? { doomLoopThreshold: testCase.agentOptions.doomLoopThreshold } : {}),
+      ...(testCase.disabledModes ? { disabledModes: testCase.disabledModes } : {}),
     });
 
     await newAgent.loadHistory();

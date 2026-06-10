@@ -6,27 +6,34 @@ import { TextShimmer } from "../../components/text-shimmer";
 import { AttachmentsList } from "../../components/attachments";
 import { ElapsedTime } from "../../components/elapsed-time";
 import type { MessageRecord } from "../use-session";
-import type { ToolCallRecord, WarmupIter } from "../../../../../agent/src";
+import type { ToolCallRecord, WarmupIter } from "../../../../../agent/src/types";
 import type { CodeAgent } from "../../../../../agent/src";
+import { AgentModeEnum } from "../../../../../agent/src";
 import { getToolRenderer } from "./tool-renders/index";
 import type { ToolRenderer } from "./tool-renders/index";
 import { DefaultToolRenderer } from "./tool-renders/renders";
 import { useChatPanel } from "../chat-panel/context";
 import "./tool-renders/register";
 import css from "./index.less";
+import { PlanFileCardWithContent } from "./action-cards/plan-card";
+import { SuggestionsBlock } from "./action-cards/suggestions-card";
 
 const md = markdownit();
+
 
 export interface MessageListProps {
   messages: MessageRecord[];
   agent?: CodeAgent;
   onRetry?: (turnId: string) => void;
+  onExecutePlan?: () => void;
+  canExecutePlan?: boolean;
 }
 
 type MessageListRef = { scrollToBottom: () => void };
+type PlanFileView = { path: string; content: string };
 
 const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
-  function MessageListInner({ messages, agent, onRetry }, ref) {
+  function MessageListInner({ messages, agent, onRetry, onExecutePlan, canExecutePlan = true }, ref) {
   const mainRef = useRef<HTMLElement>(null);
   const scrollerRef = useRef<AutoScroller | null>(null);
 
@@ -67,6 +74,8 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
           onRetry={index === messages.length - 1 ? onRetry : undefined}
           isLast={index === messages.length - 1}
           agent={agent}
+          onExecutePlan={onExecutePlan}
+          canExecutePlan={canExecutePlan}
         />
       ))}
     </main>
@@ -75,14 +84,27 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
 
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
-const MessageBubble = ({ record, toolRendererMap, onRetry, isLast, agent }: {
+const MessageBubble = ({ record, toolRendererMap, onRetry, isLast, agent, onExecutePlan, canExecutePlan = true }: {
   record: MessageRecord;
   toolRendererMap: Map<string, ToolRenderer>;
   onRetry?: (turnId: string) => void;
   isLast?: boolean;
   agent?: CodeAgent;
+  onExecutePlan?: () => void;
+  canExecutePlan?: boolean;
 }) => {
   const { user, copilot, renderUserMessage } = useChatPanel();
+  const [planFile, setPlanFile] = useState<PlanFileView | null>(null);
+  const [planAbandoned, setPlanAbandoned] = useState(false);
+  const isPlanRecord = isPlanModeRecord(record);
+  const isCompletedLastPlanRecord =
+    Boolean(isLast) &&
+    record.status === "success" &&
+    Boolean(record.endTime) &&
+    isPlanRecord;
+  const shouldShowPlanCard =
+    isCompletedLastPlanRecord &&
+    Boolean(planFile?.content?.trim());
 
   // 重试状态：{ attempt, maxRetries } 或 null
   const [retryState, setRetryState] = useState<{ attempt: number; maxRetries: number } | null>(null);
@@ -105,6 +127,34 @@ const MessageBubble = ({ record, toolRendererMap, onRetry, isLast, agent }: {
 
     return unsubscribe;
   }, [agent, record.status]);
+
+  useEffect(() => {
+    if (!agent || !isCompletedLastPlanRecord) {
+      setPlanFile(null);
+      return;
+    }
+
+    let disposed = false;
+    const refreshPlanFile = () => {
+      void agent.getPlanFile().then((file) => {
+        if (!disposed) {
+          setPlanFile(file);
+        }
+      }).catch((error) => {
+        console.warn("[PlanFileCard] getPlanFile failed", {
+          turnId: record.id,
+          reason: "turn:complete",
+          error,
+        });
+      });
+    };
+
+    refreshPlanFile();
+
+    return () => {
+      disposed = true;
+    };
+  }, [agent, record.id, isCompletedLastPlanRecord]);
 
   return (
     <div className={css["chat-bubble-container"]}>
@@ -267,8 +317,26 @@ const MessageBubble = ({ record, toolRendererMap, onRetry, isLast, agent }: {
               </div>
             )}
 
+            {shouldShowPlanCard && planFile && (
+              <PlanFileCardWithContent
+                path={planFile.path}
+                content={planFile.content}
+                onExecute={onExecutePlan}
+                canExecute={!planAbandoned && canExecutePlan}
+                abandoned={planAbandoned}
+                onAbandon={!planAbandoned && agent ? () => {
+                  if (agent && planFile) {
+                    agent.abandonPlan(planFile.path, planFile.content).then(() => {
+                      setPlanAbandoned(true);
+                    });
+                  }
+                } : undefined}
+                renderContent={(body) => <BubbleMessage message={body} />}
+              />
+            )}
+
             {/* 建议选项（仅最后一条 turn、且 suggestions 已就绪时展示） */}
-            {isLast && record.suggestions && !record.suggestionsDismissed && agent && (
+            {isLast && !shouldShowPlanCard && record.suggestions && !record.suggestionsDismissed && agent && (
               <SuggestionsBlock turnId={record.id} suggestions={record.suggestions} agent={agent} />
             )}
           </div>
@@ -404,7 +472,13 @@ const BubbleMessage = ({ message, className }: { message: string; className?: st
   );
 };
 
+export { MessageList, BubbleMessage };
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function isPlanModeRecord(record: MessageRecord): boolean {
+  return record.iterations.some((iter) => (iter as any).type !== "warmup" && (iter as any).mode === AgentModeEnum.Plan);
+}
 
 function formatTime(ts: number): string {
   const d = new Date(ts);
@@ -483,74 +557,3 @@ class AutoScroller {
     this.container?.removeEventListener("scroll", this.handleScroll.bind(this));
   }
 }
-
-// ─── SuggestionsBlock ──────────────────────────────────────────────────────────
-
-const SuggestionsBlock = ({
-  turnId,
-  suggestions,
-  agent,
-}: {
-  turnId: string;
-  suggestions: { desc?: string; options: string[] };
-  agent: CodeAgent;
-}) => {
-  const { disabled } = useChatPanel();
-
-  const handleClick = (option: string) => {
-    if (disabled) return;
-    agent.requestAI({ message: option });
-  };
-  const handleDismiss = () => {
-    if (disabled) return;
-    void agent.dismissSuggestions(turnId);
-  };
-
-  return (
-    <div className={css["suggestions-message"]}>
-      <div className={css["suggestions-block"]}>
-        <div className={css["suggestions-desc"]}>
-          <span className={css["suggestions-header-title"]}>[ 对下一步的建议 ]</span>
-          {suggestions.desc && <span className={css["suggestions-desc-text"]}>{suggestions.desc}</span>}
-        </div>
-        <div className={css["suggestions-options"]}>
-          {suggestions.options.map((opt, i) => (
-            <div
-              key={i}
-              role="button"
-              tabIndex={disabled ? -1 : 0}
-              className={classNames(css["suggestion-option"], { [css["suggestion-option-disabled"]]: disabled })}
-              onClick={() => handleClick(opt)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  handleClick(opt);
-                }
-              }}
-              style={{ animationDelay: `${i * 60}ms` }}
-            >
-              <span className={css["suggestion-option-text"]}>{opt}</span>
-            </div>
-          ))}
-          <div
-            role="button"
-            tabIndex={disabled ? -1 : 0}
-            className={classNames(css["suggestion-option"], css["suggestion-option-dismiss"], { [css["suggestion-option-disabled"]]: disabled })}
-            onClick={handleDismiss}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                handleDismiss();
-              }
-            }}
-            style={{ animationDelay: `${suggestions.options.length * 60}ms` }}
-          >
-            <span className={css["suggestion-option-text"]}>以上都不需要</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export { MessageList };

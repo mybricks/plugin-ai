@@ -1,5 +1,6 @@
-import type { TurnRecord } from "@agent/types";
+import type { TurnRecord, AgentMode } from "@agent/types";
 import type { RequestAsStreamFn } from "@request/types";
+import type { ProviderConfig } from "@request/providers";
 import type { Tool } from "@agent/types";
 import type { SkillFile } from "@agent/code-agent";
 import type { FsFile } from "../lib/mem-fs";
@@ -19,6 +20,8 @@ export interface TestCase {
   /** 预设文件系统（不传则使用 DEFAULT_FILES） */
   initialFiles?: FsFile[];
   request: RequestAsStreamFn;
+  /** 预设 LLM Providers，用于测试模型选择器和模型切换 */
+  llmProviders?: ProviderConfig[];
   tools?: Tool[];
   /** 预设技能文件列表，传入 CodeAgent.skills */
   skills?: SkillFile[];
@@ -45,4 +48,6 @@ export interface TestCase {
       maxDelayMs?: number;
     };
   };
+  /** 禁用的 Agent 运行模式；传入后模式切换器隐藏 */
+  disabledModes?: AgentMode[];
 }

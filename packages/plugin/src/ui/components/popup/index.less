@@ -1,0 +1,33 @@
+/*! plugin-ai-comp-view-anchor */
+
+.triggerContainer {
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.popup {
+  position: fixed;
+  background: var(--mybricks-bg-color-main, #ffffff);
+  border: 1px solid var(--mybricks-shadow-main, rgba(0, 0, 0, 0.08));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  overflow: hidden;
+  
+  /* 动画默认从顶部（向下展开） */
+  transform-origin: top center;
+  opacity: 0;
+  transform: scaleY(0.9);
+  transition: opacity 0.15s cubic-bezier(0.2, 0, 0, 1), transform 0.15s cubic-bezier(0.2, 0, 0, 1);
+  pointer-events: none;
+
+  &.visible {
+    opacity: 1;
+    transform: scaleY(1);
+    pointer-events: auto;
+  }
+
+  &.flipUp {
+    /* 翻转动画：从底部向上展开 */
+    transform-origin: bottom center;
+  }
+}

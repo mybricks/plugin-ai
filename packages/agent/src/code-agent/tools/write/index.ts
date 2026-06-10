@@ -1,6 +1,8 @@
 import type { Tool, ToolResult } from "../../../types";
+import type { ToolExecutionContext } from "../../../types";
 import { ToolValidationError } from "../../../types";
 import type { Sandbox } from "../../index";
+import { checkWriteFilePermission } from "../../../mode-manager";
 import { READ_TOOL_NAME } from "../read";
 import { EDIT_TOOL_NAME } from "../edit";
 
@@ -30,13 +32,14 @@ IMPORTANT: All string values must use raw Unicode characters. Never escape any c
       },
       required: ["path", "content"],
     },
-    validate(params: { path?: string; content?: string }) {
+    validate(params: { path?: string; content?: string }, ctx?: ToolExecutionContext) {
       if (!params.path || typeof params.path !== "string" || !params.path.trim()) {
         throw new ToolValidationError("path is required and must be a non-empty string");
       }
       if (params.content === undefined || params.content === null) {
         throw new ToolValidationError("content is required");
       }
+      checkWriteFilePermission(params, ctx);
     },
     async execute(params: { path: string; content: string }): Promise<ToolResult> {
       try {
