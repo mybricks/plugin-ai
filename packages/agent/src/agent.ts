@@ -1108,12 +1108,15 @@ export class Agent {
    *   2. 超出 maxSteps
    *   3. Doom loop 触发（连续 doomLoopThreshold 次完全相同的工具调用）
    *   4. 用户 abort()
+   *
+   * @param params.mode 运行模式。
+   *   - 传入时：切换 agent 到指定模式后执行（会持久化到 agent._mode）。
+   *   - 不传时：默认使用 Build 模式（不继承 agent 当前 mode），适合外部直接调用的场景。
+   *     如需继承当前模式，请显式传 `mode: agent.getMode()`。
    */
   async requestAI(params: RequestAIOptions): Promise<void> {
-    const { message, attachments, mode, ...rest } = params;
-    if (mode) {
-      this.setMode(mode, "requestAI");
-    }
+    const { message, attachments, mode = AgentModeEnum.Build, ...rest } = params;
+    this.setMode(mode, "requestAI");
     const effectiveRequestMode = this.getMode();
     // 有图片附件时，自动将 aiRole 覆盖为 "image"，使请求层路由到支持视觉的模型
     if (attachments?.length) {
@@ -1897,6 +1900,6 @@ export class ForkAgent extends Agent {
       // 否则使用 fork 时指定的 aiRole
       rest.aiRole = this._forkAiRole;
     }
-    return super.requestAI({ message, attachments, ...(mode ? { mode } : {}), ...rest });
+    return super.requestAI({ message, attachments, ...(mode !== undefined ? { mode } : {}), ...rest });
   }
 }

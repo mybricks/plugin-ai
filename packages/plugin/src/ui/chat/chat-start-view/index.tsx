@@ -64,6 +64,9 @@ const ChatStartView = ({
     if (!agent) return;
     syncAgent(agent).catch(console.error);
     subscribeSession(agent);
+    // 同步 agent 内部的 mode 变化（与 ChatPanel 保持一致）
+    const unsubMode = agent.events.on("mode:change", ({ mode }) => setChatMode(mode));
+    return unsubMode;
   }, [agent]);
 
   // 与 ChatPanel 保持同步：通过 aiQueue 事件驱动 loading，而非本地管理

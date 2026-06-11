@@ -373,9 +373,9 @@
             border-radius: 4px;
             font-size: 11px;
             line-height: 18px;
-            background: var(--mybricks-color-primary-light, rgba(250, 100, 0, 0.1));
+            background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 10%, transparent);
             color: var(--mybricks-color-primary, #FA6400);
-            border: 1px solid var(--mybricks-color-primary-border, rgba(250, 100, 0, 0.25));
+            border: 1px solid color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 25%, transparent);
             max-width: 180px;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -418,7 +418,7 @@
             line-height: 1;
             color: var(--mybricks-color-primary, #FA6400);
             border: 1px solid var(--mybricks-color-primary, #FA6400);
-            background: rgba(250, 100, 0, 0.08);
+            background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 8%, transparent);
             max-width: 180px;
             overflow: hidden;
             white-space: nowrap;
