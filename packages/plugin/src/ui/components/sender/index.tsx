@@ -829,7 +829,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
               </div>
             )}
             {renderAttachmentSuffix?.()}
-            {chatMode ? <ChatMode disabled={disabled} chatMode={chatMode} onChange={onChatModeChange} /> : null}
+            {chatMode ? <ChatMode disabled={disabled || loading} chatMode={chatMode} onChange={onChatModeChange} /> : null}
             {modelSelector && modelSelector.models.length > 0 && (
               <ModelSelector modelSelector={modelSelector} disabled={disabled || uploading || loading} />
             )}

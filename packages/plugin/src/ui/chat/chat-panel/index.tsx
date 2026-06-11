@@ -236,7 +236,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
           chatMode={showChatMode ? chatMode : null}
           onSend={onSend}
           onChatModeChange={(nextMode: AgentMode | null) => {
-            if (nextMode) setChatMode(nextMode);
+            if (nextMode) agent?.setMode(nextMode, "ui-change");
           }}
           onUpload={onUpload ?? context.pluginParams.onUpload}
           onStop={() => context.aiQueue.stop(agentKey)}

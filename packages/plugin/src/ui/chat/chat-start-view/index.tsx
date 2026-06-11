@@ -116,7 +116,7 @@ const ChatStartView = ({
           variant="loose"
           chatMode={showChatMode ? chatMode : null}
           onChatModeChange={(nextMode: AgentMode | null) => {
-            if (nextMode) setChatMode(nextMode);
+            if (nextMode) agent?.setMode(nextMode, "ui-change");
           }}
           placeholder={placeholder}
           attachmentsPrompt="根据附件中的图片内容进行设计开发，要求尽可能还原其中的各类设计细节以及功能"
