@@ -56,7 +56,7 @@ const ChatStartView = ({
   const [contextDisabled, setContextDisabled] = useState(() => context.disabled);
   const availableModes = agent?.getAvailableModes() ?? [AgentModeEnum.Build];
   const showChatMode = availableModes.length > 1;
-  const [chatMode, setChatMode] = useState<AgentMode>(() => availableModes[0] ?? AgentModeEnum.Build);
+  const [chatMode, setChatMode] = useState<AgentMode>(() => agent?.getMode() ?? availableModes[0] ?? AgentModeEnum.Build);
 
   const { syncAgent, subscribeSession } = useSession(agent);
 
