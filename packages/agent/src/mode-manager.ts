@@ -18,8 +18,8 @@ export interface AgentModeAvailabilityOptions {
 }
 
 const AGENT_MODE_LABELS: Record<AgentMode, string> = {
-  [AgentModeEnum.Build]: "智能体",
-  [AgentModeEnum.Plan]: "讨论",
+  [AgentModeEnum.Build]: "智能模式",
+  [AgentModeEnum.Plan]: "计划模式",
 };
 
 export function getDisabledAgentModes(options?: AgentModeAvailabilityOptions): AgentMode[] {
@@ -166,10 +166,10 @@ ${availableModes.map((mode) => `- ${mode}（${getModeLabel(mode)}）：${descrip
 function getCurrentModeSlug(mode: AgentMode, previousMode?: AgentMode | null): string {
   const modeLabel = getModeLabel(mode);
   if (previousMode && previousMode !== mode) {
-    return `上一轮是「${getModeLabel(previousMode)}」(${previousMode})模式，当前已切换到「${modeLabel}」(${mode})模式。`;
+    return `上一轮是「${getModeLabel(previousMode)}」(${previousMode})，当前已切换到「${modeLabel}」(${mode})。`;
   }
 
-  return `当前是「${modeLabel}」(${mode})模式。`;
+  return `当前是「${modeLabel}」(${mode})。`;
 }
 
 function getPlanFileGuideSlug(): string {
@@ -196,16 +196,16 @@ function getPlanFileGuideSlug(): string {
 function getBuildPlanStatusSlug(planState?: PlanDirectoryState | null): string {
   if (planState?.activePlan) {
     return `## 计划状态
-检测到活跃计划文件 \`${planState.activePlan.path}\`（frontmatter \`status: ${planState.activePlan.status ?? "未知"}\`）。
+检测到活跃计划文件 \`${planState.activePlan.path}\`。
 
 请先读取该文件内容，对照用户当前的需求判断：
 - 如果当前需求与该计划**高度相关**，按计划推进实现，完成后将其归档；
-- 如果当前需求与该计划**关联性低或无关**，先将其归档，再执行当前任务。`;
+- 如果当前需求与该计划**关联性低或无关**，则必须关注用户需求的实现，而不是此计划，然后视情况处理这个计划文件。`;
   }
 
   if (planState?.hasPlanDirContent) {
     return `## 计划状态
-未检测到活跃计划文件。如需参考历史讨论方案，可读取 \`${DEFAULT_PLAN_DIR}\` 目录中已归档的计划文件（frontmatter \`status: finished\`）。`;
+未检测到活跃计划文件。如需参考历史计划方案，可读取 \`${DEFAULT_PLAN_DIR}\` 目录中已归档的计划文件（frontmatter \`status: finished\`）。`;
   }
 
   return ``
@@ -256,13 +256,12 @@ ${getPlanFileGuideSlug()}
 function getPlanStatusReminderSlug(planState?: PlanDirectoryState | null): string {
   if (!planState?.activePlan) return "";
 
-  return `## 发现计划文件
-
-检测到计划文件 \`${planState.activePlan.path}\`（frontmatter \`status: ${planState.activePlan.status ?? "未知"}\`）。
+  return `## 计划状态
+检测到活跃计划文件 \`${planState.activePlan.path}\`。
 
 请先读取该文件内容，对照用户当前的需求判断：
-- 如果当前需求与该计划**高度相关** → 在该计划基础上继续推进；
-- 如果当前需求与该计划**关联性低或无关** → 先将其归档，再创建新计划。`;
+- 如果当前需求与该计划**高度相关**，按计划推进实现，完成后将其归档；
+- 如果当前需求与该计划**关联性低或无关**，则必须关注用户需求的实现，而不是此计划，然后视情况处理这个计划文件。`;
 }
 
 function buildModeReminder(params: {
@@ -300,11 +299,11 @@ ${joinSections([
 }
 
 /**
- * 生成每轮注入的模式 reminder（静态规则 + 动态活跃计划文件感知）。
+ * 生成每轮注入的模式提示词段落（静态规则 + 动态活跃计划文件感知）。
  *
  * @param getFiles 获取全量文件列表（如 sandbox.getFiles）
  */
-export async function getModeReminder(params: {
+export async function buildModeSection(params: {
   mode: AgentMode;
   previousMode?: AgentMode | null;
   disabledModes?: AgentMode[];
@@ -367,8 +366,8 @@ function assertPlanModeCanMutatePaths(
   const invalidPaths = paths.filter((path) => !isPlanDirPath(path));
   if (invalidPaths.length === 0) return;
   throw new Error(
-    `当前是「${getModeLabel(AgentModeEnum.Plan)}」模式，${action}只能操作 ${DEFAULT_PLAN_DIR} 目录下的计划文件。` +
-    ` 如需修改项目文件，请先等待用户确认方案并切换到 ${AgentModeEnum.Build}（${getModeLabel(AgentModeEnum.Build)}）模式。` +
+    `当前是「${getModeLabel(AgentModeEnum.Plan)}」，${action}只能操作 ${DEFAULT_PLAN_DIR} 目录下的计划文件。` +
+    ` 如需修改项目文件，请先等待用户确认方案并切换到 ${AgentModeEnum.Build}（${getModeLabel(AgentModeEnum.Build)}）。` +
     ` 非法路径：${invalidPaths.join(", ")}`
   );
 }
@@ -415,14 +414,14 @@ export function createSwitchModeTool(options?: AgentModeAvailabilityOptions): To
   return {
     name: SWITCH_MODE_TOOL_NAME,
     title: "切换模式",
-    description: `在「讨论(plan)」和「智能体(build)」之间切换当前 Agent 的运行模式。
+    description: `在「计划模式(plan)」和「智能模式(build)」之间切换当前 Agent 的运行模式。
 
 模式说明：
-- plan（讨论）：先阅读、分析、维护计划文件，不改项目；适合用户要求"先讨论/先规划/别直接改"。
-- build（智能体）：按已确认目标直接执行修改；适合快速修改、简单直接任务，或用户已经批准方案。
+- plan（计划模式）：先阅读、分析、维护计划文件，不改项目；适合用户要求"先讨论/先规划/别直接改"。
+- build（智能模式）：按已确认目标直接执行修改；适合快速修改、简单直接任务，或用户已经批准方案。
 
 使用时机：
-- 当用户要求进入讨论、规划、评审方案，切到 plan。
+- 当用户要求进入计划、规划、评审方案，切到 plan。
 - 当用户确认方案或要求开始实现，切到 build。
 - 这个工具只改变后续行为；不会代替实际文件修改。`,
     parameters: {
@@ -431,7 +430,7 @@ export function createSwitchModeTool(options?: AgentModeAvailabilityOptions): To
         mode: {
           type: "string",
           enum: availableModes,
-          description: "目标模式。build=智能体，plan=讨论",
+          description: "目标模式。build=智能模式，plan=计划模式",
         },
       },
       required: ["mode"],
@@ -454,8 +453,8 @@ export function createSwitchModeTool(options?: AgentModeAvailabilityOptions): To
       const previousLabel = getModeLabel(previousMode);
       return {
         output: previousMode === params.mode
-          ? `当前已经是「${label}」模式（${params.mode}）。`
-          : `已从「${previousLabel}」模式（${previousMode}）切换到「${label}」模式（${params.mode}）。后续请以新模式继续。`,
+          ? `当前已经是「${label}」（${params.mode}）。`
+          : `已从「${previousLabel}」（${previousMode}）切换到「${label}」（${params.mode}）。后续请以新模式继续。`,
         metadata: {
           mode: params.mode,
           previousMode,

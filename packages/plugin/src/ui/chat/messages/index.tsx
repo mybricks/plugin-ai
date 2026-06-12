@@ -20,6 +20,17 @@ import { SuggestionsBlock } from "./action-cards/suggestions-card";
 
 const md = markdownit();
 
+/** 将底层错误消息映射为用户友好的提示（仅渲染层使用，原始数据保留不变） */
+function toUserFriendlyError(msg: string): string {
+  if (msg === 'Failed to fetch' || msg === 'Load failed') {
+    return '模型服务连接失败，请检查网络或稍后重试';
+  }
+  if (/^SSE \d+:/.test(msg)) {
+    return '模型服务响应异常，请稍后重试';
+  }
+  return msg;
+}
+
 
 export interface MessageListProps {
   messages: MessageRecord[];
@@ -301,7 +312,7 @@ const MessageBubble = ({ record, toolRendererMap, onRetry, isLast, agent, onExec
             {/* 错误 */}
             {record.status === "error" && record.error && (
               <div className={css["ai-chat-error-code-block"]}>
-                <div className={css["ai-chat-error-content"]}>{record.error}</div>
+                <div className={css["ai-chat-error-content"]}>{toUserFriendlyError(record.error)}</div>
                 {onRetry && !record.error.includes("连续调用，已自动中断") && (
                   <div className={css["ai-chat-error-actions"]}>
                     <button

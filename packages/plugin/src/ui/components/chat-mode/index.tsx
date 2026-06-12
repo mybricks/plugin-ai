@@ -4,20 +4,22 @@ import { Popup } from "../popup";
 import { AgentModeEnum } from "../../../../../agent/src";
 import css from "./index.less";
 
-// build = 智能体（默认执行）| plan = 讨论（先规划再执行）
+// build = 智能（默认执行）| plan = 计划（先规划再执行）
 export type ChatModeType = typeof AgentModeEnum.Build | typeof AgentModeEnum.Plan | null;
 
 const CHAT_MODE_MAP: Record<
   NonNullable<ChatModeType>,
-  { title: string; description: string }
+  { triggerTitle: string; title: string; description: string }
 > = {
   [AgentModeEnum.Build]: {
-    title: "Agent模式",
-    description: "直接执行，快速完成修改",
+    triggerTitle: "智能",
+    title: "智能模式",
+    description: "模型智能执行，快速交付任务",
   },
   [AgentModeEnum.Plan]: {
-    title: "Plan模式",
-    description: "先制定方案，再决定是否执行",
+    triggerTitle: "计划",
+    title: "计划模式",
+    description: "执行前先制定方案，再决定是否执行",
   },
 };
 
@@ -64,7 +66,7 @@ const ChatMode = (props: ChatModeProps) => {
           <span className={classNames(css.iconSlot, { [css.agentIconSlot]: chatMode === AgentModeEnum.Build })}>
             <ChatModeIcon mode={chatMode} />
           </span>
-          <span className={css.triggerText}>{current.title}</span>
+          <span className={css.triggerText}>{current.triggerTitle}</span>
           <svg className={css.arrow} viewBox="0 0 1024 1024" width="10" height="10" fill="currentColor">
             <path d="M512 714.666667c-8.533333 0-17.066667-2.133333-23.466667-8.533334l-341.333333-341.333333c-12.8-12.8-12.8-32 0-44.8 12.8-12.8 32-12.8 44.8 0l320 317.866667 317.866667-320c12.8-12.8 32-12.8 44.8 0 12.8 12.8 12.8 32 0 44.8L533.333333 704c-4.266667 8.533333-12.8 10.666667-21.333333 10.666667z" />
           </svg>

@@ -92,6 +92,15 @@ export interface AgentHooks {
   afterTurnSummary?: (turn: TurnRecord, summary: string) => Promise<void> | void;
 }
 
+// ─── MessageSection ───────────────────────────────────────────────────────────
+
+/**
+ * 单个提示词段落（字符串）。
+ * 多个段落组成 MessageSection[] 后，join("\n\n") 拼接为一条 role: "user" 消息注入到 LLM 上下文。
+ * 用于 getAttachmentContextMessages 等需要组合多段提示词的场景。
+ */
+export type MessageSection = string;
+
 // ─── AgentOptions ─────────────────────────────────────────────────────────────
 
 export interface AgentOptions {
@@ -99,8 +108,8 @@ export interface AgentOptions {
   system?: string;
   /**
    * 初始运行模式。
-   * - build：智能体，允许直接修改
-   * - plan：讨论，先讨论方案，方案通过后再操作
+   * - build：智能模式，允许直接修改
+   * - plan：计划模式，先制定方案，方案通过后再操作
    */
   mode?: AgentMode;
   /** 禁用的运行模式；当只剩一种可用模式时不会注册模式切换工具。 */
@@ -118,29 +127,23 @@ export interface AgentOptions {
    */
   agentsMdConfig?: AgentsMdConfigResolver;
   /**
-   * 动态上下文注入（异步）。
-   * 每次请求前调用，返回的消息列表会插入到对话历史末尾、用户消息之前。
+   * 静态背景上下文注入（异步）。
+   * 每个 turn 开始时获取一次，返回的消息列表插入到历史对话之前（静态前缀层），
+   * 适合注入几乎不变的背景信息（如开发规范、设计风格）。
+   * 享受 prompt cache 断点，命中率较高。
    */
-  getContextMessages?: () => Promise<Message[]>;
+  getStableContextMessages?: () => Promise<Message[]>;
   /**
-   * @experimental
-   * 用户自定义上下文注入（异步）。
-   * 每个 turn 开始时调用，返回的消息列表插入在用户消息之前，
-   * 适合注入用户自定义的背景信息。
-   * - 返回字符串数组：每个元素构造为一条独立的 user 消息注入。
-   */
-  getUserContextMessages?: () => Promise<Message[]>;
-  /**
-   * 环境信息注入（异步，带模式上下文）。
-   * 每次 turn 开始时调用，返回的字符串会与 userContextMessages 合并为一条 user 消息，
-   * 插在用户消息正前方。
+   * 随消息携带的动态上下文注入（异步，带模式上下文）。
+   * 每个 turn 开始时获取一次，返回的字符串数组会拼接为一条 user 消息插在用户消息正前方，
+   * 适合注入每轮可能变化的上下文（如当前项目文件快照、模式提示词、skills 列表等）。
    *
    * ctx 提供当前模式信息，调用方可在此自行组装模式提示词、skill 列表等所有环境内容。
    */
-  getEnvironmentSection?: (ctx: {
+  getAttachmentContextMessages?: (ctx: {
     mode: AgentMode;
     previousMode: AgentMode | null;
-  }) => string | Promise<string>;
+  }) => MessageSection[] | Promise<MessageSection[]>;
   /** 工具列表（plugin 初始化时注册额外工具） */
   tools?: Tool[];
   /** 历史记录实现 */
@@ -278,8 +281,8 @@ export interface ForkOptions {
   /**
    * 覆盖运行模式。
    * - 不传：继承父 Agent 当前模式
-   * - build：智能体，允许直接修改
-   * - plan：讨论，先讨论方案，方案通过后再操作
+   * - build：智能模式，允许直接修改
+   * - plan：计划模式，先制定方案，方案通过后再操作
    */
   mode?: AgentMode;
 }
@@ -307,12 +310,10 @@ export interface TurnMessageSnapshot {
   historyTurns: TurnRecord[];
   /** 项目级 agents.md 规则文档，每轮开始时获取一次 */
   agentsMdMessage: Message | null;
-  /** turn 级动态上下文：每轮开始时获取一次，后续 iter 复用 */
-  contextMessages: Message[];
-  /** 用户自定义上下文：每轮开始时获取一次，插入在当前用户消息之前 */
-  userContextMessages: Message[];
-  /** 环境信息文本（模式提示词 + skills/sub-agents + 文件感知等），与 userContextMessages 合并为一条 user 消息 */
-  environmentSection: string;
+  /** 静态背景上下文：每轮开始时获取一次，后续 iter 复用（位于历史对话之前的静态前缀层） */
+  stableContextMessages: Message[];
+  /** 随消息携带的动态上下文：每轮开始时获取一次，拼接为一条 user 消息插在当前用户消息之前 */
+  attachmentContextMessages: MessageSection[];
   /** 当前 turn 开始时的运行模式 */
   mode: AgentMode;
 }

@@ -19,8 +19,8 @@ export type TokenUsage = {
 
 /**
  * Agent 运行模式。
- * - build：智能体模式，允许直接修改，适合快速修改和简单直接的任务
- * - plan：讨论模式，修改之前先讨论方案，方案通过后再进行操作
+ * - build：智能模式，允许直接修改，适合快速修改和简单直接的任务
+ * - plan：计划模式，修改之前先制定方案，方案通过后再进行操作
  */
 export type AgentMode = "build" | "plan";
 
@@ -626,6 +626,7 @@ export type {
   ForkOptions,
   FormatUserMessageResult,
   LLMCallResult,
+  MessageSection,
   RequestAIOptions,
   ToolExecutionContext,
   TurnMessageSnapshot,

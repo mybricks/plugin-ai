@@ -12,6 +12,7 @@ import type {
   History,
   LLMCallResult,
   Message,
+  MessageSection,
   RequestAIOptions,
   TokenUsage,
   Tool,
@@ -23,9 +24,10 @@ import type {
   WarmupIter,
 } from "./types";
 import { turnsToMessages, bindHistory, getLLMIterations, hasNoToolCalls, serializeToolCallArgumentsFromIter, serializeToolCallArgumentsFromLLMResult } from "./types";
-import { maskMessages, computeHandoffTurnIds, type MaskOptions } from "./mask";
+import { maskMessages, computeHandoffTurnIds, buildProtectedAttachmentTurnIds, type MaskOptions } from "./mask";
 import { wrapRequestWithRetry, type RetryOptions } from "./retry";
 import { CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
+import { getTurnMode } from "./utils/core";
 import { getAvailableAgentModes, AgentModeEnum } from "./mode-manager";
 
 export { AgentEvents };
@@ -75,10 +77,10 @@ function normalizeAllowedAgentMode(mode: any, options: AgentOptions): AgentMode 
 
 /**
  * 构建 turn 级消息快照（在 turn 开始时调用一次）：
- *   [snapshot.historyTurns]         历史 turns 快照
- *   [snapshot.agentsMdMessage]      agents.md 上下文（仅获取一次）
- *   [snapshot.contextMessages]      动态上下文（getContextMessages，仅获取一次）
- *   [snapshot.userContextMessages]  用户自定义上下文（getUserContextMessages，仅获取一次）
+ *   [snapshot.historyTurns]              历史 turns 快照
+ *   [snapshot.agentsMdMessage]           agents.md 上下文（仅获取一次）
+ *   [snapshot.stableContextMessages]     静态背景上下文（getStableContextMessages，仅获取一次）
+ *   [snapshot.attachmentContextMessages] 随消息携带的动态上下文（getAttachmentContextMessages，仅获取一次）
  *
  * 注意：compact 摘要和历史 messages 不在此处固化。
  * 它们依赖 compactRecord，必须在每个 iter 请求前用最新 compactRecord 重新构建。
@@ -91,24 +93,19 @@ async function buildTurnMessageSnapshot(
 ): Promise<TurnMessageSnapshot> {
   const agentsMdMessage = await buildAgentsMdMessage(options.agentsMdConfig);
 
-  const contextMessages: Message[] = options.getContextMessages
-    ? await options.getContextMessages()
+  const stableContextMessages: Message[] = options.getStableContextMessages
+    ? await options.getStableContextMessages()
     : [];
 
-  const userContextMessages: Message[] = options.getUserContextMessages
-    ? await options.getUserContextMessages()
+  const attachmentContextMessages: MessageSection[] = options.getAttachmentContextMessages
+    ? await options.getAttachmentContextMessages({ mode, previousMode: previousMode ?? null })
     : [];
-
-  const environmentSection = options.getEnvironmentSection
-    ? await options.getEnvironmentSection({ mode, previousMode: previousMode ?? null })
-    : "";
 
   return {
     historyTurns,
     agentsMdMessage,
-    contextMessages,
-    userContextMessages,
-    environmentSection,
+    stableContextMessages,
+    attachmentContextMessages,
     mode,
   };
 }
@@ -162,7 +159,7 @@ function buildIterationBaseMessages(
   compactRecord?: CompactRecord | null
 ): { baseMessages: Message[]; historyStartIndex: number } {
   const { system } = options;
-  const { historyTurns, agentsMdMessage, contextMessages } = snapshot;
+  const { historyTurns, agentsMdMessage, stableContextMessages } = snapshot;
 
   const systemMessage: Message | null = system
     ? { role: "system", content: system }
@@ -191,10 +188,10 @@ function buildIterationBaseMessages(
     ? { ...systemMessage, cache: true }
     : null;
 
-  // 断点 2：agentsMd + context + compact 最后一条打 cache
+  // 断点 2：agentsMd + stableContext + compact 最后一条打 cache
   const staticRest: Message[] = [
     ...(agentsMdMessage ? [agentsMdMessage] : []),
-    ...contextMessages,
+    ...stableContextMessages,
     ...compactMessages,
   ];
   if (staticRest.length > 0) {
@@ -214,28 +211,27 @@ function buildIterationBaseMessages(
     ...historyMessages,
   ];
 
-  // historyStartIndex：assembled 数组中，静态前缀（system/agentsMd/context/compact）之后的起始索引
+  // historyStartIndex：assembled 数组中，静态前缀（system/agentsMd/stableContext/compact）之后的起始索引
   // mask 时只对 index >= historyStartIndex 的消息做遮蔽，前缀不受影响
-  const historyStartIndex = (systemMessage ? 1 : 0) + (agentsMdMessage ? 1 : 0) + contextMessages.length + compactMessages.length;
+  const historyStartIndex = (systemMessage ? 1 : 0) + (agentsMdMessage ? 1 : 0) + stableContextMessages.length + compactMessages.length;
 
   return { baseMessages, historyStartIndex };
 }
 
 /**
  * 每次 LLM 请求前组装完整 messages 列表：
- *   baseMessages（静态前缀 + 动态上下文 + 历史）
- *   + 前置上下文消息（environmentSection + userContextMessages 合并为一条 user 消息，可选）
+ *   baseMessages（静态前缀 + 静态背景上下文 + 历史）
+ *   + 前置上下文消息（attachmentContextMessages 合并为一条 user 消息，可选）
  *   + 用户消息
  *   + 本轮已积累的对话尾部
  *
- * @param baseMessages         buildIterationBaseMessages 返回的基础部分
- * @param historyStartIndex    assembled 数组中历史消息的起始索引（mask 时跳过静态前缀）
- * @param options              AgentOptions
- * @param turns                当前 turns 快照（用于 mask）
- * @param params               本轮用户请求参数
- * @param tail                 本轮已积累的 assistant + tool 消息（step > 1 时非空）
- * @param userContextMessages  用户自定义上下文消息（文本列表，与 environmentSection 合并）
- * @param environmentSection   环境信息文本（skills/sub-agents），与 userContextMessages 合并为一条 user 消息
+ * @param baseMessages                buildIterationBaseMessages 返回的基础部分
+ * @param historyStartIndex           assembled 数组中历史消息的起始索引（mask 时跳过静态前缀）
+ * @param options                     AgentOptions
+ * @param turns                       当前 turns 快照（用于 mask）
+ * @param params                      本轮用户请求参数
+ * @param tail                        本轮已积累的 assistant + tool 消息（step > 1 时非空）
+ * @param attachmentContextMessages   随消息携带的动态上下文段落（MessageSection[]，join 后插在用户消息正前方）
  */
 function assembleMessages(
   baseMessages: Message[],
@@ -244,8 +240,7 @@ function assembleMessages(
   turns: TurnRecord[],
   params: RequestAIOptions,
   tail: Message[],
-  userContextMessages: Message[],
-  environmentSection: string
+  attachmentContextMessages: MessageSection[]
 ): Message[] {
   const { message, attachments } = params;
 
@@ -261,16 +256,10 @@ function assembleMessages(
   }
   const userMessage: Message = { role: "user", content: userContent };
 
-  // environmentSection 与 userContextMessages 合并为一条前置 user 消息（两者都为空则不插入）
-  const userContextTexts = userContextMessages
-    .map((m) => (typeof m.content === "string" ? m.content : ""))
-    .filter(Boolean);
-  const prefixParts = [
-    ...(environmentSection ? [environmentSection] : []),
-    ...userContextTexts,
-  ];
-  const prefixMessage: Message | null = prefixParts.length > 0
-    ? { role: "user", content: prefixParts.join("\n\n") }
+  // attachmentContextMessages（string[]）拼接为一条前置 user 消息（为空则不插入）
+  const prefixText = attachmentContextMessages.filter(Boolean).join("\n\n");
+  const prefixMessage: Message | null = prefixText
+    ? { role: "user", content: prefixText }
     : null;
 
   const assembled = [
@@ -296,7 +285,9 @@ function assembleMessages(
     const maskOpts: MaskOptions = options.mask && typeof options.mask === "object" ? options.mask : {};
     const prefix = assembled.slice(0, historyStartIndex);
     const rest = assembled.slice(historyStartIndex);
-    const maskedRest = maskMessages(rest, turns, maskOpts);
+    // 计算附件保护集合：尾部连续 plan 轮的 user 附件不参与遮蔽
+    const protectedTurnIds = buildProtectedAttachmentTurnIds(turns);
+    const maskedRest = maskMessages(rest, turns, maskOpts, protectedTurnIds);
     return [...prefix, ...maskedRest];
   }
 
@@ -819,8 +810,7 @@ export class Agent {
           messageSnapshot.historyTurns,
           formattedParams,
           tail,
-          messageSnapshot.userContextMessages,
-          messageSnapshot.environmentSection
+          messageSnapshot.attachmentContextMessages
         );
 
         // 调用 LLM
@@ -1118,8 +1108,24 @@ export class Agent {
     const { message, attachments, mode = AgentModeEnum.Build, ...rest } = params;
     this.setMode(mode, "requestAI");
     const effectiveRequestMode = this.getMode();
-    // 有图片附件时，自动将 aiRole 覆盖为 "image"，使请求层路由到支持视觉的模型
-    if (attachments?.length) {
+    // 有图片附件时，自动将 aiRole 覆盖为 "image"，使请求层路由到支持视觉的模型。
+    // 扩展：当前是 build 模式且无图片，但连续前置 plan 轮中携带过图片时，
+    // 图片仍在历史 messages 里（受 buildProtectedAttachmentTurnIds 保护，未被 mask 清除），
+    // 此时也需要路由到视觉模型，否则普通模型无法处理 image_url。
+    const hasPlanHistoryImage = !attachments?.length && effectiveRequestMode === AgentModeEnum.Build
+      ? (() => {
+          for (let i = this.turns.length - 1; i >= 0; i--) {
+            const t = this.turns[i];
+            if (getTurnMode(t) === AgentModeEnum.Plan) {
+              if (t.userAttachments?.some(a => a.type === "image")) return true;
+            } else {
+              break;
+            }
+          }
+          return false;
+        })()
+      : false;
+    if (attachments?.length || hasPlanHistoryImage) {
       rest.aiRole = "image";
     }
 
@@ -1205,7 +1211,7 @@ export class Agent {
    *
    * TODO: fork 机制存在设计缺陷——ForkAgent 继承自 Agent 而非 CodeAgent。
    *   fork 出来的实例天然缺失 CodeAgent 的沙箱、插件、工具等完整上下文；
-   *   目前通过把 CodeAgent 的 getEnvironmentSection、getContextMessages 等能力以闭包形式
+   *   目前通过把 CodeAgent 的 getAttachmentContextMessages、getStableContextMessages 等能力以闭包形式
    *   打包进 options 来变通传递，是绕路而非真正的 fork。
    *   真正的 subAgent 机制应该 fork 出一个完整的 CodeAgent 实例，需要重新设计。
    */
@@ -1250,10 +1256,10 @@ export class Agent {
       ...(mask !== undefined ? { mask } : {}),
       // retry：不传=继承父；传了则覆盖（false 或具体配置）
       ...(retry !== undefined ? { retry: retry === false ? { maxRetries: 0 } : retry } : {}),
-      // fork 是 worker agent，不需要讨论模式
+      // fork 是 worker agent，不需要计划模式
       disabledModes: [AgentModeEnum.Plan],
-      // fork 不注入环境提示词（模式说明、skills 等），getEnvironmentSection 是 CodeAgent 的箭头函数，this 永远指向父实例，无法感知 fork 的 disabledModes
-      getEnvironmentSection: undefined,
+      // fork 不注入随消息携带的动态上下文（模式说明、skills 等），getAttachmentContextMessages 是 CodeAgent 的箭头函数，this 永远指向父实例，无法感知 fork 的 disabledModes
+      getAttachmentContextMessages: undefined,
       // fork 强制关闭 summary/compact，防止 summary fork / compact fork 再递归创建 fork。
       summary: { enabled: false },
       compact: { enabled: false },
@@ -1438,7 +1444,7 @@ IMPORTANT: 不要调用工具！
 `;
 
     const fork = this.createFork({ tools: [], turnsSlice: { from: "end", count: 1 }, retry: { maxRetries: 0 } });
-    (fork as any).options.getUserContextMessages = undefined;
+    (fork as any).options.getAttachmentContextMessages = undefined;
     (fork as any).options.formatUserMessage = undefined;
 
     let lastContent = "";
@@ -1791,7 +1797,7 @@ IMPORTANT: 不要调用工具！
 
       // fork 继承 compactRecord（由 createFork 联动处理：游标在截取范围内则保留）
       const fork = this.createFork({ tools: [], mask: false, retry: { maxRetries: 0 }, turnsSlice: { from: "start", count: sliceCount } });
-      (fork as any).options.getUserContextMessages = undefined;
+      (fork as any).options.getAttachmentContextMessages = undefined;
       (fork as any).options.formatUserMessage = undefined;
 
       // 监听 signal，取消时同步中断 fork

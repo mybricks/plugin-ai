@@ -1,4 +1,5 @@
-import type { Message, TurnRecord } from "./types";
+import type { AgentMode, Message, TurnRecord } from "./types";
+import { getTurnMode } from "./utils/core";
 
 // ─── MaskOptions ──────────────────────────────────────────────────────────────
 
@@ -62,6 +63,30 @@ export interface MaskOptions {
   };
 }
 
+/**
+ * 计算需要豁免附件遮蔽的 turn id 集合（保护集合）。
+ *
+ * 当前保护策略：
+ *   - 尾部连续 plan 轮保护：从 turns 尾部往前，跳过连续的 plan 模式 turn，
+ *     这些 turn 的用户附件（image_url）不参与遮蔽，直到切回 build 后才正常计入。
+ *     原因：plan 多轮后首次切入 build 时，历史里仍可能有图片需要视觉模型处理。
+ *
+ * 未来可在此函数中追加更多保护策略（如特殊 meta 标记等）。
+ *
+ * tool 消息不受此保护，照常遮蔽。
+ */
+export function buildProtectedAttachmentTurnIds(turns: TurnRecord[]): Set<string> {
+  const result = new Set<string>();
+  for (let i = turns.length - 1; i >= 0; i--) {
+    if (getTurnMode(turns[i]) === "plan") {
+      result.add(turns[i].id);
+    } else {
+      break;
+    }
+  }
+  return result;
+}
+
 // ─── maskMessages ─────────────────────────────────────────────────────────────
 
 const DEFAULT_MAX_AGE_MINUTES = 60;
@@ -79,15 +104,17 @@ const DEFAULT_ATTACHMENT_PLACEHOLDER = "[Old attachment cleared]";
  *      - role==='tool' 且 tool_call_id 在遮蔽集合中，且 content 长度超过阈值 → 替换 content
  *      - role==='user' 且处于遮蔽 turn 中，且 content 是数组（含附件）→ 替换 image_url 为文字占位符
  *
- * @param messages  buildMessages 产出的完整消息列表
- * @param turns     当前已有的 TurnRecord[]（不含本轮，用于判断遮蔽条件）
- * @param options   遮蔽配置
- * @returns         遮蔽后的消息列表（浅拷贝，不修改原数组元素）
+ * @param messages              buildMessages 产出的完整消息列表
+ * @param turns                 当前已有的 TurnRecord[]（不含本轮，用于判断遮蔽条件）
+ * @param options               遮蔽配置
+ * @param protectedTurnIds      附件豁免遮蔽的 turn id 集合（由调用方通过 buildProtectedAttachmentTurnIds 计算）
+ * @returns                     遮蔽后的消息列表（浅拷贝，不修改原数组元素）
  */
 export function maskMessages(
   messages: Message[],
   turns: TurnRecord[],
-  options: MaskOptions
+  options: MaskOptions,
+  protectedTurnIds?: Set<string>
 ): Message[] {
   const {
     maxTurns = 4,
@@ -132,7 +159,11 @@ export function maskMessages(
 
     // 找到该 turn 在原始 turns 数组中的索引
     const originalIndex = turns.indexOf(turn);
-    maskedTurnIndices.add(originalIndex);
+
+    // 附件保护：被保护的 turn 跳过用户附件遮蔽，但 tool 消息照常遮蔽
+    if (!protectedTurnIds?.has(turn.id)) {
+      maskedTurnIndices.add(originalIndex);
+    }
 
     // 收集该 turn 所有迭代中的 toolCall id
     for (const iter of turn.iterations ?? []) {

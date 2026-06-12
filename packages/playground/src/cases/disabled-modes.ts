@@ -6,7 +6,7 @@ import { makeScriptedRequest } from "../lib/scripted-request";
  */
 export const disabledModesPlanCase: TestCase = {
   id: "disabled-modes-plan",
-  name: "禁用讨论模式",
+  name: "禁用计划模式",
   group: "设置",
   description: "测试 disabledModes: ['plan'] 配置，隐藏模式切换器",
   expectedBehavior: "输入框不显示模式切换器；Agent 始终以 build 模式运行",

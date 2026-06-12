@@ -10,7 +10,7 @@ import {
   createSkillTool,
   USE_SKILL_TOOL_NAME,
 } from "./tools";
-import { getModeReminder, getActivePlanFile } from "../mode-manager";
+import { buildModeSection, getActivePlanFile } from "../mode-manager";
 import { splitFrontmatter } from "../utils/frontmatter";
 import { getCodeAgentSystemPrompt, type CodeAgentPromptOptions } from "./prompt";
 export type { CodeAgentPromptOptions };
@@ -202,19 +202,16 @@ export interface Sandbox {
    */
   deleteFiles(paths: string[]): Promise<void>;
   /**
-   * 获取当前动态上下文信息（代码规则、主题等项目信息）。
-   * 返回的文本内容会通过 getContextMessages 注入到 LLM 上下文中。
+   * 获取静态背景上下文信息（代码规则、主题等项目信息）。
+   * 返回的文本内容会通过 getStableContextMessages 注入到 LLM 上下文中。
    */
   getContext?: () => Promise<string | null>;
   /**
-   * @experimental
-   * 获取用户自定义上下文信息。
-   * 返回的文本内容会通过 getUserContextMessages 注入到 LLM 上下文中，
+   * 获取项目空间元信息（主工程文件列表、扩展工程说明等）。
+   * 返回的文本会通过 getAttachmentContextMessages 注入到 LLM 上下文中，
    * 放置在用户消息之前。
-   * - 返回字符串：构造为一条 user 消息注入。
-   * - 返回字符串数组：每个元素构造为一条独立的 user 消息注入。
    */
-  getUserContext?: () => Promise<string | string[] | null>;
+  getSandboxMetaSection?: () => Promise<string | null>;
 }
 
 // ─── CodeAgentOptions ────────────────────────────────────────────────────────
@@ -471,7 +468,7 @@ export class CodeAgent extends Agent {
       },
 
       ...(sandbox.getContext ? { getContext: sandbox.getContext.bind(sandbox) } : {}),
-      ...(sandbox.getUserContext ? { getUserContext: sandbox.getUserContext.bind(sandbox) } : {}),
+      ...(sandbox.getSandboxMetaSection ? { getSandboxMetaSection: sandbox.getSandboxMetaSection.bind(sandbox) } : {}),
     };
 
     const sandboxTools: Tool[] = [
@@ -489,20 +486,10 @@ export class CodeAgent extends Agent {
       tools: [...sandboxTools, ...baseUserTools],
     };
 
-    const getContextMessages = async (): Promise<Message[]> => {
+    const getStableContextMessages = async (): Promise<Message[]> => {
       const ctx = (await wrappedSandbox?.getContext?.()) ?? null;
       if (!ctx) return [];
       return [{ role: "user", content: ctx }];
-    };
-
-    // ── sandbox.getUserContext 作为 getUserContextMessages（@experimental）────
-    const getUserContextMessages = async (): Promise<Message[]> => {
-      const uc = (await wrappedSandbox?.getUserContext?.()) ?? null;
-      if (!uc) return [];
-      if (Array.isArray(uc)) {
-        return uc.map((text) => ({ role: "user", content: text }));
-      }
-      return [{ role: "user", content: uc }];
     };
 
     const builtinSystem = getCodeAgentSystemPrompt(agentOptions.promptOptions);
@@ -511,23 +498,34 @@ export class CodeAgent extends Agent {
     super({
       ...agentOptions,
       system: finalSystem,
-      getContextMessages,
-      getUserContextMessages,
-      getEnvironmentSection: async ({ mode, previousMode }) => {
+      getStableContextMessages,
+      getAttachmentContextMessages: async (ctx) => {
+        const sections: string[] = [];
+
+        // 1. 环境信息：skills/subAgents/日期 + 模式提示词
         const { skills, subAgents } = this._getEnabledResources();
-        // 1. skills/subAgents/日期等环境信息
         const baseSection = buildEnvironmentSection(
           skills.length ? skills : undefined,
           subAgents.length ? subAgents : undefined,
         );
-        // 2. 模式提示词（规则文本 + 动态计划文件感知）
-        const modeSection = await getModeReminder({
-          mode,
-          previousMode,
+        const modeSection = await buildModeSection({
+          mode: ctx.mode,
+          previousMode: ctx.previousMode,
           disabledModes: agentOptions.disabledModes,
           getFiles: wrappedSandbox.getFiles.bind(wrappedSandbox),
         });
-        return [baseSection, modeSection].filter(Boolean).join("\n\n");
+        const envText = [baseSection, modeSection].filter(Boolean).join("\n\n");
+        if (envText) sections.push(envText);
+
+        // 2. 项目空间元信息（文件列表等）
+        const meta = await wrappedSandbox?.getSandboxMetaSection?.();
+        if (meta) sections.push(meta);
+
+        // 3. 外部传入的扩展内容（CodeAgentOptions.getAttachmentContextMessages）
+        const extra = await agentOptions.getAttachmentContextMessages?.(ctx);
+        if (extra?.length) sections.push(...extra);
+
+        return sections;
       },
       tools: base.tools,
     });

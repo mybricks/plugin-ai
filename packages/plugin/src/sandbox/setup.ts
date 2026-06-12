@@ -476,8 +476,8 @@ function connectToAI(
 
     getContext: async () => buildGuideUserContext(designerRef.current, promptSections, { codeRules, designRules }),
 
-    // ── getUserContext：主项目空间 + 扩展目录文件列表 + 宿主自定义上下文 ──────────
-    getUserContext: async () => {
+    // ── getSandboxMetaSection：主项目空间 + 扩展目录文件列表 ──────────────────────
+    getSandboxMetaSection: async () => {
       const additionalDirectories = await getEnabledAdditionalDirectories();
       const summarizeFiles = (files: UnifiedFile[]) => {
         const suffixMap: Record<string, number> = {};
@@ -572,12 +572,7 @@ function connectToAI(
         sections.push(`## 扩展工程（${extraDirectoryInfos.length}个）\n${extraSections}`);
       }
 
-      const customContextMessage = await getUserContextMessage?.();
-
-      const combined = sections.join('\n\n');
-      return customContextMessage
-        ? `${combined}\n\n${customContextMessage}`
-        : combined;
+      return `<project-info>\n${sections.join('\n\n')}\n</project-info>`;
     },
   };
 
@@ -598,6 +593,14 @@ function connectToAI(
     plugins: effectivePlugins,
     subAgents: [],
     disabledModes,
+    getAttachmentContextMessages: async () => {
+      const sections: string[] = [];
+      const meta = await sandbox.getSandboxMetaSection?.();
+      if (meta) sections.push(meta);
+      const custom = await getUserContextMessage?.();
+      if (custom) sections.push(custom);
+      return sections;
+    },
     formatUserMessage: chipRegistry.wrapFormatUserMessage(async (params) => {
       const focusSnapshot = context.currentFocus;
       const ele = focusSnapshot?.focusArea?.ele;
