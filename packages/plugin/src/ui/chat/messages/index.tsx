@@ -373,18 +373,67 @@ const ToolBubble = ({ tool, toolRendererMap }: { tool: UIToolRecord; toolRendere
   // 优先从 agent 的工具列表中查找自定义渲染函数（已缓存）
   const customRenderer = toolRendererMap.get(tool.name);
   if (customRenderer) {
-    return <>{customRenderer(tool as any)}</>;
+    return renderToolWithErrorBoundary(customRenderer, tool, "custom");
   }
 
   // 降级到全局 registry（用于内置工具）
   const globalRenderer = getToolRenderer(tool.name);
   if (globalRenderer) {
-    return <>{globalRenderer(tool as any)}</>;
+    return renderToolWithErrorBoundary(globalRenderer, tool, "registry");
   }
 
   // 最终降级到默认渲染器
   return <DefaultToolRenderer tool={tool as any} />;
 };
+
+function renderToolWithErrorBoundary(renderer: ToolRenderer, tool: UIToolRecord, source: "custom" | "registry") {
+  return React.createElement(
+    ToolRendererErrorBoundary as any,
+    { tool, source, resetKey: getToolRendererResetKey(tool) },
+    <ToolRendererInvoker renderer={renderer} tool={tool as any} />
+  );
+}
+
+const ToolRendererInvoker = ({ renderer, tool }: { renderer: ToolRenderer; tool: ToolCallRecord }) => {
+  return renderer(tool as any);
+};
+
+class ToolRendererErrorBoundary extends React.Component<
+  { tool: ToolCallRecord; source: "custom" | "registry"; resetKey: string; children: React.ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.warn("[ToolRenderer] render failed, fallback to default renderer", {
+      toolName: this.props.tool.name,
+      callId: this.props.tool.callId,
+      source: this.props.source,
+      error,
+    });
+  }
+
+  componentDidUpdate(prevProps: { resetKey: string }) {
+    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false });
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <DefaultToolRenderer tool={this.props.tool as any} />;
+    }
+    return this.props.children;
+  }
+}
+
+function getToolRendererResetKey(tool: UIToolRecord): string {
+  return `${tool.callId}:${tool.status}:${tool.execEndTime}`;
+}
 
 const ThinkingCard = ({
   thinkingContent,

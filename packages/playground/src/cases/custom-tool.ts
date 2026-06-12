@@ -1,3 +1,4 @@
+import React from "react";
 import type { TestCase } from "./types";
 import type { Tool } from "@agent/types";
 import { ToolValidationError } from "@agent/types";
@@ -5,6 +6,8 @@ import { makeScriptedRequest } from "../lib/scripted-request";
 
 /** 与 mock LLM 的 tool_calls.name 一致 */
 export const PLAYGROUND_SLOW_TOOL_NAME = "playground_slow_action";
+export const PLAYGROUND_RENDER_ERROR_TEXT_TOOL_NAME = "playground_render_error_text";
+export const PLAYGROUND_RENDER_THROW_TOOL_NAME = "playground_render_throw";
 
 /**
  * Playground 注入的自定义工具：execute 内延迟，Tool.title 用于工具卡片标题展示。
@@ -38,6 +41,128 @@ export function createPlaygroundSlowTool(delayMs = 2500): Tool {
     },
   };
 }
+
+/**
+ * 自定义 renderer 直接消费 tool.error，用来验证实时态和历史态 error 都是字符串。
+ */
+export function createPlaygroundRenderErrorTextTool(): Tool {
+  return {
+    name: PLAYGROUND_RENDER_ERROR_TEXT_TOOL_NAME,
+    title: "自定义错误展示",
+    description: "Playground 专用：execute 抛错，自定义 render 直接展示 tool.error。",
+    parameters: {
+      type: "object",
+      properties: {
+        reason: {
+          type: "string",
+          description: "用于拼接错误文案",
+        },
+      },
+      required: ["reason"],
+    },
+    async execute(params: { reason: string }) {
+      throw new Error(`自定义工具执行失败：${params.reason}`);
+    },
+    render(tool) {
+      return React.createElement(
+        "div",
+        {
+          style: {
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+            color: tool.status === "error" ? "#c0392b" : undefined,
+          },
+        },
+        React.createElement("span", null, tool.status === "pending" ? "自定义错误展示执行中..." : "自定义错误展示"),
+        tool.error ? React.createElement("code", null, String(tool.error)) : null
+      );
+    },
+  };
+}
+
+/**
+ * 自定义 renderer 故意把 tool 对象作为 React child 渲染，触发 React render error。
+ * 预期由 ToolRendererErrorBoundary 兜底为 DefaultToolRenderer。
+ */
+export function createPlaygroundRenderThrowTool(): Tool {
+  return {
+    name: PLAYGROUND_RENDER_THROW_TOOL_NAME,
+    title: "自定义渲染报错",
+    description: "Playground 专用：execute 成功，但自定义 render 故意渲染对象触发 React 错误。",
+    parameters: {
+      type: "object",
+      properties: {
+        label: {
+          type: "string",
+          description: "任务标签",
+        },
+      },
+      required: ["label"],
+    },
+    async execute(params: { label: string }) {
+      return {
+        output: `[${PLAYGROUND_RENDER_THROW_TOOL_NAME}] 已完成：${params.label}`,
+        metadata: { label: params.label },
+      };
+    },
+    render(tool) {
+      return React.createElement("div", null, tool as any);
+    },
+  };
+}
+
+export const customToolRendererErrorBoundaryCase: TestCase = {
+  id: "custom-tool-renderer-error-boundary",
+  name: "自定义工具渲染容错",
+  group: "工具调用",
+  priority: "P0",
+  description:
+    "验证自定义工具 render 的错误链路：一个工具 execute 抛错并由 render 直接展示 tool.error，另一个工具 render 自己抛 React 渲染错误并降级到默认工具卡片。",
+  expectedBehavior:
+    "第一个工具卡片展示字符串错误 '自定义工具执行失败：render-visible-error'；第二个自定义 renderer 抛错后不影响消息列表，降级显示默认工具卡片「自定义渲染报错」；控制台有 ToolRenderer fallback warning，最终 AI 正常继续回复。",
+  initialTurns: [],
+  tools: [
+    createPlaygroundRenderErrorTextTool(),
+    createPlaygroundRenderThrowTool(),
+  ],
+  request: makeScriptedRequest(
+    [
+      {
+        type: "tool_calls",
+        calls: [
+          {
+            id: "c_render_error_text",
+            name: PLAYGROUND_RENDER_ERROR_TEXT_TOOL_NAME,
+            args: { reason: "render-visible-error" },
+          },
+        ],
+        delayMs: 300,
+      },
+      {
+        type: "tool_calls",
+        calls: [
+          {
+            id: "c_render_throw",
+            name: PLAYGROUND_RENDER_THROW_TOOL_NAME,
+            args: { label: "fallback-check" },
+          },
+        ],
+        delayMs: 300,
+      },
+      {
+        type: "content",
+        chunks: [
+          "自定义工具渲染容错验证完成。",
+          "错误展示工具已把 tool.error 渲染出来，渲染报错工具已走默认兜底。",
+        ],
+        ttftMs: 200,
+        chunkDelayMs: 50,
+      },
+    ],
+    { loop: true }
+  ),
+};
 
 /**
  * 工具参数校验失败 → LLM 重试 → 第二轮接口返回极慢（等待工具参数流式传输）。

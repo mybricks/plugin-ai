@@ -963,7 +963,7 @@ export class Agent {
               toolRecord.error = `Error: 用户已取消`;
               toolResultContent = toolRecord.error
               toolRecord.execEndTime = Date.now();
-              this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: "用户已取消", step, endTime: toolRecord.execEndTime });
+              this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: toolRecord.error, errorType: toolRecord.errorType, step, endTime: toolRecord.execEndTime });
             } else {
               toolRecord.result = { output: result.output, metadata: result.metadata };
               toolRecord.status = "success";
@@ -985,7 +985,7 @@ export class Agent {
 
             toolResultContent = toolRecord.error;
             toolRecord.execEndTime = Date.now();
-            this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: e, step, endTime: toolRecord.execEndTime });
+            this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: toolRecord.error, errorType: toolRecord.errorType, step, endTime: toolRecord.execEndTime });
           }
 
           toolResultMessages.push({

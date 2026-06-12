@@ -332,8 +332,8 @@ export function useSession(agent: Agent | undefined) {
         updateLastLLMIterTool(callId, (t) => ({ ...t, status: "success", execEndTime: endTime, result }));
       }),
 
-      a.events.on("tool:error", ({ callId, error, endTime }) => {
-        updateLastLLMIterTool(callId, (t) => ({ ...t, status: "error", execEndTime: endTime, error }));
+      a.events.on("tool:error", ({ callId, error, errorType, endTime }) => {
+        updateLastLLMIterTool(callId, (t) => ({ ...t, status: "error", execEndTime: endTime, error, ...(errorType ? { errorType } : {}) }));
       }),
 
       a.events.on("tool:progress", ({ callId, data }) => {

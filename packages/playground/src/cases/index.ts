@@ -24,7 +24,7 @@ import {
   toolArgsJsonParseErrorCase,
   toolWriteLongFilenameCase,
 } from "./tool-error";
-import { customSlowToolCase, customToolValidationErrorThenSlowStreamCase } from "./custom-tool";
+import { customSlowToolCase, customToolRendererErrorBoundaryCase, customToolValidationErrorThenSlowStreamCase } from "./custom-tool";
 import {
   maskByTurnsCase,
   maskByAgeCase,
@@ -81,6 +81,7 @@ export const ALL_CASES: TestCase[] = [
   skillUseThenContinueCase,
   suggestionsDisplayCase,
   abortThenNextTurnAwarenessCase,
+  customToolRendererErrorBoundaryCase,
   // ─── 网络中断 ───────────────────────────────────
   networkErrorDelayedCase,
   toolCallArgsMidErrorCase,
