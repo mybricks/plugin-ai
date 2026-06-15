@@ -23,7 +23,7 @@ export type {
   OnUploadFn,
 } from "./types";
 
-export type { ModelConfig, ProviderConfig, ModelSelection, LLMProvidersOptions } from "./providers";
+export type { ModelConfig, ProviderConfig, RemoteProviderConfig, CustomProviderConfig, ModelSelection, LLMProvidersOptions, SelectionChangeHandler } from "./providers";
 
 function createRequestAsStream(config?: { useInfra?: boolean }): RequestAsStreamFn {
   const { useInfra = true } = config ?? {};

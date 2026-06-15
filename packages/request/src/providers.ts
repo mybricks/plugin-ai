@@ -7,13 +7,32 @@ export interface ModelConfig {
   name: string;
 }
 
-export interface ProviderConfig {
-  format: "openai" | "anthropic";
+/**
+ * 直连供应商配置（OpenAI / Anthropic 等标准 API 格式）
+ */
+export interface RemoteProviderConfig {
   providerId: string;
+  format: "openai" | "anthropic";
   baseUrl: string;
   apiKey: string;
   models: ModelConfig[];
 }
+
+/**
+ * 自定义请求 provider —— 不直连供应商，而是把请求 delegate 给外部 request 函数。
+ * 典型用途：配置一个 providerId 为 "auto" 的条目，走接入方自己的智能路由。
+ */
+export interface CustomProviderConfig {
+  providerId: string;
+  models: ModelConfig[];
+  request: RequestAsStreamFn;
+}
+
+/**
+ * ProviderConfig = 直连供应商 | 自定义请求，二者通过 union 统一。
+ * 原有的 ProviderConfig 名字保持兼容，变为 union type。
+ */
+export type ProviderConfig = RemoteProviderConfig | CustomProviderConfig;
 
 export interface ModelSelection {
   providerId: string;
@@ -25,19 +44,27 @@ export interface LLMProvidersOptions {
   agentKey: string;
 }
 
+/** selectionChange 事件回调类型 */
+export type SelectionChangeHandler = (selection: ModelSelection | null) => void;
+
 const STORAGE_KEY_PREFIX = "plugin-ai:llm-selection:";
 const OPENAI_CHAT_COMPLETIONS_PATH = "/v1/chat/completions";
 const ANTHROPIC_MESSAGES_PATH = "/v1/messages";
-const PROVIDER_ENDPOINTS: Record<ProviderConfig["format"], string> = {
+const PROVIDER_ENDPOINTS: Record<RemoteProviderConfig["format"], string> = {
   openai: OPENAI_CHAT_COMPLETIONS_PATH,
   anthropic: ANTHROPIC_MESSAGES_PATH,
 };
+
+/** 类型守卫：判断是否为自定义请求 provider */
+function isCustomProvider(p: ProviderConfig): p is CustomProviderConfig {
+  return typeof (p as CustomProviderConfig).request === "function";
+}
 
 function getStorageKey(agentKey: string): string {
   return `${STORAGE_KEY_PREFIX}${agentKey}`;
 }
 
-function normalizeProviderRequestUrl(format: ProviderConfig["format"], url: string): string {
+function normalizeProviderRequestUrl(format: RemoteProviderConfig["format"], url: string): string {
   const endpoint = PROVIDER_ENDPOINTS[format];
   let baseUrl = url.trim().replace(/\/+$/, "");
   Object.values(PROVIDER_ENDPOINTS).forEach((path) => {
@@ -66,6 +93,9 @@ function saveSelection(agentKey: string, selection: ModelSelection): void {
 
 function validateProviderConfig(config: ProviderConfig): string | null {
   if (!config.providerId?.trim()) return "missing providerId";
+  if (!config.models?.length) return "missing models";
+  // CustomProviderConfig 不需要校验 baseUrl / apiKey
+  if (isCustomProvider(config)) return null;
   if (!config.baseUrl?.trim()) return "missing baseUrl";
   if (!config.apiKey?.trim()) return "missing apiKey";
   try {
@@ -121,12 +151,20 @@ function formatRequestBody(
 }
 
 /**
- * LLMProviders 类：统一管理多供应商配置，提供请求执行、配置校验、模型切换能力
+ * LLMProviders 类：统一管理多供应商配置，提供请求执行、配置校验、模型切换能力。
+ *
+ * 支持两种 ProviderConfig：
+ * - RemoteProviderConfig：直连供应商（baseUrl + apiKey），走内置 fetch 逻辑
+ * - CustomProviderConfig：自定义请求，把请求 delegate 给外部 request 函数（如智能路由）
+ *
+ * 典型用法：将 llmProviders.request 直接传给 Agent 的 request 参数，
+ * 切换 selection 后，Agent 下次请求时自动走新路由，无需重建 Agent。
  */
 export class LLMProviders {
   private providers: Map<string, ProviderConfig>;
   private selection: ModelSelection | null;
   private agentKey: string;
+  private selectionChangeHandlers: SelectionChangeHandler[] = [];
 
   constructor(options: LLMProvidersOptions) {
     this.providers = new Map();
@@ -141,8 +179,8 @@ export class LLMProviders {
 
     // 从 localStorage 恢复选中状态
     this.selection = loadSelection(this.agentKey);
-    
-    // 如果恢复的 selection 无效，则选择第一个有效 provider 的第一个模型
+
+    // 如果恢复的 selection 无效，则重置
     if (this.selection && !this.isValidSelection(this.selection)) {
       this.selection = null;
     }
@@ -165,7 +203,28 @@ export class LLMProviders {
   }
 
   /**
-   * 核心请求方法，签名与 RequestAsStreamFn 兼容
+   * 订阅 selection 变化事件。返回取消订阅函数。
+   */
+  onSelectionChange(handler: SelectionChangeHandler): () => void {
+    this.selectionChangeHandlers.push(handler);
+    return () => {
+      this.selectionChangeHandlers = this.selectionChangeHandlers.filter((h) => h !== handler);
+    };
+  }
+
+  private emitSelectionChange(): void {
+    for (const handler of this.selectionChangeHandlers) {
+      try {
+        handler(this.selection);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  /**
+   * 核心请求方法，签名与 RequestAsStreamFn 兼容。
+   * 将此方法直接传给 Agent 的 request 参数，切换 selection 后路由自动更新。
    */
   request: RequestAsStreamFn = async (params: RequestAsStreamParams) => {
     const { messages, emits, tools } = params;
@@ -184,6 +243,12 @@ export class LLMProviders {
       throw err;
     }
 
+    // CustomProviderConfig：直接 delegate 给外部 request 函数
+    if (isCustomProvider(provider)) {
+      return provider.request(params);
+    }
+
+    // RemoteProviderConfig：走内置 fetch 逻辑
     const model = this.selection.modelId;
 
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -239,6 +304,8 @@ export class LLMProviders {
   isValid(): boolean {
     if (this.providers.size === 0) return false;
     for (const provider of this.providers.values()) {
+      // CustomProviderConfig 只要有 request 函数即有效
+      if (isCustomProvider(provider)) continue;
       if (!provider.apiKey || !provider.baseUrl || provider.models.length === 0) {
         return false;
       }
@@ -247,7 +314,7 @@ export class LLMProviders {
   }
 
   /**
-   * 获取可选模型列表
+   * 获取可选模型列表（含 CustomProviderConfig 中的模型）
    */
   getValidModels(): Array<ModelSelection & { modelName: string }> {
     const result: Array<ModelSelection & { modelName: string }> = [];
@@ -264,7 +331,7 @@ export class LLMProviders {
   }
 
   /**
-   * 设置当前选中的模型
+   * 设置当前选中的模型，并触发 selectionChange 事件
    */
   setSelected(providerId: string, modelId: string): void {
     const provider = this.providers.get(providerId);
@@ -279,6 +346,7 @@ export class LLMProviders {
     }
     this.selection = { providerId, modelId };
     saveSelection(this.agentKey, this.selection);
+    this.emitSelectionChange();
   }
 
   /**

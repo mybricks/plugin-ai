@@ -47,6 +47,7 @@ export const ModelSelector = ({ modelSelector, disabled }: ModelSelectorProps) =
       onOpenChange={setOpen}
       disabled={disabled}
       placement="top-start"
+      className={css.triggerContainer}
       trigger={
         <div className={classNames(css.trigger, { [css.disabled]: disabled })}>
           <span className={css.triggerText}>{currentModelName}</span>

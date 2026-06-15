@@ -7,6 +7,7 @@ import { CodeAgent, IDBHistory } from "../../agent/src";
 import type { AgentOptions, CodeAgentPlugin, SkillFile, TurnSender } from "../../agent/src";
 import { createRequestAsStream, createOnUpload, LLMProviders } from "../../request/src";
 import type { RequestAsStreamFn, ProviderConfig } from "../../request/src";
+export type { ProviderConfig, RemoteProviderConfig, CustomProviderConfig, ModelConfig, ModelSelection } from "../../request/src";
 import { resolvePromptOptions, type PromptSections } from "./prompts";
 import { DEFAULT_PLUGIN_SKILLS } from "./skills/default";
 
@@ -162,7 +163,13 @@ export interface PluginAIParams {
   renderAttachmentSuffix?: () => React.ReactNode;
   /** LLM 配置（自定义渠道时使用） */
   llm?: {
-    providers?: import("./ui/setting").ProviderConfig[];
+    /**
+     * 供应商配置列表。支持两种类型：
+     * - RemoteProviderConfig：直连供应商（需提供 baseUrl / apiKey / format）
+     * - CustomProviderConfig：自定义请求（只需提供 providerId / models / request），
+     *   典型用途：配置 providerId 为 "auto" 的条目，把请求 delegate 给智能路由函数。
+     */
+    providers?: ProviderConfig[];
   };
   /** 透传给 CodeAgent 的历史记录实现，不传时使用内置 IDBHistory */
   history?: import("../../agent/src").History;
@@ -204,9 +211,8 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
   // 优先使用外部传入的 llm
   if (llm?.providers?.length) {
     // 如果提供了 llm.providers 配置，创建 LLMProviders 实例
-    const providers = llm.providers;
     const llmProviders = new LLMProviders({
-      providers: providers as ProviderConfig[],
+      providers: llm.providers,
       agentKey: pluginKey
     });
     context.setLLMProviders(llmProviders);

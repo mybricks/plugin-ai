@@ -4,19 +4,18 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 8px;
+  padding: 3px 6px;
   border-radius: 999px;
   border: 1px solid var(--mybricks-color-primary, #FA6400);
   background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 7%, transparent);
   color: var(--mybricks-color-primary, #FA6400);
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 18px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  min-height: 24px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  flex-shrink: 0;
 
   &:hover {
-    border-color: var(--mybricks-color-primary, #FA6400);
+    background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 14%, transparent);
   }
 
   &.disabled {
@@ -29,30 +28,44 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 10px;
-  height: 10px;
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
 
   svg {
-    width: 10px;
-    height: 10px;
+    width: 14px;
+    height: 14px;
   }
 }
 
 .agentIconSlot {
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
 
   svg {
-    width: 12px;
-    height: 12px;
+    width: 16px;
+    height: 16px;
   }
 }
 
-.triggerText {
-  font-weight: 500;
+/* 莫比乌斯环图标 —— 线条流动动画 */
+.mobiusIcon path {
+  stroke-dasharray: 60;
+  stroke-dashoffset: 120;
+  animation: mobius-flow 2s linear infinite;
+
+  &:nth-child(2) {
+    animation-delay: -1s;
+  }
 }
 
+/* trigger 选中 plan 模式时用默认颜色 */
+.triggerBuild {
+  // build 模式已经有主色，plan 模式复用 trigger 默认样式即可
+}
+
+/* 兼容旧引用，无实际内容 */
+.triggerText { display: none; }
 .arrow {
   opacity: 0.4;
   flex-shrink: 0;

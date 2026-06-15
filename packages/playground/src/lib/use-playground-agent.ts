@@ -23,19 +23,25 @@ export function usePlaygroundAgent(
   ) => {
     agentRef.current?.abort();
     context.agentMap.delete(AGENT_KEY);
-    context.setLLMProviders(
-      testCase.llmProviders?.length
-        ? new LLMProviders({ providers: testCase.llmProviders, agentKey: AGENT_KEY })
-        : undefined
-    );
+    const llmProvidersInstance = testCase.llmProviders?.length
+      ? new LLMProviders({ providers: testCase.llmProviders, agentKey: AGENT_KEY })
+      : undefined;
+
+    context.setLLMProviders(llmProvidersInstance);
 
     const fs = new MemFS(testCase.initialFiles);
     const mockHistory = new MockHistory(testCase.initialTurns);
 
+    // 如果有 llmProviders，agent request 走 llmProviders.request（路由由选中模型决定）
+    // 否则直接用 testCase.request
+    const effectiveRequest = llmProvidersInstance
+      ? llmProvidersInstance.request
+      : (reqFn ?? testCase.request);
+
     const newAgent = new CodeAgent({
       key: AGENT_KEY,
       history: mockHistory,
-      request: reqFn ?? testCase.request,
+      request: effectiveRequest,
       sandbox: fs,
       tools: testCase.tools ?? [],
       skills: testCase.skills,

@@ -81,20 +81,30 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   const showChatMode = availableModes.length > 1;
   const [chatMode, setChatMode] = useState<AgentMode>(() => agent?.getMode() ?? availableModes[0] ?? AgentModeEnum.Build);
 
-  // 模型选择器状态
+  // 模型选择器状态 —— 通过 llmProviders 实例事件同步多视图
+  const llmProviders = context.llmProviders;
+  const hasLLMProviders = !!(llmProviders && llmProviders.isValid());
+  const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(
+    () => llmProviders?.getSelected() ?? null
+  );
+
+  useEffect(() => {
+    const lp = context.llmProviders;
+    if (!lp) return;
+    setSelectedModel(lp.getSelected());
+    return lp.onSelectionChange((sel) => setSelectedModel(sel));
+  }, [context.llmProviders]);
+
   const modelSelector = useMemo(() => {
-    const llmProviders = context.llmProviders;
-    if (!llmProviders || !llmProviders.isValid()) return undefined;
-    const models = llmProviders.getValidModels();
-    const selected = llmProviders.getSelected();
+    if (!hasLLMProviders || !llmProviders) return undefined;
     return {
-      models,
-      selected,
+      models: llmProviders.getValidModels(),
+      selected: selectedModel,
       onSelect: (selection: ModelSelection) => {
         llmProviders.setSelected(selection.providerId, selection.modelId);
       },
     };
-  }, [context.llmProviders]);
+  }, [hasLLMProviders, llmProviders, selectedModel]);
 
   const { messages, syncAgent, subscribeSession, clearSession } = useSession(agent);
   const messageListRef = useRef<{ scrollToBottom: () => void }>(null);

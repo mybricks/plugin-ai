@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import classNames from "classnames";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
 import { chipRegistry } from "../../../sandbox/setup";
 import type { AgentMode, CodeAgent } from "../../../../../agent/src";
 import { AgentModeEnum } from "../../../../../agent/src";
+import type { ModelSelection } from "../../../../../request/src/providers";
 import { useSession } from "../use-session";
 import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
 import css from "./index.less";
@@ -59,6 +60,31 @@ const ChatStartView = ({
   const [chatMode, setChatMode] = useState<AgentMode>(() => agent?.getMode() ?? availableModes[0] ?? AgentModeEnum.Build);
 
   const { syncAgent, subscribeSession } = useSession(agent);
+
+  // 模型选择器状态 —— 与 chat-panel 对称，通过 llmProviders 实例事件同步
+  const llmProviders = context.llmProviders;
+  const hasLLMProviders = !!(llmProviders && llmProviders.isValid());
+  const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(
+    () => llmProviders?.getSelected() ?? null
+  );
+
+  useEffect(() => {
+    const lp = context.llmProviders;
+    if (!lp) return;
+    setSelectedModel(lp.getSelected());
+    return lp.onSelectionChange((sel) => setSelectedModel(sel));
+  }, [context.llmProviders]);
+
+  const modelSelector = useMemo(() => {
+    if (!hasLLMProviders || !llmProviders) return undefined;
+    return {
+      models: llmProviders.getValidModels(),
+      selected: selectedModel,
+      onSelect: (selection: ModelSelection) => {
+        llmProviders.setSelected(selection.providerId, selection.modelId);
+      },
+    };
+  }, [hasLLMProviders, llmProviders, selectedModel]);
 
   useEffect(() => {
     if (!agent) return;
@@ -122,6 +148,7 @@ const ChatStartView = ({
           attachmentsPrompt="根据附件中的图片内容进行设计开发，要求尽可能还原其中的各类设计细节以及功能"
           onUpload={onUpload}
           chipTypes={chipRegistry.getAll()}
+          modelSelector={modelSelector}
         />
       )}
     </div>

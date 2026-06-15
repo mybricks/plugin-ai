@@ -201,12 +201,15 @@
           display: flex;
           align-items: center;
           gap: 6px;
+          flex: 1;
+          min-width: 0;
         }
 
         .rightArea {
           display: flex;
           align-items: center;
           gap: 8px;
+          margin-left: 8px;
 
           .sendButtonContainer {
             width: auto;
@@ -488,6 +491,9 @@
         display: flex;
         align-items: center;
         gap: 6px;
+        min-width: 0;
+        overflow: hidden;
+        flex: 1;
 
         .attachmentButton {
           overflow: hidden;
@@ -496,6 +502,7 @@
           justify-content: center;
           width: 25px;
           height: 25px;
+          flex-shrink: 0;
           border-radius: 50%;
           cursor: pointer !important;
           * {
@@ -535,6 +542,8 @@
       .rightArea {
         display: flex;
         align-items: center;
+        flex-shrink: 0;
+        margin-left: 8px;
 
         .sendButtonContainer {
           cursor: pointer !important;

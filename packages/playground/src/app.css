@@ -190,6 +190,31 @@
 .pg-disabled-label { font-weight: 500; }
 .pg-disabled-state { font-weight: 600; font-size: 10px; }
 
+.pg-panel-width-toggle {
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--bg-0);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  color: var(--text-2);
+}
+
+.pg-panel-width-toggle:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pg-panel-width-value { font-weight: 600; font-size: 10px; }
+
 .pg-header-actions {
   display: flex;
   align-items: center;
@@ -417,13 +442,13 @@
 
 /* ── Chat Column ─────────────────────────────────────────────────────────── */
 .pg-chat-col {
-  width: 360px;
   flex-shrink: 0;
   border-right: 1px solid var(--border);
   background: var(--bg-0);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: width 0.2s ease;
 }
 .pg-chat-col > * { flex: 1; min-height: 0; }
 

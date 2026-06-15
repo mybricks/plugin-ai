@@ -79,6 +79,42 @@ function DisabledToggle({ disabled, onToggle }: { disabled: boolean; onToggle: (
   );
 }
 
+// ─── Panel Width Toggle ────────────────────────────────────────────────────────
+
+const PANEL_WIDTHS = [360, 267] as const;
+type PanelWidth = typeof PANEL_WIDTHS[number];
+const PANEL_WIDTH_KEY = "pg-panel-width";
+
+function usePanelWidth() {
+  const [width, setWidth] = useState<PanelWidth>(() => {
+    const saved = Number(localStorage.getItem(PANEL_WIDTH_KEY));
+    return PANEL_WIDTHS.includes(saved as PanelWidth) ? (saved as PanelWidth) : 360;
+  });
+
+  const toggle = useCallback(() => {
+    setWidth((w) => {
+      const next = w === 360 ? 267 : 360;
+      localStorage.setItem(PANEL_WIDTH_KEY, String(next));
+      return next;
+    });
+  }, []);
+
+  return { width, toggle };
+}
+
+function PanelWidthToggle({ width, onToggle }: { width: PanelWidth; onToggle: () => void }) {
+  return (
+    <button
+      className="pg-panel-width-toggle"
+      onClick={onToggle}
+      title={width === 360 ? "切换到最小宽度 267px" : "切换到默认宽度 360px"}
+    >
+      <span>W:</span>
+      <span className="pg-panel-width-value">{width}</span>
+    </button>
+  );
+}
+
 const P0_CASES = ALL_CASES.filter(c => c.priority === "P0");
 const P0_GROUPS = groupCases(P0_CASES);
 const OTHER_CASES = ALL_CASES.filter(c => c.priority !== "P0");
@@ -220,6 +256,7 @@ function InspectorPanel({ snapshots }: { snapshots: RequestSnapshot[] }) {
 export default function App() {
   const { mode, cycle: cycleTheme } = useTheme();
   const { disabled: chatDisabled, toggle: toggleDisabled } = useChatDisabled();
+  const { width: panelWidth, toggle: togglePanelWidth } = usePanelWidth();
 
   // 从 URL 读取初始 case（?case=xxx）
   const initialCaseId = new URLSearchParams(window.location.search).get("case");
@@ -283,6 +320,7 @@ export default function App() {
             </button>
           )}
           <DisabledToggle disabled={chatDisabled} onToggle={toggleDisabled} />
+          <PanelWidthToggle width={panelWidth} onToggle={togglePanelWidth} />
           <ThemeToggle mode={mode} onCycle={cycleTheme} />
         </div>
       </header>
@@ -353,7 +391,7 @@ export default function App() {
 
         <div className="pg-content">
           {/* ChatPanel 列 */}
-          <div className="pg-chat-col">
+          <div className="pg-chat-col" style={{ width: panelWidth }}>
             {agent ? (
               <ChatPanel agent={agent as any} title="playground" header={true} disabled={chatDisabled} />
             ) : (
