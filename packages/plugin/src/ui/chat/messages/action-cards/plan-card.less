@@ -82,6 +82,8 @@
   padding: 8px 10px 4px;
   box-sizing: border-box;
   overflow: auto;
+  user-select: text;
+  cursor: text;
 
   &::-webkit-scrollbar {
     width: 6px;
@@ -150,6 +152,22 @@
   user-select: none;
 }
 
+.plan-card-executed-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: rgba(82, 196, 26, 0.1);
+  border: 1px solid rgba(82, 196, 26, 0.3);
+  color: #52c41a;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 500;
+  user-select: none;
+}
+
 .plan-card-abandon-button {
   display: inline-flex;
   align-items: center;
@@ -202,4 +220,103 @@
   display: flex;
   justify-content: flex-end;
   gap: 6px;
+}
+
+// ─── RelatedPlanBanner（两行卡片）────────────────────────────────────────────
+
+.plan-banner {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  margin: 8px 0 4px;
+  border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  border-radius: 6px;
+  background: var(--mybricks-bg-color-secondary, #F5F5F5);
+  overflow: hidden;
+}
+
+// 第一行：方案标题 + 打开预览
+.plan-banner-row1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 30px;
+  padding: 5px 8px 4px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+}
+
+// 第二行：desc + 废弃/执行
+.plan-banner-row2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 30px;
+  padding: 4px 8px 5px;
+  box-sizing: border-box;
+}
+
+.plan-banner-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.plan-banner-label {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--mybricks-text-color-main, #333);
+}
+
+.plan-banner-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--mybricks-text-color-main, #333);
+  font-weight: 500;
+  user-select: text;
+}
+
+.plan-banner-open-btn {
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--mybricks-color-primary, #FA6400);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+
+  &:hover {
+    opacity: 0.75;
+  }
+}
+
+.plan-banner-desc {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--mybricks-text-color-secondary, #888);
+  user-select: text;
+}
+
+.plan-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }

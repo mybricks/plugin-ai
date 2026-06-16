@@ -9,10 +9,16 @@ import type { MessageRecord } from "../use-session";
 import type { ToolCallRecord, WarmupIter } from "../../../../../agent/src/types";
 import type { CodeAgent } from "../../../../../agent/src";
 import { AgentModeEnum } from "../../../../../agent/src";
+import type { ActivePlanFile } from "../../../../../agent/src/mode-manager";
+import { WRITE_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/write";
+import { EDIT_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/edit";
+import { MULTI_WRITE_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/multi-write";
+import { MULTI_EDIT_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/multi-edit";
 import { getToolRenderer } from "./tool-renders/index";
 import type { ToolRenderer } from "./tool-renders/index";
 import { DefaultToolRenderer } from "./tool-renders/renders";
 import { useChatPanel } from "../chat-panel/context";
+import { isPlanFilePath, usePlanState } from "../../components/plan";
 import "./tool-renders/register";
 import css from "./index.less";
 import { PlanFileCardWithContent } from "./action-cards/plan-card";
@@ -36,17 +42,17 @@ export interface MessageListProps {
   messages: MessageRecord[];
   agent?: CodeAgent;
   onRetry?: (turnId: string) => void;
-  onExecutePlan?: () => void;
+  onExecutePlan?: (title: string) => void;
   canExecutePlan?: boolean;
 }
 
 type MessageListRef = { scrollToBottom: () => void };
-type PlanFileView = { path: string; content: string };
 
 const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
   function MessageListInner({ messages, agent, onRetry, onExecutePlan, canExecutePlan = true }, ref) {
   const mainRef = useRef<HTMLElement>(null);
   const scrollerRef = useRef<AutoScroller | null>(null);
+  const { activePlan } = usePlanState(agent);
 
   // 缓存工具渲染器映射，避免流式渲染时重复计算
   const toolRendererMap = useMemo(() => {
@@ -87,6 +93,7 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
           agent={agent}
           onExecutePlan={onExecutePlan}
           canExecutePlan={canExecutePlan}
+          activePlan={activePlan}
         />
       ))}
     </main>
@@ -95,27 +102,30 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
 
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
-const MessageBubble = ({ record, toolRendererMap, onRetry, isLast, agent, onExecutePlan, canExecutePlan = true }: {
+const MessageBubble = ({ record, toolRendererMap, onRetry, isLast, agent, onExecutePlan, canExecutePlan = true, activePlan }: {
   record: MessageRecord;
   toolRendererMap: Map<string, ToolRenderer>;
   onRetry?: (turnId: string) => void;
   isLast?: boolean;
   agent?: CodeAgent;
-  onExecutePlan?: () => void;
+  onExecutePlan?: (title: string) => void;
   canExecutePlan?: boolean;
+  activePlan: ActivePlanFile | null;
 }) => {
   const { user, copilot, renderUserMessage } = useChatPanel();
-  const [planFile, setPlanFile] = useState<PlanFileView | null>(null);
-  const [planAbandoned, setPlanAbandoned] = useState(false);
   const isPlanRecord = isPlanModeRecord(record);
-  const isCompletedLastPlanRecord =
-    Boolean(isLast) &&
+  const isCompletedPlanRecord =
     record.status === "success" &&
     Boolean(record.endTime) &&
     isPlanRecord;
+  const planFile = useMemo(() => {
+    if (!isCompletedPlanRecord) return null;
+    return getActivePlanFileFromRecord(record, activePlan);
+  }, [record, isCompletedPlanRecord, activePlan]);
   const shouldShowPlanCard =
-    isCompletedLastPlanRecord &&
+    isCompletedPlanRecord &&
     Boolean(planFile?.content?.trim());
+  const canOperatePlanCard = Boolean(isLast) && Boolean(agent);
 
   // 重试状态：{ attempt, maxRetries } 或 null
   const [retryState, setRetryState] = useState<{ attempt: number; maxRetries: number } | null>(null);
@@ -138,34 +148,6 @@ const MessageBubble = ({ record, toolRendererMap, onRetry, isLast, agent, onExec
 
     return unsubscribe;
   }, [agent, record.status]);
-
-  useEffect(() => {
-    if (!agent || !isCompletedLastPlanRecord) {
-      setPlanFile(null);
-      return;
-    }
-
-    let disposed = false;
-    const refreshPlanFile = () => {
-      void agent.getPlanFile().then((file) => {
-        if (!disposed) {
-          setPlanFile(file);
-        }
-      }).catch((error) => {
-        console.warn("[PlanFileCard] getPlanFile failed", {
-          turnId: record.id,
-          reason: "turn:complete",
-          error,
-        });
-      });
-    };
-
-    refreshPlanFile();
-
-    return () => {
-      disposed = true;
-    };
-  }, [agent, record.id, isCompletedLastPlanRecord]);
 
   return (
     <div className={css["chat-bubble-container"]}>
@@ -332,21 +314,17 @@ const MessageBubble = ({ record, toolRendererMap, onRetry, isLast, agent, onExec
               <PlanFileCardWithContent
                 path={planFile.path}
                 content={planFile.content}
-                onExecute={onExecutePlan}
-                canExecute={!planAbandoned && canExecutePlan}
-                abandoned={planAbandoned}
-                onAbandon={!planAbandoned && agent ? () => {
-                  if (agent && planFile) {
-                    agent.abandonPlan(planFile.path, planFile.content).then(() => {
-                      setPlanAbandoned(true);
-                    });
-                  }
+                onExecute={canOperatePlanCard ? () => {
+                  onExecutePlan?.(planFile.title ?? planFile.path);
                 } : undefined}
+                canExecute={canOperatePlanCard && canExecutePlan}
+                // TODO: 先隐藏「废弃方案」入口，后续确认交互价值后再恢复。
+                onAbandon={undefined}
                 renderContent={(body) => <BubbleMessage message={body} />}
               />
             )}
 
-            {/* 建议选项（仅最后一条 turn、且 suggestions 已就绪时展示） */}
+            {/* 建议选项（仅最后一条 turn、且 suggestions 已就绪时展示；与 plan card 互斥） */}
             {isLast && !shouldShowPlanCard && record.suggestions && !record.suggestionsDismissed && agent && (
               <SuggestionsBlock turnId={record.id} suggestions={record.suggestions} agent={agent} />
             )}
@@ -364,6 +342,49 @@ const UserMessageContent = ({ message }: { message: string }) => {
 
   return <div className={css["user-message-text"]}>{message}</div>;
 };
+
+function getActivePlanFileFromRecord(record: MessageRecord, activePlan: ActivePlanFile | null): ActivePlanFile | null {
+  if (!activePlan || activePlan.status !== "active" || !activePlan.content.trim()) return null;
+
+  const relatedPlanPaths = new Set<string>();
+
+  for (const iter of record.iterations) {
+    if (iter.type === "warmup") continue;
+
+    for (const tool of iter.toolCalls) {
+      for (const path of getPlanPathsFromTool(tool)) {
+        relatedPlanPaths.add(path);
+      }
+    }
+  }
+
+  return relatedPlanPaths.has(activePlan.path.replace(/^\/+/, "")) ? activePlan : null;
+}
+
+function getPlanPathsFromTool(tool: ToolCallRecord): string[] {
+  const normalizePlanPath = (path: unknown) => {
+    if (typeof path !== "string" || !path) return null;
+    const normalized = path.replace(/^\/+/, "");
+    return isPlanFilePath(normalized) ? normalized : null;
+  };
+
+  if (tool.name === WRITE_TOOL_NAME || tool.name === EDIT_TOOL_NAME) {
+    const path = normalizePlanPath(tool.args?.path);
+    return path ? [path] : [];
+  }
+
+  if (tool.name === MULTI_WRITE_TOOL_NAME) {
+    const files: Array<{ path?: string }> = Array.isArray(tool.args?.files) ? tool.args.files : [];
+    return files.map((file) => normalizePlanPath(file.path)).filter(Boolean) as string[];
+  }
+
+  if (tool.name === MULTI_EDIT_TOOL_NAME) {
+    const edits: Array<{ path?: string }> = Array.isArray(tool.args?.edits) ? tool.args.edits : [];
+    return edits.map((edit) => normalizePlanPath(edit.path)).filter(Boolean) as string[];
+  }
+
+  return [];
+}
 
 // ─── ToolBubble ───────────────────────────────────────────────────────────────
 

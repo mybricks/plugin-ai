@@ -5,6 +5,23 @@
 .container {
   padding: 8px;
 
+  .senderAbove {
+    margin: 0 10px;
+    margin-bottom: -1px;
+    position: relative;
+    z-index: 12;
+    background: var(--mybricks-bg-color-main, #fff);
+    border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+    border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+    border-radius: 10px 10px 0 0;
+    box-shadow: var(--mybricks-shadow-main, rgba(0, 0, 0, 0.12) 0 -2px 8px);
+    overflow: hidden;
+
+    .senderAboveItem + .senderAboveItem {
+      border-top: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+    }
+  }
+
   .pendingQueue {
     position: relative;
     background: var(--mybricks-bg-color-secondary, #F5F5F5);

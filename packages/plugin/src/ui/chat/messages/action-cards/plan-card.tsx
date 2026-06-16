@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import classNames from "classnames";
 import { Modal } from "../../../components/modal";
+import { parsePlanContent, PlanActions } from "../../../components/plan";
 import css from "./plan-card.less";
 import markdownCss from "../index.less";
 
@@ -16,19 +17,76 @@ const ExpandIcon = () => (
   </svg>
 );
 
-// ─── Frontmatter 解析 ─────────────────────────────────────────────────────────
+// ─── PlanToolCard ──────────────────────────────────────────────────────────────
+// tool-render 层使用：只读，无操作按钮，流式/完成两态
 
-function parsePlanContent(content: string): { title: string | null; body: string } {
-  const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
-  if (!m) return { title: null, body: content };
-  const fmText = m[1]!;
-  const body = m[2]!.trimStart();
-  const titleMatch = fmText.match(/^title:\s*["']?(.+?)["']?\s*$/m);
-  const title = titleMatch ? titleMatch[1]!.trim() : null;
-  return { title, body };
-}
+export const PlanToolCard = ({
+  path,
+  content,
+  pending = false,
+  verb = "方案制定",
+  renderContent,
+}: {
+  path: string;
+  content?: string;
+  pending?: boolean;
+  verb?: string;
+  renderContent?: (body: string) => React.ReactNode;
+}) => {
+  const [modalOpen, setModalOpen] = useState(false);
+  const { title, body } = useMemo(() => parsePlanContent(content ?? ""), [content]);
+  const displayTitle = title ?? path;
+
+  const modalTitle = (
+    <>
+      <span className={css["plan-card-modal-title-text"]}>{verb}</span>
+      <span className={css["plan-card-modal-path"]} title={path}>{displayTitle}</span>
+    </>
+  );
+
+  return (
+    <>
+      <div className={css["plan-card"]}>
+        <div className={css["plan-card-header"]}>
+          <div className={css["plan-card-title"]}>
+            <span className={css["plan-card-title-text"]}>{verb}</span>
+            <span className={css["plan-card-path"]} title={path}>{displayTitle}</span>
+          </div>
+          {!pending && content && (
+            <div
+              className={css["plan-card-icon-button"]}
+              onClick={() => setModalOpen(true)}
+              title="查看完整方案"
+            >
+              <ExpandIcon />
+            </div>
+          )}
+        </div>
+        {content && (
+          <div className={css["plan-card-body"]}>
+            {renderContent ? renderContent(body) : <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: 12 }}>{body}</pre>}
+          </div>
+        )}
+      </div>
+
+      {!pending && content && (
+        <Modal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          title={modalTitle}
+          width={720}
+        >
+          <div className={classNames(css["plan-card-modal-body"], markdownCss["markdown-body"])}>
+            {renderContent ? renderContent(body) : <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: 12 }}>{body}</pre>}
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+};
 
 // ─── PlanFileCard ──────────────────────────────────────────────────────────────
+// 完整版，带执行/废弃按钮，供 MessageBubble 层（RelatedPlanBanner）使用
 
 export const PlanFileCard = ({
   path,
@@ -140,7 +198,8 @@ export const PlanFileCard = ({
 };
 
 // ─── PlanFileCardWithContent ───────────────────────────────────────────────────
-// 带有自动解析 frontmatter 能力的版本，供 index.tsx 直接使用
+// RelatedPlanBanner 样式：横向单行 banner，标题+状态+右侧操作按钮，点击展开弹窗
+// 执行/废弃后不消失，只更新状态 badge
 
 export const PlanFileCardWithContent = ({
   path,
@@ -148,7 +207,6 @@ export const PlanFileCardWithContent = ({
   onExecute,
   canExecute,
   onAbandon,
-  abandoned = false,
   renderContent,
 }: {
   path: string;
@@ -156,12 +214,11 @@ export const PlanFileCardWithContent = ({
   onExecute?: () => void;
   canExecute: boolean;
   onAbandon?: () => void;
-  abandoned?: boolean;
   renderContent: (body: string) => React.ReactNode;
 }) => {
-  const { title, body } = useMemo(() => parsePlanContent(content), [content]);
+  const { title, desc, body } = useMemo(() => parsePlanContent(content), [content]);
   const [modalOpen, setModalOpen] = useState(false);
-  const executeDisabled = abandoned || !canExecute || !onExecute;
+  const hasActions = Boolean(onExecute || onAbandon);
 
   const displayTitle = title ?? path;
 
@@ -169,75 +226,65 @@ export const PlanFileCardWithContent = ({
     <>
       <span className={css["plan-card-modal-title-text"]}>方案</span>
       <span className={css["plan-card-modal-path"]} title={path}>{displayTitle}</span>
-      {abandoned && <span className={css["plan-card-abandoned-badge"]}>已废弃</span>}
     </>
   );
 
-  const modalFooter = (
-    <div className={css["plan-card-footer-inner"]}>
-      {!abandoned && onAbandon && (
-        <div
-          className={css["plan-card-abandon-button"]}
-          title="废弃此方案"
-          onClick={() => {
-            setModalOpen(false);
-            onAbandon();
-          }}
-        >
-          废弃此方案
-        </div>
-      )}
-      <div
-        className={classNames(css["plan-card-execute-button"], { [css["plan-card-execute-button-disabled"]]: executeDisabled })}
-        title={abandoned ? "方案已废弃" : executeDisabled ? "当前无法执行方案" : "按当前方案进入执行模式"}
-        onClick={() => {
-          if (executeDisabled) return;
-          setModalOpen(false);
-          onExecute?.();
-        }}
-      >
-        执行此方案
-      </div>
-    </div>
-  );
+  const modalFooter = hasActions ? (
+    <PlanActions
+      canExecute={canExecute}
+      onAbandon={onAbandon ? () => {
+        setModalOpen(false);
+        onAbandon();
+      } : undefined}
+      onExecute={onExecute ? () => {
+        setModalOpen(false);
+        onExecute();
+      } : undefined}
+      abandonLabel="废弃此方案"
+      executeLabel="执行此方案"
+      classes={{
+        root: css["plan-card-footer-inner"],
+        abandon: css["plan-card-abandon-button"],
+        execute: css["plan-card-execute-button"],
+        executeDisabled: css["plan-card-execute-button-disabled"],
+      }}
+    />
+  ) : undefined;
 
   return (
     <>
-      <div className={classNames(css["plan-card"], { [css["plan-card-abandoned"]]: abandoned })}>
-        <div className={css["plan-card-header"]}>
-          <div className={css["plan-card-title"]}>
-            <span className={css["plan-card-title-text"]}>方案</span>
-            <span className={css["plan-card-path"]} title={path}>{displayTitle}</span>
-            {abandoned && <span className={css["plan-card-abandoned-badge"]}>已废弃</span>}
+      {/* RelatedPlanBanner：两行卡片 */}
+      <div className={css["plan-banner"]}>
+        {/* 第一行：方案标题 + 打开预览 */}
+        <div className={css["plan-banner-row1"]}>
+          <div className={css["plan-banner-left"]}>
+            <span className={css["plan-banner-label"]}>方案：</span>
+            <span className={css["plan-banner-title"]} title={displayTitle}>{displayTitle}</span>
           </div>
           <div
-            className={css["plan-card-icon-button"]}
+            className={css["plan-banner-open-btn"]}
             onClick={() => setModalOpen(true)}
-            title="查看完整方案"
+            title="打开预览"
           >
-            <ExpandIcon />
+            打开预览
           </div>
         </div>
-        <div className={css["plan-card-body"]}>
-          {renderContent(body)}
-        </div>
-        <div className={css["plan-card-footer"]}>
-          {!abandoned && onAbandon && (
-            <div
-              className={css["plan-card-abandon-button"]}
-              title="废弃此方案"
-              onClick={onAbandon}
-            >
-              废弃此方案
-            </div>
+        {/* 第二行：desc + 废弃/执行（执行/废弃后只展示 desc） */}
+        <div className={css["plan-banner-row2"]}>
+          <span className={css["plan-banner-desc"]} title={desc ?? ""}>{desc ?? ""}</span>
+          {hasActions && (
+            <PlanActions
+              canExecute={canExecute}
+              onExecute={onExecute}
+              onAbandon={onAbandon}
+              classes={{
+                root: css["plan-banner-actions"],
+                abandon: css["plan-card-abandon-button"],
+                execute: css["plan-card-execute-button"],
+                executeDisabled: css["plan-card-execute-button-disabled"],
+              }}
+            />
           )}
-          <div
-            className={classNames(css["plan-card-execute-button"], { [css["plan-card-execute-button-disabled"]]: executeDisabled })}
-            title={abandoned ? "方案已废弃" : executeDisabled ? "当前无法执行方案" : "按当前方案进入执行模式"}
-            onClick={() => { if (!executeDisabled) onExecute?.(); }}
-          >
-            执行此方案
-          </div>
         </div>
       </div>
 

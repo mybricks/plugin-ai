@@ -1,0 +1,93 @@
+/*! plugin-ai-comp-view-anchor */
+
+.sender-plan-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  user-select: none;
+}
+
+.sender-plan-card-left {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.sender-plan-card-label {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.5;
+}
+
+.sender-plan-card-title {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--mybricks-text-color-main, #333);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.sender-plan-card-desc {
+  flex: 1;
+  font-size: 11px;
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sender-plan-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.sender-plan-card-abandon {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.6;
+  cursor: pointer;
+  transition: opacity 0.15s;
+
+  &:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.05);
+  }
+}
+
+.sender-plan-card-execute {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  background: var(--mybricks-color-primary, #FA6400);
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  font-weight: 500;
+
+  &:hover {
+    opacity: 0.85;
+  }
+
+  &--disabled {
+    background: rgba(0, 0, 0, 0.1);
+    color: rgba(0, 0, 0, 0.3);
+    cursor: not-allowed;
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+}

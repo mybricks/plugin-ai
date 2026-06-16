@@ -153,6 +153,11 @@ const ChatChipInner = ({ instance, chipDef, onRemove }: { instance: ChatChipInst
 
 // ─── SenderProps ─────────────────────────────────────────────────────────────
 
+export interface SenderAbovePanel {
+  key: string;
+  content: React.ReactNode;
+}
+
 interface SenderProps {
   onSend: (message: {
     message: string;
@@ -180,6 +185,8 @@ interface SenderProps {
   onRemoveFromQueue?: (id: string) => void;
   /** 输入框上方的 focus 信息渲染（mention 区域展示） */
   renderFocus?: () => React.ReactNode;
+  /** 在 Sender 顶部渲染一组 panel，Sender 负责统一外壳与分割线 */
+  abovePanels?: SenderAbovePanel[];
   /** 在发送按钮左侧插入自定义操作（如「追加到对话」按钮），不影响发送按钮本身 */
   renderActionPrefix?: () => React.ReactNode;
   /**
@@ -329,7 +336,7 @@ function focusEditorAtEnd(editor: HTMLDivElement) {
 // ─── Sender ──────────────────────────────────────────────────────────────────
 
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
-  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue, renderFocus, renderActionPrefix, renderAttachmentSuffix, modelSelector, className, chipTypes = [] } = props;
+  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue, renderFocus, abovePanels, renderActionPrefix, renderAttachmentSuffix, modelSelector, className, chipTypes = [] } = props;
   const isBubble = variant === 'bubble';
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
@@ -784,6 +791,15 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
   return (
     <div className={classNames(css.container, { [css.loose]: variant === 'loose', [css.bubble]: variant === 'bubble' }, className)}>
+      {abovePanels && abovePanels.length > 0 ? (
+        <div className={css.senderAbove}>
+          {abovePanels.map((panel) => (
+            <div key={panel.key} className={css.senderAboveItem}>
+              {panel.content}
+            </div>
+          ))}
+        </div>
+      ) : null}
       {pendingQueue && pendingQueue.length > 0 && (
         <PendingQueue queue={pendingQueue} onRemove={onRemoveFromQueue} />
       )}

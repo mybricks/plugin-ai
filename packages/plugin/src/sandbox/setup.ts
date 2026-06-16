@@ -2,7 +2,7 @@ import React from "react";
 import { AGENT_INTERNAL_FILE_EXCLUDE, CodeAgent, IDBHistory, isFileExcluded } from "../../../agent/src";
 import { ChipRegistry } from "../../../agent/src";
 import { splitFrontmatter, getFrontmatterString, getFrontmatterStringArray } from "../../../agent/src/utils/frontmatter";
-import { GLOB_TOOL_NAME } from "../../../agent/src/code-agent/tools";
+import { GLOB_TOOL_NAME  } from "../../../agent/src/code-agent/tools";
 import type { Tool, Sandbox, CodeAgentPlugin, CodeAgentPromptOptions, History, BoundHistory, TurnSender, AdditionalDirectory, AgentsMdConfig, SkillFile, UnifiedFile, AgentOptions, AgentMode } from "../../../agent/src";
 import type { PromptSections } from "../prompts";
 import type { RequestAsStreamFn } from "../../../request/src";
@@ -521,7 +521,7 @@ function connectToAI(
           '## 前端工程',
           'MyBricks的前端工程项目，需要遵循前端开发规范进行开发。',
           '权限：读取、写入',
-          '当前没有任何代码文件。可以使用类似 `index.tsx` 的路径来操作文件。',
+          '当前没有任何代码文件。可以使用类似 `index.tsx` 的路径来操作文件。建议使用初始化来同时生成多份文件。',
         ].join('\n'));
       } else {
         const suffixSummary = summarizeFiles(mainFiles);
@@ -595,8 +595,6 @@ function connectToAI(
     disabledModes,
     getAttachmentContextMessages: async () => {
       const sections: string[] = [];
-      const meta = await sandbox.getSandboxMetaSection?.();
-      if (meta) sections.push(meta);
       const custom = await getUserContextMessage?.();
       if (custom) sections.push(custom);
       return sections;

@@ -4,12 +4,31 @@ import type { ToolRecord } from "../index";
 import {
   PendingCodeCard, StreamingCodeCard, CodeCard,
 } from "../shared";
+import { PlanToolCard } from "../../action-cards/plan-card";
+import { isPlanFilePath, renderPlanMarkdownHtml } from "../../../../components/plan";
 
 export const WriteFileRenderer = ({ tool }: { tool: ToolRecord }) => {
   const path: string = tool.args?.path ?? "";
-  const title = path ? `写文件 ${path}` : "写文件";
-
   const content: string = tool.args?.content ?? "";
+
+  if (isPlanFilePath(path)) {
+    const isPending = tool.status === "pending";
+    return (
+      <PlanToolCard
+        path={path}
+        content={content || undefined}
+        pending={isPending}
+        verb="方案制定"
+        renderContent={(body) => (
+          <div
+            dangerouslySetInnerHTML={{ __html: renderPlanMarkdownHtml(body) }}
+          />
+        )}
+      />
+    );
+  }
+
+  const title = path ? `写文件 ${path}` : "写文件";
 
   if (tool.status === "pending") {
     if (content) {

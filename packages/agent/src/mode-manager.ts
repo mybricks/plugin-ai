@@ -67,6 +67,10 @@ export interface PlanFileInfo {
   path: string;
   /** frontmatter 中的 status 值，读取失败时为 null */
   status: string | null;
+  /** frontmatter 中的 title 值，读取失败时为 null */
+  title: string | null;
+  /** frontmatter 中的 desc 值，读取失败时为 null */
+  desc: string | null;
   /** 从路径中提取的日期文件夹 */
   dateFolder: string | null;
 }
@@ -93,10 +97,13 @@ function findActivePlanFileFromFiles(
     const status = parsePlanFileStatus(file.content);
     if (status !== "active") continue;
 
+    const { fmText } = splitFrontmatter(file.content);
     allActive.push({
       path,
       content: file.content,
       status,
+      title: getFrontmatterString(fmText, "title"),
+      desc: getFrontmatterString(fmText, "desc"),
       dateFolder: extractDateFolder(path),
     });
   }
@@ -184,7 +191,8 @@ function getPlanFileGuideSlug(): string {
   \`\`\`yaml
   ---
   status: active        # active | finished | abandoned
-  title: "任务标题描述，不超过30个字"
+  title: "任务标题，不超过20个字"
+  desc: "一句话描述本方案的核心内容，不超过50个字"
   ---
   \`\`\`
 - 关于归档
@@ -199,7 +207,7 @@ function getBuildPlanStatusSlug(planState?: PlanDirectoryState | null): string {
 检测到活跃计划文件 \`${planState.activePlan.path}\`。
 
 请先读取该文件内容，对照用户当前的需求判断：
-- 如果当前需求与该计划**高度相关**，按计划推进实现，完成后将其归档；
+- 如果当前需求与该计划**高度相关**，按用户需求处理计划，处理后视情况进行将其归档；；
 - 如果当前需求与该计划**关联性低或无关**，则必须关注用户需求的实现，而不是此计划，然后视情况处理这个计划文件。`;
   }
 
@@ -243,11 +251,13 @@ ${getPlanFileGuideSlug()}
 计划文件应便于快速浏览，也要足够支持后续执行。通常包含：
 
 - 背景与目标：为什么要改，要解决什么问题，期望结果是什么。
-- 代码理解：涉及哪些文件，当前行为是什么，有哪些可复用实现或约束。
+- 内容理解：涉及哪些组件或者数据。
 - 推荐方案：只写你推荐的方案，说明为什么这样做。
 - 任务列表：拆解需要修改的关键任务，每一个任务20字以内。
-- 影响与风险：影响哪些调用方、兼容性、边界情况和潜在风险。
+- 影响与风险：影响哪些效果、兼容性、边界情况和潜在风险。
 - 验证方式：需要跑哪些检查、测试，或如何手动验证。
+
+> 文件内容使用非研发角度来撰写，更容易理解影响面和修改内容。
 
 ## 方案完成标准
 当计划已经说明"改什么、改哪些文件、复用哪些现有实现、如何验证"时，向用户总结方案并等待确认。`;
@@ -260,7 +270,7 @@ function getPlanStatusReminderSlug(planState?: PlanDirectoryState | null): strin
 检测到活跃计划文件 \`${planState.activePlan.path}\`。
 
 请先读取该文件内容，对照用户当前的需求判断：
-- 如果当前需求与该计划**高度相关**，按计划推进实现，完成后将其归档；
+- 如果当前需求与该计划**高度相关**，按用户需求处理计划，处理后视情况进行将其归档；
 - 如果当前需求与该计划**关联性低或无关**，则必须关注用户需求的实现，而不是此计划，然后视情况处理这个计划文件。`;
 }
 

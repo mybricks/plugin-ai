@@ -10,7 +10,7 @@ import {
   createSkillTool,
   USE_SKILL_TOOL_NAME,
 } from "./tools";
-import { buildModeSection, getActivePlanFile } from "../mode-manager";
+import { buildModeSection, getActivePlanFile, type ActivePlanFile } from "../mode-manager";
 import { splitFrontmatter } from "../utils/frontmatter";
 import { getCodeAgentSystemPrompt, type CodeAgentPromptOptions } from "./prompt";
 export type { CodeAgentPromptOptions };
@@ -546,7 +546,7 @@ export class CodeAgent extends Agent {
    * 扫描 .agent/plans/ 目录，取日期最新的活跃计划文件。
    * 若不存在活跃计划则返回 null。
    */
-  async getPlanFile(): Promise<{ path: string; content: string } | null> {
+  async getPlanFile(): Promise<ActivePlanFile | null> {
     return getActivePlanFile(this._sandbox.getFiles.bind(this._sandbox));
   }
 

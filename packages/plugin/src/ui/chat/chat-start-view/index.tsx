@@ -6,7 +6,9 @@ import { chipRegistry } from "../../../sandbox/setup";
 import type { AgentMode, CodeAgent } from "../../../../../agent/src";
 import { AgentModeEnum } from "../../../../../agent/src";
 import type { ModelSelection } from "../../../../../request/src/providers";
+import type { ActivePlanFile } from "../../../../../agent/src/mode-manager";
 import { useSession } from "../use-session";
+import { SenderActivePlanCard, usePlanState } from "../../components/plan";
 import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
 import css from "./index.less";
 
@@ -57,9 +59,13 @@ const ChatStartView = ({
   const [contextDisabled, setContextDisabled] = useState(() => context.disabled);
   const availableModes = agent?.getAvailableModes() ?? [AgentModeEnum.Build];
   const showChatMode = availableModes.length > 1;
+  const canExecutePlan = Boolean(agent && !loading && !contextDisabled && availableModes.includes(AgentModeEnum.Build));
   const [chatMode, setChatMode] = useState<AgentMode>(() => agent?.getMode() ?? availableModes[0] ?? AgentModeEnum.Build);
 
   const { syncAgent, subscribeSession } = useSession(agent);
+  const {
+    activePlan,
+  } = usePlanState(agent);
 
   // 模型选择器状态 —— 与 chat-panel 对称，通过 llmProviders 实例事件同步
   const llmProviders = context.llmProviders;
@@ -92,7 +98,10 @@ const ChatStartView = ({
     subscribeSession(agent);
     // 同步 agent 内部的 mode 变化（与 ChatPanel 保持一致）
     const unsubMode = agent.events.on("mode:change", ({ mode }) => setChatMode(mode));
-    return unsubMode;
+
+    return () => {
+      unsubMode();
+    };
   }, [agent]);
 
   // 与 ChatPanel 保持同步：通过 aiQueue 事件驱动 loading，而非本地管理
@@ -123,6 +132,35 @@ const ChatStartView = ({
     });
   };
 
+  const onExecutePlan = (plan: ActivePlanFile) => {
+    if (!agent || !comId || !canExecutePlan) return;
+    const title = plan.title ?? plan.path;
+    const message = `执行「${title}」方案`;
+    ensureAIPanelOpen(comId).then(() => {
+      context.aiQueue.send(
+        agentKey,
+        async () => {
+          context.aiQueue.registerAbort(agentKey, () => agent.abort());
+          await agent.requestAI({ message, mode: AgentModeEnum.Build });
+        },
+        { message }
+      );
+    });
+  };
+
+  const abovePanels = activePlan ? [{
+    key: "active-plan",
+    content: (
+      <SenderActivePlanCard
+        plan={activePlan}
+        canExecute={canExecutePlan}
+        onExecute={() => onExecutePlan(activePlan)}
+        // TODO: 先隐藏「废弃方案」入口，后续确认交互价值后再恢复。
+        onAbandon={undefined}
+      />
+    ),
+  }] : undefined;
+
   return (
     <div className={classNames(css["start-view"], { [css["empty"]]: empty && !loading })}>
       {empty && !loading && (
@@ -149,6 +187,7 @@ const ChatStartView = ({
           onUpload={onUpload}
           chipTypes={chipRegistry.getAll()}
           modelSelector={modelSelector}
+          abovePanels={abovePanels}
         />
       )}
     </div>

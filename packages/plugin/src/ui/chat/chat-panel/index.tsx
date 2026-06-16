@@ -198,15 +198,16 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   const isDisabled = !agent || disabled || contextDisabled;
   const canExecutePlan = Boolean(agent && !isDisabled && availableModes.includes(AgentModeEnum.Build));
 
-  const onExecutePlan = () => {
+  const onExecutePlan = (title: string) => {
     if (!agent || !canExecutePlan) return;
+    const message = `执行「${title}」方案`;
     context.aiQueue.send(
       agentKey,
       async () => {
         context.aiQueue.registerAbort(agentKey, () => agent.abort());
-        await agent.requestAI({ message: "按照当前方案开始实现", mode: AgentModeEnum.Build });
+        await agent.requestAI({ message, mode: AgentModeEnum.Build });
       },
-      { message: "按照当前方案开始实现" }
+      { message }
     );
   };
 
