@@ -170,10 +170,12 @@
   a { color: var(--mybricks-color-primary, #FA6400); text-decoration: none; &:hover { text-decoration: underline; } }
 
   blockquote {
-    padding: 0 1em;
+    padding: 6px 10px;
     color: var(--mybricks-text-color-main, #333);
-    opacity: 0.6;
-    border-left: .25em solid var(--mybricks-border-color-main, #E6E6E6);
+    opacity: 0.78;
+    background-color: var(--mybricks-bg-color-secondary, #F5F5F5);
+    border-left: 3px solid var(--mybricks-color-primary, #FA6400);
+    border-radius: 4px;
     margin: 16px 0;
     > p { margin: 0; }
   }
@@ -201,16 +203,22 @@
     }
   }
 
-  ul, ol { margin: 8px 0; padding-left: 0; }
+  ul, ol {
+    margin: 8px 0;
+    padding-left: 0;
+  }
 
   li {
     position: relative;
     margin: 4px 0;
-    padding-left: 1rem;
     list-style-type: none;
   }
 
-  ul li:before {
+  ul > li {
+    padding-left: 1rem;
+  }
+
+  ul > li:before {
     content: "";
     position: absolute;
     left: 4px;
@@ -222,10 +230,18 @@
   }
 
   ol { counter-reset: item; }
-  ol li { padding-left: 0; counter-increment: item; }
-  ol li:before {
-    // content: counter(item) ".";
-    margin-right: 4px;
+  ol > li {
+    padding-left: 1.5rem;
+    counter-increment: item;
+  }
+
+  ol > li:before {
+    content: counter(item) ".";
+    position: absolute;
+    left: 0;
+    top: 0;
+    min-width: 1.1rem;
+    text-align: right;
   }
 
   code {
@@ -238,12 +254,21 @@
   }
 
   pre {
+    background-color: var(--mybricks-bg-color-secondary, #F5F5F5);
+    border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
     border-radius: 6px;
-    padding: 0px 6px;
+    padding: 8px 10px;
     overflow-x: auto;
     margin: 8px 0;
 
-    code { background-color: transparent; padding: 0; font-size: 100%; }
+    code {
+      display: block;
+      background-color: transparent !important;
+      border-radius: 0;
+      padding: 0 !important;
+      font-size: 100%;
+      line-height: 1.6;
+    }
   }
 
 }
@@ -434,4 +459,3 @@
     content: "]";
   }
 }
-
