@@ -14,6 +14,7 @@ import type { QueueItem } from "../../../context/queue";
 import type { ModelSelection } from "../../../../../request/src/providers";
 import type { SendToAgentParams } from "../../../sandbox";
 import type { AgentMode, ChatChipDef, ChatChipInstance } from "../../../../../agent/src";
+import { removeLeadingPlaceholderBreakBeforeChip } from "./utils";
 import css from "./index.less"
 
 const MAX_IMAGE_SIZE_MB = 3.5;
@@ -457,6 +458,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const syncInputContent = useCallback(() => {
     if (!inputEditorRef.current) return;
     const editor = inputEditorRef.current;
+    removeLeadingPlaceholderBreakBeforeChip(editor);
     updateChipWrapperSpacing(editor);
     const { message, chips } = serializeEditorContent(editor, chipMapRef.current);
     const nextIsDefaultFocusContent = !!message && !!matchDefaultFocusContent?.({ message, chips });

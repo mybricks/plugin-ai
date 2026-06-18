@@ -378,8 +378,6 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
 
               context.currentFocus = currentFocus;
 
-              console.log("[AI] focus:", currentFocus);
-
               // 后续要干掉
               window._ai_focus_params_ = params
 
