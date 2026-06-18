@@ -4,7 +4,7 @@ import { context } from "../../../context";
 import { chipRegistry } from "../../../sandbox/setup";
 import type { ChatChipDef } from "../../../../../agent/src";
 import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
-import { createDomChip, DOM_CHIP_TYPE, formatDomChipMessage } from "../../../utils/dom-info";
+import { createDomChip, DOM_CHIP_TYPE, formatDomChipMessage, matchDefaultDomFocusContent } from "../../../utils/dom-info";
 import css from "./index.less";
 
 export interface ChatFocusViewProps {
@@ -76,7 +76,10 @@ const ChatFocusView = ({
   const onSend: SenderProps["onSend"] = (params) => {
     if (!agent || !comId) return;
     const { message, attachments, chips } = params;
-    const meta = chips?.length ? { chips } : undefined;
+    const focusChip = focusParams?.focusArea?.ele ? createDomChip(focusParams) : undefined;
+    const requestMessage = focusChip ? `对于[[chip:${focusChip.id}]]${message}` : message;
+    const requestChips = [...(focusChip ? [focusChip] : []), ...(chips ?? [])];
+    const meta = requestChips.length ? { chips: requestChips } : undefined;
 
     ensureAIPanelOpen(comId).then(() => {
       context.aiQueue.send(
@@ -84,24 +87,32 @@ const ChatFocusView = ({
         async () => {
           context.aiQueue.registerAbort(agentKey, () => agent.abort());
           // focus-view 立即发送，不传 mode 即走默认 Build 模式
-          await agent.requestAI({ message, attachments, ...(meta ? { meta } : {}) });
+          await agent.requestAI({ message: requestMessage, attachments, ...(meta ? { meta } : {}) });
         },
-        { message: params.message, attachments: params.attachments }
+        { message: requestMessage, attachments: params.attachments, ...(meta ? { meta } : {}) }
       );
     });
   };
 
-  const onAppendToChat = () => {
+  const onAppendToChat = (event?: React.MouseEvent) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+
     if (!comId) return;
     const input = senderRef.current?.getInput();
     const message = input?.message ?? "";
+    if (!message.trim()) return;
 
     // 先确保 AI 面板已打开，再插入 chip + 文本
     ensureAIPanelOpen(comId).then(() => {
       const chip = createDomChip(focusParams);
       const suffix = message.trim() ? `${message}` : "";
       const panelInput = context.getInput(comId);
-      const prefix = panelInput?.message?.trim() ? "\n" : "";
+      const isPanelDefaultFocusContent = panelInput ? matchDefaultDomFocusContent({
+        message: panelInput.message,
+        chips: panelInput.chips,
+      }) : false;
+      const prefix = panelInput?.message?.trim() && !isPanelDefaultFocusContent ? "\n" : "";
 
       // appendInput 内部会解析 [[chip:id]] 并从 meta.chips 取实例渲染成 chip span
       context.appendInput(comId, {
@@ -114,10 +125,11 @@ const ChatFocusView = ({
     senderRef.current?.clear();
   };
 
-  const renderActionPrefix = () => (
+  const renderActionPrefix: SenderProps["renderActionPrefix"] = ({ hasInput }) => (
     <button
       className={css["append-btn"]}
-      title="追加到对话框，可与其他消息一起编辑后发送"
+      title={hasInput ? "追加到对话框，可与其他消息一起编辑后发送" : "请输入内容后再追加"}
+      disabled={!hasInput}
       onClick={onAppendToChat}
     >
       <svg className={css["append-icon"]} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">

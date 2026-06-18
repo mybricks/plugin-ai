@@ -35,6 +35,7 @@ export interface ChatPanelProps {
    */
   renderUserMessage?: (record: MessageRecord) => React.ReactNode;
   /**
+   * @deprecated ChatPanelList 内部已改用默认 focus 内容串；该入口仅为外部兼容保留。
    * 输入框上方 focus 区域的渲染函数。
    * 返回 ReactNode，展示当前聚焦的组件 / 区域信息。
    */
@@ -46,6 +47,10 @@ export interface ChatPanelProps {
    * 在附件上传按钮之后插入自定义渲染内容。
    */
   renderAttachmentSuffix?: () => React.ReactNode;
+  /** 判断输入框当前内容是否为默认 focus 内容串 */
+  matchDefaultFocusContent?: SenderProps["matchDefaultFocusContent"];
+  /** 命中默认 focus 内容串时展示的 placeholder */
+  defaultFocusPlaceholder?: SenderProps["defaultFocusPlaceholder"];
 }
 
 export interface ChatPanelRef {
@@ -55,6 +60,10 @@ export interface ChatPanelRef {
   appendInput: SenderRef["appendInput"];
   /** 获取输入框当前草稿内容 */
   getInput: SenderRef["getInput"];
+  /** 替换输入框内当前的默认 focus 内容串 */
+  replaceFocusContent: SenderRef["replaceFocusContent"];
+  /** 清空输入框内当前文本/chip，不清空附件 */
+  clearFocusContent: SenderRef["clearFocusContent"];
 }
 
 // ─── ChatPanel ────────────────────────────────────────────────────────────────
@@ -70,6 +79,8 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   renderFocus,
   disabled = false,
   renderAttachmentSuffix,
+  matchDefaultFocusContent,
+  defaultFocusPlaceholder,
 }, ref) => {
   const agentKey = agent?.key ?? "";
 
@@ -118,6 +129,12 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       senderRef.current?.appendInput(params);
     },
     getInput: () => senderRef.current?.getInput() ?? { message: "", attachments: [], mentions: [], chips: [] },
+    replaceFocusContent: (params) => {
+      senderRef.current?.replaceFocusContent(params);
+    },
+    clearFocusContent: () => {
+      senderRef.current?.clearFocusContent();
+    },
   }), []);
 
   // 同步历史 + 订阅事件 + turn 滚底
@@ -242,6 +259,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
           ref={senderRef}
           loading={loading}
           placeholder={`您好，我是${context.name}，请详细描述您的需求`}
+          defaultFocusPlaceholder={defaultFocusPlaceholder}
           disabled={isDisabled}
           mode="mention"
           chatMode={showChatMode ? chatMode : null}
@@ -257,6 +275,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
           renderAttachmentSuffix={renderAttachmentSuffix}
           modelSelector={modelSelector}
           chipTypes={chipRegistry.getAll()}
+          matchDefaultFocusContent={matchDefaultFocusContent}
         />
       </div>
     </ChatPanelProvider>

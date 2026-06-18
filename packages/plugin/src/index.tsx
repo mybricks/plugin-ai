@@ -17,6 +17,7 @@ import type { Designer, Hooks, RegistSandBoxConfig, PluginGetUserContextMessage,
 import { ChatPanelList } from "./ui/chat/chat-panel-list";
 import { ComChatFocusView } from "./ui/chat/chat-focus-view";
 import { ensureAIPanelOpen, ensureFocusComId } from "./utils/ensure-ai-panel-open";
+import { createDomChip } from "./utils/dom-info";
 
 // ─── 工具类型重导出 ────────────────────────────────────────────────────────────
 
@@ -68,6 +69,15 @@ export interface PluginAIController {
 export interface PluginAIAPI {
   /** 扩展控制接口，非 Mybricks 设计器属性，与插件数据结构隔离 */
   controller: PluginAIController;
+}
+
+function isSameAiFocus(prev?: AiServiceFocusParams, next?: AiServiceFocusParams): boolean {
+  return (
+    prev?.comId === next?.comId &&
+    prev?.pageId === next?.pageId &&
+    prev?.title === next?.title &&
+    prev?.focusArea === next?.focusArea
+  );
 }
 
 // ─── plugin 主入口 ────────────────────────────────────────────────────────────
@@ -362,7 +372,13 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
               }
 
               const currentFocus = params ?? undefined;
+              if (isSameAiFocus(context.currentFocus, currentFocus)) {
+                return;
+              }
+
               context.currentFocus = currentFocus;
+
+              console.log("[AI] focus:", currentFocus);
 
               // 后续要干掉
               window._ai_focus_params_ = params
@@ -385,6 +401,18 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
               const attachments = Array.isArray(requestParams.attachments)
                 ? requestParams.attachments.map((a: any) => ({ ...a }))
                 : [];
+              const focusChip = requestParams.mentionFocus && focus.focusArea?.ele
+                ? createDomChip(focus)
+                : undefined;
+              const requestMessage = focusChip
+                ? `对于[[chip:${focusChip.id}]]${requestParams.message ?? ""}`
+                : requestParams.message ?? "";
+              const requestMeta = focusChip
+                ? {
+                    ...(requestParams.meta ?? {}),
+                    chips: [...(requestParams.meta?.chips ?? []), focusChip],
+                  }
+                : requestParams.meta;
 
               ensureAIPanelOpen(comId).then(() => {
                 context.aiQueue.send(
@@ -393,11 +421,12 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
                     await ensureFocusComId(comId);
                     context.aiQueue.registerAbort(agentKey, () => agent.abort());
                     await agent.requestAI({
-                      message: requestParams.message ?? "",
+                      message: requestMessage,
                       attachments,
+                      ...(requestMeta ? { meta: requestMeta } : {}),
                     });
                   },
-                  { message: requestParams.message, attachments, focus }
+                  { message: requestMessage, attachments, ...(requestMeta ? { meta: requestMeta } : {}), focus }
                 );
               })
             },

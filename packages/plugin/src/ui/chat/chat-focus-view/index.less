@@ -28,6 +28,23 @@
     box-shadow: var(--mybricks-shadow-main, rgba(16, 24, 40, 0.16) 0 12px 22px);
   }
 
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+    transform: none;
+    color: var(--mybricks-text-color-main, #535b6f);
+    border-color: rgba(205, 214, 230, 0.5);
+    box-shadow: none;
+    filter: none;
+  }
+
+  &:disabled:hover {
+    transform: none;
+    color: var(--mybricks-text-color-main, #535b6f);
+    border-color: rgba(205, 214, 230, 0.5);
+    box-shadow: none;
+  }
+
   &:active {
     transform: translateY(0);
     filter: brightness(0.98);

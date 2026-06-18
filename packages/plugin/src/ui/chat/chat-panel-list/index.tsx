@@ -7,7 +7,7 @@ import type { ChatPanelRef } from "../chat-panel";
 import type { MessageRecord } from "../use-session";
 import type { SendToAgentParams } from "../../../sandbox";
 import type { ChatChipInstance } from "../../../../../agent/src";
-import { createDomChip, DOM_CHIP_TYPE } from "../../../utils/dom-info";
+import { createDomChip, DOM_CHIP_TYPE, matchDefaultDomFocusContent } from "../../../utils/dom-info";
 import css from "../chat-panel/index.less";
 
 interface User {
@@ -28,8 +28,6 @@ interface ComInstance {
   comId: string;
   focusSnapshot: any;
 }
-
-const getDomLabel = (focus: any) => focus?.focusArea?.title ?? focus?.title ?? "元素";
 
 const DomTag = ({ label, className }: { label: string; className?: string }) => {
   return (
@@ -88,7 +86,7 @@ function isLastSegmentSameDomChip(message: string, chips: ChatChipInstance[] | u
 }
 
 // ─── 默认 renderUserMessage ────────────────────────────────────────────────────
-// 渲染 focus 信息 + 消息文本
+// 兼容历史 focus meta，并渲染消息文本中的 chip
 
 const pluginRenderUserMessage = (record: MessageRecord) => {
   const focus = record.meta?.focus;
@@ -158,9 +156,9 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
   }, []);
 
   const appendFocusChipIfNeeded = useCallback((focus: AiServiceFocusParams) => {
-    const comId = focus.comId ?? focus.pageId;
+    const comId = focus.comId ?? focus.pageId ?? currentComIdRef.current;
     const ele = focus.focusArea?.ele;
-    if (!comId || !ele) return;
+    if (!comId) return;
 
     if (appendFocusChipTimerRef.current) {
       clearTimeout(appendFocusChipTimerRef.current);
@@ -172,11 +170,33 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
 
       const input = panel?.getInput();
       const message = input?.message ?? "";
-      if (!message.trim()) return;
-      if (isLastSegmentSameDomChip(message, input?.chips, ele)) return;
 
+      // editor 无内容，或命中默认 focus 内容串：替换成新的 focus 内容串。
+      const canReplace = !message.trim() || matchDefaultDomFocusContent({
+        message,
+        chips: input?.chips ?? [],
+      });
+
+      if (!ele) {
+        if (canReplace) {
+          panel.clearFocusContent();
+        }
+        return;
+      }
+
+      if (canReplace) {
+        const chip = createDomChip(focus);
+        panel.replaceFocusContent({
+          message: `对于[[chip:${chip.id}]]`,
+          meta: { chips: [chip] },
+        });
+        return;
+      }
+
+      // editor 有内容：走原有逻辑，追加普通 dom chip（不重复追加相同元素）
+      if (isLastSegmentSameDomChip(message, input?.chips, ele)) return;
       const chip = createDomChip(focus);
-      panel?.appendInput({
+      panel.appendInput({
         message: `[[chip:${chip.id}]]`,
         meta: { chips: [chip] },
       });
@@ -201,7 +221,20 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
     const unAppendInput = context.events.on("appendInput", ({ comId, input }: { comId: string; input: Parameters<typeof context.appendInput>[1] }) => {
       if (!comId) return;
       ensureInstance(comId);
-      setTimeout(() => panelRefs.current.get(comId)?.appendInput(input as any));
+      setTimeout(() => {
+        const panel = panelRefs.current.get(comId);
+        if (!panel) return;
+
+        const currentInput = panel.getInput();
+        if (matchDefaultDomFocusContent({
+          message: currentInput.message,
+          chips: currentInput.chips,
+        })) {
+          panel.clearFocusContent();
+        }
+
+        panel.appendInput(input as any);
+      });
     });
 
     // 注册 inputGetter，供 context.getInput() 调用（与 appendInput 同构，反向读取）
@@ -264,12 +297,8 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
               onUpload={onUpload}
               title={title}
               renderUserMessage={pluginRenderUserMessage}
-              renderFocus={focusSnapshot ? () => (
-                <>
-                  <span>对于 </span>
-                  <DomTag label={getDomLabel(focusSnapshot)} />
-                </>
-              ) : undefined}
+              matchDefaultFocusContent={matchDefaultDomFocusContent}
+              defaultFocusPlaceholder="您可以描述对于此区域的需求"
               renderAttachmentSuffix={context.pluginParams.renderAttachmentSuffix}
             />
           </div>

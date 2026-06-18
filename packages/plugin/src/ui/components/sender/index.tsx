@@ -158,6 +158,24 @@ export interface SenderAbovePanel {
   content: React.ReactNode;
 }
 
+type SenderAppendInputParams = string | SendToAgentParams | { message: string; meta?: { chips?: ChatChipInstance[] } };
+
+interface SenderSerializedInput {
+  /** 输入框当前文本（含 [[chip:id]] 占位符） */
+  message: string;
+  /** 当前 chat chip 实例列表 */
+  chips: ChatChipInstance[];
+}
+
+interface SenderActionPrefixRenderContext {
+  /** 当前输入框是否有文本/chip 内容 */
+  hasInput: boolean;
+  /** 当前输入框文本（默认 focus 内容串匹配时为 null） */
+  inputContent: string | null;
+  /** Sender 是否处于不可发送状态 */
+  disabled: boolean;
+}
+
 interface SenderProps {
   onSend: (message: {
     message: string;
@@ -170,6 +188,8 @@ interface SenderProps {
   onMentionClick?: (mention: Mention) => void;
   loading?: boolean;
   placeholder?: string;
+  /** 命中默认 focus 内容串时展示的 placeholder，不传则复用普通 placeholder。 */
+  defaultFocusPlaceholder?: string;
   attachmentsPrompt?: string;
   disabled?: boolean;
   onBlur?: () => void;
@@ -188,7 +208,7 @@ interface SenderProps {
   /** 在 Sender 顶部渲染一组 panel，Sender 负责统一外壳与分割线 */
   abovePanels?: SenderAbovePanel[];
   /** 在发送按钮左侧插入自定义操作（如「追加到对话」按钮），不影响发送按钮本身 */
-  renderActionPrefix?: () => React.ReactNode;
+  renderActionPrefix?: (context: SenderActionPrefixRenderContext) => React.ReactNode;
   /**
    * ⚠️ 试验性 API，后续版本将移除。
    * 在附件上传按钮之后插入自定义渲染内容。
@@ -207,6 +227,11 @@ interface SenderProps {
    * 用于在输入框中渲染 chip。
    */
   chipTypes?: ChatChipDef[];
+  /**
+   * 判断当前输入是否是默认 focus 内容串。
+   * Sender 不理解具体 prefix/chip 结构，只根据返回值决定 placeholder 是否后移展示。
+   */
+  matchDefaultFocusContent?: (input: SenderSerializedInput) => boolean;
 }
 
 interface SenderRef {
@@ -219,7 +244,7 @@ interface SenderRef {
    * - { message, meta }：message 中可含 [[chip:id]] 占位符，
    *   meta.chips 提供对应实例，appendInput 内部会将占位符渲染成 chip span。
    */
-  appendInput: (params: string | SendToAgentParams | { message: string; meta?: { chips?: ChatChipInstance[] } }) => void;
+  appendInput: (params: SenderAppendInputParams) => void;
   // TODO: 目前仅展示聚焦组件且单个比较简单直接set即可，后续可通过输入框@唤起选择多个
   setMentions: (mentions: Mention[]) => void;
   /** 获取输入框当前草稿内容（文本 + 附件 + mentions + chips） */
@@ -240,6 +265,10 @@ interface SenderRef {
    * chipTypes prop 中必须有对应 type 的注册，否则只展示 label。
    */
   insertChip: (instance: ChatChipInstance) => void;
+  /** 替换当前输入框内容为新的默认 focus 内容串，不清空附件。 */
+  replaceFocusContent: (params: Exclude<SenderAppendInputParams, string>) => void;
+  /** 清空当前输入框文本/chip，不清空附件。 */
+  clearFocusContent: () => void;
 }
 
 // ─── Chat chip 挂载容器工厂 ────────────────────────────────────────────────────────────────────
@@ -309,6 +338,57 @@ function serializeEditorContent(editor: HTMLDivElement, chipMap: Map<string, Cha
   return { message: msg, chips: instances };
 }
 
+function measureEditorContent(editor: HTMLDivElement): { width: number; height: number } | null {
+  if (!editor.childNodes.length) return null;
+
+  const range = document.createRange();
+  range.selectNodeContents(editor);
+  const rect = range.getBoundingClientRect();
+  range.detach();
+
+  if (!rect.width && !rect.height) return null;
+  return {
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function getAdjacentChipAtCaret(
+  editor: HTMLDivElement,
+  range: Range,
+  direction: "backward" | "forward"
+): HTMLSpanElement | null {
+  if (!range.collapsed) return null;
+
+  const container = direction === "backward" ? range.startContainer : range.endContainer;
+  const offset = direction === "backward" ? range.startOffset : range.endOffset;
+  let target: ChildNode | null = null;
+
+  if (container === editor) {
+    target = direction === "backward"
+      ? editor.childNodes[offset - 1] ?? null
+      : editor.childNodes[offset] ?? null;
+  } else if (container.nodeType === Node.TEXT_NODE && container.parentNode === editor) {
+    const textLength = container.textContent?.length ?? 0;
+    if (direction === "backward" && offset === 0) {
+      target = container.previousSibling;
+    }
+    if (direction === "forward" && offset === textLength) {
+      target = container.nextSibling;
+    }
+  }
+
+  return target instanceof HTMLSpanElement && target.dataset.chipId ? target : null;
+}
+
+function removeChipFromEditor(editor: HTMLDivElement, chipEl: HTMLSpanElement, chipMap: Map<string, ChatChipInstance>) {
+  const id = chipEl.dataset.chipId;
+  unmountChipContainer(chipEl);
+  chipEl.parentNode?.removeChild(chipEl);
+  editor.normalize();
+  if (id) chipMap.delete(id);
+}
+
 function getClipboardText(data: DataTransfer): string {
   const plain = data.getData('text/plain');
   if (plain) return plain;
@@ -336,7 +416,7 @@ function focusEditorAtEnd(editor: HTMLDivElement) {
 // ─── Sender ──────────────────────────────────────────────────────────────────
 
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
-  const { loading, placeholder = "请输入", disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue, renderFocus, abovePanels, renderActionPrefix, renderAttachmentSuffix, modelSelector, className, chipTypes = [] } = props;
+  const { loading, placeholder = "请输入", defaultFocusPlaceholder, disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue, renderFocus, abovePanels, renderActionPrefix, renderAttachmentSuffix, modelSelector, className, chipTypes = [], matchDefaultFocusContent } = props;
   const isBubble = variant === 'bubble';
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
@@ -349,6 +429,13 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   /** chat chip 实例 Map：id → ChatChipInstance */
   const chipMapRef = useRef<Map<string, ChatChipInstance>>(new Map());
 
+  /** 默认 focus 内容串的整体尺寸，用于把 placeholder 推到内容串后面。 */
+  const [defaultFocusContentSize, setDefaultFocusContentSize] = useState<{ width: number; height: number } | null>(null);
+  const [isDefaultFocusContent, setIsDefaultFocusContent] = useState(false);
+  const currentPlaceholder = isDefaultFocusContent
+    ? (defaultFocusPlaceholder ?? placeholder)
+    : placeholder;
+
   /** chipTypes 的 Map 形式（type → def），方便查找 */
   const chipTypesMapRef = useRef<Map<string, ChatChipDef>>(new Map());
   useEffect(() => {
@@ -358,12 +445,35 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   /** 根据当前 editor DOM 同步 inputContent 状态 */
   const syncInputContent = useCallback(() => {
     if (!inputEditorRef.current) return;
-    updateChipWrapperSpacing(inputEditorRef.current);
-    const { message } = serializeEditorContent(inputEditorRef.current, chipMapRef.current);
-    setInputContent(message || null);
-  }, []);
+    const editor = inputEditorRef.current;
+    updateChipWrapperSpacing(editor);
+    const { message, chips } = serializeEditorContent(editor, chipMapRef.current);
+    const nextIsDefaultFocusContent = !!message && !!matchDefaultFocusContent?.({ message, chips });
+    setIsDefaultFocusContent(nextIsDefaultFocusContent);
+    setInputContent(nextIsDefaultFocusContent ? null : message || null);
 
-  const appendInput = (params: string | SendToAgentParams | { message: string; meta?: { chips?: ChatChipInstance[] } }) => {
+    if (!nextIsDefaultFocusContent) {
+      setDefaultFocusContentSize(null);
+      return;
+    }
+
+    const measuredNow = measureEditorContent(editor);
+    setDefaultFocusContentSize((prev) => measuredNow ?? prev);
+
+    requestAnimationFrame(() => {
+      if (!inputEditorRef.current) return;
+      const nextInput = serializeEditorContent(inputEditorRef.current, chipMapRef.current);
+      if (!nextInput.message || !matchDefaultFocusContent?.(nextInput)) {
+        setIsDefaultFocusContent(false);
+        setDefaultFocusContentSize(null);
+        return;
+      }
+      const next = measureEditorContent(inputEditorRef.current);
+      setDefaultFocusContentSize(next ?? measuredNow);
+    });
+  }, [matchDefaultFocusContent]);
+
+  const appendInput = useCallback((params: SenderAppendInputParams) => {
     const content = typeof params === "string" ? params : params.message;
     const nextAttachments = typeof params === "string"
       ? undefined
@@ -392,6 +502,15 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     editor.focus();
     const selection = window.getSelection();
 
+    // 若 editor 当前为空（只有 <br> 占位），先清掉，防止插入后产生多余换行
+    if (!editor.textContent?.trim() && !editor.querySelector('[data-chip-id]')) {
+      editor.querySelectorAll('br').forEach((br: HTMLBRElement) => br.remove());
+      // 清掉残留空文本节点
+      Array.from(editor.childNodes as NodeListOf<ChildNode>).forEach((n: ChildNode) => {
+        if (n.nodeType === Node.TEXT_NODE && !(n.textContent ?? '').trim()) editor.removeChild(n);
+      });
+    }
+
     // 始终追加到末尾
     const range = document.createRange();
     range.selectNodeContents(editor);
@@ -414,6 +533,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
               if (chipEl) {
                 unmountChipContainer(chipEl);
                 chipEl.parentNode?.removeChild(chipEl);
+                editor.normalize();
               }
               chipMapRef.current.delete(instance.id);
               syncInputContent();
@@ -441,7 +561,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     selection?.removeAllRanges();
     selection?.addRange(range);
     syncInputContent();
-  }
+  }, [syncInputContent]);
 
   /** 在当前光标位置插入一个 chat chip */
   const insertChip = useCallback((instance: ChatChipInstance) => {
@@ -459,6 +579,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       if (chipEl) {
         unmountChipContainer(chipEl);
         chipEl.parentNode?.removeChild(chipEl);
+        editor.normalize();
       }
       chipMapRef.current.delete(instance.id);
       syncInputContent();
@@ -491,6 +612,22 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     editor.focus();
   }, [syncInputContent]);
 
+  const clearEditorContent = useCallback(() => {
+    const editor = inputEditorRef.current;
+    if (!editor) return;
+    editor.querySelectorAll<HTMLSpanElement>(`[data-chip-id]`).forEach(unmountChipContainer);
+    editor.textContent = "";
+    chipMapRef.current.clear();
+    setInputContent("");
+    setIsDefaultFocusContent(false);
+    setDefaultFocusContentSize(null);
+  }, []);
+
+  const replaceFocusContent = useCallback((params: Exclude<SenderAppendInputParams, string>) => {
+    clearEditorContent();
+    appendInput(params);
+  }, [appendInput, clearEditorContent]);
+
   useImperativeHandle(ref, () => {
     return {
       focus: () => {
@@ -522,18 +659,14 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         };
       },
       clear: () => {
-        if (inputEditorRef.current) {
-          // 卸载所有 chip 的 React 实例
-          inputEditorRef.current.querySelectorAll<HTMLSpanElement>(`[data-chip-id]`).forEach(unmountChipContainer);
-          inputEditorRef.current.textContent = "";
-        }
-        chipMapRef.current.clear();
-        setInputContent("");
+        clearEditorContent();
         setAttachments([]);
       },
       insertChip,
+      replaceFocusContent,
+      clearFocusContent: clearEditorContent,
     };
-  }, [attachments, mentions, insertChip, disabled]);
+  }, [appendInput, attachments, mentions, insertChip, disabled, clearEditorContent, replaceFocusContent]);
 
   const send = () => {
     const editor = inputEditorRef.current!;
@@ -552,10 +685,18 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       editor.querySelectorAll<HTMLSpanElement>(`[data-chip-id]`).forEach(unmountChipContainer);
       editor.textContent = "";
       chipMapRef.current.clear();
+      setIsDefaultFocusContent(false);
+      setDefaultFocusContentSize(null);
       setAttachments([]);
       setInputContent("");
     }
   }
+
+  const onSendButtonClick = (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    send();
+  };
 
   const onInput = () => {
     syncInputContent();
@@ -582,37 +723,24 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     const range = selection.getRangeAt(0);
 
     if (event.key === 'Backspace') {
-      // 光标紧贴 chip 右侧：当前节点是文本节点且 offset=0，prevSibling 是 chip
-      const { startContainer, startOffset } = range;
-      if (startOffset === 0) {
-        const prev = startContainer.previousSibling as HTMLElement | null;
-        if (prev && prev.dataset?.chipId) {
-          event.preventDefault();
-          const id = prev.dataset.chipId;
-          unmountChipContainer(prev as HTMLSpanElement);
-          prev.parentNode?.removeChild(prev);
-          chipMapRef.current.delete(id);
-          syncInputContent();
-          return;
-        }
+      const editor = inputEditorRef.current;
+      const chipEl = editor ? getAdjacentChipAtCaret(editor, range, "backward") : null;
+      if (editor && chipEl) {
+        event.preventDefault();
+        removeChipFromEditor(editor, chipEl, chipMapRef.current);
+        syncInputContent();
+        return;
       }
     }
 
     if (event.key === 'Delete') {
-      // 光标紧贴 chip 左侧：nextSibling 是 chip
-      const { endContainer, endOffset } = range;
-      const textLen = endContainer.textContent?.length ?? 0;
-      if (endOffset === textLen) {
-        const next = endContainer.nextSibling as HTMLElement | null;
-        if (next && next.dataset?.chipId) {
-          event.preventDefault();
-          const id = next.dataset.chipId;
-          unmountChipContainer(next as HTMLSpanElement);
-          next.parentNode?.removeChild(next);
-          chipMapRef.current.delete(id);
-          syncInputContent();
-          return;
-        }
+      const editor = inputEditorRef.current;
+      const chipEl = editor ? getAdjacentChipAtCaret(editor, range, "forward") : null;
+      if (editor && chipEl) {
+        event.preventDefault();
+        removeChipFromEditor(editor, chipEl, chipMapRef.current);
+        syncInputContent();
+        return;
       }
     }
   }
@@ -830,9 +958,22 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
               onPaste={onPaste}
               onBlur={onBlur}
             ></div>
-            {!inputContent && <div className={css.inputPlaceholder}>
-              {placeholder}
-            </div>}
+            {!inputContent && (!isDefaultFocusContent || defaultFocusContentSize) && (
+              <div className={css.inputPlaceholder}>
+                {defaultFocusContentSize ? (
+                  <>
+                    <span
+                      className={css.placeholderFocusContentGhost}
+                      style={{ width: defaultFocusContentSize.width, height: defaultFocusContentSize.height }}
+                      aria-hidden="true"
+                    />
+                    <span className={css.placeholderText}>{currentPlaceholder}</span>
+                  </>
+                ) : (
+                  <span className={css.placeholderText}>{currentPlaceholder}</span>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <div className={css.editorAction}>
@@ -851,10 +992,14 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
             )}
           </div>
           <div className={css.rightArea}>
-            {renderActionPrefix?.()}
+            {renderActionPrefix?.({
+              hasInput: !!inputContent?.trim(),
+              inputContent,
+              disabled: !!disabled,
+            })}
             <div data-zone-type="ai-request" className={classNames(css.sendButtonContainer, {
               [css.disabled]: !loading && (disabled || !inputContent || uploading || attachments.some((a) => a.uploading))
-            })} onClick={send}>
+            })} onClick={onSendButtonClick}>
               <div
                 data-zone-type="ai-request"
                 className={classNames(css.sendButton, {

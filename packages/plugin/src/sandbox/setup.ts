@@ -3,7 +3,7 @@ import { AGENT_INTERNAL_FILE_EXCLUDE, CodeAgent, IDBHistory, isFileExcluded } fr
 import { ChipRegistry } from "../../../agent/src";
 import { splitFrontmatter, getFrontmatterString, getFrontmatterStringArray } from "../../../agent/src/utils/frontmatter";
 import { GLOB_TOOL_NAME  } from "../../../agent/src/code-agent/tools";
-import type { Tool, Sandbox, CodeAgentPlugin, CodeAgentPromptOptions, History, BoundHistory, TurnSender, AdditionalDirectory, AgentsMdConfig, SkillFile, UnifiedFile, AgentOptions, AgentMode } from "../../../agent/src";
+import type { Tool, Sandbox, CodeAgentPlugin, CodeAgentPromptOptions, History, BoundHistory, TurnSender, AdditionalDirectory, AgentsMdConfig, SkillFile, UnifiedFile, AgentOptions, AgentMode, ChatChipInstance } from "../../../agent/src";
 import type { PromptSections } from "../prompts";
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { Designer, RegistSandBoxConfig } from "./types";
@@ -15,7 +15,7 @@ import type { PrdRenderProps } from "../ui/renders/prd-render";
 import { LoadingViewWithStyles, ComChatStartViewWithStyles, PrdRenderWithStyles } from "../ui/renders/register";
 import { context } from "../context";
 import { ensureAIPanelOpen, ensureFocusComId } from "../utils/ensure-ai-panel-open";
-import { buildFocusInfo } from "../utils/dom-info";
+import { createDomChip } from "../utils/dom-info";
 
 // ─── 类型定义 ─────────────────────────────────────────────────────────────────
 
@@ -31,6 +31,9 @@ export interface SendToAgentParams {
   attachments?: { type: string; content: string; title?: string; size?: number }[];
   extra?: Record<string, any>;
   mode?: AgentMode;
+  meta?: Record<string, any> & { chips?: ChatChipInstance[] };
+  /** 显式提及当前聚焦元素：开启后会在消息最前面添加默认 focus 内容串。默认 false。 */
+  mentionFocus?: boolean;
 }
 
 export interface SandboxHelpers {
@@ -45,6 +48,23 @@ export interface SandboxHelpers {
     renderStartView: (props: ComChatStartViewProps) => React.ReactElement;
     renderPrdView: (props?: PrdRenderProps) => React.ReactElement;
     renderLoadingView: (props: LoadingViewProps) => React.ReactElement;
+  };
+}
+
+function withMentionFocus(params: SendToAgentParams): SendToAgentParams {
+  if (!params.mentionFocus) return params;
+
+  const focus = context.currentFocus;
+  if (!focus?.focusArea?.ele) return params;
+
+  const chip = createDomChip(focus);
+  return {
+    ...params,
+    message: `对于[[chip:${chip.id}]]${params.message}`,
+    meta: {
+      ...params.meta,
+      chips: [...(params.meta?.chips ?? []), chip],
+    },
   };
 }
 
@@ -192,12 +212,14 @@ export function setupSandbox(params: SetupSandboxParams): void {
             agentKey,
             async () => {
               await ensureFocusComId(comId);
+              const requestParams = withMentionFocus(params);
               context.aiQueue.registerAbort(agentKey, () => agent.abort());
               await agent.requestAI({
-                message: params.message,
-                attachments: params.attachments ?? [],
-                ...(params.extra ? { extra: params.extra } : {}),
-                ...(params.mode ? { mode: params.mode } : {}),
+                message: requestParams.message,
+                attachments: requestParams.attachments ?? [],
+                ...(requestParams.extra ? { extra: requestParams.extra } : {}),
+                ...(requestParams.mode ? { mode: requestParams.mode } : {}),
+                ...(requestParams.meta ? { meta: requestParams.meta } : {}),
               });
             },
             { message: params.message, attachments: params.attachments ?? [], ...(params.extra ? { extra: params.extra } : {}), ...(params.mode ? { mode: params.mode } : {}) }
@@ -600,23 +622,10 @@ function connectToAI(
       return sections;
     },
     formatUserMessage: chipRegistry.wrapFormatUserMessage(async (params) => {
-      const focusSnapshot = context.currentFocus;
-      const ele = focusSnapshot?.focusArea?.ele;
-      const hasDomChip = (params.meta?.chips ?? []).some((chip: any) => chip?.type === "dom");
-      const focusInfoText = ele && !hasDomChip ? buildFocusInfo(ele) : undefined;
-      const focusMeta = focusSnapshot ? {
-        focus: {
-          comId: focusSnapshot.comId,
-          pageId: focusSnapshot.pageId,
-          title: focusSnapshot.title,
-          type: focusSnapshot.type,
-          focusArea: focusSnapshot.focusArea ? { title: focusSnapshot.focusArea.title } : undefined,
-        }
-      } : {};
       const sandboxFormattedParams = {
-        message: focusInfoText ? `<用户需求>${params.message}<用户需求/>\n\n${focusInfoText}` : params.message,
+        message: params.message,
         attachments: params.attachments,
-        meta: { ...params.meta, ...focusMeta },
+        ...(params.meta ? { meta: params.meta } : {}),
         ...(params.extra ? { extra: params.extra } : {}),
         ...(sender ? { sender } : {}),
       };

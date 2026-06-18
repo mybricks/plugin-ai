@@ -185,24 +185,39 @@
           max-height: 128px;
           overflow-y: auto;
           overflow-x: hidden;
-          font-size: 12px;
-          line-height: 20px;
+          font-size: 11px;
+          line-height: 21px;
 
           .inputEditor {
             min-height: 28px;
             padding: 4px 0;
             box-sizing: border-box;
             color: var(--mybricks-text-color-main, #1f2430);
-            line-height: 20px;
+            line-height: 21px;
           }
 
           .inputPlaceholder {
             top: 4px;
             left: 0;
+            right: 0;
+            display: flex;
+            align-items: center;
+            flex-wrap: nowrap;
+            gap: 0;
             color: var(--mybricks-text-color-main, #535b6f);
             font-size: 12px;
-            line-height: 20px;
+            line-height: 21px;
             opacity: 0.48;
+            pointer-events: none;
+            user-select: none;
+            white-space: nowrap;
+            overflow: hidden;
+
+            .placeholderText {
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+            }
           }
         }
       }
@@ -350,8 +365,28 @@
 
         .scroll-bar();
 
+        // chip 共用视觉 mixin，定义在 .inputEditorContainer 级别
+        .chip-visual() {
+          display: inline-flex;
+          align-items: center;
+          height: 19px;
+          padding: 0 5px 0 6px;
+          border-radius: 4px;
+          font-size: 11px;
+          line-height: 17px;
+          color: var(--mybricks-color-primary, #FA6400);
+          border: 1px solid var(--mybricks-color-primary, #FA6400);
+          background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 8%, transparent);
+          max-width: 180px;
+          overflow: hidden;
+          white-space: nowrap;
+          text-overflow: ellipsis;
+          box-sizing: border-box;
+        }
+
         .inputEditor {
           color: var(--mybricks-text-color-main, #333);
+          line-height: 21px;
           user-select: text;
           white-space: pre-wrap;
           word-break: break-word;
@@ -372,7 +407,9 @@
             display: inline-flex;
             align-items: center;
             vertical-align: middle;
-            margin: 0 3px;
+            margin-top: -2px;
+            padding-left: 3px;
+            padding-right: 3px;
             user-select: none;
             cursor: default;
             max-width: 180px;
@@ -391,8 +428,8 @@
             gap: 3px;
             padding: 1px 4px 1px 6px;
             border-radius: 4px;
-            font-size: 11px;
-            line-height: 18px;
+            font-size: 12px;
+            line-height: 17px;
             background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 10%, transparent);
             color: var(--mybricks-color-primary, #FA6400);
             border: 1px solid color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 25%, transparent);
@@ -429,30 +466,10 @@
 
           // 默认 chip 样式（无 render 时，label + 删除）
           .chip {
-            display: inline-flex;
-            align-items: center;
-            height: 18px;
-            padding: 0 4px 0 5px;
-            border-radius: 4px;
-            font-size: 11px;
-            line-height: 1;
-            color: var(--mybricks-color-primary, #FA6400);
-            border: 1px solid var(--mybricks-color-primary, #FA6400);
-            background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 8%, transparent);
-            max-width: 180px;
-            overflow: hidden;
-            white-space: nowrap;
-            box-sizing: border-box;
+            .chip-visual();
 
             &.domChip {
               padding-left: 6px;
-            }
-
-            .chipText {
-              overflow: hidden;
-              text-overflow: ellipsis;
-              white-space: nowrap;
-              font-weight: 500;
             }
 
             .chipRemove {
@@ -480,17 +497,29 @@
 
         .inputPlaceholder {
           position: absolute;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          // top: 1px;
-          // left: 1px;
           top: 0;
           left: 0;
+          right: 0;
           user-select: none;
           pointer-events: none;
-          // color: rgba(0, 0, 0, .6);
           color: var(--mybricks-text-color-main, #333);
           opacity: 0.6;
+          overflow: hidden;
+          line-height: 21px;
+
+          .placeholderText {
+            overflow: visible;
+            white-space: normal;
+            word-break: break-word;
+          }
+
+          .placeholderFocusContentGhost {
+            display: inline-block;
+            vertical-align: middle;
+            opacity: 0;
+            pointer-events: none;
+            user-select: none;
+          }
         }
       }
     }
@@ -509,7 +538,6 @@
         align-items: center;
         gap: 6px;
         min-width: 0;
-        overflow: hidden;
         flex: 1;
 
         .attachmentButton {

@@ -35,6 +35,8 @@ type AiServiceRequestParams = {
     size?: number;
   }[];
   onProgress?: (status: string) => void;
+  /** 显式提及当前聚焦元素：开启后会在消息最前面添加默认 focus 内容串。默认 false。 */
+  mentionFocus?: boolean;
   [key: string]: any;
 };
 
