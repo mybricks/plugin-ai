@@ -186,7 +186,7 @@ const MessageBubble = ({ record, toolRendererMap, onRetry, isLast, agent, onExec
           <span className={css["chat-bubble-header-name"]}>{copilot?.name ?? "智能助手"}</span>
         </header>
         <section className={classNames(css["chat-message-container"], css["ai-message"])}>
-          <div className={css["markdown-body"]}>
+          <div className={css["message-flow"]}>
             {/* 无任何 iteration 且 pending → 规划占位 */}
             {record.status === "pending" && record.iterations.length === 0 && (
               <div className={css["iter-header"]}>
@@ -253,7 +253,7 @@ const MessageBubble = ({ record, toolRendererMap, onRetry, isLast, agent, onExec
                               重试 {retryState.attempt}/{retryState.maxRetries}
                             </span>
                           )}
-                          <BubbleMessage message={iter.content} />
+                          <MarkdownMessage message={iter.content} />
                         </div>
                         {iter.startTime && <ElapsedTime startTime={iter.startTime} endTime={iter.endTime} className={css["planning-elapsed"]} />}
                       </>
@@ -320,7 +320,7 @@ const MessageBubble = ({ record, toolRendererMap, onRetry, isLast, agent, onExec
                 canExecute={canOperatePlanCard && canExecutePlan}
                 // TODO: 先隐藏「废弃方案」入口，后续确认交互价值后再恢复。
                 onAbandon={undefined}
-                renderContent={(body) => <BubbleMessage message={body} />}
+                renderContent={(body) => <MarkdownMessage message={body} />}
               />
             )}
 
@@ -337,7 +337,7 @@ const MessageBubble = ({ record, toolRendererMap, onRetry, isLast, agent, onExec
 
 const UserMessageContent = ({ message }: { message: string }) => {
   if (/!\[[^\]]*]\([^)]+\)/.test(message)) {
-    return <BubbleMessage message={message} className={css["user-message-text"]} />;
+    return <MarkdownMessage message={message} className={css["user-message-text"]} />;
   }
 
   return <div className={css["user-message-text"]}>{message}</div>;
@@ -482,15 +482,15 @@ const ThinkingCard = ({
         )}
       </div>
       <div ref={bodyRef} className={css["think-card-body"]}>
-        <BubbleMessage message={message} />
+        <MarkdownMessage message={message} />
       </div>
     </div>
   );
 };
 
-// ─── BubbleMessage ────────────────────────────────────────────────────────────
+// ─── MarkdownMessage ──────────────────────────────────────────────────────────
 
-const BubbleMessage = ({ message, className }: { message: string; className?: string }) => {
+const MarkdownMessage = ({ message, className }: { message: string; className?: string }) => {
   const ref = useRef<HTMLDivElement>(null);
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewCurrent, setPreviewCurrent] = useState(0);
@@ -535,7 +535,7 @@ const BubbleMessage = ({ message, className }: { message: string; className?: st
 
   return (
     <>
-      <div className={classNames(css['message-content'], className)} ref={ref} onClick={handleClick} />
+      <div className={classNames(css["message-content"], css["markdown-body"], className)} ref={ref} onClick={handleClick} />
       <div style={{ display: "none" }}>
         <Image.PreviewGroup
           preview={{
@@ -553,7 +553,7 @@ const BubbleMessage = ({ message, className }: { message: string; className?: st
   );
 };
 
-export { MessageList, BubbleMessage };
+export { MessageList };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
