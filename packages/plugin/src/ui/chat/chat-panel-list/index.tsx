@@ -112,6 +112,7 @@ const pluginRenderUserMessage = (record: MessageRecord) => {
 const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) => {
   const [currentComId, setCurrentComId] = useState<string | undefined>(undefined);
   const [instances, setInstances] = useState<ComInstance[]>([]);
+  const [contextDisabled, setContextDisabled] = useState(() => context.disabled);
   const disabledSenderRef = useRef<SenderRef>(null);
   const panelRefs = useRef(new Map<string, ChatPanelRef | null>());
   const currentComIdRef = useRef<string | undefined>(undefined);
@@ -236,6 +237,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
         panel.appendInput(input as any);
       });
     });
+    const unDisabled = context.events.on("disabled", (value: boolean) => setContextDisabled(value));
 
     // 注册 inputGetter，供 context.getInput() 调用（与 appendInput 同构，反向读取）
     context.registerInputGetter((comId?: string) => {
@@ -248,6 +250,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
       unFocus();
       unDisplay();
       unAppendInput();
+      unDisabled();
       if (appendFocusChipTimerRef.current) {
         clearTimeout(appendFocusChipTimerRef.current);
       }
@@ -296,6 +299,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
               copilot={copilot}
               onUpload={onUpload}
               title={title}
+              disabled={contextDisabled}
               renderUserMessage={pluginRenderUserMessage}
               matchDefaultFocusContent={matchDefaultDomFocusContent}
               defaultFocusPlaceholder="您可以描述对于此区域的需求"

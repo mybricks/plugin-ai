@@ -40,7 +40,7 @@ export interface ChatPanelProps {
    * 返回 ReactNode，展示当前聚焦的组件 / 区域信息。
    */
   renderFocus?: () => React.ReactNode;
-  /** 是否禁用发送输入框 */
+  /** 是否禁用 ChatPanel；由调用方显式控制，不读取 context.disabled */
   disabled?: boolean;
   /**
    * ⚠️ 试验性 API，后续版本将移除。
@@ -87,7 +87,6 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   const senderRef = useRef<SenderRef>(null);
   const [loading, setLoading] = useState(() => context.aiQueue.isLoading(agentKey));
   const [pendingQueue, setPendingQueue] = useState<QueueItem[]>(() => context.aiQueue.getQueue(agentKey));
-  const [contextDisabled, setContextDisabled] = useState(() => context.disabled);
   const availableModes = agent?.getAvailableModes() ?? [AgentModeEnum.Build];
   const showChatMode = availableModes.length > 1;
   const [chatMode, setChatMode] = useState<AgentMode>(() => agent?.getMode() ?? availableModes[0] ?? AgentModeEnum.Build);
@@ -170,8 +169,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     const unQ = context.aiQueue.events.on("queue", (d) => {
       if (d.key === agentKey) setPendingQueue([...d.queue]);
     });
-    const unD = context.events.on("disabled", (v: boolean) => setContextDisabled(v));
-    return () => { unL(); unQ(); unD(); };
+    return () => { unL(); unQ(); };
   }, [agentKey]);
 
   const onClear = async () => {
@@ -212,7 +210,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     );
   };
 
-  const isDisabled = !agent || disabled || contextDisabled;
+  const isDisabled = !agent || !!disabled;
   const canExecutePlan = Boolean(agent && !isDisabled && availableModes.includes(AgentModeEnum.Build));
 
   const onExecutePlan = (title: string) => {

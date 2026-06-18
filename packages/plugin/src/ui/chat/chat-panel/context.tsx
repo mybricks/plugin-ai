@@ -12,7 +12,7 @@ interface ChatPanelContextValue {
   /** AI 助手信息（头像、名称），用于消息气泡展示 */
   copilot?: User;
   /**
-   * 当前面板是否被禁用（合并 ChatPanelProps.disabled + context.disabled + !agent）。
+   * 当前面板是否被禁用（由 ChatPanelProps.disabled 与 agent 状态决定）。
    * 禁用时 Sender 不可输入，SuggestionsBlock 不可点击。
    */
   disabled: boolean;
