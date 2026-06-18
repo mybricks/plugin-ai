@@ -18,6 +18,17 @@ import css from "./index.less"
 
 const MAX_IMAGE_SIZE_MB = 3.5;
 const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
+const SUPPORTED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const SUPPORTED_IMAGE_ACCEPT = "image/jpeg,image/png,image/webp";
+const SUPPORTED_IMAGE_LABEL = "JPG、PNG、WEBP";
+
+function isSupportedImageFile(file: File): boolean {
+  const type = file.type.toLowerCase();
+  if (SUPPORTED_IMAGE_MIME_TYPES.has(type)) return true;
+
+  const name = file.name.toLowerCase();
+  return /\.(jpe?g|png|webp)$/.test(name);
+}
 
 const readFileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -763,6 +774,11 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   }
 
   const updateAttachmentsByFile = async (file: File) => {
+    if (!isSupportedImageFile(file)) {
+      message.info(`当前仅支持上传${SUPPORTED_IMAGE_LABEL}格式的图片`);
+      return;
+    }
+
     if (file.size > MAX_IMAGE_SIZE_BYTES) {
       message.info(`当前文件大小 ${(file.size / 1024 / 1024).toFixed(2)}MB，超过了${MAX_IMAGE_SIZE_MB}MB，建议您截取页面中的某个区域作为附件`)
       return;
@@ -853,7 +869,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     }
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
-    fileInput.accept = 'image/*';
+    fileInput.accept = SUPPORTED_IMAGE_ACCEPT;
 
     fileInput.addEventListener('change', function (e) {
       const target = e.target as HTMLInputElement;
@@ -863,10 +879,6 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       const file = target.files?.[0];
 
       if (file) {
-        if (!file.type.startsWith('image/')) {
-          return;
-        }
-
         updateAttachmentsByFile(file);
       }
     });
@@ -902,7 +914,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     }
 
     const file = event.clipboardData.files[0];
-    if (file?.type.startsWith('image/')) {
+    if (file) {
       if (checkAttachmentsLimit()) {
         return;
       }
