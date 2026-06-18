@@ -8,17 +8,18 @@ interface HeaderProps {
   onClear?: () => void;
   onExport?: () => void;
   title?: string;
+  disabled?: boolean;
 }
 
-const Header = ({ onClear, onExport, title }: HeaderProps) => {
+const Header = ({ onClear, onExport, title, disabled = false }: HeaderProps) => {
   return (
     <div className={css.header}>
       <span className={css.title}>{title ?? context.name}</span>
       <div className={css.actions}>
         <div
-          className={css.action}
+          className={classNames(css.action, { [css.disabled]: disabled })}
           data-mybricks-tip="清空对话记录"
-          onClick={onClear}
+          onClick={disabled ? undefined : onClear}
         >
           <Delete />
         </div>

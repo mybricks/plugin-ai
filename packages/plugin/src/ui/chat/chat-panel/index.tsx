@@ -173,7 +173,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   }, [agentKey]);
 
   const onClear = async () => {
-    if (!agent) return;
+    if (!agent || isDisabled) return;
     await agent.clearHistory();
     clearSession();
   };
@@ -229,7 +229,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   return (
     <ChatPanelProvider value={{ user, copilot, disabled: isDisabled, renderUserMessage }}>
       <div className={css["chat-panel"]}>
-        {header ? <Header title={title} onClear={onClear} onExport={onExportHistory} /> : null}
+        {header ? <Header title={title} onClear={onClear} onExport={onExportHistory} disabled={isDisabled} /> : null}
 
         <div className={css["messages-area"]}>
           <MessageList

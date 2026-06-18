@@ -38,6 +38,15 @@
         color: var(--mybricks-color-primary, #FA6400);
       }
 
+      &.disabled {
+        cursor: not-allowed;
+        color: var(--mybricks-text-color-disabled, rgba(0, 0, 0, 0.25));
+
+        &:hover {
+          color: var(--mybricks-text-color-disabled, rgba(0, 0, 0, 0.25));
+        }
+      }
+
       svg {
         width: 12px;
         height: 12px;
