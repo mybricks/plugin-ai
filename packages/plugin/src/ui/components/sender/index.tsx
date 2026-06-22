@@ -437,6 +437,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const [mentions, setMentions] = useState<Mention[]>([]);
   const [vibeCoding, setVibeCoding] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  /** 防止 dragLeave 在子元素之间移动时误触发，通过计数器追踪真正的进出 */
+  const dragCounterRef = useRef(0);
 
   /** chat chip 实例 Map：id → ChatChipInstance */
   const chipMapRef = useRef<Map<string, ChatChipInstance>>(new Map());
@@ -512,8 +515,8 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       return;
     }
 
-    editor.focus();
-    const selection = window.getSelection();
+    // 记录当前是否已聚焦，后续仅在已聚焦时才更新光标，避免隐式 focus
+    const isEditorFocused = document.activeElement === editor;
 
     // 若 editor 当前为空（只有 <br> 占位），先清掉，防止插入后产生多余换行
     if (!editor.textContent?.trim() && !editor.querySelector('[data-chip-id]')) {
@@ -524,15 +527,8 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       });
     }
 
-    // 始终追加到末尾
-    const range = document.createRange();
-    range.selectNodeContents(editor);
-    range.collapse(false);
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-
     if (incomingChips.size > 0) {
-      // 有 chip 实例：按 [[chip:id]] 分割，交替插入文本节点和 chip span
+      // 有 chip 实例：按 [[chip:id]] 分割，交替插入文本节点和 chip span，直接 appendChild 不碰 selection
       const parts = content.split(/(\[\[chip:[^\]]+\]\])/);
       for (const part of parts) {
         const match = part.match(/^\[\[chip:([^\]]+)\]\]$/);
@@ -552,27 +548,21 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
               syncInputContent();
             };
             const chipEl = createChipContainer(instance, def, onRemove);
-            range.insertNode(chipEl);
-            range.setStartAfter(chipEl);
-            range.setEndAfter(chipEl);
+            editor.appendChild(chipEl);
           }
         } else if (part) {
-          const textNode = document.createTextNode(part);
-          range.insertNode(textNode);
-          range.setStartAfter(textNode);
-          range.setEndAfter(textNode);
+          editor.appendChild(document.createTextNode(part));
         }
       }
     } else {
       // 纯文本追加（兼容旧用法）
-      const textNode = document.createTextNode(content);
-      range.insertNode(textNode);
-      range.setStartAfter(textNode);
-      range.setEndAfter(textNode);
+      editor.appendChild(document.createTextNode(content));
     }
 
-    selection?.removeAllRanges();
-    selection?.addRange(range);
+    // 仅在 editor 本身已聚焦时才把光标移到末尾，不主动抢焦点
+    if (isEditorFocused) {
+      focusEditorAtEnd(editor);
+    }
     syncInputContent();
   }, [syncInputContent]);
 
@@ -622,7 +612,6 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     }
 
     syncInputContent();
-    editor.focus();
   }, [syncInputContent]);
 
   const clearEditorContent = useCallback(() => {
@@ -766,38 +755,70 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     setIsComposing(false);
   }
 
-  /** 检查附件数量是否超出限制，超出返回 true */
-  const checkAttachmentsLimit = () => {
-    if (attachments.length > 4) {
-      message.info("当前最多只能上传五张图片");
-      return true;
+  /**
+   * 统一的多文件附件处理入口。
+   * 1. 过滤非法格式，汇总一条提示
+   * 2. 逐个校验尺寸，批量上传合法文件
+   * 3. 超出数量上限的文件截断并提示
+   */
+  const updateAttachmentsByFiles = async (rawFiles: File[]) => {
+    // Step 1：格式过滤
+    const validFiles: File[] = [];
+    const invalidFiles: File[] = [];
+    for (const file of rawFiles) {
+      if (isSupportedImageFile(file)) {
+        validFiles.push(file);
+      } else {
+        invalidFiles.push(file);
+      }
     }
-    return false;
-  }
 
-  const updateAttachmentsByFile = async (file: File) => {
-    if (!isSupportedImageFile(file)) {
+    if (invalidFiles.length > 0 && validFiles.length === 0) {
       message.info(`当前仅支持上传${SUPPORTED_IMAGE_LABEL}格式的图片`);
       return;
     }
-
-    if (file.size > MAX_IMAGE_SIZE_BYTES) {
-      message.info(`当前文件大小 ${(file.size / 1024 / 1024).toFixed(2)}MB，超过了${MAX_IMAGE_SIZE_MB}MB，建议您截取页面中的某个区域作为附件`)
-      return;
+    if (invalidFiles.length > 0) {
+      message.info(`${invalidFiles.length} 个文件格式不支持（仅支持${SUPPORTED_IMAGE_LABEL}）已跳过`);
     }
 
-    try {
-      const { width, height } = await getImageSize(file);
-      if (width > 8000 || height > 8000) {
-        message.info(`当前图片尺寸 ${width}x${height}px，宽高任一不得大于8000px`);
-        return;
+    if (validFiles.length === 0) return;
+
+    // Step 2：数量上限截断
+    const slots = 5 - attachments.length;
+    if (slots <= 0) {
+      message.info("当前最多只能上传五张图片");
+      return;
+    }
+    const toUpload = validFiles.slice(0, slots);
+    if (validFiles.length > slots) {
+      message.info(`已上传 ${slots} 张，超出上限的 ${validFiles.length - slots} 张已忽略`);
+    }
+
+    // Step 3：逐个校验并上传
+    for (const file of toUpload) {
+      if (file.size > MAX_IMAGE_SIZE_BYTES) {
+        message.info(`文件「${file.name}」大小 ${(file.size / 1024 / 1024).toFixed(2)}MB，超过了${MAX_IMAGE_SIZE_MB}MB，已跳过`);
+        continue;
       }
-    } catch (event) {
-      console.error("[@mybricks/plugin-ai - 读取图片尺寸失败]", event);
-      message.error("读取图片尺寸失败，请重试");
-      return;
-    }
 
+      try {
+        const { width, height } = await getImageSize(file);
+        if (width > 8000 || height > 8000) {
+          message.info(`文件「${file.name}」尺寸 ${width}x${height}px，宽高任一不得大于8000px，已跳过`);
+          continue;
+        }
+      } catch (event) {
+        console.error("[@mybricks/plugin-ai - 读取图片尺寸失败]", event);
+        message.error(`读取「${file.name}」尺寸失败，已跳过`);
+        continue;
+      }
+
+      await uploadSingleFile(file);
+    }
+  };
+
+  /** 上传单张已通过校验的文件，内部抽取避免重复逻辑 */
+  const uploadSingleFile = async (file: File) => {
     if (onUpload) {
       // 先插入占位，上传完成后替换为真实 URL
       const localUrl = URL.createObjectURL(file);
@@ -860,29 +881,23 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           message.error("[@mybricks/plugin-ai - 上传附件失败]");
         })
     }
-  }
+  };
 
   const uploadAttachment = () => {
     if (disabled || uploading) {
       return;
     }
-    if (checkAttachmentsLimit()) {
-      return;
-    }
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.accept = SUPPORTED_IMAGE_ACCEPT;
+    fileInput.multiple = true;
 
     fileInput.addEventListener('change', function (e) {
       const target = e.target as HTMLInputElement;
-      if (!target) {
+      if (!target?.files?.length) {
         return;
       }
-      const file = target.files?.[0];
-
-      if (file) {
-        updateAttachmentsByFile(file);
-      }
+      updateAttachmentsByFiles(Array.from(target.files));
     });
 
     fileInput.click();
@@ -915,12 +930,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       return;
     }
 
-    const file = event.clipboardData.files[0];
-    if (file) {
-      if (checkAttachmentsLimit()) {
-        return;
-      }
-      updateAttachmentsByFile(file);
+    const files = event.clipboardData.files;
+    if (files?.length) {
+      updateAttachmentsByFiles(Array.from(files));
     }
   }
 
@@ -930,6 +942,45 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       return [...attachments]
     })
   }
+
+  const onDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    dragCounterRef.current += 1;
+    if (disabled || uploading) return;
+    // 仅当拖拽内容包含文件时才高亮
+    if (Array.from(event.dataTransfer.types).includes('Files')) {
+      setIsDraggingOver(true);
+    }
+  };
+
+  const onDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    // 告诉浏览器允许 drop（必须，否则 drop 不触发）
+    event.dataTransfer.dropEffect = 'copy';
+  };
+
+  const onDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current === 0) {
+      setIsDraggingOver(false);
+    }
+  };
+
+  const onDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDraggingOver(false);
+    if (disabled || uploading) return;
+    const files = event.dataTransfer.files;
+    if (files?.length) {
+      updateAttachmentsByFiles(Array.from(files));
+    }
+  };
 
   return (
     <div className={classNames(css.container, { [css.loose]: variant === 'loose', [css.bubble]: variant === 'bubble' }, className)}>
@@ -946,13 +997,25 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         <PendingQueue queue={pendingQueue} onRemove={onRemoveFromQueue} />
       )}
       <div className={classNames(css.editor, {
-        [css.noMentions]: mode === "mention" && !mentions.length
-      })}>
+        [css.noMentions]: mode === "mention" && !mentions.length,
+        [css.dragging]: isDraggingOver,
+      })}
+        onDragEnter={onDragEnter}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+      >
         {attachments.length ? (
           <div className={css.topArea}>
             <AttachmentsList attachments={attachments} onDelete={onAttachmentsDelete}/>
           </div>
         ) : null}
+        {isDraggingOver && (
+          <div className={css.dragOverlay}>
+            <span className={css.dragOverlayTitle}>拖放文件至此</span>
+            <span className={css.dragOverlayHint}>支持 {SUPPORTED_IMAGE_LABEL} 格式，最大 {MAX_IMAGE_SIZE_MB}MB</span>
+          </div>
+        )}
         {renderFocus ? (
           <div className={css.mentions}>
             {renderFocus()}

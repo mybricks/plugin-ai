@@ -320,6 +320,39 @@
       border-color: var(--mybricks-color-primary, #FA6400);
     }
 
+    // ─── 拖拽高亮态 ───────────────────────────────────────────────────────────
+    &.dragging {
+      border-color: var(--mybricks-color-primary, #FA6400);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 15%, transparent);
+    }
+
+    .dragOverlay {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      border-radius: inherit;
+      background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 6%, var(--mybricks-bg-color-main, #fff));
+      pointer-events: none;
+
+      .dragOverlayTitle {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--mybricks-color-primary, #FA6400);
+        letter-spacing: 0.02em;
+      }
+
+      .dragOverlayHint {
+        font-size: 11px;
+        color: var(--mybricks-text-color-main, #333);
+        opacity: 0.45;
+      }
+    }
+
     .mentions {
       padding: 8px 8px 0 8px;
       display: flex;
