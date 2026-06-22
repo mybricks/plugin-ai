@@ -51,6 +51,11 @@ export interface ChatPanelProps {
   matchDefaultFocusContent?: SenderProps["matchDefaultFocusContent"];
   /** 命中默认 focus 内容串时展示的 placeholder */
   defaultFocusPlaceholder?: SenderProps["defaultFocusPlaceholder"];
+  /**
+   * 消息列表为空时，在 Sender 上方渲染的自定义内容（如引导语、快捷指令卡片等）。
+   * 返回 ReactNode；有消息后自动隐藏。
+   */
+  renderEmpty?: () => React.ReactNode;
 }
 
 export interface ChatPanelRef {
@@ -81,6 +86,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   renderAttachmentSuffix,
   matchDefaultFocusContent,
   defaultFocusPlaceholder,
+  renderEmpty,
 }, ref) => {
   const agentKey = agent?.key ?? "";
 
@@ -238,6 +244,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
             agent={agent}
             onExecutePlan={onExecutePlan}
             canExecutePlan={canExecutePlan}
+            renderEmpty={renderEmpty}
             onRetry={(id: string) => {
               if (!agent) return;
               context.aiQueue.clearQueue(agentKey);

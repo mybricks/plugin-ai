@@ -44,12 +44,14 @@ export interface MessageListProps {
   onRetry?: (turnId: string) => void;
   onExecutePlan?: (title: string) => void;
   canExecutePlan?: boolean;
+  /** 消息列表为空时在区域内居中展示的自定义内容 */
+  renderEmpty?: () => React.ReactNode;
 }
 
 type MessageListRef = { scrollToBottom: () => void };
 
 const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
-  function MessageListInner({ messages, agent, onRetry, onExecutePlan, canExecutePlan = true }, ref) {
+  function MessageListInner({ messages, agent, onRetry, onExecutePlan, canExecutePlan = true, renderEmpty }, ref) {
   const mainRef = useRef<HTMLElement>(null);
   const scrollerRef = useRef<AutoScroller | null>(null);
   const { activePlan } = usePlanState(agent);
@@ -83,19 +85,23 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
 
   return (
     <main ref={mainRef} className={css["message-list"]}>
-      {messages.map((record, index) => (
-        <MessageBubble
-          key={record.id}
-          record={record}
-          toolRendererMap={toolRendererMap}
-          onRetry={index === messages.length - 1 ? onRetry : undefined}
-          isLast={index === messages.length - 1}
-          agent={agent}
-          onExecutePlan={onExecutePlan}
-          canExecutePlan={canExecutePlan}
-          activePlan={activePlan}
-        />
-      ))}
+      {messages.length === 0 && renderEmpty ? (
+        <div className={css["empty-state"]}>{renderEmpty()}</div>
+      ) : (
+        messages.map((record, index) => (
+          <MessageBubble
+            key={record.id}
+            record={record}
+            toolRendererMap={toolRendererMap}
+            onRetry={index === messages.length - 1 ? onRetry : undefined}
+            isLast={index === messages.length - 1}
+            agent={agent}
+            onExecutePlan={onExecutePlan}
+            canExecutePlan={canExecutePlan}
+            activePlan={activePlan}
+          />
+        ))
+      )}
     </main>
   );
   });

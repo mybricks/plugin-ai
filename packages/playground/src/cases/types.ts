@@ -4,6 +4,7 @@ import type { ProviderConfig } from "@request/providers";
 import type { Tool } from "@agent/types";
 import type { SkillFile } from "@agent/code-agent";
 import type { FsFile } from "../lib/mem-fs";
+import type React from "react";
 
 export type Priority = "P0" | "P1" | "P2";
 
@@ -50,4 +51,9 @@ export interface TestCase {
   };
   /** 禁用的 Agent 运行模式；传入后模式切换器隐藏 */
   disabledModes?: AgentMode[];
+  /**
+   * 消息列表为空时，在 Sender 上方渲染的自定义内容。
+   * 对应 ChatPanelProps.renderEmpty。
+   */
+  renderEmpty?: () => React.ReactNode;
 }
