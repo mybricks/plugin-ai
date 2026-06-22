@@ -6,6 +6,7 @@ console.log(`%c ${pkg.name} %c@${pkg.version}`, `color:#FFF;background:#fa6400`,
 import { CodeAgent, IDBHistory } from "../../agent/src";
 import type { AgentOptions, CodeAgentPlugin, SkillFile, TurnSender } from "../../agent/src";
 import { createRequestAsStream, createOnUpload, LLMProviders } from "../../request/src";
+import type { ModelSelection } from "../../request/src";
 import type { RequestAsStreamFn, ProviderConfig } from "../../request/src";
 export type { ProviderConfig, RemoteProviderConfig, CustomProviderConfig, ModelConfig, ModelSelection } from "../../request/src";
 import { resolvePromptOptions, type PromptSections } from "./prompts";
@@ -222,14 +223,26 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
   if (llm?.providers?.length) {
     // 如果提供了 llm.providers 配置，创建 LLMProviders 实例
     const llmProviders = new LLMProviders({
-      providers: llm.providers,
-      agentKey: pluginKey
+      providers: llm.providers
     });
-    context.setLLMProviders(llmProviders);
+    const storedSelection = context.kv.get<ModelSelection>("llm.selection");
+    if (storedSelection) {
+      llmProviders.restoreSelection(storedSelection);
+    }
+    const unsubscribeSelection = llmProviders.onSelectionChange((selection) => {
+      if (selection) {
+        context.kv.set("llm.selection", selection);
+      } else {
+        context.kv.remove("llm.selection");
+      }
+    });
+    context.setLLMProviders(llmProviders, unsubscribeSelection);
     effectiveRequest = llmProviders.request;
   } else if (onRequest) {
+    context.setLLMProviders(undefined);
     effectiveRequest = onRequest;
   } else {
+    context.setLLMProviders(undefined);
     effectiveRequest = createRequestAsStream();
   }
 

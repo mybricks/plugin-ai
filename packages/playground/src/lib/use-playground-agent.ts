@@ -24,7 +24,7 @@ export function usePlaygroundAgent(
     agentRef.current?.abort();
     context.agentMap.delete(AGENT_KEY);
     const llmProvidersInstance = testCase.llmProviders?.length
-      ? new LLMProviders({ providers: testCase.llmProviders, agentKey: AGENT_KEY })
+      ? new LLMProviders({ providers: testCase.llmProviders })
       : undefined;
 
     context.setLLMProviders(llmProvidersInstance);

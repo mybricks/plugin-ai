@@ -1,4 +1,5 @@
 import type { RequestAsStreamFn } from "../../../request/src";
+import type { LLMProviders } from "../../../request/src/providers";
 import type { Agent } from "../agent";
 import type { MaskOptions } from "../mask";
 import type { RetryOptions } from "../retry";
@@ -148,8 +149,19 @@ export interface AgentOptions {
   tools?: Tool[];
   /** 历史记录实现 */
   history?: History;
-  /** 流式请求函数 */
-  request: RequestAsStreamFn;
+  /** 流式请求函数；传入 llmProvider 时可省略 */
+  request?: RequestAsStreamFn;
+  /**
+   * LLM 供应商实例（可选）。
+   * 传入时，Agent 会使用 llmProvider.request 作为实际请求函数（忽略 request 参数）。
+   * 与 history 模式对称：持久化由 Agent 负责，LLMProviders 本身只管内存状态。
+   *
+   * plugin-AI 场景：将 context.llmProviders 传入（chatPanel/chatStartView 共享同一实例）。
+   * 直接引用 ChatPanel 场景：用户自建 LLMProviders 实例传入。
+   *
+   * 不传时沿用 request 参数（向后兼容）。
+   */
+  llmProvider?: LLMProviders;
   /** Agent key（用于历史记录隔离，通常取 comId） */
   key?: string;
   /**

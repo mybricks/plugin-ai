@@ -24,6 +24,87 @@ export type TokenUsage = {
  */
 export type AgentMode = "build" | "plan";
 
+// ─── Attachment（通用附件格式） ─────────────────────────────────────────────
+
+/**
+ * 通用附件格式，贯穿整个附件数据流：
+ *   requestAI({ attachments }) → TurnRecord.userAttachments
+ *   → ToolCallRecord.attachments → Message.attachments
+ *
+ * type    附件类型，如 "image"、"pdf"
+ * content 可以是 data URL 或普通 URL；url 可显式传普通 URL。
+ */
+export interface Attachment {
+  type: string;
+  /** data URL（data:mime;base64,...）或普通 URL */
+  content?: string;
+  /** 普通 URL */
+  url?: string;
+  filename?: string;
+  title?: string;
+  mime?: string;
+  mediaType?: string;
+}
+
+function getAttachmentMime(content?: string): string | undefined {
+  if (!content?.startsWith("data:")) return undefined;
+  return content.split(";")[0].replace("data:", "") || undefined;
+}
+
+function isHttpUrl(value?: string): boolean {
+  return !!value && /^https?:\/\//i.test(value);
+}
+
+function inferMimeFromUrl(value?: string): string | undefined {
+  if (!value || !isHttpUrl(value)) return undefined;
+  try {
+    const pathname = new URL(value).pathname.toLowerCase();
+    if (/\.(png|jpe?g|webp|gif)$/.test(pathname)) return "image";
+    if (/\.pdf$/.test(pathname)) return "application/pdf";
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+function getAttachmentKind(attachment: Attachment | any): "image" | "pdf" | "file" {
+  const type = attachment.type;
+  const content = attachment.url ?? attachment.content;
+  const mime = attachment.mime ?? attachment.mediaType ?? getAttachmentMime(content) ?? inferMimeFromUrl(content);
+  if (type === "image" || type?.startsWith?.("image/") || mime?.startsWith("image/")) return "image";
+  if (type === "pdf" || type === "application/pdf" || mime === "application/pdf") return "pdf";
+  return "file";
+}
+
+export function attachmentToMessagePart(attachment: Attachment | any): any {
+  const content = attachment.url ?? attachment.content ?? "";
+  const filename = attachment.filename ?? attachment.title;
+  const kind = getAttachmentKind(attachment);
+
+  if (kind === "image") {
+    return {
+      type: "image_url",
+      image_url: { url: content, detail: "auto" },
+    };
+  }
+
+  if (isHttpUrl(content)) {
+    return {
+      type: "text",
+      text: `Attached ${kind === "pdf" ? "PDF" : "file"} URL${filename ? ` (${filename})` : ""}: ${content}`,
+    };
+  }
+
+  return {
+    type: "file",
+    file: {
+      filename: filename ?? (kind === "pdf" ? "attachment.pdf" : "attachment"),
+      file_data: content,
+    },
+    ...(kind === "pdf" ? { semanticType: "pdf" } : {}),
+  };
+}
+
 // ─── Message（LLM 请求格式） ──────────────────────────────────────────────────
 
 export interface Message {
@@ -56,6 +137,13 @@ export interface Message {
    * - "normal"：工具执行过程中的普通错误
    */
   errorType?: "invalid_args" | "normal";
+  /**
+   * 工具调用结果携带的附件（仅 role === "tool" 时有意义）。
+   * 由 assembleMessages 从 ToolCallRecord.attachments 透传而来。
+   * 在 LLMProviders.request 中按 model capabilities 预处理（内嵌或提取为合成 user 消息），
+   * sanitizeMessages 发送前会将此字段移除（不裸发到 API）。
+   */
+  attachments?: Attachment[];
 }
 
 // ─── WarmupIter（warmup 阶段特殊 iter） ──────────────────────────────────────
@@ -125,6 +213,13 @@ export interface ToolCallRecord {
   execStartTime: number;
   /** 工具执行完成的时间（Unix ms），执行中为 0 */
   execEndTime: number;
+  /**
+   * 工具执行产出的附件（图片、PDF 等）。
+   * Agent 层只做数据透传，不做任何能力判断。
+   * assembleMessages 时携带到 Message.attachments，
+   * 由 LLMProviders.request 按 model capabilities 做分流处理。
+   */
+  attachments?: Attachment[];
 }
 
 /**
@@ -149,8 +244,8 @@ export interface TurnRecord {
   userText: string;
   /** 格式化后的用户消息文本（发给 LLM，含 focus 上下文等注入内容；未格式化时与 userText 相同） */
   userFormattedText?: string;
-  /** 用户附件（图片等） */
-  userAttachments: Array<{ type: string; content: string }>;
+  /** 用户附件（图片、PDF 等） */
+  userAttachments: Attachment[];
   /**
    * 用户消息的附加元数据（UI 层透传，不参与 LLM 上下文构建）。
    * 可用于存储 focus 快照、mention 信息等，供消息列表渲染使用。
@@ -553,10 +648,7 @@ export function turnsToMessages(
     const userContent: Message["content"] = turn.userAttachments.length
       ? [
           { type: "text", text: userText },
-          ...turn.userAttachments.map((a) => ({
-            type: "image_url",
-            image_url: { url: a.content },
-          })),
+          ...turn.userAttachments.map(attachmentToMessagePart),
         ]
       : userText;
     messages.push({ role: "user", content: userContent });
@@ -598,6 +690,8 @@ export function turnsToMessages(
               tool_call_id: tc.callId,
               ...(tc.status !== "pending" ? { status: tc.status } : {}),
               ...(tc.errorType ? { errorType: tc.errorType } : {}),
+              // 透传附件，由 LLMProviders.request 按 capabilities 预处理
+              ...(tc.attachments?.length ? { attachments: tc.attachments } : {}),
             });
           }
         } else {

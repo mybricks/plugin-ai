@@ -2,21 +2,16 @@ import type { CodeAgent, Sandbox } from "../../../agent/src";
 import type { SendToAgentParams } from "../sandbox";
 import type { Designer, Hooks } from "../sandbox/types";
 import { AIRequestQueue } from "./queue";
-import type { LLMProviders } from "../../../request/src";
+import type { LLMProviders, ProviderConfig } from "../../../request/src";
 import type { SenderRef } from "../ui/components/sender";
+import { PluginAIKVStore } from "./kv";
 
 type SenderInputValue = ReturnType<SenderRef["getInput"]>;
 
 /** LLM 设置值类型（避免循环依赖） */
 export interface SettingValue {
   channel?: "infra" | "mybricks" | "custom";
-  providers?: Array<{
-    format: "openai" | "anthropic";
-    providerId: string;
-    baseUrl: string;
-    apiKey: string;
-    models: Array<{ id: string; name: string }>;
-  }>;
+  providers?: ProviderConfig[];
 }
 
 /** 沙箱注册信息 */
@@ -35,8 +30,12 @@ class Context {
   /** 插件命名空间 key，用于 agentKey 拼接 */
   private _pluginKey: string = "";
 
+  /** pluginAI KV 持久化层 */
+  readonly kv = new PluginAIKVStore();
+
   setPluginKey(key: string) {
     this._pluginKey = key;
+    this.kv.setNamespace(key);
   }
 
   /**
@@ -89,8 +88,12 @@ class Context {
   /** LLMProviders 实例（自定义渠道时使用） */
   llmProviders?: LLMProviders;
 
+  private _llmProvidersDispose?: () => void;
+
   /** 设置 LLMProviders 实例 */
-  setLLMProviders(providers: LLMProviders | undefined) {
+  setLLMProviders(providers: LLMProviders | undefined, dispose?: () => void) {
+    this._llmProvidersDispose?.();
+    this._llmProvidersDispose = dispose;
     this.llmProviders = providers;
   }
 

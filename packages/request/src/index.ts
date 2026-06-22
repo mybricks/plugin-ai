@@ -9,8 +9,7 @@ import { checkInfraAvailable, createInfraAIOnUpload, createInfraAIRequest, creat
 import type { OnUploadFn, RequestAsStreamFn } from "./types";
 import { LLMProviders } from "./providers";
 
-// import { requestAsStreamInfra } from './cdzd'
-// import { createCustomRequest } from './custom';
+export { sanitizeMessages, preprocessMessagesForModel, attachmentToMessagePart } from "./base";
 
 export type {
   TokenUsage,
@@ -23,7 +22,7 @@ export type {
   OnUploadFn,
 } from "./types";
 
-export type { ModelConfig, ProviderConfig, RemoteProviderConfig, CustomProviderConfig, ModelSelection, LLMProvidersOptions, SelectionChangeHandler } from "./providers";
+export type { ModelConfig, ModelCapabilities, ToolAttachment, ProviderConfig, RemoteProviderConfig, CustomProviderConfig, ModelSelection, LLMProvidersOptions, SelectionChangeHandler } from "./providers";
 
 function createRequestAsStream(config?: { useInfra?: boolean }): RequestAsStreamFn {
   const { useInfra = true } = config ?? {};

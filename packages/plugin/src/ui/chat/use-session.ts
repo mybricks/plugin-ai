@@ -148,7 +148,11 @@ export function useSession(agent: Agent | undefined) {
         pendingIdRef.current = turnId;
         const userAttachments = (attachments ?? []).map((a: any) => ({
           type: a.type ?? "image",
-          content: a.content ?? a.url ?? "",
+          ...(a.content !== undefined ? { content: a.content } : {}),
+          ...(a.url !== undefined ? { url: a.url } : {}),
+          ...(a.filename ?? a.title ? { filename: a.filename ?? a.title } : {}),
+          ...(a.mime ? { mime: a.mime } : {}),
+          ...(a.mediaType ? { mediaType: a.mediaType } : {}),
         }));
         const record: MessageRecord = {
           id: turnId,

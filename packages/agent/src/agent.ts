@@ -1,4 +1,5 @@
 import { randomUUID } from "./uuid";
+import { createRequestAsStream } from "../../request/src";
 import type { ToolDescriptor } from "../../request/src";
 import { AgentEvents } from "./events";
 import type {
@@ -23,7 +24,7 @@ import type {
   TurnRecord,
   WarmupIter,
 } from "./types";
-import { turnsToMessages, bindHistory, getLLMIterations, hasNoToolCalls, serializeToolCallArgumentsFromIter, serializeToolCallArgumentsFromLLMResult } from "./types";
+import { turnsToMessages, bindHistory, getLLMIterations, hasNoToolCalls, serializeToolCallArgumentsFromIter, serializeToolCallArgumentsFromLLMResult, attachmentToMessagePart } from "./types";
 import { maskMessages, computeHandoffTurnIds, buildProtectedAttachmentTurnIds, type MaskOptions } from "./mask";
 import { wrapRequestWithRetry, type RetryOptions } from "./retry";
 import { CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
@@ -64,6 +65,8 @@ const DEFAULT_RETRY: Required<RetryOptions> = {
 const DEFAULT_SUMMARY = { enabled: true as const };
 /** 默认 compact 配置 */
 const DEFAULT_COMPACT = { enabled: true as const, maxTurns: 15 };
+
+type InternalAgentOptions = AgentOptions & { request: NonNullable<AgentOptions["request"]> };
 
 function normalizeAgentMode(mode: any): AgentMode {
   return mode === AgentModeEnum.Plan ? AgentModeEnum.Plan : AgentModeEnum.Build;
@@ -248,10 +251,7 @@ function assembleMessages(
   if (attachments?.length) {
     userContent = [
       { type: "text", text: message },
-      ...attachments.map((a: any) => ({
-        type: "image_url",
-        image_url: { url: a.url ?? a.content },
-      })),
+      ...attachments.map(attachmentToMessagePart),
     ];
   }
   const userMessage: Message = { role: "user", content: userContent };
@@ -308,7 +308,7 @@ function buildToolDescriptors(tools?: Tool[]): ToolDescriptor[] {
 }
 
 function callLLM(
-  options: AgentOptions,
+  options: InternalAgentOptions,
   messages: Message[],
   signal: AbortSignal,
   rest: Record<string, any>,
@@ -455,14 +455,14 @@ function getLastRecordedMode(turns: TurnRecord[]): AgentMode | null {
 export class Agent {
   readonly events = new AgentEvents();
   readonly key: string | undefined;
-  protected options: AgentOptions;
+  protected options: InternalAgentOptions;
   private _mode: AgentMode;
   /**
    * 调用方传入的原始 request。
    * options.request 会在构造时包一层 retry；fork 时必须回到 rawRequest，
    * 否则父 Agent 的 retry wrapper 会和 fork 自己的 retry 配置叠套。
    */
-  protected readonly rawRequest: AgentOptions["request"];
+  protected readonly rawRequest: NonNullable<AgentOptions["request"]>;
   /** 历史调用记录（SSE 事件粒度），从 History 加载，每轮 complete/abort/error 后 append */
   protected turns: TurnRecord[] = [];
   /**
@@ -487,7 +487,9 @@ export class Agent {
     const hasRetry = Object.prototype.hasOwnProperty.call(options, "retry");
 
     const retryOpts = hasRetry ? (options.retry ?? DEFAULT_RETRY) : DEFAULT_RETRY;
-    this.rawRequest = options.request;
+    // llmProvider 存在时优先使用其 request，否则沿用传入的 request（向后兼容）
+    const effectiveRequest = options.llmProvider ? options.llmProvider.request : (options.request ?? createRequestAsStream());
+    this.rawRequest = effectiveRequest;
 
     this.options = {
       ...options,
@@ -1160,7 +1162,11 @@ export class Agent {
     const formattedAttachments = formattedParams.attachments ?? attachments ?? [];
     const userAttachments = formattedAttachments.map((a: any) => ({
       type: a.type ?? "image",
-      content: a.url ?? a.content ?? "",
+      ...(a.content !== undefined ? { content: a.content } : {}),
+      ...(a.url !== undefined ? { url: a.url } : {}),
+      ...(a.filename ?? a.title ? { filename: a.filename ?? a.title } : {}),
+      ...(a.mime ? { mime: a.mime } : {}),
+      ...(a.mediaType ? { mediaType: a.mediaType } : {}),
     }));
 
     const turn: TurnRecord = {

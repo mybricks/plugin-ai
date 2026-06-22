@@ -30,9 +30,15 @@ type AiServiceRequestParams = {
   message: string;
   attachments?: {
     type: string;
-    content: string;
+    /** data URL 或普通 URL */
+    content?: string;
+    /** 普通 URL */
+    url?: string;
+    filename?: string;
     title?: string;
     size?: number;
+    mime?: string;
+    mediaType?: string;
   }[];
   onProgress?: (status: string) => void;
   /** 显式提及当前聚焦元素：开启后会在消息最前面添加默认 focus 内容串。默认 false。 */

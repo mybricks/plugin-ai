@@ -4,7 +4,7 @@ import type {
   ToolDescriptor,
 } from "./types";
 import { readSSEStream } from "./sse-parser";
-import { sanitizeMessages } from "./base";
+import { sanitizeMessages, preprocessMessagesForModel } from "./base";
 
 export interface CustomRequestConfig {
   provider: () => "openai" | Promise<"openai">;
@@ -81,7 +81,7 @@ export function createCustomRequest(config: CustomRequestConfig): RequestAsStrea
 
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     try {
-      const requestBody = formatRequestBody(resolved.provider, sanitizeMessages(messages), resolved.model, tools, resolved.extraParams);
+      const requestBody = formatRequestBody(resolved.provider, sanitizeMessages(preprocessMessagesForModel(messages)), resolved.model, tools, resolved.extraParams);
       const response = await fetch(resolved.apiUrl, {
         signal: controller.signal,
         method: "POST",
