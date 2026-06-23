@@ -87,26 +87,28 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
 
   return (
     <main ref={mainRef} className={css["message-list"]}>
-      {messages.length === 0 && renderEmpty ? (
-        <div className={css["empty-state"]}>{renderEmpty()}</div>
-      ) : (
-        messages.map((record, index) => (
-          <MessageBubble
-            key={record.id}
-            record={record}
-            toolRendererMap={toolRendererMap}
-            onRetry={index === messages.length - 1 ? onRetry : undefined}
-            isLast={index === messages.length - 1}
-            agent={agent}
-            onExecutePlan={onExecutePlan}
-            canExecutePlan={canExecutePlan}
-            activePlan={activePlan}
-          />
-        ))
-      )}
-      {renderFooter ? (
-        <div className={css["message-list-footer"]}>{renderFooter()}</div>
-      ) : null}
+      <div className={css["message-list-inner"]}>
+        {messages.length === 0 && renderEmpty ? (
+          <div className={css["empty-state"]}>{renderEmpty()}</div>
+        ) : (
+          messages.map((record, index) => (
+            <MessageBubble
+              key={record.id}
+              record={record}
+              toolRendererMap={toolRendererMap}
+              onRetry={index === messages.length - 1 ? onRetry : undefined}
+              isLast={index === messages.length - 1}
+              agent={agent}
+              onExecutePlan={onExecutePlan}
+              canExecutePlan={canExecutePlan}
+              activePlan={activePlan}
+            />
+          ))
+        )}
+        {renderFooter ? (
+          <div className={css["message-list-footer"]}>{renderFooter()}</div>
+        ) : null}
+      </div>
     </main>
   );
   });

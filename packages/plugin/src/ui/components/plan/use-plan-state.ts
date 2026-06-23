@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CodeAgent } from "../../../../../agent/src";
+import { AgentModeEnum } from "../../../../../agent/src";
 import type { ActivePlanFile } from "../../../../../agent/src/mode-manager";
 
 type PlanStore = {
@@ -36,6 +37,7 @@ function setActivePlan(agentKey: string, plan: ActivePlanFile | null) {
 
 export function usePlanState(agent?: CodeAgent) {
   const agentKey = agent?.key ?? "";
+  const planEnabled = agent?.getAvailableModes().includes(AgentModeEnum.Plan) ?? false;
   const store = useMemo(() => getStore(agentKey), [agentKey]);
   const [, forceUpdate] = useState(0);
 
@@ -50,14 +52,19 @@ export function usePlanState(agent?: CodeAgent) {
   }, [agentKey]);
 
   const refreshActivePlan = useCallback(() => {
-    if (!agent || !agentKey) return;
+    if (!agent || !agentKey || !planEnabled) return;
     void agent.getPlanFile().then((plan) => {
       setActivePlan(agentKey, plan);
     }).catch(() => {});
-  }, [agent, agentKey]);
+  }, [agent, agentKey, planEnabled]);
 
   useEffect(() => {
     if (!agent || !agentKey) return;
+    if (!planEnabled) {
+      setActivePlan(agentKey, null);
+      return;
+    }
+
     refreshActivePlan();
 
     const unsubTurnStart = agent.events.on("turn:start", refreshActivePlan);
@@ -67,13 +74,13 @@ export function usePlanState(agent?: CodeAgent) {
       unsubTurnStart();
       unsubTurn();
     };
-  }, [agent, agentKey, refreshActivePlan]);
+  }, [agent, agentKey, planEnabled, refreshActivePlan]);
 
   const abandonPlan = useCallback(async (plan: ActivePlanFile) => {
-    if (!agent || !agentKey) return;
+    if (!agent || !agentKey || !planEnabled) return;
     await agent.abandonPlan(plan.path, plan.content);
     refreshActivePlan();
-  }, [agent, agentKey, refreshActivePlan]);
+  }, [agent, agentKey, planEnabled, refreshActivePlan]);
 
   return {
     activePlan: store.activePlan,

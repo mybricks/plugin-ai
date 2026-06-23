@@ -63,7 +63,7 @@ export const PlanToolCard = ({
           )}
         </div>
         {content && (
-          <div className={css["plan-card-body"]}>
+          <div className={classNames(css["plan-card-body"], markdownCss["markdown-body"])}>
             {renderContent ? renderContent(body) : <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: 12 }}>{body}</pre>}
           </div>
         )}
