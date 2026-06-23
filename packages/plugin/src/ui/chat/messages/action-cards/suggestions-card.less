@@ -11,9 +11,9 @@
 .suggestions-block {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--chat-block-gap, 6px);
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--chat-card-padding, 8px 10px);
   box-sizing: border-box;
   color: var(--mybricks-text-color-main, #333);
   background: var(--mybricks-bg-color-secondary, #F5F5F5);
@@ -22,8 +22,8 @@
 }
 
 .suggestions-header-title {
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--chat-font-size, 12px);
+  line-height: var(--chat-title-line-height, 18px);
   color: var(--mybricks-color-primary, #FA6400);
   vertical-align: baseline;
   font-weight: 500;
@@ -31,8 +31,8 @@
 
 .suggestions-desc {
   display: block;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--chat-font-size, 12px);
+  line-height: var(--chat-title-line-height, 18px);
   color: var(--mybricks-text-color-main, #333);
   word-break: break-word;
 }
@@ -46,19 +46,19 @@
 .suggestions-options {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--chat-message-group-gap, 4px);
   max-width: 100%;
 }
 
 .suggestion-option {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 28px;
-  padding: 5px 8px;
+  gap: var(--chat-block-gap, 8px);
+  min-height: var(--chat-card-min-height, 28px);
+  padding: var(--chat-card-option-padding, 5px 8px);
   box-sizing: border-box;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--chat-font-size, 12px);
+  line-height: var(--chat-title-line-height, 18px);
   color: var(--mybricks-text-color-main, #333);
   background: var(--mybricks-bg-color-main, #FFF);
   border: 1px solid transparent;

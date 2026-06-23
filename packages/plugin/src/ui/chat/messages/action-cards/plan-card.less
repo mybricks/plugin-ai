@@ -4,7 +4,7 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  margin: 8px 0 4px;
+  margin: var(--chat-block-gap, 8px) 0 var(--chat-message-group-gap, 4px);
   border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
   border-radius: 6px;
   background: var(--mybricks-bg-color-main, #FFF);
@@ -20,9 +20,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  min-height: 32px;
-  padding: 6px 8px;
+  gap: var(--chat-block-gap, 8px);
+  min-height: var(--chat-plan-header-min-height, 32px);
+  padding: var(--chat-card-padding, 6px 8px);
   box-sizing: border-box;
   border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
   background: var(--mybricks-bg-color-secondary, #F5F5F5);
@@ -31,14 +31,14 @@
 .plan-card-title {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: var(--chat-block-gap, 6px);
   min-width: 0;
 }
 
 .plan-card-title-text {
   flex-shrink: 0;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--chat-font-size, 12px);
+  line-height: var(--chat-title-line-height, 18px);
   font-weight: 600;
   color: var(--mybricks-text-color-main, #333);
 }
@@ -48,15 +48,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
-  line-height: 18px;
+  font-size: var(--chat-font-size-sm, 11px);
+  line-height: var(--chat-title-line-height, 18px);
   color: var(--mybricks-text-color-secondary, #888);
 }
 
 .plan-card-icon-button {
   flex-shrink: 0;
-  width: 22px;
-  height: 22px;
+  width: var(--chat-action-height, 22px);
+  height: var(--chat-action-height, 22px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -79,7 +79,7 @@
 
 .plan-card-body {
   max-height: 240px;
-  padding: 8px 10px 4px;
+  padding: var(--chat-card-body-padding, 8px 10px 4px);
   box-sizing: border-box;
   overflow: auto;
   user-select: text;
@@ -98,8 +98,8 @@
 .plan-card-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 6px;
-  padding: 4px 8px 6px;
+  gap: var(--chat-block-gap, 6px);
+  padding: var(--chat-card-footer-padding, 4px 8px 6px);
   box-sizing: border-box;
 }
 
@@ -108,15 +108,15 @@
   align-items: center;
   justify-content: center;
   min-width: 60px;
-  height: 22px;
+  height: var(--chat-action-height, 22px);
   padding: 0 8px;
   box-sizing: border-box;
   border: 1px solid var(--mybricks-color-primary, #FA6400);
   border-radius: 4px;
   background: var(--mybricks-color-primary, #FA6400);
   color: var(--mybricks-text-color-on-primary, #fff);
-  font-size: 11px;
-  line-height: 20px;
+  font-size: var(--chat-font-size-sm, 11px);
+  line-height: var(--chat-action-line-height, 20px);
   cursor: pointer;
   user-select: none;
   transition: all 0.2s;
@@ -173,15 +173,15 @@
   align-items: center;
   justify-content: center;
   min-width: 60px;
-  height: 22px;
+  height: var(--chat-action-height, 22px);
   padding: 0 8px;
   box-sizing: border-box;
   border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
   border-radius: 4px;
   background: var(--mybricks-bg-color-main, #FFF);
   color: var(--mybricks-text-color-secondary, #888);
-  font-size: 11px;
-  line-height: 20px;
+  font-size: var(--chat-font-size-sm, 11px);
+  line-height: var(--chat-action-line-height, 20px);
   cursor: pointer;
   user-select: none;
   transition: all 0.2s;
@@ -195,8 +195,8 @@
 
 .plan-card-modal-title-text {
   flex-shrink: 0;
-  font-size: 13px;
-  line-height: 18px;
+  font-size: var(--chat-modal-title-font-size, 13px);
+  line-height: var(--chat-title-line-height, 18px);
   font-weight: 600;
   color: var(--mybricks-text-color-main, #333);
 }
@@ -206,20 +206,20 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--chat-font-size, 12px);
+  line-height: var(--chat-title-line-height, 18px);
   color: var(--mybricks-text-color-secondary, #888);
 }
 
 .plan-card-modal-body {
-  padding: 12px 16px;
+  padding: var(--chat-modal-body-padding, 12px 16px);
   box-sizing: border-box;
 }
 
 .plan-card-footer-inner {
   display: flex;
   justify-content: flex-end;
-  gap: 6px;
+  gap: var(--chat-block-gap, 6px);
 }
 
 // ─── RelatedPlanBanner（两行卡片）────────────────────────────────────────────
@@ -228,7 +228,7 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  margin: 8px 0 4px;
+  margin: var(--chat-block-gap, 8px) 0 var(--chat-message-group-gap, 4px);
   border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
   border-radius: 6px;
   background: var(--mybricks-bg-color-secondary, #F5F5F5);
@@ -240,9 +240,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  min-height: 30px;
-  padding: 5px 8px 4px;
+  gap: var(--chat-block-gap, 8px);
+  min-height: var(--chat-card-min-height, 30px);
+  padding: var(--chat-card-option-padding, 5px 8px 4px);
   box-sizing: border-box;
   border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
 }
@@ -252,16 +252,16 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  min-height: 30px;
-  padding: 4px 8px 5px;
+  gap: var(--chat-block-gap, 8px);
+  min-height: var(--chat-card-min-height, 30px);
+  padding: var(--chat-card-option-padding, 4px 8px 5px);
   box-sizing: border-box;
 }
 
 .plan-banner-left {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--chat-message-group-gap, 4px);
   min-width: 0;
   flex: 1;
   overflow: hidden;
@@ -269,8 +269,8 @@
 
 .plan-banner-label {
   flex-shrink: 0;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--chat-font-size, 12px);
+  line-height: var(--chat-title-line-height, 18px);
   font-weight: 600;
   color: var(--mybricks-text-color-main, #333);
 }
@@ -281,8 +281,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--chat-font-size, 12px);
+  line-height: var(--chat-title-line-height, 18px);
   color: var(--mybricks-text-color-main, #333);
   font-weight: 500;
   user-select: text;
@@ -290,8 +290,8 @@
 
 .plan-banner-open-btn {
   flex-shrink: 0;
-  font-size: 11px;
-  line-height: 18px;
+  font-size: var(--chat-font-size-sm, 11px);
+  line-height: var(--chat-title-line-height, 18px);
   color: var(--mybricks-color-primary, #FA6400);
   cursor: pointer;
   user-select: none;
@@ -308,8 +308,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
-  line-height: 18px;
+  font-size: var(--chat-font-size-sm, 11px);
+  line-height: var(--chat-title-line-height, 18px);
   color: var(--mybricks-text-color-secondary, #888);
   user-select: text;
 }
@@ -317,6 +317,6 @@
 .plan-banner-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--chat-block-gap, 6px);
   flex-shrink: 0;
 }

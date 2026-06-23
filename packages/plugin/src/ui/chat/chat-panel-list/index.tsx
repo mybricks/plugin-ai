@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import classNames from "classnames";
 import { Sender, SenderRef } from "../../components/sender";
 import { MentionTag } from "../../components/mention";
 import { context } from "../../../context";
 import { ChatPanel } from "../chat-panel";
-import type { ChatPanelRef } from "../chat-panel";
+import type { ChatPanelProps, ChatPanelRef } from "../chat-panel";
 import type { MessageRecord } from "../use-session";
 import type { SendToAgentParams } from "../../../sandbox";
 import type { ChatChipInstance } from "../../../../../agent/src";
@@ -22,6 +23,12 @@ export interface ChatPanelListProps {
   onUpload?: (file: File) => Promise<string>;
   /** Header 标题，不传时读 context.name */
   title?: string;
+  /** 面板尺寸，透传给内部 ChatPanel，并作用于无 focus 时的提示与 Sender */
+  size?: ChatPanelProps["size"];
+  /** 自定义根元素类名，用于覆盖 ChatPanel CSS 变量 */
+  className?: string;
+  /** 自定义根元素样式，可直接传入 CSS 变量做局部调节 */
+  style?: React.CSSProperties;
 }
 
 interface ComInstance {
@@ -109,7 +116,7 @@ const pluginRenderUserMessage = (record: MessageRecord) => {
 // 监听 focus 事件，每个 comId 对应一个独立 ChatPanel 实例（display:none 切换）。
 // 各 ChatPanel 持有独立的 useSession，agent 事件 re-render 完全隔离。
 
-const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) => {
+const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", className, style }: ChatPanelListProps) => {
   const [currentComId, setCurrentComId] = useState<string | undefined>(undefined);
   const [instances, setInstances] = useState<ComInstance[]>([]);
   const [contextDisabled, setContextDisabled] = useState(() => context.disabled);
@@ -259,7 +266,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
   }, [handleFocus, appendFocusChipIfNeeded, ensureInstance]);
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+    <div className={classNames(css["chat-panel-list"], css[`size-${size}`], className)} style={style}>
       {/* 无 focus 时展示 disabled sender 提示 */}
       {!currentComId && (
         <>
@@ -300,6 +307,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title }: ChatPanelListProps) =
               onUpload={onUpload}
               title={title}
               disabled={contextDisabled}
+              size={size}
               renderUserMessage={pluginRenderUserMessage}
               matchDefaultFocusContent={matchDefaultDomFocusContent}
               defaultFocusPlaceholder="您可以描述对于此区域的需求"

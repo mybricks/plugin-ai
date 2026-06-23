@@ -5,17 +5,17 @@
 .tool-card {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--chat-block-gap, 6px);
   border-radius: 6px;
   border: 1px solid rgba(0, 0, 0, 0.08);
   background: var(--mybricks-bg-color-secondary, #F5F5F5);
-  padding: 5px 10px;
+  padding: var(--chat-card-option-padding, 5px 10px);
   margin: 3px 0;
-  font-size: 12px;
+  font-size: var(--chat-font-size, 12px);
   color: var(--mybricks-text-color-main, #333);
   cursor: default;
   user-select: none;
-  min-height: 28px;
+  min-height: var(--chat-card-min-height, 28px);
 }
 
 .tool-icon {
@@ -32,7 +32,7 @@
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: var(--chat-font-size, 12px);
   line-height: 1;
   opacity: 0.5;
   color: var(--mybricks-text-color-main, #333);
@@ -43,19 +43,19 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 12px;
+  font-size: var(--chat-font-size, 12px);
   color: var(--mybricks-text-color-main, #333);
 }
 
 .tool-meta {
-  font-size: 11px;
+  font-size: var(--chat-font-size-sm, 11px);
   color: var(--mybricks-text-color-main, #333);
   opacity: 0.45;
   flex-shrink: 0;
 }
 
 .tool-duration {
-  font-size: 11px;
+  font-size: var(--chat-font-size-sm, 11px);
   color: var(--mybricks-text-color-main, #333);
   flex-shrink: 0;
 }
@@ -68,7 +68,7 @@
   background: var(--mybricks-bg-color-secondary, #F5F5F5);
   margin: 3px 0;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--chat-font-size, 12px);
   color: var(--mybricks-text-color-main, #333);
   cursor: default;
   user-select: none;
@@ -77,11 +77,11 @@
 .code-card-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
+  gap: var(--chat-block-gap, 6px);
+  padding: var(--chat-card-option-padding, 5px 10px);
   border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
   background: var(--mybricks-bg-color-secondary, #F5F5F5);
-  min-height: 28px;
+  min-height: var(--chat-card-min-height, 28px);
   cursor: pointer;
   user-select: none;
 }
@@ -100,13 +100,13 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 12px;
+  font-size: var(--chat-font-size, 12px);
   font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
   color: var(--mybricks-text-color-main, #333);
 }
 
 .code-card-lines {
-  font-size: 11px;
+  font-size: var(--chat-font-size-sm, 11px);
   color: var(--mybricks-text-color-main, #333);
   opacity: 0.45;
   flex-shrink: 0;
@@ -122,8 +122,8 @@
 
 .code-card-body {
   margin: 0;
-  padding: 8px 10px;
-  font-size: 11px;
+  padding: var(--chat-card-padding, 8px 10px);
+  font-size: var(--chat-font-size-sm, 11px);
   font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
   line-height: 1.6;
   overflow: auto;
@@ -183,7 +183,7 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 12px;
+  font-size: var(--chat-font-size, 12px);
   color: var(--mybricks-text-color-main, #333);
   font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
 }
@@ -195,7 +195,7 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 12px;
+  font-size: var(--chat-font-size, 12px);
   color: var(--mybricks-text-color-main, #333);
   font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
 }
@@ -209,7 +209,7 @@
   background: var(--mybricks-bg-color-secondary, #F5F5F5);
   margin: 3px 0;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--chat-font-size, 12px);
   color: var(--mybricks-text-color-main, #333);
   user-select: none;
 }
@@ -218,11 +218,11 @@
 .batch-group-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
+  gap: var(--chat-block-gap, 6px);
+  padding: var(--chat-card-option-padding, 5px 10px);
   background: var(--mybricks-bg-color-secondary, #F5F5F5);
   border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
-  min-height: 28px;
+  min-height: var(--chat-card-min-height, 28px);
   cursor: default;
 }
 
@@ -239,12 +239,12 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 12px;
+  font-size: var(--chat-font-size, 12px);
   color: var(--mybricks-text-color-main, #333);
 }
 
 .batch-group-header-meta {
-  font-size: 11px;
+  font-size: var(--chat-font-size-sm, 11px);
   color: var(--mybricks-text-color-main, #333);
   opacity: 0.45;
   flex-shrink: 0;
@@ -271,7 +271,7 @@
 .batch-item-header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--chat-block-gap, 6px);
   padding: 4px 10px 4px 14px; // 左缩进对齐层次感
   min-height: 26px;
   cursor: pointer;
@@ -295,7 +295,7 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 11px;
+  font-size: var(--chat-font-size-sm, 11px);
   font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
   color: var(--mybricks-text-color-main, #333);
   opacity: 0.85;
@@ -338,7 +338,7 @@
   background: var(--mybricks-bg-color-secondary, #F5F5F5);
   margin: 3px 0;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--chat-font-size, 12px);
   color: var(--mybricks-text-color-main, #333);
   user-select: none;
 }
@@ -347,11 +347,11 @@
 .init-project-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
+  gap: var(--chat-block-gap, 6px);
+  padding: var(--chat-card-option-padding, 5px 10px);
   background: var(--mybricks-bg-color-secondary, #F5F5F5);
   border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
-  min-height: 28px;
+  min-height: var(--chat-card-min-height, 28px);
   cursor: default;
 }
 
@@ -368,12 +368,12 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 12px;
+  font-size: var(--chat-font-size, 12px);
   color: var(--mybricks-text-color-main, #333);
 }
 
 .init-project-header-meta {
-  font-size: 11px;
+  font-size: var(--chat-font-size-sm, 11px);
   color: var(--mybricks-text-color-main, #333);
   opacity: 0.45;
   flex-shrink: 0;
@@ -381,7 +381,7 @@
 
 // 分节标题（需求、文件列表、错误）
 .init-project-section-title {
-  font-size: 11px;
+  font-size: var(--chat-font-size-sm, 11px);
   font-weight: 600;
   color: var(--mybricks-text-color-main, #333);
   opacity: 0.6;
@@ -396,9 +396,9 @@
 }
 
 .init-project-requirement-text {
-  padding: 6px 14px 8px;
-  font-size: 12px;
-  line-height: 1.5;
+  padding: var(--chat-card-padding, 6px 14px 8px);
+  font-size: var(--chat-font-size, 12px);
+  line-height: var(--chat-body-line-height-ratio, 1.5);
   color: var(--mybricks-text-color-main, #333);
   white-space: pre-wrap;
   word-break: break-word;
@@ -422,7 +422,7 @@
 .init-project-file-item {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--chat-block-gap, 6px);
   padding: 4px 14px;
   min-height: 24px;
   border-top: 1px solid var(--mybricks-border-color-main, #E6E6E6);
@@ -445,7 +445,7 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 11px;
+  font-size: var(--chat-font-size-sm, 11px);
   font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
   color: var(--mybricks-text-color-main, #333);
   opacity: 0.85;
@@ -465,8 +465,8 @@
 
 .init-project-output-content {
   margin: 0;
-  padding: 8px 14px;
-  font-size: 11px;
+  padding: var(--chat-card-padding, 8px 14px);
+  font-size: var(--chat-font-size-sm, 11px);
   line-height: 1.6;
   font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
   color: var(--mybricks-text-color-main, #333);
@@ -489,8 +489,8 @@
 }
 
 .init-project-error-text {
-  padding: 6px 14px 8px;
-  font-size: 11px;
+  padding: var(--chat-card-padding, 6px 14px 8px);
+  font-size: var(--chat-font-size-sm, 11px);
   line-height: 1.5;
   color: #c0392b;
   white-space: pre-wrap;

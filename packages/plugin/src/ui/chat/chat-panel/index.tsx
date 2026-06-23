@@ -1,4 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import classNames from "classnames";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
 import { chipRegistry } from "../../../sandbox/setup";
@@ -18,11 +19,13 @@ interface User {
   avatar?: string;
 }
 
+export type ChatPanelSize = "small" | "medium" | "large";
+
 export interface ChatPanelProps {
   user?: User;
   copilot?: User;
-  /** 是否展示 Header，默认 true */
-  header?: boolean;
+  /** 是否展示 Header，默认 true；传函数时自定义渲染 Header */
+  header?: boolean | (() => React.ReactNode);
   /** agent 实例 */
   agent?: CodeAgent;
   /** 上传文件回调，不传时回退到 context.pluginParams.onUpload */
@@ -56,6 +59,12 @@ export interface ChatPanelProps {
    * 返回 ReactNode；有消息后自动隐藏。
    */
   renderEmpty?: () => React.ReactNode;
+  /** 面板尺寸，默认 small；通过 CSS 变量控制消息列表、Sender 和卡片间距/字号 */
+  size?: ChatPanelSize;
+  /** 自定义根元素类名，用于覆盖 ChatPanel CSS 变量 */
+  className?: string;
+  /** 自定义根元素样式，可直接传入 CSS 变量做局部调节 */
+  style?: React.CSSProperties;
 }
 
 export interface ChatPanelRef {
@@ -87,6 +96,9 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   matchDefaultFocusContent,
   defaultFocusPlaceholder,
   renderEmpty,
+  size = "small",
+  className,
+  style,
 }, ref) => {
   const agentKey = agent?.key ?? "";
 
@@ -232,10 +244,19 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     );
   };
 
+  const headerNode = typeof header === "function"
+    ? header()
+    : header
+      ? <Header title={title} onClear={onClear} onExport={onExportHistory} disabled={isDisabled} />
+      : null;
+
   return (
     <ChatPanelProvider value={{ user, copilot, disabled: isDisabled, renderUserMessage }}>
-      <div className={css["chat-panel"]}>
-        {header ? <Header title={title} onClear={onClear} onExport={onExportHistory} disabled={isDisabled} /> : null}
+      <div
+        className={classNames(css["chat-panel"], css[`size-${size}`], className)}
+        style={style}
+      >
+        {headerNode}
 
         <div className={css["messages-area"]}>
           <MessageList

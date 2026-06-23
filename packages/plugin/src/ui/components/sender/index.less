@@ -3,7 +3,7 @@
 /*! plugin-ai-comp-view-anchor */
 
 .container {
-  padding: 8px;
+  padding: var(--chat-sender-padding, 8px);
 
   .senderAbove {
     margin: 0 10px;
@@ -28,7 +28,7 @@
     border: 1px solid rgba(0, 0, 0, .08);
     border-top-left-radius: 8px;
     border-top-right-radius: 8px;
-    font-size: 11px;
+    font-size: var(--chat-font-size-sm, 11px);
     overflow: hidden;
     width: calc(100% - 14px);
     margin-left: 7px;
@@ -36,8 +36,8 @@
     .pendingQueueHeader {
       display: flex;
       align-items: center;
-      gap: 4px;
-      padding: 5px 8px;
+      gap: var(--chat-message-group-gap, 4px);
+      padding: var(--chat-card-option-padding, 5px 8px);
       cursor: pointer;
       color: var(--mybricks-text-color-main, #333);
       opacity: 0.7;
@@ -63,7 +63,7 @@
     .pendingQueueItem {
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: var(--chat-message-group-gap, 4px);
       padding: 3px 4px;
       border-radius: 4px;
       background: var(--mybricks-bg-color-main, #FFF);
@@ -83,7 +83,7 @@
         align-items: center;
         gap: 2px;
         color: var(--mybricks-text-color-main, #333);
-        font-size: 11px;
+        font-size: var(--chat-font-size-sm, 11px);
         white-space: nowrap;
 
         .pendingQueueFocusArea {
@@ -97,12 +97,12 @@
         text-overflow: ellipsis;
         white-space: nowrap;
         color: var(--mybricks-text-color-main, #333);
-        font-size: 11px;
+        font-size: var(--chat-font-size-sm, 11px);
       }
 
       .pendingQueueBadge {
         flex-shrink: 0;
-        font-size: 10px;
+        font-size: var(--chat-caption-font-size, 10px);
         color: var(--mybricks-text-color-main, #333);
         opacity: 0.5;
       }
@@ -334,7 +334,7 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 4px;
+      gap: var(--chat-message-group-gap, 4px);
       border-radius: inherit;
       background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 6%, var(--mybricks-bg-color-main, #fff));
       pointer-events: none;
@@ -347,22 +347,22 @@
       }
 
       .dragOverlayHint {
-        font-size: 11px;
+        font-size: var(--chat-font-size-sm, 11px);
         color: var(--mybricks-text-color-main, #333);
         opacity: 0.45;
       }
     }
 
     .mentions {
-      padding: 8px 8px 0 8px;
+      padding: var(--chat-sender-mentions-padding, 8px 8px 0 8px);
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: var(--chat-message-group-gap, 4px);
       color: var(--mybricks-text-color-main, #333);
 
       span {
-        font-size: 12px;
-        line-height: 12px;
+        font-size: var(--chat-font-size, 12px);
+        line-height: var(--chat-font-size, 12px);
         white-space: nowrap;
       }
 
@@ -376,21 +376,21 @@
     }
 
     .topArea {
-      padding: 8px;
+      padding: var(--chat-sender-padding, 8px);
       box-shadow: 0 .5px 0 0 rgba(0, 0, 0, .13);
     }
 
     .input {
       // padding: 12px 16px 10px;
-      padding: 8px 8px 10px;
+      padding: var(--chat-sender-input-padding, 8px 8px 10px);
       // line-height: 20px;
       line-height: 1.5;
-      min-height: 60px;
+      min-height: var(--chat-sender-input-min-height, 60px);
       position: relative;
 
       .inputEditorContainer {
-        font-size: 12px;
-        max-height: 140px;
+        font-size: var(--chat-font-size, 12px);
+        max-height: var(--chat-sender-input-max-height, 140px);
         // scrollbar-width: none;
         position: relative;
         min-height: inherit;
@@ -402,11 +402,11 @@
         .chip-visual() {
           display: inline-flex;
           align-items: center;
-          height: 19px;
+          height: var(--chat-chip-height, 19px);
           padding: 0 5px 0 6px;
           border-radius: 4px;
-          font-size: 11px;
-          line-height: 17px;
+          font-size: var(--chat-chip-font-size, 11px);
+          line-height: var(--chat-chip-line-height, 17px);
           color: var(--mybricks-color-primary, #FA6400);
           border: 1px solid var(--mybricks-color-primary, #FA6400);
           background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 8%, transparent);
@@ -419,7 +419,7 @@
 
         .inputEditor {
           color: var(--mybricks-text-color-main, #333);
-          line-height: 21px;
+          line-height: var(--chat-sender-editor-line-height, 21px);
           user-select: text;
           white-space: pre-wrap;
           word-break: break-word;
@@ -461,8 +461,8 @@
             gap: 3px;
             padding: 1px 4px 1px 6px;
             border-radius: 4px;
-            font-size: 12px;
-            line-height: 17px;
+            font-size: var(--chat-chip-font-size, 12px);
+            line-height: var(--chat-chip-line-height, 17px);
             background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 10%, transparent);
             color: var(--mybricks-color-primary, #FA6400);
             border: 1px solid color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 25%, transparent);
@@ -538,7 +538,7 @@
           color: var(--mybricks-text-color-main, #333);
           opacity: 0.6;
           overflow: hidden;
-          line-height: 21px;
+          line-height: var(--chat-sender-editor-line-height, 21px);
 
           .placeholderText {
             overflow: visible;
@@ -569,7 +569,7 @@
       .leftArea {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: var(--chat-block-gap, 6px);
         min-width: 0;
         flex: 1;
 
@@ -578,8 +578,8 @@
           display: flex;
           align-items: center;
           justify-content: center;
-          width: 25px;
-          height: 25px;
+          width: var(--chat-control-size, 25px);
+          height: var(--chat-control-size, 25px);
           flex-shrink: 0;
           border-radius: 50%;
           cursor: pointer !important;
@@ -591,8 +591,8 @@
           
 
           svg {
-            width: 14px;
-            height: 14px;
+            width: var(--chat-control-icon-size, 14px);
+            height: var(--chat-control-icon-size, 14px);
             color: var(--mybricks-text-color-main, #333);
           }
 
@@ -644,19 +644,19 @@
             justify-content: center;
             // width: 32px;
             // height: 32px;
-            width: 25px;
-            height: 25px;
+            width: var(--chat-control-size, 25px);
+            height: var(--chat-control-size, 25px);
 
             svg {
-              width: 11px;
-              height: 11px;
+              width: var(--chat-send-icon-size, 11px);
+              height: var(--chat-send-icon-size, 11px);
             }
           }
 
           .loadingButton {
             svg {
-              width: 11px;
-              height: 11px;
+              width: var(--chat-send-icon-size, 11px);
+              height: var(--chat-send-icon-size, 11px);
             }
           }
         }
