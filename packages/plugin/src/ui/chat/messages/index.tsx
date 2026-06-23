@@ -46,12 +46,14 @@ export interface MessageListProps {
   canExecutePlan?: boolean;
   /** 消息列表为空时在区域内居中展示的自定义内容 */
   renderEmpty?: () => React.ReactNode;
+  /** 粘在滚动区域底部的自定义 footer，例如 Sender */
+  renderFooter?: () => React.ReactNode;
 }
 
 type MessageListRef = { scrollToBottom: () => void };
 
 const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
-  function MessageListInner({ messages, agent, onRetry, onExecutePlan, canExecutePlan = true, renderEmpty }, ref) {
+  function MessageListInner({ messages, agent, onRetry, onExecutePlan, canExecutePlan = true, renderEmpty, renderFooter }, ref) {
   const mainRef = useRef<HTMLElement>(null);
   const scrollerRef = useRef<AutoScroller | null>(null);
   const { activePlan } = usePlanState(agent);
@@ -102,6 +104,9 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
           />
         ))
       )}
+      {renderFooter ? (
+        <div className={css["message-list-footer"]}>{renderFooter()}</div>
+      ) : null}
     </main>
   );
   });

@@ -61,6 +61,12 @@ export interface ChatPanelProps {
   renderEmpty?: () => React.ReactNode;
   /** 面板尺寸，默认 small；通过 CSS 变量控制消息列表、Sender 和卡片间距/字号 */
   size?: ChatPanelSize;
+  /**
+   * 是否让消息滚动容器包含 Sender 区域。
+   * 默认 false，保持 Sender 位于消息滚动容器外部的旧布局；
+   * 开启后 Sender 会作为 sticky footer 渲染在消息滚动容器底部，同时保留 MessageList.scrollToBottom 能力。
+   */
+  scrollWithSender?: boolean;
   /** 自定义根元素类名，用于覆盖 ChatPanel CSS 变量 */
   className?: string;
   /** 自定义根元素样式，可直接传入 CSS 变量做局部调节 */
@@ -97,6 +103,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   defaultFocusPlaceholder,
   renderEmpty,
   size = "small",
+  scrollWithSender = false,
   className,
   style,
 }, ref) => {
@@ -250,6 +257,31 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       ? <Header title={title} onClear={onClear} onExport={onExportHistory} disabled={isDisabled} />
       : null;
 
+  const senderNode = (
+    <Sender
+      ref={senderRef}
+      loading={loading}
+      placeholder={`您好，我是${context.name}，请详细描述您的需求`}
+      defaultFocusPlaceholder={defaultFocusPlaceholder}
+      disabled={isDisabled}
+      mode="mention"
+      chatMode={showChatMode ? chatMode : null}
+      onSend={onSend}
+      onChatModeChange={(nextMode: AgentMode | null) => {
+        if (nextMode) agent?.setMode(nextMode, "ui-change");
+      }}
+      onUpload={onUpload ?? context.pluginParams.onUpload}
+      onStop={() => context.aiQueue.stop(agentKey)}
+      pendingQueue={pendingQueue}
+      onRemoveFromQueue={(id: string) => context.aiQueue.removeFromQueue(agentKey, id)}
+      renderFocus={renderFocus}
+      renderAttachmentSuffix={renderAttachmentSuffix}
+      modelSelector={modelSelector}
+      chipTypes={chipRegistry.getAll()}
+      matchDefaultFocusContent={matchDefaultFocusContent}
+    />
+  );
+
   return (
     <ChatPanelProvider value={{ user, copilot, disabled: isDisabled, renderUserMessage }}>
       <div
@@ -266,6 +298,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
             onExecutePlan={onExecutePlan}
             canExecutePlan={canExecutePlan}
             renderEmpty={renderEmpty}
+            renderFooter={scrollWithSender ? () => senderNode : undefined}
             onRetry={(id: string) => {
               if (!agent) return;
               context.aiQueue.clearQueue(agentKey);
@@ -280,29 +313,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
             }}
           />
         </div>
-
-        <Sender
-          ref={senderRef}
-          loading={loading}
-          placeholder={`您好，我是${context.name}，请详细描述您的需求`}
-          defaultFocusPlaceholder={defaultFocusPlaceholder}
-          disabled={isDisabled}
-          mode="mention"
-          chatMode={showChatMode ? chatMode : null}
-          onSend={onSend}
-          onChatModeChange={(nextMode: AgentMode | null) => {
-            if (nextMode) agent?.setMode(nextMode, "ui-change");
-          }}
-          onUpload={onUpload ?? context.pluginParams.onUpload}
-          onStop={() => context.aiQueue.stop(agentKey)}
-          pendingQueue={pendingQueue}
-          onRemoveFromQueue={(id: string) => context.aiQueue.removeFromQueue(agentKey, id)}
-          renderFocus={renderFocus}
-          renderAttachmentSuffix={renderAttachmentSuffix}
-          modelSelector={modelSelector}
-          chipTypes={chipRegistry.getAll()}
-          matchDefaultFocusContent={matchDefaultFocusContent}
-        />
+        {scrollWithSender ? null : senderNode}
       </div>
     </ChatPanelProvider>
   );
