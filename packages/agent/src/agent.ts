@@ -814,6 +814,17 @@ export class Agent {
           tail,
           messageSnapshot.attachmentContextMessages
         );
+        const activeCompactRecord = this.compactRecord;
+        const compactRecordTrace = activeCompactRecord
+          ? {
+              upToTurnId: activeCompactRecord.upToTurnId,
+              inHistory: messageSnapshot.historyTurns.some((t) => t.id === activeCompactRecord.upToTurnId),
+            }
+          : undefined;
+        const trace = {
+          historyTurnCount: messageSnapshot.historyTurns.length,
+          ...(compactRecordTrace ? { compactRecord: compactRecordTrace } : {}),
+        };
 
         // 调用 LLM
         const { rest: stepLLMRest, effectiveAiRole } = buildStepLLMRest();
@@ -864,6 +875,7 @@ export class Agent {
           ...(effectiveAiRole ? { aiRole: effectiveAiRole } : {}),
           mode: stepMode,
           ...(llmResult.usage ? { usage: llmResult.usage } : {}),
+          trace,
         };
         turn.iterations.push(currentIter);
         // 判断是否终止：

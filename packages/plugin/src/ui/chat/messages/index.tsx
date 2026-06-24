@@ -26,13 +26,10 @@ import { SuggestionsBlock } from "./action-cards/suggestions-card";
 
 const md = markdownit();
 
-/** 将底层错误消息映射为用户友好的提示（仅渲染层使用，原始数据保留不变） */
+/** 将通用网络失败映射为用户友好的提示；其余错误保留原始 message。 */
 function toUserFriendlyError(msg: string): string {
   if (msg === 'Failed to fetch' || msg === 'Load failed') {
     return '模型服务连接失败，请检查网络或稍后重试';
-  }
-  if (/^SSE \d+:/.test(msg)) {
-    return '模型服务响应异常，请稍后重试';
   }
   return msg;
 }

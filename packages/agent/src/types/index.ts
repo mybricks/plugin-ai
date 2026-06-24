@@ -15,6 +15,14 @@ export type TokenUsage = {
   model?: string;
 };
 
+export interface IterationTrace {
+  historyTurnCount: number;
+  compactRecord?: {
+    upToTurnId: string;
+    inHistory: boolean;
+  };
+}
+
 // ─── AgentMode（运行模式）────────────────────────────────────────────────────
 
 /**
@@ -292,6 +300,8 @@ export interface TurnRecord {
         mode?: AgentMode;
         /** 本次 LLM 请求的 token 用量 */
         usage?: TokenUsage;
+        /** 本次 LLM 请求构建时记录的上下文追踪信息 */
+        trace?: IterationTrace;
       }
   >;
 

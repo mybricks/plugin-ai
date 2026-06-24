@@ -585,6 +585,27 @@ function getFileIdFromUrl(): string | undefined {
   }
 }
 
+async function readResponseErrorMessage(response: Response): Promise<string> {
+  try {
+    const text = (await response.text()).trim();
+    if (text) {
+      try {
+        const data = JSON.parse(text);
+        const message = data?.message ?? data?.error?.message ?? data?.error;
+        if (typeof message === "string" && message.trim()) {
+          return message.trim();
+        }
+      } catch {
+        // ignore
+      }
+      return text;
+    }
+  } catch {
+    // ignore
+  }
+  return response.statusText || `HTTP ${response.status}`;
+}
+
 async function doSSEFetch(opts: {
   url: string;
   body: unknown;
@@ -622,8 +643,8 @@ async function doSSEFetch(opts: {
   cancel(() => controller.abort());
 
   if (!response.ok) {
-    const text = await response.text();
-    error(new Error(`SSE ${response.status}: ${text || response.statusText}`));
+    const message = await readResponseErrorMessage(response);
+    error(new Error(message));
     return;
   }
 

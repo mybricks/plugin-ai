@@ -1,6 +1,7 @@
 import type { TestCase, Priority } from "./types";
 import {
   networkErrorCase,
+  requestBusinessErrorMessageCase,
   networkErrorDelayedCase,
   networkErrorAfterStreamCase,
   networkErrorAfterToolCallNoHistoryCase,
@@ -84,6 +85,7 @@ export const ALL_CASES: TestCase[] = [
   abortThenNextTurnAwarenessCase,
   customToolRendererErrorBoundaryCase,
   // ─── 网络中断 ───────────────────────────────────
+  requestBusinessErrorMessageCase,
   networkErrorDelayedCase,
   toolCallArgsMidErrorCase,
   // 网络中断（带重试）

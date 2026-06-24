@@ -21,6 +21,24 @@ export const networkErrorCase: TestCase = {
   ]),
 };
 
+export const requestBusinessErrorMessageCase: TestCase = {
+  id: "request-business-error-message",
+  name: "接口业务错误文案",
+  group: "网络中断",
+  priority: "P0",
+  description: "模拟接口 429 返回后 request 层透传业务错误 message",
+  expectedBehavior:
+    "消息气泡进入 error 状态，直接显示“当前使用已达上限，请明天再试”，不展示通用模型服务异常文案。",
+  initialTurns: [],
+  request: makeScriptedRequest([
+    {
+      type: "error",
+      error: new Error("当前使用已达上限，请明天再试"),
+      delayMs: 300,
+    },
+  ]),
+};
+
 export const networkErrorDelayedCase: TestCase = {
   id: "network-error-delayed",
   name: "延迟断开（2s）",
