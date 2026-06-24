@@ -270,7 +270,7 @@ function assembleMessages(
   ];
 
   // ── prompt cache 断点 3：当前请求尾部最后一条消息 ──────────────
-  // tail 非空时最后一条为 role: "tool"，空时为 userMessage (role: "user")
+  // tail 非空时取 tail 的最后一条，空时为 userMessage (role: "user")
   // role: "assistant" 不加 cache（工具调用响应消息不是断点）
   const cacheTargetIndex = baseMessages.length + (prefixMessage ? 1 : 0) + tail.length;
   // 等价于 userMessage 在 assembled 中的索引 + tail.length（tail 为空则指向 userMessage 自身）
@@ -866,10 +866,15 @@ export class Agent {
           ...(llmResult.usage ? { usage: llmResult.usage } : {}),
         };
         turn.iterations.push(currentIter);
-        // 判断是否终止：只有存在实际工具调用时才继续循环
+        // 判断是否终止：
+        // - 只要存在实际工具调用，优先执行工具并继续
+        // - 没有工具调用时，若 finishReason 为 length，说明输出被截断，保留本次 assistant 内容并继续
         const hasToolCalls = llmResult.toolCalls.length > 0;
+        const finishReason = llmResult.finishReason;
         const shouldContinueWithTools = hasToolCalls;
-        const modelFinished = !shouldContinueWithTools;
+        const shouldContinueForLength = !hasToolCalls && finishReason === "length";
+        const shouldContinue = shouldContinueWithTools || shouldContinueForLength;
+        const modelFinished = !shouldContinue;
         if (modelFinished) {
           turn.endTime = iterEndTime;
           turn.status = "success";
@@ -880,21 +885,27 @@ export class Agent {
           return;
         }
 
-        // 有工具调用
+        // 仍需后续 step：工具调用或 length 截断续跑
         this.events.emit("llm:complete", { step, finishReason: llmResult.finishReason, usage: llmResult.usage, done: false, endTime: iterEndTime });
 
-        // 追加 assistant message 到 tail
+        // 追加 assistant message 到 tail。length 续跑时不追加额外 user 提示。
         const assistantMsg: Message = {
           role: "assistant",
           content: llmResult.content,
           ...(llmResult.thinkingContent ? { reasoning_content: llmResult.thinkingContent } : {}),
-          tool_calls: llmResult.toolCalls.map(tc => ({
-            id: tc.id,
-            type: "function" as const,
-            function: { name: tc.name, arguments: serializeToolCallArgumentsFromLLMResult(tc) },
-          })),
+          ...(shouldContinueWithTools ? {
+            tool_calls: llmResult.toolCalls.map(tc => ({
+              id: tc.id,
+              type: "function" as const,
+              function: { name: tc.name, arguments: serializeToolCallArgumentsFromLLMResult(tc) },
+            })),
+          } : {}),
         };
         tail.push(assistantMsg);
+
+        if (shouldContinueForLength) {
+          continue;
+        }
 
         // 执行工具
         const toolResultMessages: Message[] = [];
@@ -1096,7 +1107,7 @@ export class Agent {
    * 发起 AI 请求（ReAct 循环）。
    *
    * 循环终止条件（对标 opencode prompt.ts）：
-   *   1. 仅当 finishReason === "tool_calls" 且实际存在工具调用时继续；否则结束
+   *   1. 存在实际工具调用时继续执行工具；无工具调用但 finishReason === "length" 时继续请求
    *   2. 超出 maxSteps
    *   3. Doom loop 触发（连续 doomLoopThreshold 次完全相同的工具调用）
    *   4. 用户 abort()

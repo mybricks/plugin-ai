@@ -52,6 +52,8 @@ export interface ChatPanelProps {
   renderAttachmentSuffix?: () => React.ReactNode;
   /** 判断输入框当前内容是否为默认 focus 内容串 */
   matchDefaultFocusContent?: SenderProps["matchDefaultFocusContent"];
+  /** Sender 普通 placeholder，不传时使用默认问候文案 */
+  placeholder?: SenderProps["placeholder"];
   /** 命中默认 focus 内容串时展示的 placeholder */
   defaultFocusPlaceholder?: SenderProps["defaultFocusPlaceholder"];
   /**
@@ -100,6 +102,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   disabled = false,
   renderAttachmentSuffix,
   matchDefaultFocusContent,
+  placeholder,
   defaultFocusPlaceholder,
   renderEmpty,
   size = "small",
@@ -261,7 +264,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     <Sender
       ref={senderRef}
       loading={loading}
-      placeholder={`您好，我是${context.name}，请详细描述您的需求`}
+      placeholder={placeholder ?? `您好，我是${context.name}，请详细描述您的需求`}
       defaultFocusPlaceholder={defaultFocusPlaceholder}
       disabled={isDisabled}
       mode="mention"
