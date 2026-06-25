@@ -11,6 +11,7 @@ import { useSession } from "../use-session";
 import { MessageList } from "../messages";
 import { Header } from "./header";
 import { ChatPanelProvider } from "./context";
+import type { MarkdownSkinConfig } from "./context";
 import type { MessageRecord } from "../use-session";
 import css from "./index.less";
 
@@ -73,6 +74,12 @@ export interface ChatPanelProps {
   className?: string;
   /** 自定义根元素样式，可直接传入 CSS 变量做局部调节 */
   style?: React.CSSProperties;
+  /**
+   * Markdown 皮肤配置，允许覆盖消息 / plan 场景的 markdown 渲染 class。
+   * - message：AI 消息内容的皮肤，默认内置 skin-message
+   * - plan：计划卡片 body 的皮肤，默认内置 skin-plan
+   */
+  markdownSkin?: MarkdownSkinConfig;
 }
 
 export interface ChatPanelRef {
@@ -109,6 +116,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   scrollWithSender = false,
   className,
   style,
+  markdownSkin,
 }, ref) => {
   const agentKey = agent?.key ?? "";
 
@@ -286,7 +294,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   );
 
   return (
-    <ChatPanelProvider value={{ user, copilot, disabled: isDisabled, renderUserMessage }}>
+    <ChatPanelProvider value={{ user, copilot, disabled: isDisabled, renderUserMessage, markdownSkin }}>
       <div
         className={classNames(css["chat-panel"], css[`size-${size}`], className)}
         style={style}

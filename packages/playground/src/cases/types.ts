@@ -56,4 +56,11 @@ export interface TestCase {
    * 对应 ChatPanelProps.renderEmpty。
    */
   renderEmpty?: () => React.ReactNode;
+  /**
+   * 特殊 playground 展示布局。
+   * 默认走原始调试布局；chat-panel-skin 只展示皮肤预览用 ChatPanel。
+   */
+  playgroundLayout?: "chat-panel-skin";
+  /** ChatPanel 皮肤预览模式；default 不注入变量，custom 注入 demo 变量。 */
+  chatPanelSkin?: "default" | "custom";
 }

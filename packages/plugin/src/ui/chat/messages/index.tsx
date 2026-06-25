@@ -21,6 +21,8 @@ import { useChatPanel } from "../chat-panel/context";
 import { isPlanFilePath, usePlanState } from "../../components/plan";
 import "./tool-renders/register";
 import css from "./index.less";
+import messageSkinCss from "../../markdown/skin-message.less";
+import { renderMermaidInContainer } from "../../markdown/mermaid";
 import { PlanFileCardWithContent } from "./action-cards/plan-card";
 import { SuggestionsBlock } from "./action-cards/suggestions-card";
 
@@ -122,7 +124,12 @@ const MessageBubble = ({ record, toolRendererMap, onRetry, isLast, agent, onExec
   canExecutePlan?: boolean;
   activePlan: ActivePlanFile | null;
 }) => {
-  const { user, copilot, renderUserMessage } = useChatPanel();
+  const { user, renderUserMessage } = useChatPanel();
+  const userName = record.sender?.name ?? user?.name;
+  const userAvatar = record.sender?.avatar ?? user?.avatar;
+  const shouldShowUserHeader = Boolean(record.sender || user);
+  // const { copilot } = useChatPanel();
+  // const shouldShowCopilotHeader = Boolean(copilot);
   const isPlanRecord = isPlanModeRecord(record);
   const isCompletedPlanRecord =
     record.status === "success" &&
@@ -166,14 +173,16 @@ const MessageBubble = ({ record, toolRendererMap, onRetry, isLast, agent, onExec
 
       {/* 用户消息 —— 靠右 */}
       <div className={classNames(css["chat-bubble"], css["user-bubble"])}>
-        <header className={css["chat-bubble-header"]}>
-          <span className={css["chat-bubble-header-name"]}>{record.sender?.name ?? user?.name ?? "用户"}</span>
-          {(record.sender?.avatar ?? user?.avatar) && (
-            <div className={css["chat-bubble-header-avatar"]}>
-              <img className={css["user-avatar"]} src={record.sender?.avatar ?? user?.avatar} />
-            </div>
-          )}
-        </header>
+        {shouldShowUserHeader && (
+          <header className={css["chat-bubble-header"]}>
+            <span className={css["chat-bubble-header-name"]}>{userName ?? "用户"}</span>
+            {userAvatar && (
+              <div className={css["chat-bubble-header-avatar"]}>
+                <img className={css["user-avatar"]} src={userAvatar} />
+              </div>
+            )}
+          </header>
+        )}
         <section className={classNames(css["chat-message-container"], css["user-message"])}>
           {renderUserMessage ? renderUserMessage(record) : <UserMessageContent message={record.userText} />}
           {record.userAttachments.length > 0 && (
@@ -187,14 +196,18 @@ const MessageBubble = ({ record, toolRendererMap, onRetry, isLast, agent, onExec
 
       {/* AI 回复 —— 靠左 */}
       <div className={classNames(css["chat-bubble"], css["ai-bubble"])}>
-        <header className={css["chat-bubble-header"]}>
-          {copilot?.avatar && (
-            <div className={css["chat-bubble-header-avatar"]}>
-              <img className={css["user-avatar"]} src={copilot.avatar} />
-            </div>
-          )}
-          <span className={css["chat-bubble-header-name"]}>{copilot?.name ?? "智能助手"}</span>
-        </header>
+        {/* Copilot 信息暂时不展示，后续确认需要时再恢复。
+        {shouldShowCopilotHeader && (
+          <header className={css["chat-bubble-header"]}>
+            {copilot?.avatar && (
+              <div className={css["chat-bubble-header-avatar"]}>
+                <img className={css["user-avatar"]} src={copilot.avatar} />
+              </div>
+            )}
+            <span className={css["chat-bubble-header-name"]}>{copilot?.name ?? "智能助手"}</span>
+          </header>
+        )}
+        */}
         <section className={classNames(css["chat-message-container"], css["ai-message"])}>
           <div className={css["message-flow"]}>
             {/* 无任何 iteration 且 pending → 规划占位 */}
@@ -505,11 +518,18 @@ const MarkdownMessage = ({ message, className }: { message: string; className?: 
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewCurrent, setPreviewCurrent] = useState(0);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const { markdownSkin } = useChatPanel();
+
+  // 优先使用外部自定义皮肤，否则回退内置 skin-message
+  const skinClass = markdownSkin?.message ?? messageSkinCss["markdown-skin-message"];
 
   useEffect(() => {
     if (!ref.current) return;
 
     ref.current.innerHTML = md.render(message);
+
+    // 渲染 mermaid 流程图（异步，不阻塞内容展示）
+    renderMermaidInContainer(ref.current).catch(() => {});
 
     const nextImageUrls = Array.from(ref.current.querySelectorAll("img"))
       .map((img) => img.getAttribute("src") ?? "")
@@ -545,7 +565,7 @@ const MarkdownMessage = ({ message, className }: { message: string; className?: 
 
   return (
     <>
-      <div className={classNames(css["message-content"], css["markdown-body"], className)} ref={ref} onClick={handleClick} />
+      <div className={classNames(css["message-content"], skinClass, className)} ref={ref} onClick={handleClick} />
       <div style={{ display: "none" }}>
         <Image.PreviewGroup
           preview={{

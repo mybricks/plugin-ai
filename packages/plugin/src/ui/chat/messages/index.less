@@ -1,6 +1,7 @@
 /*! plugin-ai-comp-view-anchor */
 
 @import url(../../components/index.less);
+@import "../../markdown/skin-message.less";
 
 /*! plugin-ai-comp-view-anchor */
 
@@ -130,13 +131,13 @@
     box-sizing: border-box;
     min-width: 0;
     max-width: calc(100% - var(--chat-user-message-max-offset, 32px));
-    background: var(--mybricks-bg-color-main, #FFF);
+    background: var(--chat-user-message-bg, var(--mybricks-bg-color-main, #FFF));
     color: var(--mybricks-text-color-main, #333);
     border-radius: 12px 2px 12px 12px;
     padding: var(--chat-user-message-padding, 8px 12px);
     white-space: pre-wrap;
     word-break: break-word;
-    border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+    border: 1px solid var(--chat-user-message-border-color, var(--mybricks-border-color-main, #E6E6E6));
 
     span {
       font-size: var(--chat-font-size, 12px);
@@ -173,133 +174,8 @@
   }
 }
 
-.markdown-body {
-  color: var(--mybricks-text-color-main, #333);
-  font-size: var(--chat-font-size, 12px);
-  word-break: break-word;
-
-  p {
-    margin: var(--chat-block-gap, 8px) 0;
-    color: var(--mybricks-text-color-main, #333);
-  }
-
-  h1, h2, h3, h4, h5, h6 {
-    margin-top: 20px;
-    margin-bottom: 10px;
-    font-weight: 600;
-    line-height: 1.5;
-    font-size: var(--chat-font-size, 12px) !important;
-    color: var(--mybricks-text-color-main, #333);
-  }
-
-  h1 { border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6); padding-bottom: .3em; }
-  h2 { border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6); padding-bottom: .3em; }
-
-  a { color: var(--mybricks-color-primary, #FA6400); text-decoration: none; &:hover { text-decoration: underline; } }
-
-  blockquote {
-    padding: var(--chat-card-padding, 6px 10px);
-    color: var(--mybricks-text-color-main, #333);
-    opacity: 0.78;
-    background-color: var(--mybricks-bg-color-secondary, #F5F5F5);
-    border-left: 3px solid var(--mybricks-color-primary, #FA6400);
-    border-radius: 4px;
-    margin: 16px 0;
-    > p { margin: 0; }
-  }
-
-  table {
-    border-spacing: 0;
-    border-collapse: collapse;
-    width: 100%;
-    margin-bottom: 6px;
-    font-size: var(--chat-font-size-sm, 11px);
-
-    th, td {
-      padding: var(--chat-table-cell-padding, 4px 8px);
-      border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
-      text-align: left;
-    }
-
-    th {
-      font-weight: 600;
-      background-color: var(--mybricks-bg-color-secondary, #F5F5F5);
-    }
-
-    tr:nth-child(even) td {
-      background-color: var(--mybricks-bg-color-main, #FFF);
-    }
-  }
-
-  ul, ol {
-    margin: var(--chat-block-gap, 8px) 0;
-    padding-left: 0;
-  }
-
-  li {
-    position: relative;
-    margin: 4px 0;
-    list-style-type: none;
-  }
-
-  ul > li {
-    padding-left: 1rem;
-  }
-
-  ul > li:before {
-    content: "";
-    position: absolute;
-    left: 4px;
-    top: .75em;
-    width: 3px;
-    height: 3px;
-    background-color: currentColor;
-    border-radius: 50%;
-  }
-
-  ol { counter-reset: item; }
-  ol > li {
-    padding-left: 1.5rem;
-    counter-increment: item;
-  }
-
-  ol > li:before {
-    content: counter(item) ".";
-    position: absolute;
-    left: 0;
-    top: 0;
-    min-width: 1.1rem;
-    text-align: right;
-  }
-
-  code {
-    font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
-    color: var(--mybricks-text-color-secondary, #888) !important;
-    background-color: var(--mybricks-bg-color-secondary, #F5F5F5) !important;
-    border-radius: 6px;
-    font-size: 85%;
-    padding: .2em .4em;
-  }
-
-  pre {
-    background-color: var(--mybricks-bg-color-secondary, #F5F5F5);
-    border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
-    border-radius: 6px;
-    padding: var(--chat-card-padding, 8px 10px);
-    overflow-x: auto;
-    margin: 8px 0;
-
-    code {
-      display: block;
-      background-color: transparent !important;
-      border-radius: 0;
-      padding: 0 !important;
-      font-size: 100%;
-      line-height: 1.6;
-    }
-  }
-
-}
+// .markdown-body 已迁移至 ui/markdown/skin-message.less（通过文件顶部 @import 引入）
+// 消费方请使用 css["markdown-skin-message"] 作为 class 名
 
 .message-flow {
   color: var(--mybricks-text-color-main, #333);

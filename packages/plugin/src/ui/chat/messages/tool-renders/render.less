@@ -7,7 +7,7 @@
   align-items: center;
   gap: var(--chat-block-gap, 6px);
   border-radius: 6px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
   background: var(--mybricks-bg-color-secondary, #F5F5F5);
   padding: var(--chat-card-option-padding, 5px 10px);
   margin: 3px 0;
@@ -24,7 +24,7 @@
   flex-shrink: 0;
   color: inherit;
 
-  svg { width: 12px; height: 12px; }
+  svg { width: var(--chat-icon-size, 12px); height: var(--chat-icon-size, 12px); }
 }
 
 // pending 时用空心圆占位图标
@@ -79,11 +79,14 @@
   align-items: center;
   gap: var(--chat-block-gap, 6px);
   padding: var(--chat-card-option-padding, 5px 10px);
-  border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
   background: var(--mybricks-bg-color-secondary, #F5F5F5);
   min-height: var(--chat-card-min-height, 28px);
   cursor: pointer;
   user-select: none;
+
+  &.code-card-header-with-body {
+    border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  }
 }
 
 .code-card-icon {
@@ -92,7 +95,7 @@
   flex-shrink: 0;
   color: inherit;
 
-  svg { width: 12px; height: 12px; }
+  svg { width: var(--chat-icon-size, 12px); height: var(--chat-icon-size, 12px); }
 }
 
 .code-card-filename {
@@ -231,7 +234,7 @@
   align-items: center;
   flex-shrink: 0;
   color: inherit;
-  svg { width: 12px; height: 12px; }
+  svg { width: var(--chat-icon-size, 12px); height: var(--chat-icon-size, 12px); }
 }
 
 .batch-group-header-title {
@@ -287,7 +290,7 @@
   align-items: center;
   flex-shrink: 0;
   color: inherit;
-  svg { width: 11px; height: 11px; }
+  svg { width: calc(var(--chat-icon-size, 12px) - 1px); height: calc(var(--chat-icon-size, 12px) - 1px); }
 }
 
 .batch-item-filename {
@@ -360,7 +363,7 @@
   align-items: center;
   flex-shrink: 0;
   color: inherit;
-  svg { width: 12px; height: 12px; }
+  svg { width: var(--chat-icon-size, 12px); height: var(--chat-icon-size, 12px); }
 }
 
 .init-project-header-title {
@@ -437,7 +440,7 @@
   align-items: center;
   flex-shrink: 0;
   color: inherit;
-  svg { width: 11px; height: 11px; }
+  svg { width: calc(var(--chat-icon-size, 12px) - 1px); height: calc(var(--chat-icon-size, 12px) - 1px); }
 }
 
 .init-project-file-name {

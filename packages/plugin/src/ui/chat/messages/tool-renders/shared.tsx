@@ -194,7 +194,7 @@ export const StreamingCodeCard = ({ tool, icon, title, content, lang: langOverri
   const lineCount = content ? content.split("\n").length : 0;
   return (
     <div className={css["code-card"]}>
-      <div className={css["code-card-header"]} style={{ cursor: "default" }}>
+      <div className={`${css["code-card-header"]} ${css["code-card-header-with-body"]}`} style={{ cursor: "default" }}>
         <span className={css["code-card-icon"]}>
           <StatusIcon tool={tool} icon={icon} />
         </span>
@@ -225,7 +225,7 @@ export const CodeCard = ({ tool, icon, title, content, lineMeta, diffMode, showC
   return (
     <div className={css["code-card"]}>
       <div
-        className={css["code-card-header"]}
+        className={`${css["code-card-header"]}${hasBody ? ` ${css["code-card-header-with-body"]}` : ""}`}
         onClick={() => canToggle && setCollapsed((c: boolean) => !c)}
         style={canToggle ? undefined : { cursor: "default" }}
       >
@@ -409,5 +409,4 @@ export function detectLang(path: string | undefined | null): string {
   };
   return map[ext] ?? "plaintext";
 }
-
 

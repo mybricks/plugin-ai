@@ -62,6 +62,7 @@ import {
 import { settingCase } from "./setting";
 import { modelSwitchCase } from "./model-switch";
 import { disabledModesPlanCase } from "./disabled-modes";
+import { planWriteGeneratedFileCase } from "./plan-write-file";
 import {
   grepDefaultFilesCase,
   grepContentGlobCase,
@@ -70,6 +71,7 @@ import {
   grepValidationCase,
 } from "./grep-search";
 import { skillUseThenContinueCase } from "./skill";
+import { chatPanelSkinHistoryCase, chatPanelDefaultSkinCase, chatPanelSkinEmptyCase } from "./chat-panel-skin";
 
 export type { TestCase, Priority } from "./types";
 
@@ -81,6 +83,7 @@ export const ALL_CASES: TestCase[] = [
   compactMidTurnErrorRetryCase,
   multiEditPartialSuccessCase,
   skillUseThenContinueCase,
+  planWriteGeneratedFileCase,
   suggestionsDisplayCase,
   abortThenNextTurnAwarenessCase,
   customToolRendererErrorBoundaryCase,
@@ -167,6 +170,10 @@ export const ALL_CASES: TestCase[] = [
   grepCountPaginationCase,
   grepNoMatchCase,
   grepValidationCase,
+  // 特殊皮肤
+  chatPanelSkinHistoryCase,
+  chatPanelDefaultSkinCase,
+  chatPanelSkinEmptyCase,
 ];
 
 /** 按 group 分组 */

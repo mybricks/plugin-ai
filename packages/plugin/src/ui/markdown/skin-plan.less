@@ -1,0 +1,24 @@
+/*! plugin-ai-comp-view-anchor */
+
+@import "./base.less";
+
+// ── Plan 皮肤（计划卡片 body 场景）────────────────────────────────────────────
+// 场景特征：与消息皮肤基本一致，保留独立文件便于将来各自演进。
+// 消费方：ui/chat/messages/action-cards/plan-card.tsx
+
+.markdown-skin-plan {
+  &:extend(.markdown-base all);
+
+  font-size: var(--chat-font-size, 12px);
+
+  h1, h2, h3, h4, h5, h6 {
+    margin-top: 20px;
+    margin-bottom: 10px;
+    font-size: var(--chat-font-size, 12px) !important;
+  }
+
+  code {
+    color: var(--mybricks-text-color-secondary, #888) !important;
+    background-color: var(--mybricks-bg-color-secondary, #F5F5F5) !important;
+  }
+}

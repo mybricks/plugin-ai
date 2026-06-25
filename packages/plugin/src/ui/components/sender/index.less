@@ -298,14 +298,19 @@
     // background-color: #ffffff;
     background-color: var(--mybricks-bg-color-main, #FFF);
     // border: solid 1px rgba(0, 0, 0, .13);
-    border: solid 1px transparent;
+    border: solid 1px var(--mybricks-border-color-main, #E6E6E6);
     width: 100%;
     // border-radius: 20px;
-    border-radius: 12px;
+    border-radius: var(--chat-sender-border-radius, 12px);
     // box-shadow: 0 5px 16px -4px #00000012;
     box-shadow: var(--mybricks-shadow-main, rgba(0, 0, 0, 0.2) 0 0 5px);
     color: rgba(0, 0, 0, .9);
     cursor: default;
+    transition:
+      border-color 0.18s ease,
+      box-shadow 0.18s ease,
+      border-radius 0.18s ease,
+      background-color 0.18s ease;
 
     &.noMentions {
       // background-color: #f7f7f7;
@@ -318,6 +323,9 @@
 
     &:focus-within {
       border-color: var(--mybricks-color-primary, #FA6400);
+      box-shadow:
+        var(--mybricks-shadow-main, rgba(0, 0, 0, 0.2) 0 0 5px),
+        0 0 0 3px color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 10%, transparent);
     }
 
     // ─── 拖拽高亮态 ───────────────────────────────────────────────────────────
@@ -561,9 +569,9 @@
       display: flex;
       justify-content: space-between;
       align-items: flex-end;
-      padding: 0 8px;
-      margin-top: 2px;
-      margin-bottom: 8px;
+      padding: var(--chat-sender-action-padding, 0 8px);
+      margin-top: var(--chat-sender-action-margin-top, 2px);
+      margin-bottom: var(--chat-sender-action-margin-bottom, 8px);
       position: relative;
 
       .leftArea {
@@ -582,6 +590,7 @@
           height: var(--chat-control-size, 25px);
           flex-shrink: 0;
           border-radius: 50%;
+          border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
           cursor: pointer !important;
           * {
             cursor: pointer !important;
@@ -636,6 +645,12 @@
           display: flex;
           align-items: center;
           color: rgba(255, 255, 255, .9);
+          transition:
+            opacity 0.18s ease,
+            background-color 0.18s ease,
+            color 0.18s ease,
+            transform 0.18s ease,
+            box-shadow 0.18s ease;
 
           .sendButton {
             overflow: hidden;
@@ -646,17 +661,24 @@
             // height: 32px;
             width: var(--chat-control-size, 25px);
             height: var(--chat-control-size, 25px);
+            transition: transform 0.18s ease, opacity 0.18s ease;
 
             svg {
-              width: var(--chat-send-icon-size, 11px);
-              height: var(--chat-send-icon-size, 11px);
+              width: var(--chat-icon-size, 12px);
+              height: var(--chat-icon-size, 12px);
+              transition: transform 0.18s ease, opacity 0.18s ease;
             }
+          }
+
+          &:not(.disabled):hover {
+            transform: translateY(-1px);
+            box-shadow: var(--mybricks-shadow-main, rgba(0, 0, 0, 0.16) 0 4px 12px);
           }
 
           .loadingButton {
             svg {
-              width: var(--chat-send-icon-size, 11px);
-              height: var(--chat-send-icon-size, 11px);
+              width: var(--chat-icon-size, 12px);
+              height: var(--chat-icon-size, 12px);
             }
           }
         }
@@ -664,6 +686,8 @@
         .disabled {
           cursor: not-allowed !important;
           opacity: 0.3;
+          transform: scale(0.96);
+          box-shadow: none;
           * {
             cursor: not-allowed !important;
           }

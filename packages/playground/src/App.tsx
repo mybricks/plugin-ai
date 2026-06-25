@@ -9,6 +9,7 @@ import { useRequestInspector, type RequestSnapshot } from "./lib/use-request-ins
 import type { MemFS } from "./lib/mem-fs";
 import { getWebFetchUrl, setWebFetchUrl, getDefaultUrlForCase } from "./lib/web-fetch-state";
 import "./app.css";
+import markdownSkinSpecial from "./markdown-skin-special.module.css";
 
 // ─── Theme Toggle ─────────────────────────────────────────────────────────────
 
@@ -120,6 +121,32 @@ const P0_GROUPS = groupCases(P0_CASES);
 const OTHER_CASES = ALL_CASES.filter(c => c.priority !== "P0");
 const OTHER_GROUPS = groupCases(OTHER_CASES);
 const GROUP_ICONS: Record<string, string> = {};
+
+const CHAT_PANEL_SKIN_VARIABLES = [
+  ["--mybricks-color-primary", "#2563eb"],
+  ["--mybricks-text-color-main", "#333"],
+  ["--mybricks-text-color-hover", "#FFF"],
+  ["--mybricks-text-color-active", "#FFF"],
+  ["--mybricks-text-color-disabled", "#AAA"],
+  ["--mybricks-bg-color-main", "#FFF"],
+  ["--mybricks-bg-color-main-transparent", "rgba(255, 255, 255, 0.93)"],
+  ["--mybricks-bg-color-secondary", "#FFF"],
+  ["--mybricks-bg-color-hover", "#FDFDFD"],
+  ["--mybricks-bg-color-active", "#EEE"],
+  ["--mybricks-bg-color-designer", "#F5F5F5"],
+  ["--mybricks-menu-bg-color", "#FFF"],
+  ["--mybricks-shadow-main", "0 4px 10px rgba(0, 0, 0, .02), 0 2px 4px rgba(0, 0, 0, .04)"],
+  ["--mybricks-shadow-main-left", "-6px 0 18px rgba(0, 0, 0, 0.12), -1px 0 4px rgba(0, 0, 0, 0.08)"],
+  ["--mybricks-shadow-for-border", "0 0 0 1px rgba(0, 0, 0, 0.08)"],
+  ["--mybricks-border-color-main", "#D9D9D9"],
+  ["--mybricks-border-color-secondary", "#EDEDED"],
+  ["--chat-user-message-bg", "color-mix(in srgb, var(--mybricks-color-primary, #2563eb) 10%, var(--mybricks-bg-color-main, #fff))"],
+  ["--chat-user-message-border-color", "transparent"],
+  ["--chat-sender-border-radius", "24px"],
+  ["--chat-message-group-padding", "8px 12px"]
+] as const;
+
+const CHAT_PANEL_SKIN_STYLE = Object.fromEntries(CHAT_PANEL_SKIN_VARIABLES) as React.CSSProperties;
 
 // ─── FS Viewer ────────────────────────────────────────────────────────────────
 
@@ -264,12 +291,17 @@ export default function App() {
 
   const [activeCase] = useState<TestCase | null>(initialCase);
   const [webFetchUrl, setWebFetchUrlState] = useState(() => getDefaultUrlForCase(initialCase?.id ?? ""));
+  const isChatPanelSkinLayout = activeCase?.playgroundLayout === "chat-panel-skin";
+  const isDefaultChatPanelSkin = activeCase?.chatPanelSkin === "default";
 
   const { wrappedRequest, snapshots } = useRequestInspector(
-    activeCase?.request ?? null
+    isChatPanelSkinLayout ? null : activeCase?.request ?? null
   );
 
-  const { agent, memFS } = usePlaygroundAgent(activeCase, wrappedRequest);
+  const { agent, memFS } = usePlaygroundAgent(
+    activeCase,
+    isChatPanelSkinLayout ? null : wrappedRequest
+  );
 
   // 是否显示设置按钮（设置分组）
   const showSettingBtn = activeCase?.group === "设置";
@@ -389,22 +421,88 @@ export default function App() {
           </div>
         )}
 
-        <div className="pg-content">
-          {/* ChatPanel 列 */}
-          <div className="pg-chat-col" style={{ width: panelWidth }}>
-            {agent ? (
-              <ChatPanel agent={agent as any} title="playground" header={true} disabled={chatDisabled} renderEmpty={activeCase?.renderEmpty} />
-            ) : (
-              <div className="pg-loading">加载中…</div>
-            )}
-          </div>
+        {isChatPanelSkinLayout ? (
+          <div className="pg-content pg-chat-skin-content">
+            <div className="pg-chat-skin-aside">
+              <div className="pg-chat-skin-card">
+                <div className="pg-chat-skin-title">
+                  {isDefaultChatPanelSkin ? "Default Skin" : "Large + Custom Variables"}
+                </div>
+                <div className="pg-chat-skin-desc">
+                  {isDefaultChatPanelSkin
+                    ? "这个 case 不传 className/style，只看 ChatPanel 默认 fallback 皮肤。"
+                    : "这个 case 只预览 ChatPanel 的 large 模式 + 自定义变量：没有 Request Inspector，也没有 MemFS。"}
+                </div>
+                <div className="pg-chat-skin-props">
+                  <span>header=false</span>
+                  {isDefaultChatPanelSkin ? (
+                    <>
+                      <span>no className</span>
+                      <span>no style variables</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>size=large</span>
+                      <span>className=pg-chat-panel-skin</span>
+                      <span>style=custom variables</span>
+                    </>
+                  )}
+                  {activeCase?.renderEmpty ? <span>renderEmpty</span> : <span>initialTurns with tools</span>}
+                </div>
+              </div>
+              {!isDefaultChatPanelSkin && (
+                <div className="pg-chat-skin-card">
+                  <div className="pg-chat-skin-title">Injected Variables</div>
+                  {CHAT_PANEL_SKIN_VARIABLES.map(([name, value]) => (
+                    <div className="pg-chat-skin-var" key={name}>
+                      <span style={{ background: value.startsWith("#") || value.startsWith("rgba") ? value : "#f8fafc" }} />
+                      <span className="pg-chat-skin-var-name">{name}</span>
+                      <span className="pg-chat-skin-var-value">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
-          {/* 右侧：Inspector 上 + FS Viewer 下 */}
-          <div className="pg-right-col">
-            <InspectorPanel snapshots={snapshots} />
-            <FSViewer memFS={memFS} />
+            <div className="pg-chat-skin-preview">
+              {agent ? (
+                <ChatPanel
+                  agent={agent as any}
+                  header={false}
+                  size={isDefaultChatPanelSkin ? undefined : "large"}
+                  disabled={chatDisabled}
+                  className={isDefaultChatPanelSkin ? undefined : "pg-chat-panel-skin"}
+                  style={isDefaultChatPanelSkin ? undefined : CHAT_PANEL_SKIN_STYLE}
+                  renderEmpty={activeCase?.renderEmpty}
+                  placeholder={isDefaultChatPanelSkin ? "输入一句话，继续检查默认皮肤下的 ChatPanel" : "输入一句话，继续检查 large + 自定义变量下的 ChatPanel"}
+                  markdownSkin={isDefaultChatPanelSkin ? undefined : {
+                    message: markdownSkinSpecial["pgMarkdownSkinSpecial"],
+                    plan: markdownSkinSpecial["pgMarkdownSkinSpecial"],
+                  }}
+                />
+              ) : (
+                <div className="pg-loading">加载中…</div>
+              )}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="pg-content">
+            {/* ChatPanel 列 */}
+            <div className="pg-chat-col" style={{ width: panelWidth }}>
+              {agent ? (
+                <ChatPanel agent={agent as any} title="playground" header={true} disabled={chatDisabled} renderEmpty={activeCase?.renderEmpty} />
+              ) : (
+                <div className="pg-loading">加载中…</div>
+              )}
+            </div>
+
+            {/* 右侧：Inspector 上 + FS Viewer 下 */}
+            <div className="pg-right-col">
+              <InspectorPanel snapshots={snapshots} />
+              <FSViewer memFS={memFS} />
+            </div>
+          </div>
+        )}
       </main>
       </div>
 

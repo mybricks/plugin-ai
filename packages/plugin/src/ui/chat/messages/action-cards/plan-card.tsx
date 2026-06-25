@@ -3,7 +3,14 @@ import classNames from "classnames";
 import { Modal } from "../../../components/modal";
 import { parsePlanContent, PlanActions } from "../../../components/plan";
 import css from "./plan-card.less";
-import markdownCss from "../index.less";
+import planSkinCss from "../../../markdown/skin-plan.less";
+import { useChatPanel } from "../../chat-panel/context";
+
+/** 获取当前 plan 场景的 markdown 皮肤 class，优先外部自定义，否则内置 skin-plan */
+function usePlanSkinClass(): string {
+  const { markdownSkin } = useChatPanel();
+  return markdownSkin?.plan ?? planSkinCss["markdown-skin-plan"];
+}
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 
@@ -35,6 +42,7 @@ export const PlanToolCard = ({
 }) => {
   const [modalOpen, setModalOpen] = useState(false);
   const { title, body } = useMemo(() => parsePlanContent(content ?? ""), [content]);
+  const planSkinClass = usePlanSkinClass();
   const displayTitle = title ?? path;
 
   const modalTitle = (
@@ -63,7 +71,7 @@ export const PlanToolCard = ({
           )}
         </div>
         {content && (
-          <div className={classNames(css["plan-card-body"], markdownCss["markdown-body"])}>
+          <div className={classNames(css["plan-card-body"], planSkinClass)}>
             {renderContent ? renderContent(body) : <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: 12 }}>{body}</pre>}
           </div>
         )}
@@ -76,7 +84,7 @@ export const PlanToolCard = ({
           title={modalTitle}
           width={720}
         >
-          <div className={classNames(css["plan-card-modal-body"], markdownCss["markdown-body"])}>
+          <div className={classNames(css["plan-card-modal-body"], planSkinClass)}>
             {renderContent ? renderContent(body) : <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: 12 }}>{body}</pre>}
           </div>
         </Modal>
@@ -104,6 +112,7 @@ export const PlanFileCard = ({
   children: React.ReactNode;
 }) => {
   const [modalOpen, setModalOpen] = useState(false);
+  const planSkinClass = usePlanSkinClass();
   const executeDisabled = abandoned || !canExecute || !onExecute;
 
   const modalFooter = (
@@ -189,7 +198,7 @@ export const PlanFileCard = ({
         footer={modalFooter}
         width={720}
       >
-        <div className={classNames(css["plan-card-modal-body"], markdownCss["markdown-body"])}>
+        <div className={classNames(css["plan-card-modal-body"], planSkinClass)}>
           {children}
         </div>
       </Modal>
@@ -218,6 +227,7 @@ export const PlanFileCardWithContent = ({
 }) => {
   const { title, desc, body } = useMemo(() => parsePlanContent(content), [content]);
   const [modalOpen, setModalOpen] = useState(false);
+  const planSkinClass = usePlanSkinClass();
   const hasActions = Boolean(onExecute || onAbandon);
 
   const displayTitle = title ?? path;
@@ -295,7 +305,7 @@ export const PlanFileCardWithContent = ({
         footer={modalFooter}
         width={720}
       >
-        <div className={classNames(css["plan-card-modal-body"], markdownCss["markdown-body"])}>
+        <div className={classNames(css["plan-card-modal-body"], planSkinClass)}>
           {renderContent(body)}
         </div>
       </Modal>

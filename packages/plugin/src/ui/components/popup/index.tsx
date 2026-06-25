@@ -41,9 +41,29 @@ export const Popup = (props: PopupProps) => {
   const popupRef = useRef<HTMLDivElement>(null);
   
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0, flip: false, visible: false });
+  const [cssVars, setCssVars] = useState<React.CSSProperties>({});
+
+  const syncCssVariables = useCallback(() => {
+    if (!triggerRef.current) return;
+    const computed = window.getComputedStyle(triggerRef.current);
+    const next: Record<string, string> = {};
+
+    for (let i = 0; i < computed.length; i += 1) {
+      const name = computed.item(i);
+      if (name.startsWith("--mybricks-") || name.startsWith("--chat-")) {
+        const value = computed.getPropertyValue(name).trim();
+        if (value) {
+          next[name] = value;
+        }
+      }
+    }
+
+    setCssVars(next as React.CSSProperties);
+  }, []);
 
   const updatePosition = useCallback(() => {
     if (!triggerRef.current) return;
+    syncCssVariables();
     const rect = triggerRef.current.getBoundingClientRect();
     const vpHeight = window.innerHeight;
     const popupHeight = popupRef.current?.offsetHeight ?? 0;
@@ -107,7 +127,7 @@ export const Popup = (props: PopupProps) => {
       flip: isFlippedUp,
       visible: true
     });
-  }, [placement, offset, open]);
+  }, [placement, offset, open, syncCssVariables]);
 
   // 使用 useLayoutEffect 确保在渲染到屏幕前计算好位置，避免闪烁
   useLayoutEffect(() => {
@@ -186,6 +206,7 @@ export const Popup = (props: PopupProps) => {
             overlayClassName
           )}
           style={{
+            ...cssVars,
             position: 'fixed',
             left: pos.left,
             // 如果向上弹，通过 bottom 定位，确保内容从底部开始撑开
