@@ -474,6 +474,8 @@ export default function App() {
                   className={isDefaultChatPanelSkin ? undefined : "pg-chat-panel-skin"}
                   style={isDefaultChatPanelSkin ? undefined : CHAT_PANEL_SKIN_STYLE}
                   renderEmpty={activeCase?.renderEmpty}
+                  scrollWithSender={activeCase?.scrollWithSender}
+                  renderSenderFooter={activeCase?.renderSenderFooter}
                   placeholder={isDefaultChatPanelSkin ? "输入一句话，继续检查默认皮肤下的 ChatPanel" : "输入一句话，继续检查 large + 自定义变量下的 ChatPanel"}
                   markdownSkin={isDefaultChatPanelSkin ? undefined : {
                     message: markdownSkinSpecial["pgMarkdownSkinSpecial"],

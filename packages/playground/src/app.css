@@ -771,6 +771,14 @@
   background: transparent;
 }
 
+.pg-chat-skin-sender-footer {
+  padding: 0 18px 12px;
+  color: #657188;
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+}
+
 .pg-chat-skin-empty {
   width: min(420px, calc(100% - 40px));
   display: flex;

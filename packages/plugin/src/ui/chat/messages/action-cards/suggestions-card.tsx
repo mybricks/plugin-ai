@@ -1,6 +1,7 @@
 import React from "react";
 import classNames from "classnames";
 import type { CodeAgent } from "../../../../../../agent/src";
+import { context } from "../../../../context";
 import { useChatPanel } from "../../chat-panel/context";
 import css from "./suggestions-card.less";
 
@@ -17,7 +18,15 @@ export const SuggestionsBlock = ({
 
   const handleClick = (option: string) => {
     if (disabled) return;
-    agent.requestAI({ message: option });
+    const agentKey = agent.key;
+    context.aiQueue.send(
+      agentKey,
+      async () => {
+        context.aiQueue.registerAbort(agentKey, () => agent.abort());
+        await agent.requestAI({ message: option });
+      },
+      { message: option }
+    );
   };
   const handleDismiss = () => {
     if (disabled) return;
@@ -27,10 +36,6 @@ export const SuggestionsBlock = ({
   return (
     <div className={css["suggestions-message"]}>
       <div className={css["suggestions-block"]}>
-        <div className={css["suggestions-desc"]}>
-          <span className={css["suggestions-header-title"]}>[ 对下一步的建议 ]</span>
-          {suggestions.desc && <span className={css["suggestions-desc-text"]}>{suggestions.desc}</span>}
-        </div>
         <div className={css["suggestions-options"]}>
           {suggestions.options.map((opt, i) => (
             <div
@@ -47,24 +52,12 @@ export const SuggestionsBlock = ({
               }}
               style={{ animationDelay: `${i * 60}ms` }}
             >
+              <svg className={css["suggestion-option-icon"]} width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2 2V7C2 8.10457 2.89543 9 4 9H10M10 9L7.5 6.5M10 9L7.5 11.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
               <span className={css["suggestion-option-text"]}>{opt}</span>
             </div>
           ))}
-          <div
-            role="button"
-            tabIndex={disabled ? -1 : 0}
-            className={classNames(css["suggestion-option"], css["suggestion-option-dismiss"], { [css["suggestion-option-disabled"]]: disabled })}
-            onClick={handleDismiss}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                handleDismiss();
-              }
-            }}
-            style={{ animationDelay: `${suggestions.options.length * 60}ms` }}
-          >
-            <span className={css["suggestion-option-text"]}>以上都不需要</span>
-          </div>
         </div>
       </div>
     </div>

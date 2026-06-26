@@ -42,6 +42,13 @@ export interface SandboxHelpers {
    */
   sendToAgent: (comId: string, params: SendToAgentParams) => void;
   /**
+   * 向指定 comId 的底部 Sender 草稿区追加内容，不触发发送。
+   * 参数与 sendToAgent / controller.appendInput 保持一致：
+   * - string：追加纯文本
+   * - SendToAgentParams：追加 message，支持 attachments 与 meta.chips
+   */
+  appendToSender: (comId: string, input: string | SendToAgentParams) => void;
+  /**
    * 渲染工具方法。
    */
   renders: {
@@ -224,6 +231,11 @@ export function setupSandbox(params: SetupSandboxParams): void {
             },
             { message: params.message, attachments: params.attachments ?? [], ...(params.extra ? { extra: params.extra } : {}), ...(params.mode ? { mode: params.mode } : {}) }
           );
+        });
+      },
+      appendToSender(comId: string, input: string | SendToAgentParams) {
+        ensureAIPanelOpen(comId).then(() => {
+          context.appendInput(comId, input);
         });
       },
       renders: {

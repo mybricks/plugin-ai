@@ -56,6 +56,10 @@ export interface TestCase {
    * 对应 ChatPanelProps.renderEmpty。
    */
   renderEmpty?: () => React.ReactNode;
+  /** 是否让 ChatPanel 的消息滚动容器包含 Sender 区域。 */
+  scrollWithSender?: boolean;
+  /** 在 Sender 下方渲染的自定义内容。 */
+  renderSenderFooter?: () => React.ReactNode;
   /**
    * 特殊 playground 展示布局。
    * 默认走原始调试布局；chat-panel-skin 只展示皮肤预览用 ChatPanel。

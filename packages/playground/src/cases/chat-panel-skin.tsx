@@ -124,6 +124,12 @@ export const chatPanelSkinHistoryCase: TestCase = {
   expectedBehavior: "主区域不显示 Request Inspector / MemFS，右侧只展示 large 模式 + 自定义变量的 ChatPanel。",
   playgroundLayout: "chat-panel-skin",
   chatPanelSkin: "custom",
+  scrollWithSender: true,
+  renderSenderFooter: () => (
+    <div className="pg-chat-skin-sender-footer">
+      AI 生成的内容可能不准确，请结合上下文谨慎确认后再使用。
+    </div>
+  ),
   initialTurns: [
     makeTurn({
       userText: "帮我看一下 messages 这块换皮肤时应该重点检查什么？",

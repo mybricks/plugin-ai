@@ -62,6 +62,11 @@ export interface ChatPanelProps {
    * 返回 ReactNode；有消息后自动隐藏。
    */
   renderEmpty?: () => React.ReactNode;
+  /**
+   * 在 Sender 下方渲染的自定义内容。
+   * 返回 ReactNode；随 Sender 一起渲染，不受消息数量影响。
+   */
+  renderSenderFooter?: () => React.ReactNode;
   /** 面板尺寸，默认 small；通过 CSS 变量控制消息列表、Sender 和卡片间距/字号 */
   size?: ChatPanelSize;
   /**
@@ -112,6 +117,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   placeholder,
   defaultFocusPlaceholder,
   renderEmpty,
+  renderSenderFooter,
   size = "small",
   scrollWithSender = false,
   className,
@@ -292,6 +298,13 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       matchDefaultFocusContent={matchDefaultFocusContent}
     />
   );
+  const senderFooterNode = renderSenderFooter?.();
+  const senderBlockNode = senderFooterNode !== undefined && senderFooterNode !== null && senderFooterNode !== false ? (
+    <div className={css["sender-block"]}>
+      {senderNode}
+      <div className={css["sender-footer"]}>{senderFooterNode}</div>
+    </div>
+  ) : senderNode;
 
   return (
     <ChatPanelProvider value={{ user, copilot, disabled: isDisabled, renderUserMessage, markdownSkin }}>
@@ -309,7 +322,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
             onExecutePlan={onExecutePlan}
             canExecutePlan={canExecutePlan}
             renderEmpty={renderEmpty}
-            renderFooter={scrollWithSender ? () => senderNode : undefined}
+            renderFooter={scrollWithSender ? () => senderBlockNode : undefined}
             onRetry={(id: string) => {
               if (!agent) return;
               context.aiQueue.clearQueue(agentKey);
@@ -324,7 +337,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
             }}
           />
         </div>
-        {scrollWithSender ? null : senderNode}
+        {scrollWithSender ? null : senderBlockNode}
       </div>
     </ChatPanelProvider>
   );

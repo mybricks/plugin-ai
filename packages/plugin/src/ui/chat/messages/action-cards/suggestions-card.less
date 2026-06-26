@@ -11,79 +11,45 @@
 .suggestions-block {
   display: flex;
   flex-direction: column;
-  gap: var(--chat-block-gap, 6px);
   width: 100%;
-  padding: var(--chat-card-padding, 8px 10px);
+  padding: 8px 2px 0 2px;
   box-sizing: border-box;
-  color: var(--mybricks-text-color-main, #333);
-  background: var(--mybricks-bg-color-secondary, #F5F5F5);
-  border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
-  border-radius: 2px 12px 12px 12px;
-}
-
-.suggestions-header-title {
-  font-size: var(--chat-font-size, 12px);
-  line-height: var(--chat-title-line-height, 18px);
-  color: var(--mybricks-color-primary, #FA6400);
-  vertical-align: baseline;
-  font-weight: 500;
-}
-
-.suggestions-desc {
-  display: block;
-  font-size: var(--chat-font-size, 12px);
-  line-height: var(--chat-title-line-height, 18px);
-  color: var(--mybricks-text-color-main, #333);
-  word-break: break-word;
-}
-
-.suggestions-desc-text {
-  color: var(--mybricks-text-color-main, #333);
-  margin-left: 4px;
-  vertical-align: baseline;
+  border-top: 1px solid var(--mybricks-border-color-main, #E6E6E6);
 }
 
 .suggestions-options {
   display: flex;
   flex-direction: column;
-  gap: var(--chat-message-group-gap, 4px);
   max-width: 100%;
 }
 
 .suggestion-option {
-  display: flex;
-  align-items: center;
-  gap: var(--chat-block-gap, 8px);
-  min-height: var(--chat-card-min-height, 28px);
-  padding: var(--chat-card-option-padding, 5px 8px);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 2px 4px;
   box-sizing: border-box;
   font-size: var(--chat-font-size, 12px);
-  line-height: var(--chat-title-line-height, 18px);
-  color: var(--mybricks-text-color-main, #333);
-  background: var(--mybricks-bg-color-main, #FFF);
-  border: 1px solid transparent;
-  border-radius: 6px;
+  line-height: 1.3;
+  color: var(--mybricks-color-primary, #4A72F6);
+  background: transparent;
+  border: none;
+  border-radius: 3px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.15s;
   text-align: left;
   user-select: none;
   outline: none;
   animation: suggestion-slide-in 0.22s ease-out both;
+  width: 100%;
 
-  &:hover,
-  &:focus-visible {
-    background: color-mix(in srgb, var(--mybricks-color-primary, #fa6400) 6%, transparent);
-    border-color: var(--mybricks-color-primary, #fa6400);
-    color: var(--mybricks-color-primary, #fa6400);
-
+  &:hover {
     .suggestion-option-text {
-      color: var(--mybricks-color-primary, #fa6400);
+      text-decoration: underline;
     }
   }
 
   &:active {
-    transform: translateY(1px);
-    background: color-mix(in srgb, var(--mybricks-color-primary, #fa6400) 10%, transparent);
+    opacity: 0.7;
   }
 
   &.suggestion-option-disabled {
@@ -94,9 +60,19 @@
   }
 }
 
+.suggestion-option-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  width: 12px;
+  height: 12px;
+  margin-top: 3px;
+  color: var(--mybricks-color-primary, #4A72F6);
+}
+
 .suggestion-option-text {
   min-width: 0;
-  color: var(--mybricks-text-color-main, #333);
+  color: var(--mybricks-color-primary, #4A72F6);
   word-break: break-word;
 }
 
