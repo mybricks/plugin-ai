@@ -40,6 +40,7 @@ function findLastPendingId(records: MessageRecord[]): string | null {
 
 export function useSession(agent: Agent | undefined) {
   const [messages, setMessages] = useState<MessageRecord[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const syncedRef = useRef(false);
   const unsubsRef = useRef<(() => void)[]>([]);
   // 当前正在进行的 turn 的 id（由 turn:start 写入，turn:complete/abort/error 清空）
@@ -49,11 +50,16 @@ export function useSession(agent: Agent | undefined) {
   const syncAgent = useCallback(async (a: Agent) => {
     if (syncedRef.current) return;
     syncedRef.current = true;
-    await a.loadHistory();
-    const records = turnsToMessageRecords(a.getTurns());
-    // 面板可能晚于请求打开，从 agent 快照恢复当前 pending turn。
-    pendingIdRef.current = findLastPendingId(records);
-    setMessages(records);
+    setHistoryLoaded(false);
+    try {
+      await a.loadHistory();
+      const records = turnsToMessageRecords(a.getTurns());
+      // 面板可能晚于请求打开，从 agent 快照恢复当前 pending turn。
+      pendingIdRef.current = findLastPendingId(records);
+      setMessages(records);
+    } finally {
+      setHistoryLoaded(true);
+    }
   }, []);
 
   /**
@@ -405,9 +411,10 @@ export function useSession(agent: Agent | undefined) {
     syncedRef.current = false;
     pendingIdRef.current = null;
     setMessages([]);
+    setHistoryLoaded(true);
   }, []);
 
-  return { messages, syncAgent, subscribeSession, clearSession };
+  return { messages, historyLoaded, syncAgent, subscribeSession, clearSession };
 }
 
 // ─── 辅助 ─────────────────────────────────────────────────────────────────────

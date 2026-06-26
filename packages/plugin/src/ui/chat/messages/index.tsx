@@ -43,6 +43,8 @@ export interface MessageListProps {
   onRetry?: (turnId: string) => void;
   onExecutePlan?: (title: string) => void;
   canExecutePlan?: boolean;
+  /** history 加载完成后才允许根据空消息渲染空态 */
+  historyLoaded?: boolean;
   /** 消息列表为空时在区域内居中展示的自定义内容 */
   renderEmpty?: () => React.ReactNode;
   /** 粘在滚动区域底部的自定义 footer，例如 Sender */
@@ -52,7 +54,7 @@ export interface MessageListProps {
 type MessageListRef = { scrollToBottom: () => void };
 
 const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
-  function MessageListInner({ messages, agent, onRetry, onExecutePlan, canExecutePlan = true, renderEmpty, renderFooter }, ref) {
+  function MessageListInner({ messages, agent, onRetry, onExecutePlan, canExecutePlan = true, historyLoaded = true, renderEmpty, renderFooter }, ref) {
   const mainRef = useRef<HTMLElement>(null);
   const scrollerRef = useRef<AutoScroller | null>(null);
   const { activePlan } = usePlanState(agent);
@@ -87,7 +89,7 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
   return (
     <main ref={mainRef} className={css["message-list"]}>
       <div className={css["message-list-inner"]}>
-        {messages.length === 0 && renderEmpty ? (
+        {historyLoaded && messages.length === 0 && renderEmpty ? (
           <div className={css["empty-state"]}>{renderEmpty()}</div>
         ) : (
           messages.map((record, index) => (

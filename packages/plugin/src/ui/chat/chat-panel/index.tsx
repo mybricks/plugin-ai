@@ -158,7 +158,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     };
   }, [hasLLMProviders, llmProviders, selectedModel]);
 
-  const { messages, syncAgent, subscribeSession, clearSession } = useSession(agent);
+  const { messages, historyLoaded, syncAgent, subscribeSession, clearSession } = useSession(agent);
   const messageListRef = useRef<{ scrollToBottom: () => void }>(null);
 
   useImperativeHandle(ref, () => ({
@@ -321,6 +321,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
             agent={agent}
             onExecutePlan={onExecutePlan}
             canExecutePlan={canExecutePlan}
+            historyLoaded={historyLoaded}
             renderEmpty={renderEmpty}
             renderFooter={scrollWithSender ? () => senderBlockNode : undefined}
             onRetry={(id: string) => {
