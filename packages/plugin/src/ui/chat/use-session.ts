@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef } from "react";
-import type { Agent, TurnRecord } from "../../../agent/src";
+import { useState, useCallback, useEffect, useRef } from "react";
+import type { Agent, HistoryStatus, TurnRecord } from "../../../agent/src";
 
 // ─── 数据模型 ─────────────────────────────────────────────────────────────────
 
@@ -19,8 +19,8 @@ export interface Session {
 function turnsToMessageRecords(turns: TurnRecord[]): MessageRecord[] {
   return turns.map((turn) => ({
     ...turn,
-    // 进行中的 turn 尚未写入最终 status，UI 侧按 pending 展示。
-    status: turn.endTime ? turn.status : "pending",
+    // 进行中的 turn 尚未写入最终 status；历史中的 error/abort 要尊重原状态。
+    status: !turn.endTime && turn.status === "success" ? "pending" : turn.status,
   }));
 }
 
@@ -34,33 +34,53 @@ function findLastPendingId(records: MessageRecord[]): string | null {
 // ─── useSession ───────────────────────────────────────────────────────────────
 //
 // 单 agent 版本：state 只管一个 agent 的消息列表。
-// subscribeSession(agent) 订阅 agent.events，通过 turn:start 自动创建 MessageRecord，
+// agent.historyManager 负责历史加载状态；subscribeSession(agent) 订阅 agent.events，通过 turn:start 自动创建 MessageRecord，
 // 无需外部手动调用 addMessage / subscribeAgent，任何调用 agent.requestAI() 的入口
 // 都能被自动感知，包括 ChatStartView、ChatPanel、外部直接调用等。
 
 export function useSession(agent: Agent | undefined) {
   const [messages, setMessages] = useState<MessageRecord[]>([]);
-  const [historyLoaded, setHistoryLoaded] = useState(false);
-  const syncedRef = useRef(false);
+  const [historyStatus, setHistoryStatus] = useState<HistoryStatus>(() =>
+    agent?.historyManager.getSnapshot().status ?? "ready"
+  );
+  const [historyError, setHistoryError] = useState<unknown>(null);
   const unsubsRef = useRef<(() => void)[]>([]);
   // 当前正在进行的 turn 的 id（由 turn:start 写入，turn:complete/abort/error 清空）
   const pendingIdRef = useRef<string | null>(null);
 
-  /** 同步历史消息（每个 agent 只执行一次） */
-  const syncAgent = useCallback(async (a: Agent) => {
-    if (syncedRef.current) return;
-    syncedRef.current = true;
-    setHistoryLoaded(false);
-    try {
-      await a.loadHistory();
-      const records = turnsToMessageRecords(a.getTurns());
-      // 面板可能晚于请求打开，从 agent 快照恢复当前 pending turn。
+  useEffect(() => {
+    if (!agent) {
+      setMessages([]);
+      setHistoryStatus("ready");
+      setHistoryError(null);
+      pendingIdRef.current = null;
+      return;
+    }
+
+    let cancelled = false;
+
+    const applySnapshot = () => {
+      if (cancelled) return;
+      const records = turnsToMessageRecords(agent.getTurns());
       pendingIdRef.current = findLastPendingId(records);
       setMessages(records);
-    } finally {
-      setHistoryLoaded(true);
-    }
-  }, []);
+    };
+
+    const unsubscribe = agent.historyManager.subscribe((snapshot) => {
+      if (cancelled) return;
+      setHistoryStatus(snapshot.status);
+      setHistoryError(snapshot.error);
+      // ready 时 agent.turns 已由 ensureHistoryReady 写好（构造时自动触发）
+      if (snapshot.status === "ready") {
+        applySnapshot();
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [agent]);
 
   /**
    * 订阅 agent 事件，全自动管理 MessageRecord 生命周期。
@@ -228,7 +248,6 @@ export function useSession(agent: Agent | undefined) {
       a.events.on("turn:abort", () => {
         pendingContent = "";
         pendingThinking = "";
-        opts?.onTurnEnd?.();
         update((r) => {
           const now = Date.now();
           const iters = r.iterations.map((iter, i) => {
@@ -249,13 +268,13 @@ export function useSession(agent: Agent | undefined) {
             iterations: iters
           };
         });
+        opts?.onTurnEnd?.();
         pendingIdRef.current = null;
       }),
 
       a.events.on("turn:error", ({ error }) => {
         pendingContent = "";
         pendingThinking = "";
-        opts?.onTurnEnd?.();
         update((r) => {
           const now = Date.now();
           const errorMsg = String((error as any)?.message ?? error);
@@ -274,6 +293,7 @@ export function useSession(agent: Agent | undefined) {
             iterations: iters,
           };
         });
+        opts?.onTurnEnd?.();
         pendingIdRef.current = null;
       }),
 
@@ -408,13 +428,18 @@ export function useSession(agent: Agent | undefined) {
 
   /** 清空消息列表（配合 agent.clearHistory 使用） */
   const clearSession = useCallback(() => {
-    syncedRef.current = false;
     pendingIdRef.current = null;
     setMessages([]);
-    setHistoryLoaded(true);
   }, []);
 
-  return { messages, historyLoaded, syncAgent, subscribeSession, clearSession };
+  return {
+    messages,
+    historyLoaded: historyStatus === "ready",
+    historyStatus,
+    historyError,
+    subscribeSession,
+    clearSession,
+  };
 }
 
 // ─── 辅助 ─────────────────────────────────────────────────────────────────────

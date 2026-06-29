@@ -118,6 +118,9 @@ export const networkErrorAfterToolCallNoHistoryCase: TestCase = {
   expectedBehavior:
     "先显示 read_file 工具卡片并成功执行，随后消息气泡进入 error 状态，显示错误信息和重试按钮。",
   initialTurns: [],
+  agentOptions: {
+    retry: { maxRetries: 0 },
+  },
   request: makeScriptedRequest([
     {
       type: "tool_calls",

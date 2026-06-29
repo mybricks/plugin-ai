@@ -67,4 +67,17 @@ export interface TestCase {
   playgroundLayout?: "chat-panel-skin";
   /** ChatPanel 皮肤预览模式；default 不注入变量，custom 注入 demo 变量。 */
   chatPanelSkin?: "default" | "custom";
+  /** ChatPanel 超长历史折叠配置 */
+  historyCollapse?: {
+    maxIters?: number;
+  };
+  /**
+   * MockHistory 行为控制（测试历史加载状态）
+   * - loadDelayMs： load() 延迟毫秒数，模拟慢加载
+   * - loadError：若为 true， load() 直接抛异常，模拟加载失败
+   */
+  historyOptions?: {
+    loadDelayMs?: number;
+    loadError?: boolean;
+  };
 }

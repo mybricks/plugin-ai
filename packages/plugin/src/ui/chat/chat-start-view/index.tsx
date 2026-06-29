@@ -62,7 +62,7 @@ const ChatStartView = ({
   const canExecutePlan = Boolean(agent && !loading && !contextDisabled && availableModes.includes(AgentModeEnum.Build));
   const [chatMode, setChatMode] = useState<AgentMode>(() => agent?.getMode() ?? availableModes[0] ?? AgentModeEnum.Build);
 
-  const { syncAgent, subscribeSession } = useSession(agent);
+  const { historyStatus, subscribeSession } = useSession(agent);
   const {
     activePlan,
   } = usePlanState(agent);
@@ -94,15 +94,15 @@ const ChatStartView = ({
 
   useEffect(() => {
     if (!agent) return;
-    syncAgent(agent).catch(console.error);
-    subscribeSession(agent);
+    const unsubSession = subscribeSession(agent);
     // 同步 agent 内部的 mode 变化（与 ChatPanel 保持一致）
     const unsubMode = agent.events.on("mode:change", ({ mode }) => setChatMode(mode));
 
     return () => {
+      unsubSession?.();
       unsubMode();
     };
-  }, [agent]);
+  }, [agent, subscribeSession]);
 
   // 与 ChatPanel 保持同步：通过 aiQueue 事件驱动 loading，而非本地管理
   useEffect(() => {
@@ -114,8 +114,10 @@ const ChatStartView = ({
     return () => { unL(); unD(); };
   }, [agentKey]);
 
+  const historyBlocked = historyStatus === "loading" || historyStatus === "idle" || historyStatus === "error";
+
   const onSend = (params: Parameters<SenderProps["onSend"]>[0]) => {
-    if (loading || !agent || !comId) return;
+    if (loading || historyBlocked || !agent || !comId) return;
     setEmpty(false);
     const { message, attachments, chips, mode } = params;
     const meta = chips?.length ? { chips } : undefined;
@@ -133,7 +135,7 @@ const ChatStartView = ({
   };
 
   const onExecutePlan = (plan: ActivePlanFile) => {
-    if (!agent || !comId || !canExecutePlan) return;
+    if (!agent || !comId || historyBlocked || !canExecutePlan) return;
     const title = plan.title ?? plan.path;
     const message = `执行「${title}」方案`;
     ensureAIPanelOpen(comId).then(() => {
@@ -153,7 +155,7 @@ const ChatStartView = ({
     content: (
       <SenderActivePlanCard
         plan={activePlan}
-        canExecute={canExecutePlan}
+        canExecute={canExecutePlan && !historyBlocked}
         onExecute={() => onExecutePlan(activePlan)}
         // TODO: 先隐藏「废弃方案」入口，后续确认交互价值后再恢复。
         onAbandon={undefined}
@@ -175,7 +177,7 @@ const ChatStartView = ({
         <Sender
           ref={senderRef}
           loading={loading}
-          disabled={loading || contextDisabled}
+          disabled={loading || contextDisabled || historyBlocked}
           onSend={onSend}
           variant="loose"
           chatMode={showChatMode ? chatMode : null}

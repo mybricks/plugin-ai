@@ -9,6 +9,8 @@ import { AgentModeEnum } from "../../../../../agent/src";
 import type { LLMProviders, ModelSelection } from "../../../../../request/src/providers";
 import { useSession } from "../use-session";
 import { MessageList } from "../messages";
+import type { HistoryCollapseConfig } from "../messages";
+import { useHistoryCollapse } from "./use-history-collapse";
 import { Header } from "./header";
 import { ChatPanelProvider } from "./context";
 import type { MarkdownSkinConfig } from "./context";
@@ -85,6 +87,11 @@ export interface ChatPanelProps {
    * - plan：计划卡片 body 的皮肤，默认内置 skin-plan
    */
   markdownSkin?: MarkdownSkinConfig;
+  /**
+   * 超长历史折叠配置。
+   * - maxIters：iter 数量上限，超过后折叠旧 turns，默认 50
+   */
+  historyCollapse?: HistoryCollapseConfig;
 }
 
 export interface ChatPanelRef {
@@ -123,6 +130,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   className,
   style,
   markdownSkin,
+  historyCollapse,
 }, ref) => {
   const agentKey = agent?.key ?? "";
 
@@ -158,8 +166,14 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     };
   }, [hasLLMProviders, llmProviders, selectedModel]);
 
-  const { messages, historyLoaded, syncAgent, subscribeSession, clearSession } = useSession(agent);
+  const { messages, historyLoaded, historyStatus, historyError, subscribeSession, clearSession } = useSession(agent);
   const messageListRef = useRef<{ scrollToBottom: () => void }>(null);
+  const maxHistoryIters = historyCollapse?.maxIters ?? 50;
+  const {
+    collapseCursor,
+    onExpandHistory,
+    recalculate: recalculateHistoryCollapse,
+  } = useHistoryCollapse(messages, maxHistoryIters);
 
   useImperativeHandle(ref, () => ({
     focus: () => {
@@ -178,20 +192,31 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     },
   }), []);
 
-  // 同步历史 + 订阅事件 + turn 滚底
+  // 订阅 turn 事件 + turn 滚底；历史状态由 agent.historyManager 驱动。
   useEffect(() => {
     if (!agent) return;
     const scrollToBottom = () => messageListRef.current?.scrollToBottom();
-    // 先订阅再同步历史，避免面板挂载瞬间错过新请求事件。
-    const unsubSession = subscribeSession(agent, { onTurnStart: scrollToBottom, onTurnEnd: scrollToBottom });
+    const refreshHistoryCollapse = () => {
+      setTimeout(() => recalculateHistoryCollapse(), 0);
+    };
+    const handleTurnEnd = () => {
+      scrollToBottom();
+      refreshHistoryCollapse();
+    };
+    // 先订阅 turn 事件，避免面板挂载瞬间错过新请求事件。
+    const unsubSession = subscribeSession(agent, { onTurnStart: scrollToBottom, onTurnEnd: handleTurnEnd });
     // 同步 agent 内部的 mode 变化（如 requestAI 带 mode 参数）
     const unsubMode = agent.events.on("mode:change", ({ mode }) => setChatMode(mode));
-    syncAgent(agent).catch(console.error);
     return () => {
       unsubSession?.();
       unsubMode();
     };
-  }, [agent, syncAgent, subscribeSession]);
+  }, [agent, subscribeSession]);
+
+  useEffect(() => {
+    if (!historyLoaded) return;
+    setTimeout(() => recalculateHistoryCollapse(), 0);
+  }, [historyLoaded]);
 
   // aiViewDisplay 时自动聚焦输入框
   useEffect(() => {
@@ -218,6 +243,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     if (!agent || isDisabled) return;
     await agent.clearHistory();
     clearSession();
+    setTimeout(() => recalculateHistoryCollapse(), 0);
   };
 
   const onExportHistory = async () => {
@@ -252,7 +278,9 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     );
   };
 
-  const isDisabled = !agent || !!disabled;
+  const historyFailed = historyStatus === "error";
+  const historyLoading = historyStatus === "idle" || historyStatus === "loading";
+  const isDisabled = !agent || !!disabled || historyLoading || historyFailed;
   const canExecutePlan = Boolean(agent && !isDisabled && availableModes.includes(AgentModeEnum.Build));
 
   const onExecutePlan = (title: string) => {
@@ -315,6 +343,14 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
         {headerNode}
 
         <div className={css["messages-area"]}>
+          {historyLoading ? (
+            <div className={css["history-status"]}>正在加载历史记录...</div>
+          ) : null}
+          {historyFailed ? (
+            <div className={css["history-status"]}>
+              历史记录加载失败，请刷新后重试
+            </div>
+          ) : null}
           <MessageList
             ref={messageListRef}
             messages={messages}
@@ -324,6 +360,8 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
             historyLoaded={historyLoaded}
             renderEmpty={renderEmpty}
             renderFooter={scrollWithSender ? () => senderBlockNode : undefined}
+            collapseCursor={collapseCursor}
+            onExpandHistory={onExpandHistory}
             onRetry={(id: string) => {
               if (!agent) return;
               context.aiQueue.clearQueue(agentKey);

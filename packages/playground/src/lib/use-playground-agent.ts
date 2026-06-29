@@ -30,7 +30,7 @@ export function usePlaygroundAgent(
     context.setLLMProviders(llmProvidersInstance);
 
     const fs = new MemFS(testCase.initialFiles);
-    const mockHistory = new MockHistory(testCase.initialTurns);
+    const mockHistory = new MockHistory(testCase.initialTurns, null, testCase.historyOptions);
 
     // 如果有 llmProviders，agent request 走 llmProviders.request（路由由选中模型决定）
     // 否则直接用 testCase.request
@@ -53,8 +53,6 @@ export function usePlaygroundAgent(
       ...(testCase.agentOptions?.doomLoopThreshold ? { doomLoopThreshold: testCase.agentOptions.doomLoopThreshold } : {}),
       ...(testCase.disabledModes ? { disabledModes: testCase.disabledModes } : {}),
     });
-
-    await newAgent.loadHistory();
 
     agentRef.current = newAgent;
     context.agentMap.set(AGENT_KEY, newAgent as any);

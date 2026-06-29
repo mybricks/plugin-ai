@@ -16,6 +16,8 @@ export { SWITCH_MODE_TOOL_NAME, getAvailableAgentModes, AgentModeEnum } from "./
 
 export { IDBHistory } from "./history/idb-history";
 export { HTTPHistory } from "./history/http-history";
+export { HistoryManager } from "./history/manager";
+export type { HistoryManagerSnapshot, HistoryStatus } from "./history/manager";
 
 export { createSubAgentTool, resolveSubAgentMeta, CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
 export type { SubAgentConfig, SubAgentFile, SubAgentMeta } from "./sub-agent";

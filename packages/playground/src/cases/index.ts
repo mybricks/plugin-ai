@@ -72,6 +72,8 @@ import {
 } from "./grep-search";
 import { skillUseThenContinueCase } from "./skill";
 import { chatPanelSkinHistoryCase, chatPanelDefaultSkinCase, chatPanelSkinEmptyCase } from "./chat-panel-skin";
+import { historyCollapseRestoreCase, historyCollapseGrowingCase, historyCollapseCustomMaxItersCase } from "./ui-history-collapse";
+import { historySlowLoadCase, historyLoadErrorCase } from "./history-load";
 
 export type { TestCase, Priority } from "./types";
 
@@ -87,6 +89,10 @@ export const ALL_CASES: TestCase[] = [
   suggestionsDisplayCase,
   abortThenNextTurnAwarenessCase,
   customToolRendererErrorBoundaryCase,
+  historyCollapseRestoreCase,
+  historyCollapseGrowingCase,
+  historySlowLoadCase,
+  historyLoadErrorCase,
   // ─── 网络中断 ───────────────────────────────────
   requestBusinessErrorMessageCase,
   networkErrorDelayedCase,
@@ -174,6 +180,8 @@ export const ALL_CASES: TestCase[] = [
   chatPanelSkinHistoryCase,
   chatPanelDefaultSkinCase,
   chatPanelSkinEmptyCase,
+  // 超长历史折叠（辅助）
+  historyCollapseCustomMaxItersCase,
 ];
 
 /** 按 group 分组 */

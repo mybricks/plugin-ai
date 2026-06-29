@@ -2,6 +2,7 @@ import { randomUUID } from "./uuid";
 import { createRequestAsStream } from "../../request/src";
 import type { ToolDescriptor } from "../../request/src";
 import { AgentEvents } from "./events";
+import { HistoryManager } from "./history/manager";
 import type {
   AgentMode,
   AgentOptions,
@@ -24,7 +25,7 @@ import type {
   TurnRecord,
   WarmupIter,
 } from "./types";
-import { turnsToMessages, bindHistory, getLLMIterations, hasNoToolCalls, serializeToolCallArgumentsFromIter, serializeToolCallArgumentsFromLLMResult, attachmentToMessagePart } from "./types";
+import { turnsToMessages, getLLMIterations, hasNoToolCalls, serializeToolCallArgumentsFromIter, serializeToolCallArgumentsFromLLMResult, attachmentToMessagePart } from "./types";
 import { maskMessages, computeHandoffTurnIds, buildProtectedAttachmentTurnIds, type MaskOptions } from "./mask";
 import { wrapRequestWithRetry, type RetryOptions } from "./retry";
 import { CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
@@ -47,6 +48,8 @@ export type {
   BoundHistory,
 } from "./types";
 export type { MaskOptions } from "./mask";
+export { HistoryManager };
+export type { HistoryManagerSnapshot, HistoryStatus, HistoryLoadResult } from "./history/manager";
 
 // ─── 默认配置常量 ────────────────────────────────────────────────────────────
 /** 默认上下文窗口大小（token 数） */
@@ -455,6 +458,7 @@ function getLastRecordedMode(turns: TurnRecord[]): AgentMode | null {
 export class Agent {
   readonly events = new AgentEvents();
   readonly key: string | undefined;
+  readonly historyManager: HistoryManager;
   protected options: InternalAgentOptions;
   private _mode: AgentMode;
   /**
@@ -501,6 +505,11 @@ export class Agent {
     };
     this._mode = normalizeAllowedAgentMode(options.mode, options);
     this.key = options.key;
+    this.historyManager = new HistoryManager({ history: this.options.history, key: this.key });
+    // 构造时立即启动历史加载，UI 订阅后能直接感知 ready 通知，无需 UI 主动触发。
+    void this.ensureHistoryReady().catch(() => {
+      // 加载失败由 historyManager 的 error 状态通知 UI，这里静默处理。
+    });
   }
 
   /** 获取当前运行模式。 */
@@ -524,32 +533,23 @@ export class Agent {
     }
   }
 
-  /** 加载历史调用记录（同时加载 compact 记录） */
-  async loadHistory(): Promise<void> {
-    const { history, key } = this.options;
-    if (history && key) {
-      const loadedTurns = await history.load(key);
-      // 面板可能在请求进行中才挂载；此时未结束的 turn 还没持久化，不能被历史覆盖掉。
-      const loadedIds = new Set(loadedTurns.map((turn) => turn.id));
-      const activeTurns = this.turns.filter((turn) => !turn.endTime && !loadedIds.has(turn.id));
-      this.turns = [...loadedTurns, ...activeTurns];
-      let compactRecord = await history.loadCompact(key);
-      if (compactRecord && typeof compactRecord === "string") {
-        try {
-          const parsed = JSON.parse(compactRecord as any);
-          if (parsed && "upToTurnId" in parsed) compactRecord = parsed;
-        } catch {}
-      }
-      this.compactRecord = compactRecord;
-    }
-  }
-
   /** 清除历史（同时清除 compact 记录缓存） */
   async clearHistory(): Promise<void> {
-    const { history, key } = this.options;
-    if (history && key) await history.clear(key);
+    await this.historyManager.clear();
     this.turns = [];
     this.compactRecord = null;
+  }
+
+  private async ensureHistoryReady(): Promise<void> {
+    const result = await this.historyManager.ensureLoaded();
+    if (result === null) return; // 无 storage 或已 ready，无需处理
+    // 合并：保留面板已产生但尚未持久化的 turn（仅在 loadHistory 之前发起的请求才可能出现）
+    const loadedIds = new Set(result.turns.map((turn) => turn.id));
+    const localTurns = this.turns.filter((turn) => !loadedIds.has(turn.id));
+    this.turns = [...result.turns, ...localTurns];
+    this.compactRecord = result.compactRecord;
+    // turns 已写好，再通知订阅者，保证 UI 调 getTurns() 时数据已就绪
+    this.historyManager.markReady();
   }
 
   /** 获取历史调用记录（供 UI 直接使用） */
@@ -559,16 +559,12 @@ export class Agent {
 
   /** 主动关闭某轮建议选项展示。 */
   async dismissSuggestions(turnId: string): Promise<void> {
-    const turn = this.turns.find((t) => t.id === turnId);
-    if (turn) {
-      turn.suggestionsDismissed = true;
+    // 通过 immutable 替换更新内存，与 _saveTurnRecord 的更新方式一致
+    const idx = this.turns.findIndex((t) => t.id === turnId);
+    if (idx >= 0) {
+      this.turns[idx] = { ...this.turns[idx], suggestionsDismissed: true };
     }
-
-    const { history, key } = this.options;
-    if (history && key) {
-      await history.update(key, turnId, { suggestionsDismissed: true });
-    }
-
+    await this.historyManager.update(turnId, { suggestionsDismissed: true });
     this.events.emit("turn:suggestions:dismiss", { turnId });
   }
 
@@ -583,10 +579,7 @@ export class Agent {
    * 未配置 history 或未设置 key 时返回 null。
    */
   getHistory(): BoundHistory | null {
-    const { history } = this.options;
-    const key = this.key;
-    if (!history || !key) return null;
-    return bindHistory(history, key);
+    return this.historyManager.getBoundHistory();
   }
 
   /**
@@ -609,6 +602,7 @@ export class Agent {
    * - 中途失败（有 iterations）：从失败点继续执行
    */
   async retry(turnId: string): Promise<void> {
+    await this.ensureHistoryReady();
     const turn = this.turns[this.turns.length - 1];
     if (!turn || turn.id !== turnId || turn.status !== "error") {
       return;
@@ -1086,32 +1080,22 @@ export class Agent {
 
   /** 保存单个 turn：新 turn 首次保存 append，retry/续跑复用旧 turn update。 */
   private async _saveTurnRecord(turn: TurnRecord, mode: TurnPersistMode): Promise<void> {
-    const { history, key } = this.options;
-    if (history && key) {
-      // 更新 turns 数组中的 turn
-      const idx = this.turns.findIndex(t => t.id === turn.id);
-      if (idx >= 0) {
-        this.turns[idx] = turn;
-      } else {
-        this.turns.push(turn);
-      }
-      try {
-        if (mode === "update") {
-          await history.update(key, turn.id, turn);
-        } else {
-          await history.append(key, turn);
-        }
-      } catch (e) {
-        console.error(e);
-      }
+    // 更新内存（Agent.turns 是唯一数据源）
+    const idx = this.turns.findIndex(t => t.id === turn.id);
+    if (idx >= 0) {
+      this.turns[idx] = turn;
     } else {
-      // 没有 history 时也要更新内存
-      const idx = this.turns.findIndex(t => t.id === turn.id);
-      if (idx >= 0) {
-        this.turns[idx] = turn;
+      this.turns.push(turn);
+    }
+    // 持久化旁路写入
+    try {
+      if (mode === "update") {
+        await this.historyManager.replaceTurn(turn);
       } else {
-        this.turns.push(turn);
+        await this.historyManager.append(turn);
       }
+    } catch (e) {
+      console.error(e);
     }
   }
 
@@ -1130,6 +1114,7 @@ export class Agent {
    *     如需继承当前模式，请显式传 `mode: agent.getMode()`。
    */
   async requestAI(params: RequestAIOptions): Promise<void> {
+    await this.ensureHistoryReady();
     const { message, attachments, mode = AgentModeEnum.Build, ...rest } = params;
     this.setMode(mode, "requestAI");
     const effectiveRequestMode = this.getMode();
@@ -1478,8 +1463,6 @@ IMPORTANT: 不要调用工具！
 
     let lastContent = "";
     let suggestionsResult: TurnRecord["suggestions"] | undefined;
-    const { history, key } = this.options;
-
     const parseSuggestions = (content: string): TurnRecord["suggestions"] | undefined => {
       try {
         const askMatch = content.match(/<ask\b[^>]*>([\s\S]*?)<\/ask>/i);
@@ -1512,11 +1495,9 @@ IMPORTANT: 不要调用工具！
       suggestionsResult = suggestions;
       turn.suggestions = suggestions;
 
-      if (history && key) {
-        void history.update(key, turn.id, { suggestions }).catch((e) => {
-          console.warn("[Agent] suggestions history update failed:", e);
-        });
-      }
+      void this.historyManager.update(turn.id, { suggestions }).catch((e) => {
+        console.warn("[Agent] suggestions history update failed:", e);
+      });
 
       this.events.emit("turn:suggestions", { turnId: turn.id, suggestions });
     };
@@ -1558,13 +1539,11 @@ IMPORTANT: 不要调用工具！
     if (handoffText) turn.handoff = handoffText;
     if (suggestionsResult) turn.suggestions = suggestionsResult;
 
-    if (history && key) {
-      await history.update(key, turn.id, {
-        ...(summaryText ? { summary: summaryText } : {}),
-        ...(handoffText ? { handoff: handoffText } : {}),
-        ...(suggestionsResult ? { suggestions: suggestionsResult } : {}),
-      });
-    }
+    await this.historyManager.update(turn.id, {
+      ...(summaryText ? { summary: summaryText } : {}),
+      ...(handoffText ? { handoff: handoffText } : {}),
+      ...(suggestionsResult ? { suggestions: suggestionsResult } : {}),
+    });
 
     void Promise.resolve(this.options.hooks?.afterTurnSummary?.(turn, summaryText)).catch((e) => {
       console.warn("[Agent] hooks.afterTurnSummary failed:", e);
@@ -1895,14 +1874,11 @@ IMPORTANT: 不要调用工具！
       this.compactRecord = bestCompactRecord;
 
       // 持久化到 History 的独立存储槽
-      const { history, key } = this.options;
-      if (history && key) {
-        try {
-          await history.saveCompact(key, bestCompactRecord);
-        } catch (e) {
-          console.warn("[Agent] autoCompact saveCompact failed:", e);
-          // 持久化失败不影响内存缓存，继续
-        }
+      try {
+        await this.historyManager.saveCompact(bestCompactRecord);
+      } catch (e) {
+        console.warn("[Agent] autoCompact saveCompact failed:", e);
+        // 持久化失败不影响内存缓存，继续
       }
       return true;
     }

@@ -8,13 +8,27 @@ import type { History, TurnRecord, CompactRecord, VersionRecord, VersionFile } f
 export class MockHistory implements History {
   private turns: TurnRecord[];
   private compact: CompactRecord | null;
+  private loadDelayMs: number;
+  private loadError: boolean;
 
-  constructor(initialTurns: TurnRecord[] = [], compact: CompactRecord | null = null) {
+  constructor(
+    initialTurns: TurnRecord[] = [],
+    compact: CompactRecord | null = null,
+    opts?: { loadDelayMs?: number; loadError?: boolean }
+  ) {
     this.turns = [...initialTurns];
     this.compact = compact;
+    this.loadDelayMs = opts?.loadDelayMs ?? 0;
+    this.loadError = opts?.loadError ?? false;
   }
 
   async load(_key: string): Promise<TurnRecord[]> {
+    if (this.loadDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.loadDelayMs));
+    }
+    if (this.loadError) {
+      throw new Error("MockHistory: 模拟历史记录加载失败");
+    }
     return [...this.turns];
   }
 

@@ -37,6 +37,11 @@ function toUserFriendlyError(msg: string): string {
 }
 
 
+export interface HistoryCollapseConfig {
+  /** iter 数量上限，超过后折叠更旧的 turns。默认 50 */
+  maxIters?: number;
+}
+
 export interface MessageListProps {
   messages: MessageRecord[];
   agent?: CodeAgent;
@@ -49,17 +54,48 @@ export interface MessageListProps {
   renderEmpty?: () => React.ReactNode;
   /** 粘在滚动区域底部的自定义 footer，例如 Sender */
   renderFooter?: () => React.ReactNode;
+  /** 历史折叠游标 */
+  collapseCursor?: {
+    visibleStartIndex: number;
+    collapsedCount: number;
+  };
+  /** 历史展开回调 */
+  onExpandHistory?: (type: "one" | "all") => void;
 }
 
 type MessageListRef = { scrollToBottom: () => void };
 
+// ─── CollapseBar ──────────────────────────────────────────────────────────────
+
+const CollapseBar = ({
+  collapsedCount,
+  onExpandOne,
+  onExpandAll,
+}: {
+  collapsedCount: number;
+  onExpandOne: () => void;
+  onExpandAll: () => void;
+}) => (
+  <div className={css["collapse-bar"]}>
+    <div className={css["collapse-bar-line"]} />
+    <span className={css["collapse-bar-text"]}>已折叠 {collapsedCount} 轮历史对话</span>
+    <div className={css["collapse-bar-actions"]}>
+      <button className={css["collapse-bar-btn"]} onClick={onExpandOne}>展开上一轮</button>
+      <button className={css["collapse-bar-btn"]} onClick={onExpandAll}>展开全部</button>
+    </div>
+    <div className={css["collapse-bar-line"]} />
+  </div>
+);
+
+// ─── MessageList ──────────────────────────────────────────────────────────────
+
 const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
-  function MessageListInner({ messages, agent, onRetry, onExecutePlan, canExecutePlan = true, historyLoaded = true, renderEmpty, renderFooter }, ref) {
+  function MessageListInner({ messages, agent, onRetry, onExecutePlan, canExecutePlan = true, historyLoaded = true, renderEmpty, renderFooter, collapseCursor, onExpandHistory }, ref) {
   const mainRef = useRef<HTMLElement>(null);
   const scrollerRef = useRef<AutoScroller | null>(null);
   const { activePlan } = usePlanState(agent);
-
-  // 缓存工具渲染器映射，避免流式渲染时重复计算
+  const visibleStartIndex = collapseCursor?.visibleStartIndex ?? 0;
+  const collapsedCount = collapseCursor?.collapsedCount ?? 0;
   const toolRendererMap = useMemo(() => {
     const map = new Map<string, ToolRenderer>();
 
@@ -92,19 +128,31 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
         {historyLoaded && messages.length === 0 && renderEmpty ? (
           <div className={css["empty-state"]}>{renderEmpty()}</div>
         ) : (
-          messages.map((record, index) => (
-            <MessageBubble
-              key={record.id}
-              record={record}
-              toolRendererMap={toolRendererMap}
-              onRetry={index === messages.length - 1 ? onRetry : undefined}
-              isLast={index === messages.length - 1}
-              agent={agent}
-              onExecutePlan={onExecutePlan}
-              canExecutePlan={canExecutePlan}
-              activePlan={activePlan}
-            />
-          ))
+          <>
+            {collapsedCount > 0 && (
+              <CollapseBar
+                collapsedCount={collapsedCount}
+                onExpandOne={() => onExpandHistory?.("one")}
+                onExpandAll={() => onExpandHistory?.("all")}
+              />
+            )}
+            {messages.map((record, index) => {
+              if (index < visibleStartIndex) return null;
+              return (
+                <MessageBubble
+                  key={record.id}
+                  record={record}
+                  toolRendererMap={toolRendererMap}
+                  onRetry={index === messages.length - 1 ? onRetry : undefined}
+                  isLast={index === messages.length - 1}
+                  agent={agent}
+                  onExecutePlan={onExecutePlan}
+                  canExecutePlan={canExecutePlan}
+                  activePlan={activePlan}
+                />
+              );
+            })}
+          </>
         )}
         {renderFooter ? (
           <div className={css["message-list-footer"]}>{renderFooter()}</div>
