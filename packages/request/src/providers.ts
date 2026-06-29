@@ -206,7 +206,7 @@ function formatRequestBody(
  *
  * 设计原则：
  * - 纯内存状态，不做任何 localStorage 持久化；持久化由上层（Agent）负责。
- * - 与 history 模式对称：通过 AgentOptions.llmProvider 注入 Agent。
+ * - 与 history 模式对称：通过 AgentOptions.llm.providers 注入 Agent。
  */
 export class LLMProviders {
   private providers: Map<string, ProviderConfig>;
@@ -300,7 +300,7 @@ export class LLMProviders {
 
     // CustomProviderConfig：直接 delegate，调用方自行处理多模态适配
     if (isCustomProvider(provider)) {
-      return provider.request(params);
+      return provider.request({ ...params, model: this.selection });
     }
 
     // RemoteProviderConfig：发送前做多模态预处理

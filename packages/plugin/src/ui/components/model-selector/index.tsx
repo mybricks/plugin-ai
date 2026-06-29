@@ -60,7 +60,6 @@ export const ModelSelector = ({ modelSelector, disabled }: ModelSelectorProps) =
       <div className={css.menu}>
         {Object.entries(providerGroups).map(([providerId, groupModels], groupIdx, arr) => (
           <div key={providerId} className={css.group}>
-            {arr.length > 1 && <div className={css.groupTitle}>{providerId}</div>}
             {groupModels.map(m => {
               const isSelected = selected?.providerId === m.providerId && selected?.modelId === m.modelId;
               return (

@@ -1,5 +1,5 @@
 import { randomUUID } from "./uuid";
-import { createRequestAsStream } from "../../request/src";
+import { createRequestAsStream, LLMProviders } from "../../request/src";
 import type { ToolDescriptor } from "../../request/src";
 import { AgentEvents } from "./events";
 import { HistoryManager } from "./history/manager";
@@ -467,6 +467,7 @@ export class Agent {
    * 否则父 Agent 的 retry wrapper 会和 fork 自己的 retry 配置叠套。
    */
   protected readonly rawRequest: NonNullable<AgentOptions["request"]>;
+  private readonly llmProviders?: LLMProviders;
   /** 历史调用记录（SSE 事件粒度），从 History 加载，每轮 complete/abort/error 后 append */
   protected turns: TurnRecord[] = [];
   /**
@@ -491,8 +492,11 @@ export class Agent {
     const hasRetry = Object.prototype.hasOwnProperty.call(options, "retry");
 
     const retryOpts = hasRetry ? (options.retry ?? DEFAULT_RETRY) : DEFAULT_RETRY;
-    // llmProvider 存在时优先使用其 request，否则沿用传入的 request（向后兼容）
-    const effectiveRequest = options.llmProvider ? options.llmProvider.request : (options.request ?? createRequestAsStream());
+    if (options.llm?.providers?.length) {
+      this.llmProviders = new LLMProviders({ providers: options.llm.providers });
+    }
+    // llm.providers 存在时优先使用内部 LLMProviders.request，否则沿用传入的 request（向后兼容）
+    const effectiveRequest = this.llmProviders ? this.llmProviders.request : (options.request ?? createRequestAsStream());
     this.rawRequest = effectiveRequest;
 
     this.options = {
@@ -515,6 +519,11 @@ export class Agent {
   /** 获取当前运行模式。 */
   getMode(): AgentMode {
     return this._mode;
+  }
+
+  /** 获取 Agent 内部根据 llm.providers 创建的运行时模型服务。 */
+  getLLMProviders(): LLMProviders | undefined {
+    return this.llmProviders;
   }
 
   /** 获取当前可用的运行模式列表（基于 disabledModes 配置）。 */
@@ -725,14 +734,10 @@ export class Agent {
     const baseLlmRest: Record<string, any> = { ...llmRest };
     const initialAiRole = baseLlmRest.aiRole as string | undefined;
     let turnAiRole: string | undefined = initialAiRole || undefined;
-    const buildStepLLMRest = (): { rest: Record<string, any>; effectiveAiRole?: string } => {
+    const buildStepLLMRest = (): { rest: Record<string, any>; effectiveAiRole: string } => {
       const rest = { ...baseLlmRest };
-      const effectiveAiRole = turnAiRole;
-      if (effectiveAiRole) {
-        rest.aiRole = effectiveAiRole;
-      } else {
-        delete rest.aiRole;
-      }
+      const effectiveAiRole = turnAiRole || "default";
+      rest.aiRole = effectiveAiRole;
       return { rest, effectiveAiRole };
     };
 
@@ -1258,6 +1263,7 @@ export class Agent {
       ...this.options,
       // 使用原始 request，让 fork 的 retry 覆盖真正生效，避免继承父 Agent 已包装的 retry。
       request: this.rawRequest,
+      llm: undefined,
       key: randomUUID(),     // 随机隔离 key
       history: undefined,    // fork 不写历史
       // tools：不传=继承父；传了（含 []）则覆盖

@@ -294,7 +294,7 @@ export interface TurnRecord {
         endTime?: number;
         /** 本次 LLM 思考内容 */
         thinkingContent?: string;
-        /** 本 step 实际使用的 aiRole（未指定时为空） */
+        /** 本 step 实际使用的 aiRole；未显式指定时为 "default"。 */
         aiRole?: string;
         /** 本 step 实际运行的 Agent 模式 */
         mode?: AgentMode;

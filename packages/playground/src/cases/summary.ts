@@ -82,6 +82,12 @@ function makeSummaryAwareRequest(): TestCase["request"] {
     const isSummaryFork =
       typeof lastUserMsg?.content === "string" &&
       lastUserMsg.content.includes("IMPORTANT: 不要调用工具");
+    const hasReadResult = msgs.some(
+      (m: any) =>
+        m.role === "tool" &&
+        typeof m.content === "string" &&
+        m.content.includes("src/App.tsx")
+    );
 
     if (isSummaryFork) {
       // 模拟 summary 生成延迟 1 秒
@@ -95,10 +101,26 @@ function makeSummaryAwareRequest(): TestCase["request"] {
       return;
     }
 
-    // 正常回复（延迟 300ms 模拟真实响应）
+    if (!hasReadResult) {
+      await new Promise(r => setTimeout(r, 300));
+      params.emits.onToolCallStream?.({
+        index: 0,
+        id: "c_summary_read_1",
+        name: "read_file",
+        argsChunk: "",
+      });
+      params.emits.onToolCalls?.([
+        { id: "c_summary_read_1", name: "read_file", args: { path: "src/App.tsx" } },
+      ]);
+      params.emits.onFinishReason?.("tool_calls");
+      params.emits.complete?.("");
+      return;
+    }
+
+    // 工具调用后的正常回复（延迟 300ms 模拟真实响应）
     await new Promise(r => setTimeout(r, 300));
     const userCount = msgs.filter((m: any) => m.role === "user").length;
-    const reply = `这是第 ${userCount} 条消息的回复，turn 结束后会异步生成摘要。`;
+    const reply = `这是第 ${userCount} 条消息的回复，已读取 src/App.tsx，turn 结束后会异步生成摘要。`;
     for (const chunk of reply.match(/.{1,10}/g) ?? []) {
       await new Promise(r => setTimeout(r, 25));
       params.emits.write(chunk);
@@ -113,13 +135,14 @@ export const summaryBasicCase: TestCase = {
   id: "summary-basic",
   name: "autoSummary 正常触发",
   group: "Summary",
-  description: "summary.enabled=true，每轮 turn 结束后异步 fork 生成 <summary> 和 <handoff>，写入 TurnRecord。summary fork 延迟 1 秒，可在 Inspector 的 turn 详情里看到 summary 字段。",
-  expectedBehavior: "发送消息后主 Agent 正常回复，约 1 秒后 Inspector 中当前 turn 的 summary 字段出现摘要内容（需刷新或切换查看）。控制台无报错。",
+  priority: "P0",
+  description: "summary.enabled=true，主 turn 先调用 read_file，再正常回复；turn 结束后异步 fork 生成 <summary> 和 <handoff>，写入 TurnRecord。",
+  expectedBehavior: "发送消息后先看到 read_file 工具卡片和主回复；约 1 秒后 Request Inspector 出现 summary fork 请求，当前 turn 写入 summary / handoff。控制台无报错。",
   initialTurns: makeTextHistory([
     { user: "你好", assistant: "你好！有什么可以帮你的？" },
   ]),
   request: makeSummaryAwareRequest(),
-  summaryOptions: { enabled: true },
+  summaryOptions: { enabled: true, suggestions: false },
 };
 
 /** autoSummary fork 返回空内容（静默失败，不影响主流程） */

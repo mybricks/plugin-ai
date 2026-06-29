@@ -86,6 +86,7 @@ export const ALL_CASES: TestCase[] = [
   multiEditPartialSuccessCase,
   skillUseThenContinueCase,
   planWriteGeneratedFileCase,
+  summaryBasicCase,
   suggestionsDisplayCase,
   abortThenNextTurnAwarenessCase,
   customToolRendererErrorBoundaryCase,
@@ -148,7 +149,6 @@ export const ALL_CASES: TestCase[] = [
   compactRetrySuccessTagCase,
   compactBinaryExpandSuccessCase,
   // Summary
-  summaryBasicCase,
   summaryEmptyResponseCase,
   // WebFetch
   webFetchBasicCase,

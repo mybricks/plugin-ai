@@ -21,8 +21,10 @@ export interface TestCase {
   /** 预设文件系统（不传则使用 DEFAULT_FILES） */
   initialFiles?: FsFile[];
   request: RequestAsStreamFn;
-  /** 预设 LLM Providers，用于测试模型选择器和模型切换 */
-  llmProviders?: ProviderConfig[];
+  /** 预设 LLM 配置，用于测试模型选择器和模型切换 */
+  llm?: {
+    providers?: ProviderConfig[];
+  };
   tools?: Tool[];
   /** 预设技能文件列表，传入 CodeAgent.skills */
   skills?: SkillFile[];

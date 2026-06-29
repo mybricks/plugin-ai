@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { CodeAgent } from "@agent/code-agent";
-import { LLMProviders } from "@request/providers";
 import type { RequestAsStreamFn } from "@request/types";
 import { MockHistory } from "./mock-history";
 import { MemFS } from "./mem-fs";
@@ -23,25 +22,15 @@ export function usePlaygroundAgent(
   ) => {
     agentRef.current?.abort();
     context.agentMap.delete(AGENT_KEY);
-    const llmProvidersInstance = testCase.llmProviders?.length
-      ? new LLMProviders({ providers: testCase.llmProviders })
-      : undefined;
-
-    context.setLLMProviders(llmProvidersInstance);
 
     const fs = new MemFS(testCase.initialFiles);
     const mockHistory = new MockHistory(testCase.initialTurns, null, testCase.historyOptions);
 
-    // 如果有 llmProviders，agent request 走 llmProviders.request（路由由选中模型决定）
-    // 否则直接用 testCase.request
-    const effectiveRequest = llmProvidersInstance
-      ? llmProvidersInstance.request
-      : (reqFn ?? testCase.request);
-
     const newAgent = new CodeAgent({
       key: AGENT_KEY,
       history: mockHistory,
-      request: effectiveRequest,
+      llm: testCase.llm,
+      request: reqFn ?? testCase.request,
       sandbox: fs,
       tools: testCase.tools ?? [],
       skills: testCase.skills,
@@ -55,6 +44,7 @@ export function usePlaygroundAgent(
     });
 
     agentRef.current = newAgent;
+    context.setLLMProviders(newAgent.getLLMProviders());
     context.agentMap.set(AGENT_KEY, newAgent as any);
 
     setMemFS(fs);

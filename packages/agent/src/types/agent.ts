@@ -1,5 +1,5 @@
 import type { RequestAsStreamFn } from "../../../request/src";
-import type { LLMProviders } from "../../../request/src/providers";
+import type { ProviderConfig } from "../../../request/src/providers";
 import type { Agent } from "../agent";
 import type { MaskOptions } from "../mask";
 import type { RetryOptions } from "../retry";
@@ -46,7 +46,7 @@ export interface ToolExecutionContext {
   getUserMessage: () => { message: string; attachments?: any[] };
   /** 获取当前 Agent 实例 */
   getAgent: () => Agent;
-  /** 读取当前 turn 后续 step 使用的 aiRole（未指定时返回 undefined） */
+  /** 读取当前 turn 后续 step 显式设置的 aiRole；未设置时请求层会兜底为 "default"。 */
   getAiRole: () => string | undefined;
   /**
    * 设置后续 step 使用的 aiRole（仅当前 turn 生效）。
@@ -149,19 +149,15 @@ export interface AgentOptions {
   tools?: Tool[];
   /** 历史记录实现 */
   history?: History;
-  /** 流式请求函数；传入 llmProvider 时可省略 */
+  /** 流式请求函数；传入 llm.providers 时可省略 */
   request?: RequestAsStreamFn;
   /**
-   * LLM 供应商实例（可选）。
-   * 传入时，Agent 会使用 llmProvider.request 作为实际请求函数（忽略 request 参数）。
-   * 与 history 模式对称：持久化由 Agent 负责，LLMProviders 本身只管内存状态。
-   *
-   * plugin-AI 场景：将 context.llmProviders 传入（chatPanel/chatStartView 共享同一实例）。
-   * 直接引用 ChatPanel 场景：用户自建 LLMProviders 实例传入。
-   *
-   * 不传时沿用 request 参数（向后兼容）。
+   * LLM 配置。传入 llm.providers 时，Agent 内部会创建 LLMProviders 并使用其 request；
+   * 对外保持与 pluginAI 一致的配置形状，不暴露内部 LLMProviders 实例。
    */
-  llmProvider?: LLMProviders;
+  llm?: {
+    providers?: ProviderConfig[];
+  };
   /** Agent key（用于历史记录隔离，通常取 comId） */
   key?: string;
   /**

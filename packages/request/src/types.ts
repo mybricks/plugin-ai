@@ -1,4 +1,5 @@
 import type { TokenUsage } from "../../agent/src/types";
+import type { ModelSelection } from "./providers";
 
 export type { TokenUsage };
 
@@ -38,6 +39,8 @@ export type RequestAsStreamParams = {
   emits: RequestAsStreamEmits;
   aiRole?: any;
   tools?: ToolDescriptor[];
+  /** 当前选中的供应商/模型。由 LLMProviders.request 注入，供 CustomProviderConfig.request 使用。 */
+  model?: ModelSelection;
   /** 当前 turn 的唯一 ID，用于 SSE 请求头 m-request-turn */
   turnId?: string;
 };
