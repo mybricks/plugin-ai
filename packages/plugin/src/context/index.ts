@@ -2,7 +2,7 @@ import type { CodeAgent, Sandbox } from "../../../agent/src";
 import type { SendToAgentParams } from "../sandbox";
 import type { Designer, Hooks } from "../sandbox/types";
 import { AIRequestQueue } from "./queue";
-import type { LLMProviders, ProviderConfig } from "../../../request/src";
+import type { ProviderConfig } from "../../../request/src";
 import type { SenderRef } from "../ui/components/sender";
 import { PluginAIKVStore } from "./kv";
 
@@ -84,18 +84,6 @@ class Context {
 
   /** LLM 配置值 */
   settingValue?: SettingValue;
-
-  /** LLMProviders 实例（自定义渠道时使用） */
-  llmProviders?: LLMProviders;
-
-  private _llmProvidersDispose?: () => void;
-
-  /** 设置 LLMProviders 实例 */
-  setLLMProviders(providers: LLMProviders | undefined, dispose?: () => void) {
-    this._llmProvidersDispose?.();
-    this._llmProvidersDispose = dispose;
-    this.llmProviders = providers;
-  }
 
   /** 全局禁用输入框发送 */
   disabled: boolean = false;

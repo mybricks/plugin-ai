@@ -44,7 +44,6 @@ export function usePlaygroundAgent(
     });
 
     agentRef.current = newAgent;
-    context.setLLMProviders(newAgent.getLLMProviders());
     context.agentMap.set(AGENT_KEY, newAgent as any);
 
     setMemFS(fs);

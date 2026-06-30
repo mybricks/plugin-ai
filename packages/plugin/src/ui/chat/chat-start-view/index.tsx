@@ -67,19 +67,19 @@ const ChatStartView = ({
     activePlan,
   } = usePlanState(agent);
 
-  // 模型选择器状态 —— 与 chat-panel 对称，通过 llmProviders 实例事件同步
-  const llmProviders = context.llmProviders;
+  // 模型选择器状态跟随当前 Agent，避免多 Agent/多面板串状态。
+  const llmProviders = agent?.getLLMProviders();
   const hasLLMProviders = !!(llmProviders && llmProviders.isValid());
   const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(
     () => llmProviders?.getSelected() ?? null
   );
 
   useEffect(() => {
-    const lp = context.llmProviders;
+    const lp = llmProviders;
     if (!lp) return;
     setSelectedModel(lp.getSelected());
     return lp.onSelectionChange((sel) => setSelectedModel(sel));
-  }, [context.llmProviders]);
+  }, [llmProviders]);
 
   const modelSelector = useMemo(() => {
     if (!hasLLMProviders || !llmProviders) return undefined;

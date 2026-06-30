@@ -219,10 +219,6 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     ? createRequestAsStream()
     : (onRequest ?? createRequestAsStream());
 
-  if (!llm?.providers?.length) {
-    context.setLLMProviders(undefined);
-  }
-
   const requestAsStream: RequestAsStreamFn = effectiveRequest;
   const upload = onUpload ?? createOnUpload();
   const download = onDownload ?? (({ name, content }: { name: string; content: string }) => {

@@ -6,7 +6,7 @@ import { chipRegistry } from "../../../sandbox/setup";
 import type { QueueItem } from "../../../context/queue";
 import type { AgentMode, CodeAgent } from "../../../../../agent/src";
 import { AgentModeEnum } from "../../../../../agent/src";
-import type { LLMProviders, ModelSelection } from "../../../../../request/src/providers";
+import type { ModelSelection } from "../../../../../request/src/providers";
 import { useSession } from "../use-session";
 import { MessageList } from "../messages";
 import type { HistoryCollapseConfig } from "../messages";
@@ -141,19 +141,19 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   const showChatMode = availableModes.length > 1;
   const [chatMode, setChatMode] = useState<AgentMode>(() => agent?.getMode() ?? availableModes[0] ?? AgentModeEnum.Build);
 
-  // 模型选择器状态 —— 通过 llmProviders 实例事件同步多视图
-  const llmProviders = context.llmProviders;
+  // 模型选择器状态跟随当前 Agent，避免多 Agent/多面板串状态。
+  const llmProviders = agent?.getLLMProviders();
   const hasLLMProviders = !!(llmProviders && llmProviders.isValid());
   const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(
     () => llmProviders?.getSelected() ?? null
   );
 
   useEffect(() => {
-    const lp = context.llmProviders;
+    const lp = llmProviders;
     if (!lp) return;
     setSelectedModel(lp.getSelected());
     return lp.onSelectionChange((sel) => setSelectedModel(sel));
-  }, [context.llmProviders]);
+  }, [llmProviders]);
 
   const modelSelector = useMemo(() => {
     if (!hasLLMProviders || !llmProviders) return undefined;

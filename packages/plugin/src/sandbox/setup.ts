@@ -658,7 +658,6 @@ function connectToAI(
   });
   agentRef = agent;
 
-  context.setLLMProviders(agent.getLLMProviders());
   context.sandboxMap.set(agentKey, { sandbox, designerRef });
   context.agentMap.set(agentKey, agent);
 
