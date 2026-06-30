@@ -73,6 +73,21 @@ const DEFAULT_HANDOFF = { enabled: false as const };
 /** 默认 compact 配置 */
 const DEFAULT_COMPACT = { enabled: true as const, maxTurns: 15 };
 
+/**
+ * 工具输出内容的粗略 token 上限（所有工具统一限制，包含自定义工具）。
+ *
+ * 超限时将工具结果替换为错误提示，引导模型缩小查询范围或换用更精准的工具，
+ * 而非把大量内容直接塞入上下文。
+ */
+const TOOL_OUTPUT_MAX_TOKENS = 25_000;
+
+export function roughTokenCountEstimation(
+  content: string,
+  bytesPerToken: number = 4,
+): number {
+  return Math.round(content.length / bytesPerToken);
+}
+
 type InternalAgentOptions = AgentOptions & { request: NonNullable<AgentOptions["request"]> };
 
 function normalizeAgentMode(mode: any): AgentMode {
@@ -996,8 +1011,24 @@ export class Agent {
               toolRecord.result = { output: result.output, metadata: result.metadata };
               toolRecord.status = "success";
               toolRecord.execEndTime = Date.now();
-              toolResultContent = result.output;
-              this.events.emit("tool:result", { callId: tc.id, name: tc.name, result: toolRecord.result, step, endTime: toolRecord.execEndTime });
+
+              // ── 工具 output 大小守卫 ─────────────────────────────────────────
+              // 自定义工具可能返回超大内容；统一在此拦截，用报错替换真实 output，
+              // 引导模型缩小查询范围，而非把大量内容塞入上下文。
+              // read 工具本身已有提前检查（在 execute 内部抛错），此处为兜底保护。
+              const outputTokens = roughTokenCountEstimation(result.output);
+              if (outputTokens > TOOL_OUTPUT_MAX_TOKENS) {
+                const overLimitMsg = `Error: Tool output exceeds the ${TOOL_OUTPUT_MAX_TOKENS} token limit (estimated ~${outputTokens} tokens). Return less data or narrow your query.`;
+                toolRecord.status = "error";
+                toolRecord.errorType = "normal";
+                toolRecord.error = overLimitMsg;
+                toolResultContent = overLimitMsg;
+                toolRecord.execEndTime = Date.now();
+                this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: overLimitMsg, errorType: toolRecord.errorType, step, endTime: toolRecord.execEndTime });
+              } else {
+                toolResultContent = result.output;
+                this.events.emit("tool:result", { callId: tc.id, name: tc.name, result: toolRecord.result, step, endTime: toolRecord.execEndTime });
+              }
             }
           } catch (e) {
             toolRecord.status = "error";

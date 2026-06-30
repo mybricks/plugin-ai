@@ -8,6 +8,7 @@ import { makeScriptedRequest } from "../lib/scripted-request";
 export const PLAYGROUND_SLOW_TOOL_NAME = "playground_slow_action";
 export const PLAYGROUND_RENDER_ERROR_TEXT_TOOL_NAME = "playground_render_error_text";
 export const PLAYGROUND_RENDER_THROW_TOOL_NAME = "playground_render_throw";
+export const PLAYGROUND_LARGE_OUTPUT_TOOL_NAME = "playground_large_output";
 
 /**
  * Playground 注入的自定义工具：execute 内延迟，Tool.title 用于工具卡片标题展示。
@@ -112,6 +113,38 @@ export function createPlaygroundRenderThrowTool(): Tool {
   };
 }
 
+/**
+ * 返回指定长度的 ASCII output，用于验证 agent 层通用工具输出 token 限制。
+ */
+export function createPlaygroundLargeOutputTool(): Tool {
+  return {
+    name: PLAYGROUND_LARGE_OUTPUT_TOOL_NAME,
+    title: "大输出工具",
+    description: "Playground 专用：返回指定长度的 ASCII 内容，用于测试通用工具输出限制。",
+    parameters: {
+      type: "object",
+      properties: {
+        length: {
+          type: "number",
+          description: "返回内容长度",
+        },
+      },
+      required: ["length"],
+    },
+    validate(params: { length?: number }) {
+      if (typeof params.length !== "number" || params.length < 0) {
+        throw new ToolValidationError("length must be a non-negative number");
+      }
+    },
+    async execute(params: { length: number }) {
+      return {
+        output: "x".repeat(params.length),
+        metadata: { length: params.length },
+      };
+    },
+  };
+}
+
 export const customToolRendererErrorBoundaryCase: TestCase = {
   id: "custom-tool-renderer-error-boundary",
   name: "自定义工具渲染容错",
@@ -156,6 +189,74 @@ export const customToolRendererErrorBoundaryCase: TestCase = {
           "自定义工具渲染容错验证完成。",
           "错误展示工具已把 tool.error 渲染出来，渲染报错工具已走默认兜底。",
         ],
+        ttftMs: 200,
+        chunkDelayMs: 50,
+      },
+    ],
+    { loop: true }
+  ),
+};
+
+export const customToolOutputLimitPassCase: TestCase = {
+  id: "custom-tool-output-limit-pass",
+  name: "通用工具输出限制（未超出）",
+  group: "工具调用",
+  description:
+    "自定义工具返回 99996 个 ASCII 字符，粗略估算约 24999 tokens，低于 25000 的通用工具输出限制。",
+  expectedBehavior:
+    "大输出工具卡片为成功状态；下一轮 LLM 正常回复「未超出限制」。",
+  initialTurns: [],
+  tools: [createPlaygroundLargeOutputTool()],
+  request: makeScriptedRequest(
+    [
+      {
+        type: "tool_calls",
+        calls: [
+          {
+            id: "c_large_output_pass",
+            name: PLAYGROUND_LARGE_OUTPUT_TOOL_NAME,
+            args: { length: 99_996 },
+          },
+        ],
+        delayMs: 300,
+      },
+      {
+        type: "content",
+        chunks: ["未超出通用工具输出限制，工具结果已正常传递。"],
+        ttftMs: 200,
+        chunkDelayMs: 50,
+      },
+    ],
+    { loop: true }
+  ),
+};
+
+export const customToolOutputLimitExceededCase: TestCase = {
+  id: "custom-tool-output-limit-exceeded",
+  name: "通用工具输出限制（超出）",
+  group: "工具调用",
+  description:
+    "自定义工具返回 100004 个 ASCII 字符，粗略估算约 25001 tokens，超过 25000 的通用工具输出限制。",
+  expectedBehavior:
+    "大输出工具卡片为 error 状态，错误信息包含 'exceeds the 25000 token limit' 和 estimated token 数；下一轮 LLM 基于错误继续回复。",
+  initialTurns: [],
+  tools: [createPlaygroundLargeOutputTool()],
+  request: makeScriptedRequest(
+    [
+      {
+        type: "tool_calls",
+        calls: [
+          {
+            id: "c_large_output_exceeded",
+            name: PLAYGROUND_LARGE_OUTPUT_TOOL_NAME,
+            args: { length: 100_004 },
+          },
+        ],
+        delayMs: 300,
+      },
+      {
+        type: "content",
+        chunks: ["工具输出已被通用限制拦截，请缩小返回范围。"],
         ttftMs: 200,
         chunkDelayMs: 50,
       },

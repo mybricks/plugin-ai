@@ -25,7 +25,13 @@ import {
   toolArgsJsonParseErrorCase,
   toolWriteLongFilenameCase,
 } from "./tool-error";
-import { customSlowToolCase, customToolRendererErrorBoundaryCase, customToolValidationErrorThenSlowStreamCase } from "./custom-tool";
+import {
+  customSlowToolCase,
+  customToolOutputLimitExceededCase,
+  customToolOutputLimitPassCase,
+  customToolRendererErrorBoundaryCase,
+  customToolValidationErrorThenSlowStreamCase,
+} from "./custom-tool";
 import {
   handoffDisabledCase,
   handoffWithMaskCase,
@@ -120,6 +126,8 @@ export const ALL_CASES: TestCase[] = [
   toolWriteUnicodeMidStreamCase,
   toolArgsJsonParseErrorCase,
   toolWriteLongFilenameCase,
+  customToolOutputLimitPassCase,
+  customToolOutputLimitExceededCase,
   customSlowToolCase,
   customToolValidationErrorThenSlowStreamCase,
   multiEditSameFileCase,
