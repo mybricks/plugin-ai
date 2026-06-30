@@ -2,6 +2,7 @@ import type { TurnRecord, AgentMode } from "@agent/types";
 import type { RequestAsStreamFn } from "@request/types";
 import type { ProviderConfig } from "@request/providers";
 import type { Tool } from "@agent/types";
+import type { CodeAgent } from "@agent/code-agent";
 import type { SkillFile } from "@agent/code-agent";
 import type { FsFile } from "../lib/mem-fs";
 import type React from "react";
@@ -65,6 +66,8 @@ export interface TestCase {
   scrollWithSender?: boolean;
   /** 在 Sender 下方渲染的自定义内容。 */
   renderSenderFooter?: () => React.ReactNode;
+  /** 在右侧 Inspector 上方渲染的自定义操作区。 */
+  renderRightPanelActions?: (params: { agent: CodeAgent | null }) => React.ReactNode;
   /**
    * 特殊 playground 展示布局。
    * 默认走原始调试布局；chat-panel-skin 只展示皮肤预览用 ChatPanel。

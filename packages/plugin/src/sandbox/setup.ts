@@ -31,6 +31,12 @@ export interface SendToAgentParams {
   attachments?: { type: string; content: string; title?: string; size?: number }[];
   extra?: Record<string, any>;
   mode?: AgentMode;
+  /** 指定本次请求使用的模型角色，会透传到请求层用于智能路由。 */
+  aiRole?: string;
+  /** 指定本次请求使用的 provider。与 modelId 搭配时会切换当前选中模型。 */
+  providerId?: string;
+  /** 指定本次请求使用的模型。providerId 可选，未传时会从已配置 providers 中匹配。 */
+  modelId?: string;
   meta?: Record<string, any> & { chips?: ChatChipInstance[] };
   /** 显式提及当前聚焦元素：开启后会在消息最前面添加默认 focus 内容串。默认 false。 */
   mentionFocus?: boolean;
@@ -228,6 +234,9 @@ export function setupSandbox(params: SetupSandboxParams): void {
                 attachments: requestParams.attachments ?? [],
                 ...(requestParams.extra ? { extra: requestParams.extra } : {}),
                 ...(requestParams.mode ? { mode: requestParams.mode } : {}),
+                ...(requestParams.aiRole ? { aiRole: requestParams.aiRole } : {}),
+                ...(requestParams.providerId ? { providerId: requestParams.providerId } : {}),
+                ...(requestParams.modelId ? { modelId: requestParams.modelId } : {}),
                 ...(requestParams.meta ? { meta: requestParams.meta } : {}),
               });
             },

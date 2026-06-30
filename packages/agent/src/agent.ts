@@ -1124,8 +1124,11 @@ export class Agent {
    */
   async requestAI(params: RequestAIOptions): Promise<void> {
     await this.ensureHistoryReady();
-    const { message, attachments, mode = AgentModeEnum.Build, ...rest } = params;
+    const { message, attachments, mode = AgentModeEnum.Build, providerId, modelId, ...rest } = params;
     this.setMode(mode, "requestAI");
+    if (modelId) {
+      this.llmProviders?.setSelected(providerId, modelId);
+    }
     const effectiveRequestMode = this.getMode();
     // 有图片附件时，自动将 aiRole 覆盖为 "image"，使请求层路由到支持视觉的模型。
     // 扩展：当前是 build 模式且无图片，但连续前置 plan 轮中携带过图片时，

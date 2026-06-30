@@ -243,6 +243,36 @@ export class LLMProviders {
   }
 
   /**
+   * 解析模型选择参数。
+   * - providerId + modelId：按指定 provider/model 解析
+   * - 仅 modelId：优先在当前 provider 中匹配，找不到再从所有 providers 中匹配第一个
+   */
+  private resolveSelection(selection: Partial<ModelSelection>): ModelSelection | null {
+    if (!selection.modelId) return null;
+
+    if (selection.providerId) {
+      const next = { providerId: selection.providerId, modelId: selection.modelId };
+      return this.isValidSelection(next) ? next : null;
+    }
+
+    const currentProvider = this.selection
+      ? this.providers.get(this.selection.providerId)
+      : undefined;
+
+    if (currentProvider?.models.some((model) => model.id === selection.modelId)) {
+      return { providerId: currentProvider.providerId, modelId: selection.modelId };
+    }
+
+    for (const provider of this.providers.values()) {
+      if (provider.models.some((model) => model.id === selection.modelId)) {
+        return { providerId: provider.providerId, modelId: selection.modelId };
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * 订阅 selection 变化事件。返回取消订阅函数。
    */
   onSelectionChange(handler: SelectionChangeHandler): () => void {
@@ -391,19 +421,21 @@ export class LLMProviders {
    * 设置当前选中的模型，并触发 selectionChange 事件。
    * 注意：不做持久化，持久化由上层（Agent）负责。
    */
-  setSelected(providerId: string, modelId: string): void {
-    const provider = this.providers.get(providerId);
-    if (!provider) {
-      console.warn(`[LLMProviders] provider not found: ${providerId}`);
-      return;
+  setSelected(providerId: string | undefined, modelId: string): boolean {
+    const requestedSelection = { providerId, modelId };
+    const selection = this.resolveSelection(requestedSelection);
+
+    if (!selection) {
+      const label = requestedSelection.providerId
+        ? `${requestedSelection.providerId}/${requestedSelection.modelId ?? "(none)"}`
+        : requestedSelection.modelId ?? "(none)";
+      console.warn(`[LLMProviders] model selection not found: ${label}`);
+      return false;
     }
-    const model = provider.models.find((m) => m.id === modelId);
-    if (!model) {
-      console.warn(`[LLMProviders] model not found: ${modelId} in provider ${providerId}`);
-      return;
-    }
-    this.selection = { providerId, modelId };
+
+    this.selection = selection;
     this.emitSelectionChange();
+    return true;
   }
 
   /**

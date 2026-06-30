@@ -470,6 +470,83 @@
   overflow: hidden;
 }
 
+.pg-action-panel {
+  flex-shrink: 0;
+  padding: 10px;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.pg-action-panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.pg-action-panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-0);
+}
+
+.pg-action-panel-subtitle {
+  font-size: 10px;
+  color: var(--text-2);
+}
+
+.pg-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.pg-action-btn {
+  min-width: 0;
+  height: 54px;
+  padding: 7px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-0);
+  color: var(--text-0);
+  cursor: pointer;
+  text-align: left;
+}
+
+.pg-action-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.pg-action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.pg-action-btn span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.pg-action-btn small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+  color: var(--text-2);
+}
+
 /* ── Inspector Panel ─────────────────────────────────────────────────────── */
 .pg-inspector {
   flex: 1;

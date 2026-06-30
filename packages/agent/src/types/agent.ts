@@ -316,6 +316,12 @@ export interface RequestAIOptions {
   attachments?: any[];
   /** 本次请求前切换到指定模式（可由 sender UI 传入） */
   mode?: AgentMode;
+  /** 指定本次请求使用的模型角色，会透传到请求层用于智能路由。 */
+  aiRole?: string;
+  /** 指定本次请求使用的 provider。与 modelId 搭配时会切换当前选中模型。 */
+  providerId?: string;
+  /** 指定本次请求使用的模型。providerId 可选，未传时会从已配置 providers 中匹配。 */
+  modelId?: string;
   /** UI 附加元数据，存入 TurnRecord.meta，不参与 LLM 上下文构建 */
   meta?: Record<string, any>;
   /** 业务扩展字段，存入 TurnRecord.extra，不参与 LLM 上下文构建 */

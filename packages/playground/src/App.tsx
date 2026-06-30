@@ -500,6 +500,7 @@ export default function App() {
 
             {/* 右侧：Inspector 上 + FS Viewer 下 */}
             <div className="pg-right-col">
+              {activeCase?.renderRightPanelActions?.({ agent })}
               <InspectorPanel snapshots={snapshots} />
               <FSViewer memFS={memFS} />
             </div>

@@ -64,6 +64,7 @@ import {
 } from "./web-fetch";
 import { settingCase } from "./setting";
 import { modelSwitchCase } from "./model-switch";
+import { requestAIButtonsCase } from "./request-ai-buttons";
 import { disabledModesPlanCase } from "./disabled-modes";
 import { planWriteGeneratedFileCase } from "./plan-write-file";
 import {
@@ -176,6 +177,7 @@ export const ALL_CASES: TestCase[] = [
   // 设置
   settingCase,
   modelSwitchCase,
+  requestAIButtonsCase,
   disabledModesPlanCase,
   // Grep 搜索
   grepDefaultFilesCase,
