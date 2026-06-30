@@ -166,13 +166,12 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     };
   }, [hasLLMProviders, llmProviders, selectedModel]);
 
-  const { messages, historyLoaded, historyStatus, historyError, subscribeSession, clearSession } = useSession(agent);
+  const { messages, historyStatus, historyError, subscribeSession, clearSession } = useSession(agent);
   const messageListRef = useRef<{ scrollToBottom: () => void }>(null);
   const maxHistoryIters = historyCollapse?.maxIters ?? 50;
   const {
     collapseCursor,
     onExpandHistory,
-    recalculate: recalculateHistoryCollapse,
   } = useHistoryCollapse(messages, maxHistoryIters);
 
   useImperativeHandle(ref, () => ({
@@ -196,12 +195,8 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   useEffect(() => {
     if (!agent) return;
     const scrollToBottom = () => messageListRef.current?.scrollToBottom();
-    const refreshHistoryCollapse = () => {
-      setTimeout(() => recalculateHistoryCollapse(), 0);
-    };
     const handleTurnEnd = () => {
       scrollToBottom();
-      refreshHistoryCollapse();
     };
     // 先订阅 turn 事件，避免面板挂载瞬间错过新请求事件。
     const unsubSession = subscribeSession(agent, { onTurnStart: scrollToBottom, onTurnEnd: handleTurnEnd });
@@ -212,11 +207,6 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       unsubMode();
     };
   }, [agent, subscribeSession]);
-
-  useEffect(() => {
-    if (!historyLoaded) return;
-    setTimeout(() => recalculateHistoryCollapse(), 0);
-  }, [historyLoaded]);
 
   // aiViewDisplay 时自动聚焦输入框
   useEffect(() => {
@@ -243,7 +233,6 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     if (!agent || isDisabled) return;
     await agent.clearHistory();
     clearSession();
-    setTimeout(() => recalculateHistoryCollapse(), 0);
   };
 
   const onExportHistory = async () => {
@@ -357,8 +346,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
             agent={agent}
             onExecutePlan={onExecutePlan}
             canExecutePlan={canExecutePlan}
-            historyLoaded={historyLoaded}
-            renderEmpty={renderEmpty}
+            renderEmpty={historyStatus === "ready" ? renderEmpty : undefined}
             renderFooter={scrollWithSender ? () => senderBlockNode : undefined}
             collapseCursor={collapseCursor}
             onExpandHistory={onExpandHistory}

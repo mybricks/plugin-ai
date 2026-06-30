@@ -434,7 +434,6 @@ export function useSession(agent: Agent | undefined) {
 
   return {
     messages,
-    historyLoaded: historyStatus === "ready",
     historyStatus,
     historyError,
     subscribeSession,

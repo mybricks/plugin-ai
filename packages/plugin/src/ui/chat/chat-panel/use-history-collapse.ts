@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { MessageRecord } from "../use-session";
 
 // ─── 折叠边界计算 ─────────────────────────────────────────────────────────────
@@ -50,21 +50,6 @@ export interface HistoryCollapseResult {
     collapsedCount: number;
   };
   onExpandHistory: (type: "one" | "all") => void;
-  /**
-   * 主动触发折叠边界重新计算。
-   *
-   * 为什么不通过 messages 状态变化自动派生？
-   * 消息列表在流式渲染期间会高频更新（每个 SSE delta 都触发 setState），
-   * 若把折叠逻辑挂在 messages 依赖上，每帧都会重算，引入不必要的 O(n) 开销。
-   * 折叠状态只需在两个低频时机重算：
-   *   1. 历史加载完成（historyLoaded: false → true）
-   *   2. 一轮对话结束（turn:complete / turn:abort / turn:error）
-   * 调用方在这两处手动调用 recalculate()，避免流式渲染期间重复计算。
-   *
-   * recalculate 通过 useRef 保证引用永远稳定，调用方可直接放入 effect 回调
-   * 而不必将其列入依赖数组。
-   */
-  recalculate: () => void;
 }
 
 interface HistoryCollapseMetrics {
@@ -98,36 +83,26 @@ export function useHistoryCollapse(
   const [cursor, setCursor] = useState<{ visibleStartIndex: number; atHistoryIterCount: number } | null>(null);
   const [metrics, setMetrics] = useState<HistoryCollapseMetrics>(FALLBACK_METRICS);
 
-  // 用 ref 持有最新的 messages / maxIters，让 recalculate 的引用永远稳定，
-  // 调用方无需将其加入 effect 依赖。
-  const messagesRef = useRef(messages);
-  const maxItersRef = useRef(maxIters);
-  messagesRef.current = messages;
-  maxItersRef.current = maxIters;
-
-  const recalculate = useRef(() => {
+  useEffect(() => {
     try {
-      const msgs = messagesRef.current;
-      const max = maxItersRef.current;
-      if (!Array.isArray(msgs) || !isValidMaxIters(max)) {
+      if (!Array.isArray(messages) || !isValidMaxIters(maxIters)) {
         setMetrics(FALLBACK_METRICS);
         return;
       }
       setMetrics({
-        foldBoundary: calcFoldBoundary(msgs, max),
-        historyIterCount: calcHistoryIterCount(msgs),
+        foldBoundary: calcFoldBoundary(messages, maxIters),
+        historyIterCount: calcHistoryIterCount(messages),
       });
     } catch {
       setMetrics(FALLBACK_METRICS);
     }
-  }).current;
+  }, [messages.length, maxIters]);
 
   try {
     if (!Array.isArray(messages) || !isValidMaxIters(maxIters)) {
       return {
         collapseCursor: FALLBACK_CURSOR,
         onExpandHistory: () => {},
-        recalculate,
       };
     }
 
@@ -159,13 +134,11 @@ export function useHistoryCollapse(
     return {
       collapseCursor,
       onExpandHistory,
-      recalculate,
     };
   } catch {
     return {
       collapseCursor: FALLBACK_CURSOR,
       onExpandHistory: () => {},
-      recalculate,
     };
   }
 }
