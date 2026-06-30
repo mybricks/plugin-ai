@@ -1,6 +1,7 @@
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { ProviderConfig } from "../../../request/src/providers";
 import type { Agent } from "../agent";
+import type { HandoffOptions } from "../handoff";
 import type { MaskOptions } from "../mask";
 import type { RetryOptions } from "../retry";
 import type {
@@ -180,6 +181,12 @@ export interface AgentOptions {
    */
   mask?: MaskOptions | false;
   /**
+   * 历史消息 handoff 配置。
+   * 启用后，带有 turn.handoff 的历史轮次会替换为 userText + handoff。
+   * 默认不启用。
+   */
+  handoff?: HandoffOptions | false;
+  /**
    * 生命周期 hooks。
    */
   hooks?: AgentHooks;
@@ -279,6 +286,13 @@ export interface ForkOptions {
    * - 传具体配置：使用指定遮蔽参数
    */
   mask?: MaskOptions | false;
+  /**
+   * 覆盖 handoff 配置。
+   * - 不传（undefined）：继承父 Agent 的 handoff
+   * - 传 false：关闭 handoff 历史替换
+   * - 传具体配置：使用指定 handoff 参数
+   */
+  handoff?: HandoffOptions | false;
   /**
    * 覆盖重试配置。
    * - 不传（undefined）：继承父 Agent 的 retry

@@ -1,6 +1,7 @@
 export { Agent, AgentEvents, ForkAgent } from "./agent";
-export type { AgentMode, AgentOptions, AgentHooks, RequestAIOptions, MaskOptions, ForkOptions, ForkAgentOptions, CompactRecord, FormatUserMessageResult, AgentsMdConfig, AgentsMdConfigResolver } from "./agent";
+export type { AgentMode, AgentOptions, AgentHooks, RequestAIOptions, MaskOptions, HandoffOptions, ForkOptions, ForkAgentOptions, CompactRecord, FormatUserMessageResult, AgentsMdConfig, AgentsMdConfigResolver } from "./agent";
 export { maskMessages } from "./mask";
+export { computeHandoffTurnIds } from "./handoff";
 
 export { ChipRegistry } from "./chip";
 export type { ChatChipDef, ChatChipFormatContext, ChatChipInstance } from "./chip";

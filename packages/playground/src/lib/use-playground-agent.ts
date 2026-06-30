@@ -37,6 +37,7 @@ export function usePlaygroundAgent(
       summary: testCase.summaryOptions ?? { enabled: false },
       compact: testCase.compactOptions ?? { enabled: false },
       ...(testCase.maskOptions ? { mask: testCase.maskOptions } : {}),
+      ...(testCase.handoffOptions ? { handoff: testCase.handoffOptions } : {}),
       ...(testCase.agentOptions?.retry ? { retry: testCase.agentOptions.retry } : {}),
       ...(testCase.agentOptions?.maxSteps ? { maxSteps: testCase.agentOptions.maxSteps } : {}),
       ...(testCase.agentOptions?.doomLoopThreshold ? { doomLoopThreshold: testCase.agentOptions.doomLoopThreshold } : {}),

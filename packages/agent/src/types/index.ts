@@ -1,3 +1,5 @@
+import { formatHandoffMessageContent } from "../handoff";
+
 // ─── TokenUsage（通用 token 用量格式） ────────────────────────────────────────
 
 /**
@@ -619,8 +621,8 @@ export function hasNoToolCalls(iterations: TurnRecord["iterations"]): boolean {
  *   游标之前的 turns 由 buildMessages 单独构建为摘要消息对，此处跳过。
  *
  * handoffTurnIds 参数：
- *   命中 handoff 条件的 turn id 集合（由 mask.ts 的 computeHandoffTurnIds 计算）。
- *   命中的 turn 整体替换为 user（原始用户消息）+ assistant（handoff 内容）两条消息。
+ *   命中 handoff 条件的 turn id 集合（由 handoff.ts 的 computeHandoffTurnIds 计算）。
+ *   命中的 turn 整体替换为 user（原始用户消息）+ assistant（handoff 摘要说明）两条消息。
  */
 export function turnsToMessages(
   turns: TurnRecord[],
@@ -647,10 +649,10 @@ export function turnsToMessages(
     // 用户消息（handoff 和普通模式都需要，保留原始文本，不含附件）
     const userText = turn.userFormattedText ?? turn.userText;
 
-    // ── Handoff 模式：整个 turn 替换为 user + assistant(handoff) ──────────────
+    // ── Handoff 模式：整个 turn 替换为 user + assistant(handoff summary) ──────
     if (handoffTurnIds?.has(turn.id)) {
       messages.push({ role: "user", content: userText });
-      messages.push({ role: "assistant", content: turn.handoff ?? "" });
+      messages.push({ role: "assistant", content: formatHandoffMessageContent(turn.handoff ?? "") });
       continue;
     }
 
@@ -736,3 +738,4 @@ export type {
   TurnMessageSnapshot,
   TurnPersistMode,
 } from "./agent";
+export type { HandoffOptions } from "../handoff";

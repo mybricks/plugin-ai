@@ -217,3 +217,71 @@ export const maskToolHistoryCase: TestCase = {
     },
   ]),
 };
+
+const handoffMaskHistory = (() => {
+  const turns = makeToolHistory(
+    [
+      {
+        user: "读取一个有 handoff 的旧文件",
+        assistant: "已读取并总结。",
+        toolCalls: [
+          {
+            name: "read_file",
+            args: { path: "src/with-handoff.ts" },
+            result: `HANDOFF_MASK_ORIGINAL_TOOL\n${"with handoff output\n".repeat(40)}`,
+          },
+        ],
+      },
+      {
+        user: "读取一个没有 handoff 的旧文件",
+        assistant: "已读取。",
+        toolCalls: [
+          {
+            name: "read_file",
+            args: { path: "src/no-handoff.ts" },
+            result: `HANDOFF_MASK_NO_HANDOFF_TOOL\n${"no handoff output\n".repeat(40)}`,
+          },
+        ],
+      },
+    ],
+    Date.now() - 90 * 60 * 1000
+  );
+  turns[0].handoff = "HANDOFF_MASK_SUMMARY：已读取 src/with-handoff.ts，并记录关键结论。";
+  return turns;
+})();
+
+export const handoffDisabledCase: TestCase = {
+  id: "handoff-disabled",
+  name: "handoff 默认关闭",
+  group: "消息遮蔽",
+  description: "历史 turn 带 handoff 字段，但 Agent 未配置 handoff。发新消息时历史仍按原始记录展开。",
+  expectedBehavior: "Inspector messages 不应出现 HANDOFF_MASK_SUMMARY，应保留原始工具结果 HANDOFF_MASK_ORIGINAL_TOOL。",
+  initialTurns: handoffMaskHistory,
+  request: makeScriptedRequest([
+    {
+      type: "content",
+      chunks: ["好的，handoff 默认关闭时继续正常回复。"],
+      ttftMs: 400,
+      chunkDelayMs: 50,
+    },
+  ]),
+};
+
+export const handoffWithMaskCase: TestCase = {
+  id: "handoff-with-mask",
+  name: "handoff 与 mask 混合",
+  group: "消息遮蔽",
+  description: "同时启用 handoff 和 mask。带 handoff 的轮次先替换成 handoff，没有 handoff 的旧轮次继续按 mask 遮蔽。",
+  expectedBehavior: "Inspector messages 应出现 HANDOFF_MASK_SUMMARY，不出现 HANDOFF_MASK_ORIGINAL_TOOL；无 handoff 的工具结果被替换为 [Old tool result content cleared]。",
+  initialTurns: handoffMaskHistory,
+  handoffOptions: { enabled: true },
+  maskOptions: { maxAgeMinutes: 60 },
+  request: makeScriptedRequest([
+    {
+      type: "content",
+      chunks: ["好的，handoff 和 mask 混合验证完成。"],
+      ttftMs: 400,
+      chunkDelayMs: 50,
+    },
+  ]),
+};

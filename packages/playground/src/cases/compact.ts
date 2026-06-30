@@ -1,6 +1,6 @@
 import type { TestCase } from "./types";
 import { makeScriptedRequest } from "../lib/scripted-request";
-import { makeTextHistory, makeTextHistoryWithUsage } from "../lib/fixtures";
+import { makeTextHistory, makeTextHistoryWithUsage, makeToolHistory, makeTurn } from "../lib/fixtures";
 
 /**
  * Compact case。
@@ -32,6 +32,52 @@ const COMPACT_RETRY_HISTORY = makeTextHistory(
     assistant: `历史回复 ${i + 1}`,
   }))
 );
+
+const COMPACT_HANDOFF_TOOL_MARKER = "VERY_LONG_TOOL_RESULT_MARKER";
+const COMPACT_NO_HANDOFF_TOOL_MARKER = "NO_HANDOFF_TOOL_RESULT_MARKER";
+const COMPACT_HANDOFF_SUMMARY_MARKER = "HANDOFF_SUMMARY_MARKER";
+const COMPACT_ATTACHMENT_MARKER = "data:image/png;base64,COMPACT_NO_HANDOFF_IMAGE";
+
+const compactHandoffHistory = (() => {
+  const turns = makeToolHistory([
+    {
+      user: "读取并分析大文件",
+      assistant: "已经完成大文件分析。",
+      toolCalls: [
+        {
+          name: "read_file",
+          args: { path: "src/large.ts" },
+          result: `${COMPACT_HANDOFF_TOOL_MARKER}\n${"large tool output\n".repeat(80)}`,
+        },
+      ],
+    },
+  ]);
+  turns[0].handoff = `${COMPACT_HANDOFF_SUMMARY_MARKER}: 已读取 src/large.ts 并完成关键结构分析。`;
+  turns.push(makeTurn({
+    userText: "这张图也要纳入上下文",
+    content: "已记录图片上下文。",
+    attachments: [
+      {
+        type: "image",
+        content: COMPACT_ATTACHMENT_MARKER,
+        mime: "image/png",
+      },
+    ],
+    iterations: [
+      {
+        toolCalls: [
+          {
+            name: "read_file",
+            args: { path: "src/no-handoff.ts" },
+            result: `${COMPACT_NO_HANDOFF_TOOL_MARKER}\n${"no handoff output\n".repeat(40)}`,
+          },
+        ],
+      },
+      { content: "已读取无 handoff 的文件。" },
+    ],
+  }));
+  return turns;
+})();
 
 /**
  * mock request 逻辑：
@@ -147,6 +193,55 @@ export const compactWithToolsCase: TestCase = {
     };
   })(),
   compactOptions: { enabled: true, contextWindow: 200_000 },
+};
+
+export const compactHandoffCase: TestCase = {
+  id: "compact-handoff",
+  name: "compact 使用 handoff 替代历史轮次",
+  group: "Compact",
+  description: "预设历史中第一轮有 handoff 和大工具结果，第二轮没有 handoff 且带附件。触发 compact 后，compact fork 应只用第一轮 handoff，并完整保留第二轮工具结果和附件。",
+  expectedBehavior: "Inspector 中 compact fork messages 包含 HANDOFF_SUMMARY_MARKER，不包含 VERY_LONG_TOOL_RESULT_MARKER，同时保留 NO_HANDOFF_TOOL_RESULT_MARKER 和 COMPACT_NO_HANDOFF_IMAGE。",
+  initialTurns: compactHandoffHistory,
+  request: async (params) => {
+    const msgs = params.messages ?? [];
+    const lastUserMsg = [...msgs].reverse().find(m => m.role === "user");
+    const isCompactFork =
+      typeof lastUserMsg?.content === "string" &&
+      lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
+
+    await new Promise(r => setTimeout(r, 300));
+
+    if (isCompactFork) {
+      const serialized = JSON.stringify(msgs);
+      const hasHandoff = serialized.includes(COMPACT_HANDOFF_SUMMARY_MARKER);
+      const hasOriginalTool = serialized.includes(COMPACT_HANDOFF_TOOL_MARKER);
+      const hasNoHandoffTool = serialized.includes(COMPACT_NO_HANDOFF_TOOL_MARKER);
+      const hasAttachment = serialized.includes(COMPACT_ATTACHMENT_MARKER);
+      const compact = `<compact>
+handoff 替换验证：
+- hasHandoff=${hasHandoff}
+- hasOriginalTool=${hasOriginalTool}
+- hasNoHandoffTool=${hasNoHandoffTool}
+- hasAttachment=${hasAttachment}
+</compact>`;
+      for (const chunk of compact.match(/.{1,20}/g) ?? []) {
+        await new Promise(r => setTimeout(r, 15));
+        params.emits.write(chunk);
+      }
+      params.emits.onFinishReason?.("stop");
+      params.emits.complete?.("");
+      return;
+    }
+
+    const reply = "compact handoff 验证完成。";
+    for (const chunk of reply.match(/.{1,8}/g) ?? []) {
+      await new Promise(r => setTimeout(r, 30));
+      params.emits.write(chunk);
+    }
+    params.emits.onFinishReason?.("stop");
+    params.emits.complete?.("");
+  },
+  compactOptions: { enabled: true, maxTurns: 1 },
 };
 
 // ─── Usage 阈值触发 warmup ─────────────────────────────────────────────────────

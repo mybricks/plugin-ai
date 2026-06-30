@@ -32,6 +32,9 @@ export interface TestCase {
     maxTurns?: number;
     maxAgeMinutes?: number;
   };
+  handoffOptions?: {
+    enabled?: boolean;
+  };
   compactOptions?: {
     enabled?: boolean;
     maxTurns?: number;

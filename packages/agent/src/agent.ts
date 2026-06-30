@@ -26,7 +26,8 @@ import type {
   WarmupIter,
 } from "./types";
 import { turnsToMessages, getLLMIterations, hasNoToolCalls, serializeToolCallArgumentsFromIter, serializeToolCallArgumentsFromLLMResult, attachmentToMessagePart } from "./types";
-import { maskMessages, computeHandoffTurnIds, buildProtectedAttachmentTurnIds, type MaskOptions } from "./mask";
+import { computeHandoffTurnIds } from "./handoff";
+import { maskMessages, buildProtectedAttachmentTurnIds, type MaskOptions } from "./mask";
 import { wrapRequestWithRetry, type RetryOptions } from "./retry";
 import { CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
 import { getTurnMode } from "./utils/core";
@@ -48,6 +49,7 @@ export type {
   BoundHistory,
 } from "./types";
 export type { MaskOptions } from "./mask";
+export type { HandoffOptions } from "./handoff";
 export { HistoryManager };
 export type { HistoryManagerSnapshot, HistoryStatus, HistoryLoadResult } from "./history/manager";
 
@@ -66,6 +68,8 @@ const DEFAULT_RETRY: Required<RetryOptions> = {
 };
 /** 默认摘要配置 */
 const DEFAULT_SUMMARY = { enabled: true as const };
+/** 默认 handoff 配置 */
+const DEFAULT_HANDOFF = { enabled: false as const };
 /** 默认 compact 配置 */
 const DEFAULT_COMPACT = { enabled: true as const, maxTurns: 15 };
 
@@ -182,9 +186,7 @@ function buildIterationBaseMessages(
     : [];
 
   // 计算命中 handoff 条件的 turn id 集合（未启用或 turn 无 handoff 内容时不加入）
-  const handoffTurnIds = options.mask
-    ? computeHandoffTurnIds(historyTurns, options.mask)
-    : new Set<string>();
+  const handoffTurnIds = computeHandoffTurnIds(historyTurns, options.handoff);
 
   const historyMessages = turnsToMessages(historyTurns, compactRecord, handoffTurnIds);
 
@@ -486,8 +488,9 @@ export class Agent {
 
   constructor(options: AgentOptions) {
     // 仅在调用方”未声明该字段”时注入默认值；
-    // 若调用方显式传入 summary/compact（即便是 undefined），按原值保留。
+    // 若调用方显式传入 summary/handoff/compact（即便是 undefined），按原值保留。
     const hasSummary = Object.prototype.hasOwnProperty.call(options, "summary");
+    const hasHandoff = Object.prototype.hasOwnProperty.call(options, "handoff");
     const hasCompact = Object.prototype.hasOwnProperty.call(options, "compact");
     const hasRetry = Object.prototype.hasOwnProperty.call(options, "retry");
 
@@ -504,6 +507,7 @@ export class Agent {
       mode: normalizeAllowedAgentMode(options.mode, options),
       request: wrapRequestWithRetry(this.rawRequest, retryOpts, this.events),
       ...(hasSummary ? {} : { summary: DEFAULT_SUMMARY }),
+      ...(hasHandoff ? {} : { handoff: DEFAULT_HANDOFF }),
       ...(hasCompact ? {} : { compact: DEFAULT_COMPACT }),
       ...(hasRetry ? {} : { retry: retryOpts }),
     };
@@ -1235,7 +1239,7 @@ export class Agent {
    *   真正的 subAgent 机制应该 fork 出一个完整的 CodeAgent 实例，需要重新设计。
    */
   createFork(forkOptions?: ForkAgentOptions): ForkAgent {
-    const { turnsSlice, tools, aiRole, mask, retry, mode } = forkOptions ?? {};
+    const { turnsSlice, tools, aiRole, mask, handoff, retry, mode } = forkOptions ?? {};
 
     // turns + compactRecord 联动截取：
     // turnsSlice 截取后，compactRecord 游标若仍在截取范围内则保留，否则置 null
@@ -1274,6 +1278,8 @@ export class Agent {
       mode: mode !== undefined ? mode : this.getMode(),
       // mask：不传=继承父；传了（含 false）则覆盖
       ...(mask !== undefined ? { mask } : {}),
+      // handoff：不传=继承父；传了（含 false）则覆盖
+      ...(handoff !== undefined ? { handoff } : {}),
       // retry：不传=继承父；传了则覆盖（false 或具体配置）
       ...(retry !== undefined ? { retry: retry === false ? { maxRetries: 0 } : retry } : {}),
       // fork 是 worker agent，不需要计划模式
@@ -1810,7 +1816,7 @@ IMPORTANT: 不要调用工具！
       const upToTurnId = forkTurns[forkTurns.length - 1].id;
 
       // fork 继承 compactRecord（由 createFork 联动处理：游标在截取范围内则保留）
-      const fork = this.createFork({ tools: [], mask: false, retry: { maxRetries: 0 }, turnsSlice: { from: "start", count: sliceCount } });
+      const fork = this.createFork({ tools: [], mask: false, handoff: { enabled: true }, retry: { maxRetries: 0 }, turnsSlice: { from: "start", count: sliceCount } });
       (fork as any).options.getAttachmentContextMessages = undefined;
       (fork as any).options.formatUserMessage = undefined;
 

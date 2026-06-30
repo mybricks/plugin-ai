@@ -27,6 +27,8 @@ import {
 } from "./tool-error";
 import { customSlowToolCase, customToolRendererErrorBoundaryCase, customToolValidationErrorThenSlowStreamCase } from "./custom-tool";
 import {
+  handoffDisabledCase,
+  handoffWithMaskCase,
   maskByTurnsCase,
   maskByAgeCase,
   maskToolHistoryCase,
@@ -45,7 +47,7 @@ import {
   retrySuccessCase,
   maxStepsCase,
 } from "./edge-cases";
-import { compactTriggerCase, compactWithToolsCase, compactWarmupByUsageCase, compactErrorCase, compactEmptyResponseCase, compactNoContentCase, compactInfiniteCase, compactRetrySuccessErrorCase, compactRetrySuccessTagCase, compactBinaryExpandSuccessCase, compactMidTurnErrorRetryCase } from "./compact";
+import { compactTriggerCase, compactWithToolsCase, compactHandoffCase, compactWarmupByUsageCase, compactErrorCase, compactEmptyResponseCase, compactNoContentCase, compactInfiniteCase, compactRetrySuccessErrorCase, compactRetrySuccessTagCase, compactBinaryExpandSuccessCase, compactMidTurnErrorRetryCase } from "./compact";
 import { markdownRichCase, userMessageWithLinksCase, userMessageWithTenImagesCase, assistantMessageWithMarkdownImageCase, streamingMarkdownCase, toolThenEmptyContentCase, assistantMessageWithLinksCase } from "./ui-render";
 import { renderEmptyAboveCase } from "./ui-render-empty-above";
 import { selectorRenderInTopCase } from "./ui-selector-render-in-top";
@@ -132,6 +134,8 @@ export const ALL_CASES: TestCase[] = [
   maskByTurnsCase,
   maskByAgeCase,
   maskToolHistoryCase,
+  handoffDisabledCase,
+  handoffWithMaskCase,
   // 异常检测
   doomLoopCase,
   doomLoopThreshold5Case,
@@ -141,6 +145,7 @@ export const ALL_CASES: TestCase[] = [
   // Compact
   compactTriggerCase,
   compactWithToolsCase,
+  compactHandoffCase,
   compactWarmupByUsageCase,
   compactErrorCase,
   compactEmptyResponseCase,
