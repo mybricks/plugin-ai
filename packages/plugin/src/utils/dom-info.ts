@@ -490,13 +490,33 @@ export function formatDomChipMessage({ message, chips }: ChatChipFormatContext):
   const eleToLabel = new Map<Element | undefined, string>();
   const labelToInfo = new Map<string, { ele?: Element }>();
   let counter = 1;
+  const zoneChipMap = new Map()
 
   for (const chip of chips) {
     const ele = getChipElement(chip);
     if (!eleToLabel.has(ele)) {
-      const label = `Dom节点${counter++}`;
-      eleToLabel.set(ele, label);
-      labelToInfo.set(label, { ele });
+      let zoneChip
+
+      try {
+        const dataZoneChip = ele?.getAttribute("data-zone-chip")
+        if (dataZoneChip) {
+          zoneChip = JSON.parse(dataZoneChip)
+        }
+      } catch {}
+
+      if (zoneChip) {
+        const { type, label } = zoneChip
+        if (!zoneChipMap.has(type)) {
+          zoneChipMap.set(type, new Set([zoneChip]))
+        } else {
+          zoneChipMap.get(type).add(zoneChip)
+        }
+        eleToLabel.set(ele, label);
+      } else {
+        const label = `Dom节点${counter++}`;
+        eleToLabel.set(ele, label);
+        labelToInfo.set(label, { ele });
+      }
     }
   }
 
@@ -508,10 +528,19 @@ export function formatDomChipMessage({ message, chips }: ChatChipFormatContext):
   }
   resolved = normalizeDomChipSpacing(resolved);
 
-  if (labelToInfo.size === 0) return resolved;
+  const domInfo = labelToInfo.size === 0 ? '' : `\n\nDom节点说明：\n${
+    Array.from(labelToInfo).map(([label, { ele }]) => {
+      return buildDomChipInfo(label, ele)
+    }).join("\n")
+  }`
 
-  const infoLines = Array.from(labelToInfo).map(([label, { ele }]) => buildDomChipInfo(label, ele));
-  return `${resolved}\n\nDom节点说明：\n${infoLines.join("\n")}`;
+  const zoneChipInfo = zoneChipMap.size === 0 ? '' : Array.from(zoneChipMap).map(([type, chipSet]) => {
+    return `\n\n${type}节点说明：\n${Array.from(chipSet).map(({ info }: any) => {
+      return info
+    }).join("\n")}`
+  })
+
+  return `${resolved}${domInfo}${zoneChipInfo}`
 }
 
 function normalizeDomChipSpacing(text: string): string {
