@@ -244,6 +244,11 @@ interface SenderProps {
    * Sender 不理解具体 prefix/chip 结构，只根据返回值决定 placeholder 是否后移展示。
    */
   matchDefaultFocusContent?: (input: SenderSerializedInput) => boolean;
+  /**
+   * 是否将模式选择器和模型选择器渲染在 renderFocus / 附件区域下方、输入框上方。
+   * 默认 false（渲染在底部 editorAction 左区）。
+   */
+  selectorRenderInTop?: boolean;
 }
 
 interface SenderRef {
@@ -428,7 +433,7 @@ function focusEditorAtEnd(editor: HTMLDivElement) {
 // ─── Sender ──────────────────────────────────────────────────────────────────
 
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
-  const { loading, placeholder = "请输入", defaultFocusPlaceholder, disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue, renderFocus, abovePanels, renderActionPrefix, renderAttachmentSuffix, modelSelector, className, chipTypes = [], matchDefaultFocusContent } = props;
+  const { loading, placeholder = "请输入", defaultFocusPlaceholder, disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue, renderFocus, abovePanels, renderActionPrefix, renderAttachmentSuffix, modelSelector, className, chipTypes = [], matchDefaultFocusContent, selectorRenderInTop = false } = props;
   const isBubble = variant === 'bubble';
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
@@ -1021,6 +1026,14 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
             {renderFocus()}
           </div>
         ) : null}
+        {selectorRenderInTop && (chatMode || (modelSelector && modelSelector.models.length > 0)) ? (
+          <div className={css.selectorsAboveInput}>
+            {chatMode ? <ChatMode disabled={disabled || loading} chatMode={chatMode} onChange={onChatModeChange} /> : null}
+            {modelSelector && modelSelector.models.length > 0 && (
+              <ModelSelector modelSelector={modelSelector} disabled={disabled || uploading || loading} />
+            )}
+          </div>
+        ) : null}
         <div className={css.input}>
           <div className={css.inputEditorContainer}>
             <div
@@ -1063,8 +1076,8 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
               </div>
             )}
             {renderAttachmentSuffix?.()}
-            {chatMode ? <ChatMode disabled={disabled || loading} chatMode={chatMode} onChange={onChatModeChange} /> : null}
-            {modelSelector && modelSelector.models.length > 0 && (
+            {!selectorRenderInTop && chatMode ? <ChatMode disabled={disabled || loading} chatMode={chatMode} onChange={onChatModeChange} /> : null}
+            {!selectorRenderInTop && modelSelector && modelSelector.models.length > 0 && (
               <ModelSelector modelSelector={modelSelector} disabled={disabled || uploading || loading} />
             )}
           </div>

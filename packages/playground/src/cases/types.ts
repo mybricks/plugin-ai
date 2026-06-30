@@ -82,4 +82,9 @@ export interface TestCase {
     loadDelayMs?: number;
     loadError?: boolean;
   };
+  /**
+   * 是否将模式 / 模型选择器渲染在输入框上方。
+   * 对应 ChatPanelProps.selectorRenderInTop。
+   */
+  selectorRenderInTop?: boolean;
 }

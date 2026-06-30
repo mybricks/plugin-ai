@@ -48,6 +48,7 @@ import {
 import { compactTriggerCase, compactWithToolsCase, compactWarmupByUsageCase, compactErrorCase, compactEmptyResponseCase, compactNoContentCase, compactInfiniteCase, compactRetrySuccessErrorCase, compactRetrySuccessTagCase, compactBinaryExpandSuccessCase, compactMidTurnErrorRetryCase } from "./compact";
 import { markdownRichCase, userMessageWithLinksCase, userMessageWithTenImagesCase, assistantMessageWithMarkdownImageCase, streamingMarkdownCase, toolThenEmptyContentCase, assistantMessageWithLinksCase } from "./ui-render";
 import { renderEmptyAboveCase } from "./ui-render-empty-above";
+import { selectorRenderInTopCase } from "./ui-selector-render-in-top";
 import { multiEditSameFileCase, multiEditPartialSuccessCase } from "./multi-edit";
 import { editDoomLoopCase, editNoDoomLoopCase } from "./edit-doom-loop";
 import { editFewLinesCase } from "./edit-few-lines";
@@ -164,6 +165,7 @@ export const ALL_CASES: TestCase[] = [
   streamingMarkdownCase,
   assistantMessageWithLinksCase,
   renderEmptyAboveCase,
+  selectorRenderInTopCase,
   // 异常检测—工具后空 content
   toolThenEmptyContentCase,
   // 设置

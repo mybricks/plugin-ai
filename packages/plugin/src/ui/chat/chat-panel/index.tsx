@@ -92,6 +92,11 @@ export interface ChatPanelProps {
    * - maxIters：iter 数量上限，超过后折叠旧 turns，默认 50
    */
   historyCollapse?: HistoryCollapseConfig;
+  /**
+   * 是否将模式选择器和模型选择器渲染在 renderFocus / 附件区域下方、输入框上方。
+   * 默认 false（保持渲染在底部操作栏左侧）。
+   */
+  selectorRenderInTop?: boolean;
 }
 
 export interface ChatPanelRef {
@@ -131,6 +136,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   style,
   markdownSkin,
   historyCollapse,
+  selectorRenderInTop = false,
 }, ref) => {
   const agentKey = agent?.key ?? "";
 
@@ -311,6 +317,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       renderFocus={renderFocus}
       renderAttachmentSuffix={renderAttachmentSuffix}
       modelSelector={modelSelector}
+      selectorRenderInTop={selectorRenderInTop}
       chipTypes={chipRegistry.getAll()}
       matchDefaultFocusContent={matchDefaultFocusContent}
     />
