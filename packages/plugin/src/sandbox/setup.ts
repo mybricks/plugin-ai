@@ -16,6 +16,7 @@ import { LoadingViewWithStyles, ComChatStartViewWithStyles, PrdRenderWithStyles 
 import { context } from "../context";
 import { ensureAIPanelOpen, ensureFocusComId } from "../utils/ensure-ai-panel-open";
 import { createDomChip } from "../utils/dom-info";
+import { fileChipDef } from "../ui/components/sender/chip";
 
 // ─── 类型定义 ─────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,7 @@ import { createDomChip } from "../utils/dom-info";
  * 并通过 wrapFormatUserMessage 自动挂入每个 CodeAgent 的 formatUserMessage 链。
  */
 export const chipRegistry = new ChipRegistry();
+chipRegistry.register(fileChipDef);
 
 export interface SendToAgentParams {
   message: string;

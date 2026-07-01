@@ -32,6 +32,7 @@ import { wrapRequestWithRetry, type RetryOptions } from "./retry";
 import { CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
 import { getTurnMode } from "./utils/core";
 import { getAvailableAgentModes, AgentModeEnum } from "./mode-manager";
+import { TOOL_OUTPUT_MAX_TOKENS } from "./content-limits";
 
 export { AgentEvents };
 export type { AgentMode, Message, History, Tool, TurnRecord, ToolCallRecord, WarmupIter };
@@ -79,7 +80,6 @@ const DEFAULT_COMPACT = { enabled: true as const, maxTurns: 15 };
  * 超限时将工具结果替换为错误提示，引导模型缩小查询范围或换用更精准的工具，
  * 而非把大量内容直接塞入上下文。
  */
-const TOOL_OUTPUT_MAX_TOKENS = 25_000;
 
 export function roughTokenCountEstimation(
   content: string,

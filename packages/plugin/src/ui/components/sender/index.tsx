@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback } from "react"
-import ReactDOM from "react-dom"
 import classNames from "classnames";
 import { message } from "antd";
 import { Attachment, Loading, Send } from "../icons";
@@ -15,61 +14,37 @@ import type { ModelSelection } from "../../../../../request/src/providers";
 import type { SendToAgentParams } from "../../../sandbox";
 import type { AgentMode, ChatChipDef, ChatChipInstance } from "../../../../../agent/src";
 import { removeLeadingPlaceholderBreakBeforeChip } from "./utils";
+import {
+  unmountChipContainer,
+  createChipContainer,
+  updateChipWrapperSpacing,
+  serializeEditorContent,
+  measureEditorContent,
+  getAdjacentChipAtCaret,
+  removeChipFromEditor,
+  fileChipDef,
+} from "./chip";
+import {
+  isSupportedImageFile,
+  readFileToBase64,
+  getImageSize,
+  resolveFileRoute,
+  checkFileReject,
+  readFileAsChipData,
+  MAX_IMAGE_SIZE_MB,
+  MAX_IMAGE_SIZE_BYTES,
+  SUPPORTED_IMAGE_ACCEPT,
+  SUPPORTED_IMAGE_LABEL,
+  FILE_CHIP_TYPE,
+  FileRejectError,
+  getFileExt,
+  type FileChipData,
+} from "./upload";
+import type { SupportFileEntry, SupportFiles } from "../../../content-limits";
+import { DEFAULT_SUPPORT_FILES } from "../../../content-limits";
 import css from "./index.less"
 
-const MAX_IMAGE_SIZE_MB = 3.5;
-const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
-const SUPPORTED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const SUPPORTED_IMAGE_ACCEPT = "image/jpeg,image/png,image/webp";
-const SUPPORTED_IMAGE_LABEL = "JPG、PNG、WEBP";
-
-function isSupportedImageFile(file: File): boolean {
-  const type = file.type.toLowerCase();
-  if (SUPPORTED_IMAGE_MIME_TYPES.has(type)) return true;
-
-  const name = file.name.toLowerCase();
-  return /\.(jpe?g|png|webp)$/.test(name);
-}
-
-const readFileToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = function (event) {
-      if (event.target) {
-        const base64 = event.target.result as string;
-        resolve(base64);
-      } else {
-        reject(event);
-      }
-    };
-    reader.onerror = function (event) {
-      reject(event);
-    };
-    reader.readAsDataURL(file);
-  })
-}
-
-const getImageSize = (file: File): Promise<{ width: number; height: number }> => {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    const url = URL.createObjectURL(file);
-
-    image.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve({
-        width: image.naturalWidth,
-        height: image.naturalHeight,
-      });
-    };
-
-    image.onerror = (event) => {
-      URL.revokeObjectURL(url);
-      reject(event);
-    };
-
-    image.src = url;
-  })
-}
+// ─── PendingQueue ─────────────────────────────────────────────────────────────
 
 const PendingQueue = ({ queue, onRemove }: { queue: QueueItem[]; onRemove?: (id: string) => void }) => {
   const [expanded, setExpanded] = useState(true);
@@ -87,7 +62,6 @@ const PendingQueue = ({ queue, onRemove }: { queue: QueueItem[]; onRemove?: (id:
               <span className={css.pendingQueueDot} />
               {item.params?.focus && (item.params.focus.focusArea || item.params.focus.title) && (
                 <span className={css.pendingQueueFocus}>
-                  {/* <span>对于</span> */}
                   <span className={css.pendingQueueFocusArea}>
                     {item.params.focus.focusArea?.title || item.params.focus.title}
                   </span>
@@ -108,60 +82,31 @@ const PendingQueue = ({ queue, onRemove }: { queue: QueueItem[]; onRemove?: (id:
   );
 };
 
-// ─── ChatChip ──────────────────────────────────────────────────────────────
+// ─── 剪贴板文本提取 ──────────────────────────────────────────────────────────
 
-/**
- * 渲染单个 chat chip 的 React 组件。
- * 通过 ReactDOM.render 挂载到 contentEditable 内的 DOM 节点上。
- */
-const ChipRemoveBtn = ({ onRemove }: { onRemove: () => void }) => (
-  <span
-    className={css.chipRemove}
-    onMouseDown={(e) => {
-      // 用 mousedown + preventDefault 避免触发 contentEditable 失焦
-      e.preventDefault();
-      e.stopPropagation();
-      onRemove();
-    }}
-  >
-    <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="currentColor">
-      <path d="M563.8 512l262.5-312.9c4.4-5.2.7-13.1-6.1-13.1h-79.8c-4.7 0-9.2 2.1-12.3 5.7L511.6 449.8 295.1 191.7c-3-3.6-7.5-5.7-12.3-5.7H203c-6.8 0-10.5 7.9-6.1 13.1L459.4 512 196.9 824.9A7.95 7.95 0 0 0 203 838h79.8c4.7 0 9.2-2.1 12.3-5.7l216.5-258.1 216.5 258.1c3 3.6 7.5 5.7 12.3 5.7h79.8c6.8 0 10.5-7.9 6.1-13.1L563.8 512z" />
-    </svg>
-  </span>
-);
+function getClipboardText(data: DataTransfer): string {
+  const plain = data.getData('text/plain');
+  if (plain) return plain;
 
-const ChatChipInner = ({ instance, chipDef, onRemove }: { instance: ChatChipInstance; chipDef?: ChatChipDef; onRemove: () => void }) => {
-  if (chipDef?.render) {
-    const rendered = chipDef.render(instance.data);
-    // 判断是否为 { color?, content } 对象
-    if (rendered && typeof rendered === 'object' && !React.isValidElement(rendered) && 'content' in rendered) {
-      const chipData = rendered as { color?: string; content: string };
-      return (
-        <span
-          className={classNames(css.chipDefault, { [css.hasCustomColor]: !!chipData.color })}
-          style={chipData.color ? { color: chipData.color, borderColor: chipData.color, backgroundColor: `${chipData.color}18` } : undefined}
-        >
-          {chipData.content}
-          <ChipRemoveBtn onRemove={onRemove} />
-        </span>
-      );
-    }
-    // JSX 直接返回时，外层包一个默认 chip 容器放删除按钮
-    return (
-      <span className={css.chipDefault}>
-        {rendered}
-        <ChipRemoveBtn onRemove={onRemove} />
-      </span>
-    );
-  }
-  // 无 render 时：使用默认 chip 样式。dom chip 是 DomTag 的输入态封装，多一个删除按钮。
-  return (
-    <span className={classNames(css.chip, { [css.domChip]: instance.type === "dom" })}>
-      <span className={css.chipText}>{instance.label}</span>
-      <ChipRemoveBtn onRemove={onRemove} />
-    </span>
-  );
-};
+  const html = data.getData('text/html');
+  if (!html) return '';
+
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  return doc.body.innerText || doc.body.textContent || '';
+}
+
+function focusEditorAtEnd(editor: HTMLDivElement) {
+  editor.focus();
+
+  const selection = window.getSelection();
+  if (!selection) return;
+
+  const range = document.createRange();
+  range.selectNodeContents(editor);
+  range.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
 
 // ─── SenderProps ─────────────────────────────────────────────────────────────
 
@@ -249,6 +194,13 @@ interface SenderProps {
    * 默认 false（渲染在底部 editorAction 左区）。
    */
   selectorRenderInTop?: boolean;
+  /**
+   * 支持上传的文件类型及限制配置。
+   * key 为不含点的文件扩展名（小写），如 "ts"、"md"。
+   * 不传时使用内置默认值（支持大部分常见文本/代码文件）。
+   * 图片（image/*）始终走 attachment 流程，无需在此声明。
+   */
+  supportFiles?: SupportFiles;
 }
 
 interface SenderRef {
@@ -288,152 +240,19 @@ interface SenderRef {
   clearFocusContent: () => void;
 }
 
-// ─── Chat chip 挂载容器工厂 ────────────────────────────────────────────────────────────────────
-
-/** 卸载 chip 容器内的 React */
-function unmountChipContainer(wrapper: HTMLSpanElement) {
-  const inner = wrapper.firstChild as HTMLElement | null;
-  if (inner) ReactDOM.unmountComponentAtNode(inner);
-}
-
-/**
- * 创建 chip 的 DOM 容器 span，并用 ReactDOM.render 挂载 ChatChipInner。
- * 返回的 span 可直接插入 contentEditable editor。
- */
-function createChipContainer(
-  instance: ChatChipInstance,
-  chipDef: ChatChipDef | undefined,
-  onRemove: () => void
-): HTMLSpanElement {
-  const wrapper = document.createElement('span');
-  wrapper.contentEditable = 'false';
-  wrapper.dataset.chipId = instance.id;
-  wrapper.className = css.chipWrapper;
-  const inner = document.createElement('span');
-  wrapper.appendChild(inner);
-  ReactDOM.render(<ChatChipInner instance={instance} chipDef={chipDef} onRemove={onRemove} />, inner);
-  return wrapper;
-}
-
-function updateChipWrapperSpacing(editor: HTMLDivElement) {
-  let previousSignificantNodeIsChip = false;
-  editor.childNodes.forEach((child) => {
-    if (child instanceof HTMLElement && child.dataset.chipId) {
-      child.classList.toggle(css.chipWrapperTightLeft, previousSignificantNodeIsChip);
-      previousSignificantNodeIsChip = true;
-      return;
-    }
-
-    if (child.nodeType === Node.TEXT_NODE) {
-      if ((child.textContent ?? "").length > 0) {
-        previousSignificantNodeIsChip = false;
-      }
-      return;
-    }
-
-    previousSignificantNodeIsChip = false;
-  });
-}
-
-// ─── 序列化 editor childNodes ─────────────────────────────────────────────────
-
-function serializeEditorContent(editor: HTMLDivElement, chipMap: Map<string, ChatChipInstance>): { message: string; chips: ChatChipInstance[] } {
-  const instances: ChatChipInstance[] = [];
-  let msg = '';
-  editor.childNodes.forEach(child => {
-    if (child.nodeType === Node.TEXT_NODE) {
-      msg += child.textContent ?? '';
-    } else if (child instanceof HTMLElement && child.dataset.chipId) {
-      const id = child.dataset.chipId;
-      const inst = chipMap.get(id);
-      if (inst) {
-        instances.push(inst);
-        msg += `[[chip:${id}]]`;
-      }
-    }
-  });
-  return { message: msg, chips: instances };
-}
-
-function measureEditorContent(editor: HTMLDivElement): { width: number; height: number } | null {
-  if (!editor.childNodes.length) return null;
-
-  const range = document.createRange();
-  range.selectNodeContents(editor);
-  const rect = range.getBoundingClientRect();
-  range.detach();
-
-  if (!rect.width && !rect.height) return null;
-  return {
-    width: rect.width,
-    height: rect.height,
-  };
-}
-
-function getAdjacentChipAtCaret(
-  editor: HTMLDivElement,
-  range: Range,
-  direction: "backward" | "forward"
-): HTMLSpanElement | null {
-  if (!range.collapsed) return null;
-
-  const container = direction === "backward" ? range.startContainer : range.endContainer;
-  const offset = direction === "backward" ? range.startOffset : range.endOffset;
-  let target: ChildNode | null = null;
-
-  if (container === editor) {
-    target = direction === "backward"
-      ? editor.childNodes[offset - 1] ?? null
-      : editor.childNodes[offset] ?? null;
-  } else if (container.nodeType === Node.TEXT_NODE && container.parentNode === editor) {
-    const textLength = container.textContent?.length ?? 0;
-    if (direction === "backward" && offset === 0) {
-      target = container.previousSibling;
-    }
-    if (direction === "forward" && offset === textLength) {
-      target = container.nextSibling;
-    }
-  }
-
-  return target instanceof HTMLSpanElement && target.dataset.chipId ? target : null;
-}
-
-function removeChipFromEditor(editor: HTMLDivElement, chipEl: HTMLSpanElement, chipMap: Map<string, ChatChipInstance>) {
-  const id = chipEl.dataset.chipId;
-  unmountChipContainer(chipEl);
-  chipEl.parentNode?.removeChild(chipEl);
-  editor.normalize();
-  if (id) chipMap.delete(id);
-}
-
-function getClipboardText(data: DataTransfer): string {
-  const plain = data.getData('text/plain');
-  if (plain) return plain;
-
-  const html = data.getData('text/html');
-  if (!html) return '';
-
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  return doc.body.innerText || doc.body.textContent || '';
-}
-
-function focusEditorAtEnd(editor: HTMLDivElement) {
-  editor.focus();
-
-  const selection = window.getSelection();
-  if (!selection) return;
-
-  const range = document.createRange();
-  range.selectNodeContents(editor);
-  range.collapse(false);
-  selection.removeAllRanges();
-  selection.addRange(range);
-}
-
-// ─── Sender ──────────────────────────────────────────────────────────────────
+// ─── Sender ───────────────────────────────────────────────────────────────────
 
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
-  const { loading, placeholder = "请输入", defaultFocusPlaceholder, disabled, onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange, variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue, renderFocus, abovePanels, renderActionPrefix, renderAttachmentSuffix, modelSelector, className, chipTypes = [], matchDefaultFocusContent, selectorRenderInTop = false } = props;
+  const {
+    loading, placeholder = "请输入", defaultFocusPlaceholder, disabled,
+    onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange,
+    variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue,
+    renderFocus, abovePanels, renderActionPrefix, renderAttachmentSuffix,
+    modelSelector, className, chipTypes = [], matchDefaultFocusContent,
+    selectorRenderInTop = false,
+    supportFiles = DEFAULT_SUPPORT_FILES,
+  } = props;
+
   const isBubble = variant === 'bubble';
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
@@ -456,10 +275,16 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     ? (defaultFocusPlaceholder ?? placeholder)
     : placeholder;
 
+  /**
+   * 内置 fileChipDef 合并到 chipTypes 里，确保 sender 内部能正确渲染文件 chip。
+   * 外部传入相同 type 的 def 时，外部优先（放后面 Map 会覆盖）。
+   */
+  const allChipTypes = [fileChipDef, ...chipTypes];
+
   /** chipTypes 的 Map 形式（type → def），方便查找 */
   const chipTypesMapRef = useRef<Map<string, ChatChipDef>>(new Map());
   useEffect(() => {
-    chipTypesMapRef.current = new Map(chipTypes.map(def => [def.type, def]));
+    chipTypesMapRef.current = new Map(allChipTypes.map(def => [def.type, def]));
   }, [chipTypes]);
 
   /** 根据当前 editor DOM 同步 inputContent 状态 */
@@ -760,11 +585,92 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     setIsComposing(false);
   }
 
+  const getExistingFileBytesByExt = useCallback(() => {
+    const bytesByExt = new Map<string, number>();
+    chipMapRef.current.forEach((chip) => {
+      if (chip.type !== FILE_CHIP_TYPE) return;
+
+      const data = chip.data as FileChipData | undefined;
+      if (!data?.fileName) return;
+
+      const ext = getFileExt(data.fileName);
+      bytesByExt.set(ext, (bytesByExt.get(ext) ?? 0) + (data.originalSize ?? 0));
+    });
+    return bytesByExt;
+  }, []);
+
+  // ─── 文件处理：统一分流入口 ───────────────────────────────────────────────
+
   /**
-   * 统一的多文件附件处理入口。
-   * 1. 过滤非法格式，汇总一条提示
-   * 2. 逐个校验尺寸，批量上传合法文件
-   * 3. 超出数量上限的文件截断并提示
+   * 统一处理多文件入口（拖拽、点击、粘贴）。
+   * 根据文件类型分流：图片 → attachment，文本/代码 → file chip，其余忽略。
+   */
+  const processFiles = useCallback(async (rawFiles: File[]) => {
+    const imageFiles: File[] = [];
+    const chipFiles: Array<{ file: File; ext: string; entry: SupportFileEntry }> = [];
+    const unsupportedFiles: File[] = [];
+    const fileBytesByExt = getExistingFileBytesByExt();
+
+    for (const file of rawFiles) {
+      const route = resolveFileRoute(file, supportFiles);
+      if (route.target === "image") {
+        imageFiles.push(file);
+      } else if (route.target === "chip") {
+        // 先做大小检查，超过 rejectAt 的直接忽略
+        const check = checkFileReject(file, route.entry);
+        if (!check.ok) {
+          message.info(`文件「${file.name}」超过大小限制，已跳过`);
+        } else if (
+          route.entry.totalBytesLimit !== undefined &&
+          (fileBytesByExt.get(route.ext) ?? 0) + file.size > route.entry.totalBytesLimit
+        ) {
+          message.info(`文件「${file.name}」会超过 .${route.ext} 文件累计大小限制，已跳过`);
+        } else {
+          chipFiles.push({ file, ext: route.ext, entry: route.entry });
+          fileBytesByExt.set(route.ext, (fileBytesByExt.get(route.ext) ?? 0) + file.size);
+        }
+      } else {
+        unsupportedFiles.push(file);
+      }
+    }
+
+    // 有不支持的文件时给一条提示
+    if (unsupportedFiles.length > 0 && imageFiles.length === 0 && chipFiles.length === 0) {
+      message.info(`不支持的文件类型，请上传图片或在 supportFiles 中配置的文件类型`);
+      return;
+    }
+
+    // 图片走 attachment 流程
+    if (imageFiles.length > 0) {
+      await updateAttachmentsByFiles(imageFiles);
+    }
+
+    // 文本/代码文件走 chip 流程
+    for (const { file, entry } of chipFiles) {
+      try {
+        const data = await readFileAsChipData(file, entry);
+        const id = Math.random().toString(36).slice(2, 7);
+        insertChip({
+          id,
+          type: FILE_CHIP_TYPE,
+          label: file.name,
+          data,
+        });
+      } catch (err) {
+        if (err instanceof FileRejectError) {
+          message.info(`文件「${file.name}」超过${err.reason === "lines" ? "行数" : "大小"}限制，已跳过`);
+          continue;
+        }
+        console.error("[@mybricks/plugin-ai - 读取文件失败]", err);
+        message.error(`读取「${file.name}」失败，已跳过`);
+      }
+    }
+  }, [supportFiles, insertChip, getExistingFileBytesByExt]);
+
+  // ─── 图片 attachment 处理 ─────────────────────────────────────────────────
+
+  /**
+   * 统一的多图片附件处理入口。
    */
   const updateAttachmentsByFiles = async (rawFiles: File[]) => {
     // Step 1：格式过滤
@@ -894,7 +800,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     }
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
-    fileInput.accept = SUPPORTED_IMAGE_ACCEPT;
+    // 接受图片 + supportFiles 中配置的扩展名
+    const supportedExts = Object.keys(supportFiles).map(ext => `.${ext}`).join(',');
+    fileInput.accept = `${SUPPORTED_IMAGE_ACCEPT}${supportedExts ? `,${supportedExts}` : ''}`;
     fileInput.multiple = true;
 
     fileInput.addEventListener('change', function (e) {
@@ -902,7 +810,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       if (!target?.files?.length) {
         return;
       }
-      updateAttachmentsByFiles(Array.from(target.files));
+      processFiles(Array.from(target.files));
     });
 
     fileInput.click();
@@ -937,7 +845,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
     const files = event.clipboardData.files;
     if (files?.length) {
-      updateAttachmentsByFiles(Array.from(files));
+      processFiles(Array.from(files));
     }
   }
 
@@ -983,7 +891,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     if (disabled || uploading) return;
     const files = event.dataTransfer.files;
     if (files?.length) {
-      updateAttachmentsByFiles(Array.from(files));
+      processFiles(Array.from(files));
     }
   };
 
@@ -1018,7 +926,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         {isDraggingOver && (
           <div className={css.dragOverlay}>
             <span className={css.dragOverlayTitle}>拖放文件至此</span>
-            <span className={css.dragOverlayHint}>支持 {SUPPORTED_IMAGE_LABEL} 格式，最大 {MAX_IMAGE_SIZE_MB}MB</span>
+            <span className={css.dragOverlayHint}>支持 {SUPPORTED_IMAGE_LABEL} 及文本/代码文件，图片最大 {MAX_IMAGE_SIZE_MB}MB</span>
           </div>
         )}
         {renderFocus ? (

@@ -97,6 +97,13 @@ export interface ChatPanelProps {
    * 默认 false（保持渲染在底部操作栏左侧）。
    */
   selectorRenderInTop?: boolean;
+  /**
+   * 支持上传的文件类型及限制配置。
+   * key 为不含点的文件扩展名（小写），如 "ts"、"md"。
+   * 不传时使用内置默认值（支持大部分常见文本/代码文件）。
+   * 图片（image/*）始终走 attachment 流程，无需在此声明。
+   */
+  supportFiles?: SenderProps["supportFiles"];
 }
 
 export interface ChatPanelRef {
@@ -137,6 +144,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   markdownSkin,
   historyCollapse,
   selectorRenderInTop = false,
+  supportFiles,
 }, ref) => {
   const agentKey = agent?.key ?? "";
 
@@ -320,6 +328,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       selectorRenderInTop={selectorRenderInTop}
       chipTypes={chipRegistry.getAll()}
       matchDefaultFocusContent={matchDefaultFocusContent}
+      supportFiles={supportFiles}
     />
   );
   const senderFooterNode = renderSenderFooter?.();
