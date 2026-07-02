@@ -1,4 +1,4 @@
-import type { TestCase } from "./types";
+import type { TestCase, TestCaseAssertion } from "./types";
 import { makeScriptedRequest } from "../lib/scripted-request";
 import { makeTextHistory, makeTextHistoryWithUsage, makeToolHistory, makeTurn } from "../lib/fixtures";
 
@@ -25,6 +25,72 @@ const COMPACT_RESPONSE_CONTENT = `<compact>
 2. Agent 触发 compact，fork 生成摘要
 当前状态：compact 摘要已生成并存入 compactRecord，后续 buildMessages 时会用摘要替代历史消息。
 </compact>`;
+
+const COMPACT_PROMPT_MARKER = "请对上方完整的对话历史进行总结";
+
+function isCompactSnapshot(snapshot: { params: { messages?: any[] } }): boolean {
+  const msgs = snapshot.params.messages ?? [];
+  const lastUserMsg = [...msgs].reverse().find((m: any) => m.role === "user");
+  return typeof lastUserMsg?.content === "string" && lastUserMsg.content.includes(COMPACT_PROMPT_MARKER);
+}
+
+function getCompactSnapshots(snapshots: Array<{ params: { messages?: any[] } }>) {
+  return snapshots.filter(isCompactSnapshot);
+}
+
+function countHistoryUsers(snapshot: { params: { messages?: any[] } }, prefix: string): number {
+  return (snapshot.params.messages ?? []).filter((m: any) =>
+    m.role === "user" &&
+    typeof m.content === "string" &&
+    m.content.startsWith(prefix)
+  ).length;
+}
+
+function assertCompactCount(
+  name: string,
+  expected: number,
+  waitForSnapshots: number = expected,
+): TestCaseAssertion {
+  return {
+    name,
+    run: ({ snapshots }) => {
+      if (snapshots.length < waitForSnapshots) return null;
+      const actual = getCompactSnapshots(snapshots).length;
+      return {
+        pass: actual === expected,
+        message: `compact fork ${actual} 次，预期 ${expected} 次`,
+      };
+    },
+  };
+}
+
+function assertFirstSnapshotIsCompact(name: string): TestCaseAssertion {
+  return {
+    name,
+    run: ({ snapshots }) => {
+      if (snapshots.length === 0) return null;
+      const pass = isCompactSnapshot(snapshots[0]);
+      return {
+        pass,
+        message: pass ? "第 1 次请求是 compact fork" : "第 1 次请求不是 compact fork",
+      };
+    },
+  };
+}
+
+function assertNoCompactAfterSecondMainSnapshot(): TestCaseAssertion {
+  return {
+    name: "首轮超阈值不触发 compact",
+    run: ({ snapshots }) => {
+      const compactCount = getCompactSnapshots(snapshots).length;
+      if (compactCount > 0) {
+        return { pass: false, message: `不应出现 compact fork，实际出现 ${compactCount} 次` };
+      }
+      if (snapshots.length < 2) return null;
+      return { pass: true, message: "已进入第 2 次主请求，未出现 compact fork" };
+    },
+  };
+}
 
 const COMPACT_RETRY_HISTORY = makeTextHistory(
   Array.from({ length: 8 }, (_, i) => ({
@@ -87,7 +153,7 @@ const compactHandoffHistory = (() => {
  */
 function makeCompactAwareRequest(maxTurnsForTest: number): TestCase["request"] {
   // 每次请求 index（用于区分是主 Agent 请求还是 compact fork 请求）
-  return async (params) => {
+  return async (params: any) => {
     const msgs = params.messages ?? [];
     const lastUserMsg = [...msgs].reverse().find(m => m.role === "user");
     const isCompactFork =
@@ -132,6 +198,10 @@ export const compactTriggerCase: TestCase = {
   request: makeCompactAwareRequest(2),
   compactOptions: { enabled: true, maxTurns: 2 },
   maskOptions: {}, // 不触发 mask
+  assertions: [
+    assertFirstSnapshotIsCompact("warmup 先发 compact fork"),
+    assertCompactCount("compact fork 次数", 1, 2),
+  ],
 };
 
 /** 带工具调用的 compact（验证 compact 不影响工具流程） */
@@ -147,7 +217,8 @@ export const compactWithToolsCase: TestCase = {
   ]),
   request: (() => {
     let callCount = 0;
-    return async (params: Parameters<TestCase["request"]>[0]) => {      const msgs = params.messages ?? [];
+    return async (params: any) => {
+      const msgs = params.messages ?? [];
       const lastUserMsg = [...msgs].reverse().find((m: any) => m.role === "user");
       const isCompactFork =
         typeof lastUserMsg?.content === "string" &&
@@ -193,6 +264,9 @@ export const compactWithToolsCase: TestCase = {
     };
   })(),
   compactOptions: { enabled: true, contextWindow: 200_000 },
+  assertions: [
+    assertCompactCount("后置 compact fork 次数", 1, 3),
+  ],
 };
 
 export const compactHandoffCase: TestCase = {
@@ -242,6 +316,27 @@ handoff 替换验证：
     params.emits.complete?.("");
   },
   compactOptions: { enabled: true, maxTurns: 1 },
+  assertions: [
+    assertFirstSnapshotIsCompact("warmup 先发 compact fork"),
+    assertCompactCount("compact fork 次数", 1, 2),
+    {
+      name: "handoff 替代大工具结果",
+      run: ({ snapshots }) => {
+        const compactSnapshot = getCompactSnapshots(snapshots)[0];
+        if (!compactSnapshot) return null;
+        const serialized = JSON.stringify(compactSnapshot.params.messages ?? []);
+        const pass =
+          serialized.includes(COMPACT_HANDOFF_SUMMARY_MARKER) &&
+          !serialized.includes(COMPACT_HANDOFF_TOOL_MARKER) &&
+          serialized.includes(COMPACT_NO_HANDOFF_TOOL_MARKER) &&
+          serialized.includes(COMPACT_ATTACHMENT_MARKER);
+        return {
+          pass,
+          message: `handoff=${serialized.includes(COMPACT_HANDOFF_SUMMARY_MARKER)}, originalTool=${serialized.includes(COMPACT_HANDOFF_TOOL_MARKER)}, noHandoffTool=${serialized.includes(COMPACT_NO_HANDOFF_TOOL_MARKER)}, attachment=${serialized.includes(COMPACT_ATTACHMENT_MARKER)}`,
+        };
+      },
+    },
+  ],
 };
 
 // ─── Usage 阈值触发 warmup ─────────────────────────────────────────────────────
@@ -266,6 +361,28 @@ export const compactWarmupByUsageCase: TestCase = {
   ]),
   request: makeCompactWarmupRequest(),
   compactOptions: { enabled: true, contextWindow: 200_000 },
+  assertions: [
+    assertFirstSnapshotIsCompact("usage 阈值触发 warmup compact"),
+    assertCompactCount("compact fork 次数", 1, 2),
+  ],
+};
+
+/**
+ * 首轮当前 turn 自己的 usage 超阈值时，不应触发 compact。
+ * compact 只能压缩当前 turn 之前的历史；首轮没有可压缩源。
+ */
+export const compactFirstTurnUsageNoCompactCase: TestCase = {
+  id: "compact-first-turn-usage-no-compact",
+  name: "compact 首轮 usage 超阈值不压缩",
+  group: "Compact",
+  description: "无预设历史。首轮第 1 步工具调用返回 usage.promptTokens = 170000（超过阈值 167000），第 2 步前不应触发 warmup/compact。",
+  expectedBehavior: "发送消息后先出现 write_file 工具卡片，然后直接进入第 2 步正常回复。Inspector 不应出现 compact fork 请求，消息中也不应出现 WarmupIter。",
+  initialTurns: [],
+  request: makeCompactFirstTurnUsageNoCompactRequest(),
+  compactOptions: { enabled: true, contextWindow: 200_000 },
+  assertions: [
+    assertNoCompactAfterSecondMainSnapshot(),
+  ],
 };
 
 // ─── Compact 接口报错 ─────────────────────────────────────────────────────────
@@ -283,6 +400,10 @@ export const compactErrorCase: TestCase = {
   initialTurns: COMPACT_RETRY_HISTORY,
   request: makeCompactErrorRequest(),
   compactOptions: { enabled: true, maxTurns: 1 },
+  assertions: [
+    assertFirstSnapshotIsCompact("warmup 先发 compact fork"),
+    assertCompactCount("compact 失败重试次数", 4, 4),
+  ],
 };
 
 /**
@@ -301,6 +422,10 @@ export const compactEmptyResponseCase: TestCase = {
   ]),
   request: makeCompactEmptyResponseRequest(),
   compactOptions: { enabled: true, maxTurns: 1 },
+  assertions: [
+    assertFirstSnapshotIsCompact("warmup 先发 compact fork"),
+    assertCompactCount("无标签重试次数", 4, 4),
+  ],
 };
 
 /**
@@ -316,6 +441,23 @@ export const compactNoContentCase: TestCase = {
   initialTurns: COMPACT_RETRY_HISTORY,
   request: makeCompactNoContentRequest(),
   compactOptions: { enabled: true, maxTurns: 1 },
+  assertions: [
+    assertFirstSnapshotIsCompact("warmup 先发 compact fork"),
+    assertCompactCount("空返回二分重试次数", 4, 4),
+    {
+      name: "二分历史轮次 8/4/2/1",
+      run: ({ snapshots }) => {
+        const compactSnapshots = getCompactSnapshots(snapshots);
+        if (compactSnapshots.length < 4) return null;
+        const counts = compactSnapshots.map((s) => countHistoryUsers(s, "历史消息 "));
+        const pass = JSON.stringify(counts) === JSON.stringify([8, 4, 2, 1]);
+        return {
+          pass,
+          message: `实际历史轮次：${counts.join("/")}`,
+        };
+      },
+    },
+  ],
 };
 
 // ─── 辅助函数 ─────────────────────────────────────────────────────────────────
@@ -325,7 +467,7 @@ export const compactNoContentCase: TestCase = {
  * compact 响应延迟约 2 秒，方便观察 warmup loading → success 效果。
  */
 function makeCompactWarmupRequest(): TestCase["request"] {
-  return async (params) => {
+  return async (params: any) => {
     const msgs = params.messages ?? [];
     const lastUserMsg = [...msgs].reverse().find(m => m.role === "user");
     const isCompactFork =
@@ -353,6 +495,59 @@ function makeCompactWarmupRequest(): TestCase["request"] {
     }
     params.emits.onFinishReason?.("stop");
     params.emits.onUsage?.({ promptTokens: 5000, completionTokens: 20, totalTokens: 5020 });
+    params.emits.complete?.("");
+  };
+}
+
+/** 首轮 usage 超阈值但没有历史可压缩：第 2 步应直接继续主流程，不应出现 compact fork。 */
+function makeCompactFirstTurnUsageNoCompactRequest(): TestCase["request"] {
+  let hasWritten = false;
+
+  return async (params: any) => {
+    const msgs = params.messages ?? [];
+    const lastUserMsg = [...msgs].reverse().find(m => m.role === "user");
+    const isCompactFork =
+      typeof lastUserMsg?.content === "string" &&
+      lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
+
+    if (isCompactFork) {
+      const reply = "错误：首轮没有可压缩历史，不应该触发 compact fork。";
+      for (const chunk of reply.match(/.{1,8}/g) ?? []) {
+        await new Promise(r => setTimeout(r, 20));
+        params.emits.write(chunk);
+      }
+      params.emits.onFinishReason?.("stop");
+      params.emits.complete?.("");
+      return;
+    }
+
+    if (!hasWritten) {
+      hasWritten = true;
+      await new Promise(r => setTimeout(r, 300));
+      params.emits.onToolCallStream?.({ index: 0, id: "call_first_turn_no_compact", name: "write_file", argsChunk: "" });
+      const args = JSON.stringify({
+        path: "src/first-turn-compact-guard.ts",
+        content: "export const firstTurnCompactGuard = true;",
+      });
+      for (let i = 0; i < args.length; i += 5) {
+        await new Promise(r => setTimeout(r, 15));
+        params.emits.onToolCallStream?.({ index: 0, argsChunk: args.slice(i, i + 5) });
+      }
+      params.emits.onToolCalls?.([{ id: "call_first_turn_no_compact", name: "write_file", args: JSON.parse(args) }]);
+      params.emits.onFinishReason?.("tool_calls");
+      params.emits.onUsage?.({ promptTokens: 170000, completionTokens: 100, totalTokens: 170100 });
+      params.emits.complete?.("");
+      return;
+    }
+
+    await new Promise(r => setTimeout(r, 300));
+    const reply = "首轮 usage 已超阈值，但没有历史可压缩，因此已跳过 compact 并继续完成回复。";
+    for (const chunk of reply.match(/.{1,8}/g) ?? []) {
+      await new Promise(r => setTimeout(r, 30));
+      params.emits.write(chunk);
+    }
+    params.emits.onFinishReason?.("stop");
+    params.emits.onUsage?.({ promptTokens: 170500, completionTokens: 50, totalTokens: 170550 });
     params.emits.complete?.("");
   };
 }
@@ -557,6 +752,10 @@ export const compactInfiniteCase: TestCase = {
   ]),
   request: makeCompactInfiniteRequest(),
   compactOptions: { enabled: true, contextWindow: 200_000 },
+  assertions: [
+    assertFirstSnapshotIsCompact("无限延迟前先进入 compact fork"),
+    assertCompactCount("compact fork 已开始", 1, 1),
+  ],
 };
 
 /**
@@ -576,6 +775,10 @@ export const compactRetrySuccessErrorCase: TestCase = {
   ]),
   request: makeCompactRetrySuccessErrorRequest(),
   compactOptions: { enabled: true, contextWindow: 200_000 },
+  assertions: [
+    assertFirstSnapshotIsCompact("warmup 先发 compact fork"),
+    assertCompactCount("报错后第 3 次成功", 3, 4),
+  ],
 };
 
 /**
@@ -595,6 +798,10 @@ export const compactRetrySuccessTagCase: TestCase = {
   ]),
   request: makeCompactRetrySuccessTagRequest(),
   compactOptions: { enabled: true, contextWindow: 200_000 },
+  assertions: [
+    assertFirstSnapshotIsCompact("warmup 先发 compact fork"),
+    assertCompactCount("无标签后第 3 次成功", 3, 4),
+  ],
 };
 
 /**
@@ -615,6 +822,23 @@ export const compactBinaryExpandSuccessCase: TestCase = {
   ]),
   request: makeCompactBinaryExpandSuccessRequest(),
   compactOptions: { enabled: true, contextWindow: 200_000 },
+  assertions: [
+    assertFirstSnapshotIsCompact("warmup 先发 compact fork"),
+    assertCompactCount("二分扩大 compact 次数", 3, 4),
+    {
+      name: "二分路径 4/2/3",
+      run: ({ snapshots }) => {
+        const compactSnapshots = getCompactSnapshots(snapshots);
+        if (compactSnapshots.length < 3) return null;
+        const counts = compactSnapshots.map((s) => countHistoryUsers(s, "历史 "));
+        const pass = JSON.stringify(counts) === JSON.stringify([4, 2, 3]);
+        return {
+          pass,
+          message: `实际历史轮次：${counts.join("/")}`,
+        };
+      },
+    },
+  ],
 };
 
 // ─── 中途压缩报错并恢复 ──────────────────────────────────────────────────────
@@ -654,6 +878,19 @@ export const compactMidTurnErrorRetryCase: TestCase = {
       maxDelayMs: 500,
     },
   },
+  assertions: [
+    {
+      name: "第 1 步后触发一次 compact",
+      run: ({ snapshots }) => {
+        const compactCount = getCompactSnapshots(snapshots).length;
+        if (snapshots.length < 2) return null;
+        return {
+          pass: compactCount === 1 && !isCompactSnapshot(snapshots[0]) && isCompactSnapshot(snapshots[1]),
+          message: `compact fork ${compactCount} 次，序列=${snapshots.map((s) => isCompactSnapshot(s) ? "compact" : "main").join("/")}`,
+        };
+      },
+    },
+  ],
 };
 
 

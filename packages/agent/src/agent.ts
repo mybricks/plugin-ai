@@ -1683,6 +1683,16 @@ IMPORTANT: 不要调用工具！
     const cfg = this.options.compact;
     if (!cfg || cfg.enabled === false) return false;
 
+    // 路径 1：确认实际可压缩源。compact 永远不压缩当前执行中的 turn，
+    // 因此首轮即使当前 turn 已经很大，也不能触发一次空 compact。
+    const compactSourceTurns = this._getCompactSourceTurns();
+    const compactedIndex = this.compactRecord
+      ? compactSourceTurns.findIndex((t) => t.id === this.compactRecord!.upToTurnId)
+      : -1;
+    if (compactSourceTurns.length - (compactedIndex + 1) <= 0) return false;
+
+    // 路径 2：判断上下文压力。这里仍然使用 this.turns，
+    // 让 warmup 能参考当前 turn 最新 iter 的 usage，提前压缩之前的历史。
     let contextTurnCount = 0;
     let lastUsage: TokenUsage | undefined;
     for (let i = this.turns.length - 1; i >= 0; i--) {

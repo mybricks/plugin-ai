@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import JsonView from "@microlink/react-json-view";
 import { ChatPanel } from "@plugin/ui/chat/chat-panel";
 import { openSetting } from "@plugin/ui/setting";
@@ -278,6 +278,46 @@ function InspectorPanel({ snapshots }: { snapshots: RequestSnapshot[] }) {
   );
 }
 
+function AssertionPanel({
+  activeCase,
+  snapshots,
+  agent,
+}: {
+  activeCase: TestCase | null;
+  snapshots: RequestSnapshot[];
+  agent: any;
+}) {
+  const results = useMemo(() => {
+    if (!activeCase?.assertions?.length) return [];
+    return activeCase.assertions.map((assertion) => ({
+      name: assertion.name,
+      result: assertion.run({ snapshots, agent }),
+    }));
+  }, [activeCase, snapshots, agent]);
+
+  if (results.length === 0) return null;
+
+  return (
+    <div className="pg-assertions">
+      <span className="pg-assertions-label">自动断言</span>
+      <div className="pg-assertions-list">
+        {results.map(({ name, result }) => (
+          <div
+            key={name}
+            className={`pg-assertion ${result == null ? "pending" : result.pass ? "pass" : "fail"}`}
+            title={result?.message ?? "等待运行"}
+          >
+            <span className="pg-assertion-status">
+              {result == null ? "WAIT" : result.pass ? "PASS" : "FAIL"}
+            </span>
+            <span className="pg-assertion-name">{name}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -416,6 +456,7 @@ export default function App() {
                 <span className="pg-expected-label">预期行为</span>
                 <span className="pg-expected-text">{activeCase.expectedBehavior}</span>
               </div>
+              <AssertionPanel activeCase={activeCase} snapshots={snapshots} agent={agent} />
               <button className="pg-reset-btn" onClick={handleReset}>Reset</button>
             </div>
           </div>

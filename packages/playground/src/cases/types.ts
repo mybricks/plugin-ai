@@ -5,9 +5,25 @@ import type { Tool } from "@agent/types";
 import type { CodeAgent } from "@agent/code-agent";
 import type { SkillFile } from "@agent/code-agent";
 import type { FsFile } from "../lib/mem-fs";
+import type { RequestSnapshot } from "../lib/use-request-inspector";
 import type React from "react";
 
 export type Priority = "P0" | "P1" | "P2";
+
+export interface AssertionContext {
+  snapshots: RequestSnapshot[];
+  agent: CodeAgent | null;
+}
+
+export interface AssertionResult {
+  pass: boolean;
+  message?: string;
+}
+
+export interface TestCaseAssertion {
+  name: string;
+  run: (ctx: AssertionContext) => AssertionResult | null;
+}
 
 export interface TestCase {
   id: string;
@@ -68,6 +84,8 @@ export interface TestCase {
   renderSenderFooter?: () => React.ReactNode;
   /** 在右侧 Inspector 上方渲染的自定义操作区。 */
   renderRightPanelActions?: (params: { agent: CodeAgent | null }) => React.ReactNode;
+  /** 自动断言；返回 null 表示等待用户运行或异步流程尚未到达可判定状态。 */
+  assertions?: TestCaseAssertion[];
   /**
    * 特殊 playground 展示布局。
    * 默认走原始调试布局；chat-panel-skin 只展示皮肤预览用 ChatPanel。
