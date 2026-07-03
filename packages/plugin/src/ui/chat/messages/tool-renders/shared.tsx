@@ -12,10 +12,12 @@ import css from "./render.less";
 // ─── 状态图标 ─────────────────────────────────────────────────────────────────
 
 export const StatusIcon = ({ tool, icon }: { tool: ToolRecord; icon?: React.ReactElement }) => {
+  const exitCode = tool.result?.metadata?.exitCode;
+  const isNonZeroExit = typeof exitCode === "number" && exitCode !== 0;
   if (tool.status === "pending") {
     return <span className={css["tool-icon-pending"]}><Loading /></span>;
   }
-  if (tool.status === "error") {
+  if (tool.status === "error" || isNonZeroExit) {
     return <span className={css["tool-icon"]}><ErrorIcon /></span>;
   }
   return (
@@ -409,4 +411,3 @@ export function detectLang(path: string | undefined | null): string {
   };
   return map[ext] ?? "plaintext";
 }
-
