@@ -282,18 +282,20 @@ function AssertionPanel({
   activeCase,
   snapshots,
   agent,
+  memFS,
 }: {
   activeCase: TestCase | null;
   snapshots: RequestSnapshot[];
   agent: any;
+  memFS: MemFS | null;
 }) {
   const results = useMemo(() => {
     if (!activeCase?.assertions?.length) return [];
     return activeCase.assertions.map((assertion) => ({
       name: assertion.name,
-      result: assertion.run({ snapshots, agent }),
+      result: assertion.run({ snapshots, agent, memFS }),
     }));
-  }, [activeCase, snapshots, agent]);
+  }, [activeCase, snapshots, agent, memFS]);
 
   if (results.length === 0) return null;
 
@@ -456,7 +458,7 @@ export default function App() {
                 <span className="pg-expected-label">预期行为</span>
                 <span className="pg-expected-text">{activeCase.expectedBehavior}</span>
               </div>
-              <AssertionPanel activeCase={activeCase} snapshots={snapshots} agent={agent} />
+              <AssertionPanel activeCase={activeCase} snapshots={snapshots} agent={agent} memFS={memFS} />
               <button className="pg-reset-btn" onClick={handleReset}>Reset</button>
             </div>
           </div>

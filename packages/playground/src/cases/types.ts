@@ -13,6 +13,7 @@ export type Priority = "P0" | "P1" | "P2";
 export interface AssertionContext {
   snapshots: RequestSnapshot[];
   agent: CodeAgent | null;
+  memFS: import("../lib/mem-fs").MemFS | null;
 }
 
 export interface AssertionResult {

@@ -3,6 +3,11 @@ import type { Sandbox } from "@agent/code-agent";
 export interface FsFile {
   path: string;
   content: string;
+  permissions?: {
+    read?: boolean;
+    write?: boolean;
+    delete?: boolean;
+  };
 }
 
 /**
@@ -11,19 +16,20 @@ export interface FsFile {
  * 所有读写操作都在内存中完成，无副作用。
  */
 export class MemFS implements Sandbox {
-  private files: Map<string, string>;
+  private files: Map<string, FsFile>;
 
   constructor(initialFiles: FsFile[] = DEFAULT_FILES) {
-    this.files = new Map(initialFiles.map((f) => [f.path, f.content]));
+    this.files = new Map(initialFiles.map((f) => [f.path, f]));
   }
 
   async getFiles(): Promise<FsFile[]> {
-    return Array.from(this.files.entries()).map(([path, content]) => ({ path, content }));
+    return Array.from(this.files.values()).map((file) => ({ ...file }));
   }
 
   async updateFiles(files: FsFile[]): Promise<void> {
     for (const f of files) {
-      this.files.set(f.path, f.content);
+      const existing = this.files.get(f.path);
+      this.files.set(f.path, { ...existing, ...f });
     }
   }
 
@@ -39,12 +45,12 @@ export class MemFS implements Sandbox {
 
   /** 读取单个文件内容（供 Inspector 展示） */
   readFile(path: string): string | undefined {
-    return this.files.get(path);
+    return this.files.get(path)?.content;
   }
 
   /** 获取所有文件列表（供 FSViewer 展示） */
   snapshot(): FsFile[] {
-    return Array.from(this.files.entries()).map(([path, content]) => ({ path, content }));
+    return Array.from(this.files.values()).map((file) => ({ ...file }));
   }
 }
 
