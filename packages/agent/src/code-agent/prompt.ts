@@ -3,6 +3,7 @@ import { WRITE_TOOL_NAME } from "./tools/write";
 import { MULTI_WRITE_TOOL_NAME } from './tools/multi-write';
 import { EDIT_TOOL_NAME } from "./tools/edit";
 import { MULTI_EDIT_TOOL_NAME } from "./tools/multi-edit";
+import { BASH_TOOL_NAME } from "./tools";
 
 /**
  * 提示词。
@@ -57,6 +58,7 @@ function getUsingToolsSection(usingTools?: string): string {
  - 使用 \`${READ_TOOL_NAME}\` 读取项目文件，而非其他方式。
  - 使用 \`${EDIT_TOOL_NAME}\` 或 \`${MULTI_EDIT_TOOL_NAME}\` 修改已有文件。这是修改文件的首选工具，因为它只发送差异部分。
  - 使用 \`${WRITE_TOOL_NAME}\` 或 \`${MULTI_WRITE_TOOL_NAME}\` 新建文件，或在需要完整重写文件时使用。对已有文件优先使用 \`${EDIT_TOOL_NAME}\`。
+ - 使用 \`${BASH_TOOL_NAME}\` 中的 mv、cp、rm、rename 来快速进行重构等多文件操作。
  - 在一次响应中可以调用多个工具。如果多个工具之间没有依赖关系，并行调用它们以提高效率。如果某些工具调用依赖于前一个调用的结果，则按顺序调用。`;
 }
 

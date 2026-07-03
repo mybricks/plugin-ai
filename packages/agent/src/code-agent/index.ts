@@ -7,6 +7,7 @@ import {
   createMultiEditTool,
   createDeleteTool,
   createGrepTool,
+  createBashTool,
   createSkillTool,
   USE_SKILL_TOOL_NAME,
 } from "./tools";
@@ -478,6 +479,7 @@ export class CodeAgent extends Agent {
       createMultiEditTool(wrappedSandbox),
       createDeleteTool(wrappedSandbox),
       createGrepTool(wrappedSandbox),
+      createBashTool(wrappedSandbox),
     ];
 
     const base = {
