@@ -79,7 +79,7 @@
 .item {
   display: flex;
   align-items: center;
-  padding: var(--chat-menu-item-padding, 6px 12px);
+  padding: var(--chat-menu-item-padding, 6px 6px 6px 3px);
   cursor: pointer;
   transition: background 0.15s;
   color: var(--mybricks-text-color-main, #333333);
@@ -102,7 +102,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 6px;
+  margin-right: 3px;
   flex-shrink: 0;
 
   svg {
@@ -116,4 +116,28 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.itemContent {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.itemName {
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.itemDesc {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--mybricks-text-color-tertiary, #999);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }

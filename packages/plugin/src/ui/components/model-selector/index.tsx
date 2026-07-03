@@ -7,7 +7,7 @@ import css from "./index.less";
 
 export interface ModelSelectorProps {
   modelSelector: {
-    models: Array<ModelSelection & { modelName: string }>;
+    models: Array<ModelSelection & { modelName: string; description?: string }>;
     selected?: ModelSelection | null;
     onSelect: (selection: ModelSelection) => void;
   };
@@ -71,7 +71,10 @@ export const ModelSelector = ({ modelSelector, disabled }: ModelSelectorProps) =
                   <div className={css.iconSlot}>
                     {isSelected && <Check />}
                   </div>
-                  <div className={css.itemTitle}>{m.modelName}</div>
+                  <div className={css.itemContent}>
+                    <span className={css.itemName}>{m.modelName}</span>
+                    {m.description && <span className={css.itemDesc}>{m.description}</span>}
+                  </div>
                 </div>
               );
             })}

@@ -175,7 +175,7 @@ interface SenderProps {
   className?: string;
   /** 模型选择器配置 */
   modelSelector?: {
-    models: Array<ModelSelection & { modelName: string }>;
+    models: Array<ModelSelection & { modelName: string; description?: string }>;
     selected?: ModelSelection | null;
     onSelect: (selection: ModelSelection) => void;
   };

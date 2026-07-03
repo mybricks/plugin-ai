@@ -50,6 +50,8 @@ export interface ToolAttachment {
 export interface ModelConfig {
   id: string;
   name: string;
+  /** 模型简介，展示在下拉选择器中模型名后方（可选） */
+  description?: string;
   /**
    * 模型多模态能力声明（可选）。
    * 不传时视为全支持（兜底宽松，API 报错由上游处理）。
@@ -403,14 +405,15 @@ export class LLMProviders {
   /**
    * 获取可选模型列表（含 CustomProviderConfig 中的模型）
    */
-  getValidModels(): Array<ModelSelection & { modelName: string }> {
-    const result: Array<ModelSelection & { modelName: string }> = [];
+  getValidModels(): Array<ModelSelection & { modelName: string; description?: string }> {
+    const result: Array<ModelSelection & { modelName: string; description?: string }> = [];
     this.providers.forEach((provider) => {
       provider.models.forEach((model) => {
         result.push({
           providerId: provider.providerId,
           modelId: model.id,
           modelName: model.name,
+          description: model.description,
         });
       });
     });

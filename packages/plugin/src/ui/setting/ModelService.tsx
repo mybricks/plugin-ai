@@ -133,14 +133,17 @@ const ModelEditModal: React.FC<{
 }) => {
   const [id, setId] = useState("");
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
 
   useEffect(() => {
     if (model) {
       setId(model.id);
       setName(model.name);
+      setDescription(model.description || "");
     } else {
       setId("");
       setName("");
+      setDescription("");
     }
   }, [model, open]);
 
@@ -148,7 +151,7 @@ const ModelEditModal: React.FC<{
 
   const handleSave = () => {
     if (!id.trim() || !name.trim()) return;
-    onSave({ id: id.trim(), name: name.trim() });
+    onSave({ id: id.trim(), name: name.trim(), description: description.trim() || undefined });
   };
 
   return (
@@ -173,6 +176,16 @@ const ModelEditModal: React.FC<{
             placeholder="下拉选择时展示的模型名，如 GPT-4o、Claude Sonnet 4"
             value={name}
             onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+        <div className={css.formItem}>
+          <label className={css.formLabel}>模型描述 <span style={{ opacity: 0.5, fontWeight: 400 }}>(可选)</span></label>
+          <input
+            type="text"
+            className={css.nativeInput}
+            placeholder="在模型名后方展示的简介，如 高性能通用模型"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
           />
         </div>
         <div className={css.modalDialogActions}>
@@ -668,6 +681,7 @@ export const ModelService: React.FC<ModelServiceProps> = ({ value, onChange, onS
                           <div className={css.modelItemMain}>
                             <span className={css.modelItemId}>{model.id}</span>
                             <span className={css.modelItemName}>{model.name}</span>
+                            {(model as any).description && <span className={css.modelItemDesc}>{(model as any).description}</span>}
                           </div>
                           <div className={css.modelItemActions}>
                             {!model.isPreset && (
