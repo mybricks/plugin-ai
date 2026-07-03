@@ -99,7 +99,7 @@ class Context {
    * - string / SendToAgentParams：纯文本追加
    * - { message, meta }：message 中可含 [[chip:id]] 占位符，meta.chips 提供实例数据
    */
-  appendInput(comId: string, input: string | SendToAgentParams | { message: string; meta?: { chips?: import("../../../agent/src").ChatChipInstance[] } }) {
+  appendInput(comId: string, input: string | SendToAgentParams | { message: string; meta?: { chips?: import("../../../agent/src").ChatChipInstance[] }; animation?: boolean }) {
     this.events.emit("appendInput", { comId, input });
   }
 

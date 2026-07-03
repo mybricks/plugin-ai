@@ -44,6 +44,89 @@ import type { SupportFileEntry, SupportFiles } from "../../../content-limits";
 import { DEFAULT_SUPPORT_FILES } from "../../../content-limits";
 import css from "./index.less"
 
+// ─── 全局鼠标位置追踪（模块级单例，供飞行动画读取起点）────────────────────────────
+
+let _lastMouseX = -1;
+let _lastMouseY = -1;
+if (typeof window !== 'undefined') {
+  window.addEventListener('mousemove', (e) => {
+    _lastMouseX = e.clientX;
+    _lastMouseY = e.clientY;
+  }, { passive: true });
+}
+
+/**
+ * 从鼠标最后落点发射一个幽灵胶囊飞向目标 DOM 元素，模拟"加入购物车"的抛物线动画。
+ * onLanded 在动画结束时回调。
+ */
+function flyToTarget(targetEl: HTMLElement, label: string, onLanded: () => void) {
+  const startX = _lastMouseX;
+  const startY = _lastMouseY;
+
+  // 鼠标位置未捕获时（-1）退化为直接回调，不播放飞行动画
+  if (startX < 0 || startY < 0) {
+    onLanded();
+    return;
+  }
+
+  const targetRect = targetEl.getBoundingClientRect();
+  const targetX = targetRect.left + targetRect.width / 2;
+  const targetY = targetRect.top + 12;
+
+  // ── 外层 wrapper 控制 X 轴匀速平移 ──
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = [
+    'position:fixed',
+    'left:0',
+    'top:0',
+    'z-index:99999',
+    'pointer-events:none',
+    `transform:translate3d(${startX}px,${startY}px,0)`,
+    'transition:transform 0.55s linear',
+    'will-change:transform',
+  ].join(';');
+
+  // ── 内层 chip 控制 Y 轴抛物线 + 缩放 + 透明度 ──
+  const chip = document.createElement('div');
+  const displayLabel = label.length > 12 ? `${label.slice(0, 12)}…` : label;
+  chip.textContent = `+ ${displayLabel}`;
+  chip.style.cssText = [
+    'padding:3px 10px',
+    'background:var(--mybricks-color-primary,#FA6400)',
+    'color:#fff',
+    'border-radius:999px',
+    'font-size:11px',
+    'line-height:18px',
+    'white-space:nowrap',
+    'box-shadow:0 3px 10px rgba(250,100,0,0.35)',
+    'transform:translate3d(0,0,0) scale(1)',
+    'opacity:1',
+    // Y 轴用 ease-in（先慢后快，模拟重力加速落地）
+    'transition:transform 0.55s cubic-bezier(0.4,0,1,1),opacity 0.55s ease-in',
+    'will-change:transform,opacity',
+  ].join(';');
+
+  wrapper.appendChild(chip);
+  document.body.appendChild(wrapper);
+
+  // 强制重绘，保证初始状态被浏览器记录
+  wrapper.getBoundingClientRect();
+
+  // 设置终点：X 轴 wrapper 平移到目标，Y 轴 chip 内部平移
+  const deltaX = targetX - startX;
+  const deltaY = targetY - startY;
+
+  wrapper.style.transform = `translate3d(${startX + deltaX}px,${startY}px,0)`;
+  chip.style.transform = `translate3d(0,${deltaY}px,0) scale(0.3)`;
+  chip.style.opacity = '0';
+
+  const DURATION = 560;
+  setTimeout(() => {
+    try { document.body.removeChild(wrapper); } catch (_) {}
+    onLanded();
+  }, DURATION);
+}
+
 // ─── PendingQueue ─────────────────────────────────────────────────────────────
 
 const PendingQueue = ({ queue, onRemove }: { queue: QueueItem[]; onRemove?: (id: string) => void }) => {
@@ -115,7 +198,7 @@ export interface SenderAbovePanel {
   content: React.ReactNode;
 }
 
-type SenderAppendInputParams = string | SendToAgentParams | { message: string; meta?: { chips?: ChatChipInstance[] } };
+type SenderAppendInputParams = string | SendToAgentParams | { message: string; meta?: { chips?: ChatChipInstance[] }; animation?: boolean };
 
 interface SenderSerializedInput {
   /** 输入框当前文本（含 [[chip:id]] 占位符） */
@@ -319,6 +402,25 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     });
   }, [matchDefaultFocusContent]);
 
+  const triggerReceiveAnimation = useCallback((label?: string) => {
+    const editorEl = inputEditorRef.current;
+    if (!editorEl) return;
+    const editorWrapper = editorEl.closest(`.${css.editor}`) as HTMLElement | null;
+    const target = editorWrapper ?? editorEl.parentElement;
+    if (!target) return;
+
+    const doLand = () => {
+      // 飞行落地后：弹起 + 流光边框
+      target.classList.add(css.receivingBounce);
+      target.classList.add(css.receivingGlow);
+      setTimeout(() => target.classList.remove(css.receivingBounce), 450);
+      setTimeout(() => target.classList.remove(css.receivingGlow), 1400);
+      target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
+
+    flyToTarget(target, label ?? '内容', doLand);
+  }, []);
+
   const appendInput = useCallback((params: SenderAppendInputParams) => {
     const content = typeof params === "string" ? params : params.message;
     const nextAttachments = typeof params === "string"
@@ -394,7 +496,16 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       focusEditorAtEnd(editor);
     }
     syncInputContent();
-  }, [syncInputContent]);
+
+    // 触发注入动画（仅 animation: true 时）
+    const shouldAnimate = typeof params !== 'string' && (params as any).animation === true;
+    if (shouldAnimate) {
+      // 优先取第一个 chip 的 label，其次取文本前12字，作为飞行胶囊的标签
+      const firstChip = (params as any)?.meta?.chips?.[0] as ChatChipInstance | undefined;
+      const animLabel = firstChip?.label ?? (content?.slice(0, 12) ?? '内容');
+      triggerReceiveAnimation(animLabel);
+    }
+  }, [syncInputContent, triggerReceiveAnimation]);
 
   /** 在当前光标位置插入一个 chat chip */
   const insertChip = useCallback((instance: ChatChipInstance) => {

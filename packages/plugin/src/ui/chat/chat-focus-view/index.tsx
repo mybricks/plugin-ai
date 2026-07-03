@@ -118,6 +118,7 @@ const ChatFocusView = ({
       context.appendInput(comId, {
         message: `${prefix}对于[[chip:${chip.id}]]${suffix}；`,
         meta: { chips: [chip] },
+        animation: true,
       });
     });
 

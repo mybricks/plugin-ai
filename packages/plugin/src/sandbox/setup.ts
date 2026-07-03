@@ -54,8 +54,9 @@ export interface SandboxHelpers {
    * 参数与 sendToAgent / controller.appendInput 保持一致：
    * - string：追加纯文本
    * - SendToAgentParams：追加 message，支持 attachments 与 meta.chips
+   * - animation: true 时触发弹起 + 流光边框动画，吸引用户注意力（默认 false）
    */
-  appendToSender: (comId: string, input: string | SendToAgentParams) => void;
+  appendToSender: (comId: string, input: (string | SendToAgentParams | { message: string; meta?: { chips?: any[] }; animation?: boolean })) => void;
   /**
    * 渲染工具方法。
    */

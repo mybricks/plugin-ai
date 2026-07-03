@@ -334,6 +334,36 @@
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 15%, transparent);
     }
 
+    // ─── appendInput 注入动画：弹起 ──────────────────────────────────────────
+    &.receivingBounce {
+      animation: senderReceiveBounce 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+    }
+
+    // ─── appendInput 注入动画：流光边框扫描 ──────────────────────────────────
+    &.receivingGlow::after {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border-radius: inherit;
+      z-index: 20;
+      pointer-events: none;
+      // 用渐变模拟流光，只露出边框宽度区域（mask 排除内容区）
+      background: linear-gradient(
+        100deg,
+        transparent 0%,
+        color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 90%, transparent) 50%,
+        transparent 100%
+      );
+      background-size: 250% 100%;
+      padding: 1.5px;
+      -webkit-mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+              mask-composite: exclude;
+      animation: senderReceiveGlow 1.4s ease-out forwards;
+    }
+
     .dragOverlay {
       position: absolute;
       inset: 0;
@@ -702,4 +732,22 @@
       }
     }
   }
+}
+
+// ─── sender 注入动画 keyframes ────────────────────────────────────────────────
+
+/** 轻微弹起回弹，模拟"有东西落入"的物理感 */
+@keyframes senderReceiveBounce {
+  0%   { transform: scale(1);      }
+  30%  { transform: scale(1.012);  }
+  55%  { transform: scale(0.995);  }
+  75%  { transform: scale(1.005);  }
+  100% { transform: scale(1);      }
+}
+
+/** 流光从左向右扫过边框，然后透明度归零 */
+@keyframes senderReceiveGlow {
+  0%   { background-position: 200% 0; opacity: 1; }
+  70%  { opacity: 1; }
+  100% { background-position: -30% 0; opacity: 0; }
 }

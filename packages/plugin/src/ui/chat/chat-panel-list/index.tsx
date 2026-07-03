@@ -9,6 +9,7 @@ import type { MessageRecord } from "../use-session";
 import type { SendToAgentParams } from "../../../sandbox";
 import type { ChatChipInstance } from "../../../../../agent/src";
 import { createDomChip, DOM_CHIP_TYPE, matchDefaultDomFocusContent } from "../../../utils/dom-info";
+import { useAIPanelReady } from "../../../utils/ensure-ai-panel-open";
 import css from "../chat-panel/index.less";
 
 interface User {
@@ -117,6 +118,8 @@ const pluginRenderUserMessage = (record: MessageRecord) => {
 // 各 ChatPanel 持有独立的 useSession，agent 事件 re-render 完全隔离。
 
 const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", className, style }: ChatPanelListProps) => {
+  useAIPanelReady();
+
   const [currentComId, setCurrentComId] = useState<string | undefined>(undefined);
   const [instances, setInstances] = useState<ComInstance[]>([]);
   const [contextDisabled, setContextDisabled] = useState(() => context.disabled);
