@@ -1,4 +1,4 @@
-import { DELETE_TOOL_NAME, EDIT_TOOL_NAME, MULTI_EDIT_TOOL_NAME, READ_TOOL_NAME, WRITE_TOOL_NAME } from "../../../../agent/src/code-agent/tools";
+import { BASH_TOOL_NAME, DELETE_TOOL_NAME, EDIT_TOOL_NAME, MULTI_EDIT_TOOL_NAME, READ_TOOL_NAME, WRITE_TOOL_NAME } from "../../../../agent/src/code-agent/tools";
 import { GREP_TOOL_NAME } from "../../../../agent/src/code-agent/tools/grep";
 import { INIT_PROJECT_TOOL_NAME } from "../../sandbox/tools/init-project";
 
@@ -32,6 +32,7 @@ export const fullStackAppPromptSection = {
   - 修改已有文件优先使用 \`${EDIT_TOOL_NAME}\` 或 \`${MULTI_EDIT_TOOL_NAME}\`；
   - 新建少量文件或需要完整重写文件时使用 \`${WRITE_TOOL_NAME}\`；
   - 删除文件时使用 \`${DELETE_TOOL_NAME}\`。
+  - 使用 \`${BASH_TOOL_NAME}\` 中的 mv、cp、rm、rename 来快速进行重构、删除等多文件操作。
 4. 检查验证：修改完成后检查渲染、编译、LSP 或项目状态；如果发现问题，回到开发修改阶段继续修复。
 5. 文档同步：如代码变化影响 JSDoc 注释或其他说明文档，应按文档规范同步更新。
 </常用工作流>
