@@ -18,13 +18,16 @@ import {
   toolWriteCase,
   toolMultiWriteCase,
   toolReadThenWriteCase,
-  toolDeleteCase,
   toolNotFoundCase,
   toolWriteUnicodeEscapeCase,
   toolWriteUnicodeMidStreamCase,
   toolArgsJsonParseErrorCase,
   toolWriteLongFilenameCase,
 } from "./tool-error";
+import {
+  toolDeleteCase,
+  toolDeletePartialPermissionCase,
+} from "./delete";
 import {
   customSlowToolCase,
   customToolOutputLimitExceededCase,
@@ -98,6 +101,24 @@ import { skillUseThenContinueCase } from "./skill";
 import { chatPanelSkinHistoryCase, chatPanelDefaultSkinCase, chatPanelSkinEmptyCase } from "./chat-panel-skin";
 import { historyCollapseRestoreCase, historyCollapseGrowingCase, historyCollapseCustomMaxItersCase } from "./ui-history-collapse";
 import { historySlowLoadCase, historyLoadErrorCase } from "./history-load";
+import {
+  bashMvRenameCase,
+  bashMvToDirectoryCase,
+  bashCpCase,
+  bashCpGlobCase,
+  bashRmSingleCase,
+  bashRmRecursiveCase,
+  bashRmGlobCase,
+  bashRenameCase,
+  bashRenameComponentCase,
+  bashMkdirCase,
+  bashTouchCase,
+  bashSedImportCase,
+  bashSedMultiGlobCase,
+  bashRefactorSequenceCase,
+  bashMvNotFoundCase,
+  bashUnsupportedCommandCase,
+} from "./bash";
 
 export type { TestCase, Priority } from "./types";
 
@@ -118,6 +139,7 @@ export const ALL_CASES: TestCase[] = [
   historyCollapseGrowingCase,
   historySlowLoadCase,
   historyLoadErrorCase,
+  toolDeletePartialPermissionCase,
   // ─── 网络中断 ───────────────────────────────────
   requestBusinessErrorMessageCase,
   networkErrorDelayedCase,
@@ -214,6 +236,23 @@ export const ALL_CASES: TestCase[] = [
   chatPanelSkinEmptyCase,
   // 超长历史折叠（辅助）
   historyCollapseCustomMaxItersCase,
+  // Bash 文件操作
+  bashRefactorSequenceCase,
+  bashMvRenameCase,
+  bashMvToDirectoryCase,
+  bashCpCase,
+  bashCpGlobCase,
+  bashRmSingleCase,
+  bashRmRecursiveCase,
+  bashRmGlobCase,
+  bashRenameCase,
+  bashRenameComponentCase,
+  bashMkdirCase,
+  bashTouchCase,
+  bashSedImportCase,
+  bashSedMultiGlobCase,
+  bashMvNotFoundCase,
+  bashUnsupportedCommandCase,
 ];
 
 /** 按 group 分组 */

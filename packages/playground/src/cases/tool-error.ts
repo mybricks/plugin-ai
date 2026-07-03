@@ -169,28 +169,6 @@ export function Button({ label, onClick, variant = 'primary', disabled }: Button
   ], { loop: true }),
 };
 
-export const toolDeleteCase: TestCase = {
-  id: "tool-delete-file",
-  name: "delete_file 删除",
-  group: "工具调用",
-  description: "LLM 调用 delete_file 删除 src/styles/global.css",
-  expectedBehavior: "工具卡片绿色，FS Viewer 中 global.css 消失。",
-  initialTurns: [],
-  request: makeScriptedRequest([
-    {
-      type: "tool_calls",
-      calls: [{ id: "c_del_1", name: "delete_file", args: { paths: ["src/styles/global.css"] } }],
-      delayMs: 300,
-    },
-    {
-      type: "content",
-      chunks: ["已删除 global.css。如果需要重新添加样式，可以创建新的 CSS 文件。"],
-      ttftMs: 300,
-      chunkDelayMs: 60,
-    },
-  ], { loop: true }),
-};
-
 export const toolNotFoundCase: TestCase = {
   id: "tool-not-found",
   name: "读取不存在的文件",
