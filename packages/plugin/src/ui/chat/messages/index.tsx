@@ -44,7 +44,7 @@ export interface HistoryCollapseConfig {
   maxIters?: number;
 }
 
-/** ActionBar 白名单项。不传时默认只有 copy。 */
+/** ActionBar 白名单项。不传时无默认按钮（空数组）。 */
 export type ActionBarItem = "copy" | "delete" | "retry";
 
 export interface MessageListProps {
@@ -101,7 +101,7 @@ const CollapseBar = ({
 
 // ─── MessageList ──────────────────────────────────────────────────────────────
 
-const DEFAULT_ACTION_BAR: ActionBarItem[] = ["copy"];
+const DEFAULT_ACTION_BAR: ActionBarItem[] = [];
 
 const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
   function MessageListInner({ messages, agent, actionBar, onRetry, onDelete, onExecutePlan, canExecutePlan = true, renderEmpty, renderFooter, collapseCursor, onExpandHistory }, ref) {
