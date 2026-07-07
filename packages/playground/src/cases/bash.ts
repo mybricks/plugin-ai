@@ -143,6 +143,14 @@ export default function App() {
   },
 ];
 
+const REFACTOR_FILES_WITH_UI_DIR: FsFile[] = [
+  ...REFACTOR_FILES,
+  {
+    path: "src/ui/placeholder.ts",
+    content: "export const placeholder = true;",
+  },
+];
+
 // ─── 测试 Case ────────────────────────────────────────────────────────────────
 
 /** mv 单文件重命名 */
@@ -221,6 +229,136 @@ export const bashMvToDirectoryCase: TestCase = {
   ),
 };
 
+/** mv 递归移动目录前缀 */
+export const bashMvRecursiveCase: TestCase = {
+  id: "bash-mv-recursive-dir",
+  name: "bash: mv 移动目录前缀",
+  group: "Bash 文件操作",
+  description:
+    "LLM 调用 bash 工具将 src/components 目录前缀移动到 src/ui/components。",
+  expectedBehavior:
+    "工具调用成功，src/components 下文件消失，src/ui/components 下出现对应文件。",
+  initialTurns: [],
+  initialFiles: REFACTOR_FILES,
+  request: makeScriptedRequest(
+    [
+      {
+        type: "tool_calls",
+        calls: [
+          {
+            id: "c_mv_recursive",
+            name: BASH_TOOL_NAME,
+            args: {
+              command: "mv src/components src/ui/components",
+              description: "移动 components 目录前缀",
+            },
+          },
+        ],
+        delayMs: 400,
+      },
+      {
+        type: "content",
+        chunks: ["已将 src/components 移动到 src/ui/components。"],
+        ttftMs: 200,
+        chunkDelayMs: 50,
+      },
+    ],
+    { loop: true }
+  ),
+  assertions: [
+    {
+      name: "mv 目录前缀移动所有文件",
+      run: ({ agent, memFS }) => {
+        const lastTurn = (agent as any)?.turns?.at?.(-1);
+        if (!lastTurn || lastTurn.status !== "success" || !memFS) return null;
+        const toolCall = lastTurn.iterations
+          ?.flatMap((iter: any) => iter.toolCalls ?? [])
+          ?.find((tool: any) => tool.name === BASH_TOOL_NAME);
+        if (!toolCall || toolCall.status !== "success") return null;
+        const files = new Set(memFS.snapshot().map((file) => file.path));
+        const expected = [
+          "src/ui/components/Button.tsx",
+          "src/ui/components/Card.tsx",
+          "src/ui/components/Modal.tsx",
+        ];
+        const removed = [
+          "src/components/Button.tsx",
+          "src/components/Card.tsx",
+          "src/components/Modal.tsx",
+        ];
+        const pass = toolCall.result?.metadata?.exitCode === 0 &&
+          expected.every((path) => files.has(path)) &&
+          removed.every((path) => !files.has(path));
+        return {
+          pass,
+          message: pass ? "目录前缀移动结果符合预期" : `当前文件: ${Array.from(files).join(", ")}`,
+        };
+      },
+    },
+  ],
+};
+
+/** mv 重命名文件夹本身 */
+export const bashMvRenameDirectoryCase: TestCase = {
+  id: "bash-mv-rename-directory",
+  name: "bash: mv 重命名文件夹",
+  group: "Bash 文件操作",
+  description:
+    "LLM 调用 bash 工具将 src/pages 文件夹本身重命名为 src/views。",
+  expectedBehavior:
+    "工具调用成功，src/pages 下文件消失，src/views 下出现 Home.tsx 和 Settings.tsx。",
+  initialTurns: [],
+  initialFiles: REFACTOR_FILES,
+  request: makeScriptedRequest(
+    [
+      {
+        type: "tool_calls",
+        calls: [
+          {
+            id: "c_mv_rename_directory",
+            name: BASH_TOOL_NAME,
+            args: {
+              command: "mv src/pages src/views",
+              description: "将 pages 文件夹重命名为 views",
+            },
+          },
+        ],
+        delayMs: 400,
+      },
+      {
+        type: "content",
+        chunks: ["已将 src/pages 重命名为 src/views。"],
+        ttftMs: 200,
+        chunkDelayMs: 50,
+      },
+    ],
+    { loop: true }
+  ),
+  assertions: [
+    {
+      name: "mv 重命名文件夹本身",
+      run: ({ agent, memFS }) => {
+        const lastTurn = (agent as any)?.turns?.at?.(-1);
+        if (!lastTurn || lastTurn.status !== "success" || !memFS) return null;
+        const toolCall = lastTurn.iterations
+          ?.flatMap((iter: any) => iter.toolCalls ?? [])
+          ?.find((tool: any) => tool.name === BASH_TOOL_NAME);
+        if (!toolCall || toolCall.status !== "success") return null;
+        const files = new Set(memFS.snapshot().map((file) => file.path));
+        const pass = toolCall.result?.metadata?.exitCode === 0 &&
+          files.has("src/views/Home.tsx") &&
+          files.has("src/views/Settings.tsx") &&
+          !files.has("src/pages/Home.tsx") &&
+          !files.has("src/pages/Settings.tsx");
+        return {
+          pass,
+          message: pass ? "文件夹名称重命名结果符合预期" : `当前文件: ${Array.from(files).join(", ")}`,
+        };
+      },
+    },
+  ],
+};
+
 /** cp 复制文件 */
 export const bashCpCase: TestCase = {
   id: "bash-cp",
@@ -295,6 +433,202 @@ export const bashCpGlobCase: TestCase = {
     ],
     { loop: true }
   ),
+};
+
+/** cp -r 按路径前缀递归复制（目标不存在） */
+export const bashCpRecursiveCase: TestCase = {
+  id: "bash-cp-recursive",
+  name: "bash: cp -r 目标不存在",
+  group: "Bash 文件操作",
+  description:
+    "LLM 调用 bash 工具将 src/components 递归复制到尚不存在的 src/ui。",
+  expectedBehavior:
+    "工具调用成功，输出以 'copied' 开头；FS Viewer 中出现 src/ui/Button.tsx、Card.tsx、Modal.tsx，原文件保留。",
+  initialTurns: [],
+  initialFiles: REFACTOR_FILES,
+  request: makeScriptedRequest(
+    [
+      {
+        type: "tool_calls",
+        calls: [
+          {
+            id: "c_cp_recursive",
+            name: BASH_TOOL_NAME,
+            args: {
+              command: "cp -r src/components src/ui",
+              description: "复制 components 目录前缀",
+            },
+          },
+        ],
+        delayMs: 400,
+      },
+      {
+        type: "content",
+        chunks: ["已将 src/components 复制到 src/ui。"],
+        ttftMs: 200,
+        chunkDelayMs: 50,
+      },
+    ],
+    { loop: true }
+  ),
+  assertions: [
+    {
+      name: "目标不存在时复制为目标路径本身",
+      run: ({ agent, memFS }) => {
+        const lastTurn = (agent as any)?.turns?.at?.(-1);
+        if (!lastTurn || lastTurn.status !== "success" || !memFS) return null;
+        const toolCall = lastTurn.iterations
+          ?.flatMap((iter: any) => iter.toolCalls ?? [])
+          ?.find((tool: any) => tool.name === BASH_TOOL_NAME);
+        if (!toolCall || toolCall.status !== "success") return null;
+        const files = new Set(memFS.snapshot().map((file) => file.path));
+        const expected = [
+          "src/ui/Button.tsx",
+          "src/ui/Card.tsx",
+          "src/ui/Modal.tsx",
+        ];
+        const pass = toolCall.result?.metadata?.exitCode === 0 &&
+          expected.every((path) => files.has(path)) &&
+          files.has("src/components/Button.tsx");
+        return {
+          pass,
+          message: pass ? "递归复制结果符合预期" : `当前文件: ${Array.from(files).join(", ")}`,
+        };
+      },
+    },
+  ],
+};
+
+/** cp -r 按路径前缀递归复制（目标已存在） */
+export const bashCpRecursiveExistingDirCase: TestCase = {
+  id: "bash-cp-recursive-existing-dir",
+  name: "bash: cp -r 目标已存在",
+  group: "Bash 文件操作",
+  description:
+    "LLM 调用 bash 工具将 src/components 递归复制到已存在的 src/ui 目录。",
+  expectedBehavior:
+    "工具调用成功，输出以 'copied' 开头；FS Viewer 中出现 src/ui/components/Button.tsx、Card.tsx、Modal.tsx，src/ui/placeholder.ts 保留。",
+  initialTurns: [],
+  initialFiles: REFACTOR_FILES_WITH_UI_DIR,
+  request: makeScriptedRequest(
+    [
+      {
+        type: "tool_calls",
+        calls: [
+          {
+            id: "c_cp_recursive_existing_dir",
+            name: BASH_TOOL_NAME,
+            args: {
+              command: "cp -r src/components src/ui",
+              description: "复制 components 到已存在的 ui 目录",
+            },
+          },
+        ],
+        delayMs: 400,
+      },
+      {
+        type: "content",
+        chunks: ["已将 src/components 复制到 src/ui/components。"],
+        ttftMs: 200,
+        chunkDelayMs: 50,
+      },
+    ],
+    { loop: true }
+  ),
+  assertions: [
+    {
+      name: "目标已存在时保留源目录名",
+      run: ({ agent, memFS }) => {
+        const lastTurn = (agent as any)?.turns?.at?.(-1);
+        if (!lastTurn || lastTurn.status !== "success" || !memFS) return null;
+        const toolCall = lastTurn.iterations
+          ?.flatMap((iter: any) => iter.toolCalls ?? [])
+          ?.find((tool: any) => tool.name === BASH_TOOL_NAME);
+        if (!toolCall || toolCall.status !== "success") return null;
+        const files = new Set(memFS.snapshot().map((file) => file.path));
+        const expected = [
+          "src/ui/components/Button.tsx",
+          "src/ui/components/Card.tsx",
+          "src/ui/components/Modal.tsx",
+          "src/ui/placeholder.ts",
+        ];
+        const pass = toolCall.result?.metadata?.exitCode === 0 &&
+          expected.every((path) => files.has(path)) &&
+          files.has("src/components/Button.tsx");
+        return {
+          pass,
+          message: pass ? "递归复制结果符合目标已存在语义" : `当前文件: ${Array.from(files).join(", ")}`,
+        };
+      },
+    },
+  ],
+};
+
+/** cp -r 多源目录复制 */
+export const bashCpRecursiveMultiSourceCase: TestCase = {
+  id: "bash-cp-recursive-multi-source",
+  name: "bash: cp -r 多源目录",
+  group: "Bash 文件操作",
+  description:
+    "LLM 调用 bash 工具将 src/components 和 src/pages 两个目录前缀复制到 backup/。",
+  expectedBehavior:
+    "工具调用成功，backup/components 和 backup/pages 下分别出现对应文件，原文件保留。",
+  initialTurns: [],
+  initialFiles: REFACTOR_FILES,
+  request: makeScriptedRequest(
+    [
+      {
+        type: "tool_calls",
+        calls: [
+          {
+            id: "c_cp_recursive_multi_source",
+            name: BASH_TOOL_NAME,
+            args: {
+              command: "cp -r src/components src/pages backup/",
+              description: "递归备份 components 和 pages",
+            },
+          },
+        ],
+        delayMs: 400,
+      },
+      {
+        type: "content",
+        chunks: ["已将 components 和 pages 复制到 backup。"],
+        ttftMs: 200,
+        chunkDelayMs: 50,
+      },
+    ],
+    { loop: true }
+  ),
+  assertions: [
+    {
+      name: "cp -r 多源目录保留各自目录名",
+      run: ({ agent, memFS }) => {
+        const lastTurn = (agent as any)?.turns?.at?.(-1);
+        if (!lastTurn || lastTurn.status !== "success" || !memFS) return null;
+        const toolCall = lastTurn.iterations
+          ?.flatMap((iter: any) => iter.toolCalls ?? [])
+          ?.find((tool: any) => tool.name === BASH_TOOL_NAME);
+        if (!toolCall || toolCall.status !== "success") return null;
+        const files = new Set(memFS.snapshot().map((file) => file.path));
+        const expected = [
+          "backup/components/Button.tsx",
+          "backup/components/Card.tsx",
+          "backup/components/Modal.tsx",
+          "backup/pages/Home.tsx",
+          "backup/pages/Settings.tsx",
+        ];
+        const pass = toolCall.result?.metadata?.exitCode === 0 &&
+          expected.every((path) => files.has(path)) &&
+          files.has("src/components/Button.tsx") &&
+          files.has("src/pages/Home.tsx");
+        return {
+          pass,
+          message: pass ? "多源递归复制结果符合预期" : `当前文件: ${Array.from(files).join(", ")}`,
+        };
+      },
+    },
+  ],
 };
 
 /** rm 删除单文件 */
@@ -667,6 +1001,67 @@ export const bashSedImportCase: TestCase = {
     ],
     { loop: true }
   ),
+};
+
+/** sed 多个 -e 表达式 */
+export const bashSedMultiExpressionCase: TestCase = {
+  id: "bash-sed-multi-expression",
+  name: "bash: sed 多个表达式",
+  group: "Bash 文件操作",
+  description:
+    "LLM 调用 bash 工具一次执行多个 sed -e 替换表达式。",
+  expectedBehavior:
+    "工具调用成功，Button.tsx 中 OldTheme 变为 theme，btn 变为 button。",
+  initialTurns: [],
+  initialFiles: REFACTOR_FILES,
+  request: makeScriptedRequest(
+    [
+      {
+        type: "tool_calls",
+        calls: [
+          {
+            id: "c_sed_multi_expression",
+            name: BASH_TOOL_NAME,
+            args: {
+              command: "sed -i -e 's/OldTheme/theme/g' -e 's/className=\"btn\"/className=\"button\"/g' src/components/Button.tsx",
+              description: "同时替换主题名和 class 名",
+            },
+          },
+        ],
+        delayMs: 400,
+      },
+      {
+        type: "content",
+        chunks: ["已同时替换 Button.tsx 中的主题名和 class 名。"],
+        ttftMs: 200,
+        chunkDelayMs: 50,
+      },
+    ],
+    { loop: true }
+  ),
+  assertions: [
+    {
+      name: "多个 sed 表达式顺序生效",
+      run: ({ agent, memFS }) => {
+        const lastTurn = (agent as any)?.turns?.at?.(-1);
+        if (!lastTurn || lastTurn.status !== "success" || !memFS) return null;
+        const toolCall = lastTurn.iterations
+          ?.flatMap((iter: any) => iter.toolCalls ?? [])
+          ?.find((tool: any) => tool.name === BASH_TOOL_NAME);
+        if (!toolCall || toolCall.status !== "success") return null;
+        const content = memFS.readFile("src/components/Button.tsx") ?? "";
+        const pass = toolCall.result?.metadata?.exitCode === 0 &&
+          content.includes("../theme/theme") &&
+          content.includes('className="button"') &&
+          !content.includes("OldTheme") &&
+          !content.includes('className="btn"');
+        return {
+          pass,
+          message: pass ? "多个表达式替换结果符合预期" : content,
+        };
+      },
+    },
+  ],
 };
 
 /** sed 批量替换 ts 和 tsx 文件 */

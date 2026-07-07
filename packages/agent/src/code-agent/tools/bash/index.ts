@@ -92,6 +92,30 @@ function joinPath(dir: string, base: string): string {
   return dir ? `${dir}/${base}` : base;
 }
 
+function pathPrefix(path: string): string {
+  return path.endsWith("/") ? path : `${path}/`;
+}
+
+function dirExists(paths: string[], dir: string): boolean {
+  return paths.some((path) => path.startsWith(pathPrefix(dir)));
+}
+
+function resolveDirEntries(
+  root: string,
+  paths: string[]
+): Array<{ path: string; relativePath: string; rootBase: string }> {
+  const cleanRoot = root.replace(/\/$/, "");
+  const prefix = pathPrefix(cleanRoot);
+  const rootBase = splitPathParts(cleanRoot).base;
+  return paths
+    .filter((path) => path.startsWith(prefix))
+    .map((path) => ({
+      path,
+      relativePath: path.slice(prefix.length),
+      rootBase,
+    }));
+}
+
 // ─── tokenizer：简单 shell-like 拆词 ──────────────────────────────────────────
 
 /**
@@ -144,37 +168,52 @@ async function execMv(args: string[], adapter: Sandbox): Promise<CommandResult> 
 
   const allFiles = await adapter.getFiles();
   const fileMap = new Map(allFiles.map((f) => [normalizePath(f.path), f]));
+  const allPaths = Array.from(fileMap.keys());
 
   // 解析 src（支持 glob）
-  const resolvedSrcs: string[] = [];
+  const resolvedSrcs: Array<{ path: string; relativePath?: string; rootBase?: string }> = [];
   for (const src of srcs) {
     if (isGlobPattern(src)) {
       const matched = Array.from(fileMap.keys()).filter((p) => matchGlob(src, p));
       if (matched.length === 0) {
         return { stdout: `mv: no files match '${src}'`, exitCode: 1 };
       }
-      resolvedSrcs.push(...matched);
+      resolvedSrcs.push(...matched.map((path) => ({ path })));
     } else {
-      if (!fileMap.has(src)) {
-        return { stdout: `mv: '${src}': No such file`, exitCode: 1 };
+      if (fileMap.has(src)) {
+        resolvedSrcs.push({ path: src });
+      } else {
+        const matched = resolveDirEntries(src, allPaths);
+        if (matched.length === 0) {
+          return { stdout: `mv: '${src}': No such file`, exitCode: 1 };
+        }
+        resolvedSrcs.push(...matched);
       }
-      resolvedSrcs.push(src);
     }
   }
 
   // 判断 dst 是目录（以 / 结尾）还是精确路径
-  const dstIsDir = dst.endsWith("/") || resolvedSrcs.length > 1;
+  const dstExistsAsDir = dirExists(allPaths, dst);
+  const hasMultipleSourceArgs = srcs.length > 1 || (srcs.length === 1 && isGlobPattern(srcs[0]) && resolvedSrcs.length > 1);
+  const dstIsDir = dst.endsWith("/") || dstExistsAsDir || hasMultipleSourceArgs;
+  const dstBase = dst.replace(/\/$/, "");
 
   const toWrite: { path: string; content: string }[] = [];
   const toDelete: string[] = [];
   const renames: string[] = [];
 
-  for (const src of resolvedSrcs) {
+  for (const entry of resolvedSrcs) {
+    const src = entry.path;
     const file = fileMap.get(src)!;
     let destPath: string;
-    if (dstIsDir) {
+    if (entry.relativePath !== undefined) {
+      const relativePath = dstIsDir && entry.rootBase
+        ? joinPath(entry.rootBase, entry.relativePath)
+        : entry.relativePath;
+      destPath = normalizePath(joinPath(dstBase, relativePath));
+    } else if (dstIsDir) {
       const base = splitPathParts(src).base;
-      destPath = normalizePath(joinPath(dst.replace(/\/$/, ""), base));
+      destPath = normalizePath(joinPath(dstBase, base));
     } else {
       destPath = dst;
     }
@@ -193,10 +232,12 @@ async function execMv(args: string[], adapter: Sandbox): Promise<CommandResult> 
 }
 
 async function execCp(args: string[], adapter: Sandbox): Promise<CommandResult> {
-  // cp <src> <dst>  or  cp <src...> <dst-dir/>
+  // cp [-r] <src> <dst>  or  cp <src...> <dst-dir/>
+  const flags = args.filter((a) => a.startsWith("-"));
+  const recursive = flags.some((f) => f.includes("r") || f.includes("R"));
   const filtered = args.filter((a) => !a.startsWith("-"));
   if (filtered.length < 2) {
-    return { stdout: "cp: missing operand\nUsage: cp <source> <dest>  or  cp <source...> <dest-dir/>", exitCode: 1 };
+    return { stdout: "cp: missing operand\nUsage: cp [-r] <source> <dest>  or  cp <source...> <dest-dir/>", exitCode: 1 };
   }
 
   const dst = normalizePath(filtered[filtered.length - 1]);
@@ -204,33 +245,50 @@ async function execCp(args: string[], adapter: Sandbox): Promise<CommandResult> 
 
   const allFiles = await adapter.getFiles();
   const fileMap = new Map(allFiles.map((f) => [normalizePath(f.path), f]));
+  const allPaths = Array.from(fileMap.keys());
 
-  const resolvedSrcs: string[] = [];
+  const resolvedSrcs: Array<{ path: string; relativePath?: string; rootBase?: string }> = [];
   for (const src of srcs) {
     if (isGlobPattern(src)) {
       const matched = Array.from(fileMap.keys()).filter((p) => matchGlob(src, p));
       if (matched.length === 0) {
         return { stdout: `cp: no files match '${src}'`, exitCode: 1 };
       }
-      resolvedSrcs.push(...matched);
+      resolvedSrcs.push(...matched.map((path) => ({ path })));
     } else {
-      if (!fileMap.has(src)) {
+      if (fileMap.has(src)) {
+        resolvedSrcs.push({ path: src });
+      } else if (recursive) {
+        const matched = resolveDirEntries(src, allPaths);
+        if (matched.length === 0) {
+          return { stdout: `cp: '${src}': No such file or directory`, exitCode: 1 };
+        }
+        resolvedSrcs.push(...matched);
+      } else {
         return { stdout: `cp: '${src}': No such file`, exitCode: 1 };
       }
-      resolvedSrcs.push(src);
     }
   }
 
-  const dstIsDir = dst.endsWith("/") || resolvedSrcs.length > 1;
+  const dstExistsAsDir = dirExists(allPaths, dst);
+  const hasMultipleSourceArgs = srcs.length > 1 || (srcs.length === 1 && isGlobPattern(srcs[0]) && resolvedSrcs.length > 1);
+  const dstIsDir = dst.endsWith("/") || dstExistsAsDir || hasMultipleSourceArgs;
   const toWrite: { path: string; content: string }[] = [];
   const copies: string[] = [];
+  const dstBase = dst.replace(/\/$/, "");
 
-  for (const src of resolvedSrcs) {
+  for (const entry of resolvedSrcs) {
+    const src = entry.path;
     const file = fileMap.get(src)!;
     let destPath: string;
-    if (dstIsDir) {
+    if (entry.relativePath !== undefined) {
+      const relativePath = dstIsDir && entry.rootBase
+        ? joinPath(entry.rootBase, entry.relativePath)
+        : entry.relativePath;
+      destPath = normalizePath(joinPath(dstBase, relativePath));
+    } else if (dstIsDir) {
       const base = splitPathParts(src).base;
-      destPath = normalizePath(joinPath(dst.replace(/\/$/, ""), base));
+      destPath = normalizePath(joinPath(dstBase, base));
     } else {
       destPath = dst;
     }
@@ -386,41 +444,65 @@ async function execTouch(args: string[], adapter: Sandbox): Promise<CommandResul
   };
 }
 
+function parseSedExpression(expr: string): RegExpMatchArray | null {
+  return /^s(.)(.+?)\1(.*?)\1([gim]*)$/.exec(expr);
+}
+
 /**
  * sed -i 's/old/new/[flags]' <glob>
  * 支持 g（全局替换），不支持行范围
  */
 async function execSed(args: string[], adapter: Sandbox): Promise<CommandResult> {
-  // 解析：sed [-i] 's/old/new/flags' <glob...>
-  const filteredArgs = args.filter((a) => a !== "-i" && a !== "--in-place");
+  // 解析：sed [-i] [-e] 's/old/new/flags' ... <glob...>
+  const filteredArgs = args.filter((a) => a !== "-i" && a !== "--in-place" && a !== "-E" && a !== "-r");
 
   if (filteredArgs.length < 2) {
     return {
-      stdout: "sed: Usage: sed -i 's/old/new/[g]' <glob>",
+      stdout: "sed: Usage: sed -i [-e] 's/old/new/[g]' ... <glob>",
       exitCode: 1,
     };
   }
 
-  const exprArg = filteredArgs[0];
-  const globArgs = filteredArgs.slice(1).map(normalizePath);
-
-  // 解析 s/old/new/flags
-  const match = /^s(.)(.+?)\1(.*?)\1([gim]*)$/.exec(exprArg);
-  if (!match) {
-    return { stdout: `sed: invalid expression '${exprArg}'\nExpected format: s/old/new/[g]`, exitCode: 1 };
+  const exprArgs: string[] = [];
+  const globArgs: string[] = [];
+  for (let i = 0; i < filteredArgs.length; i++) {
+    const arg = filteredArgs[i];
+    if (arg === "-e") {
+      const expr = filteredArgs[++i];
+      if (!expr) {
+        return { stdout: "sed: option -e requires an argument", exitCode: 1 };
+      }
+      exprArgs.push(expr);
+    } else if (parseSedExpression(arg)) {
+      exprArgs.push(arg);
+    } else {
+      globArgs.push(normalizePath(arg));
+    }
   }
 
-  const oldPattern = match[2];
-  const newStr = match[3];
-  const flags = match[4];
-  const global = flags.includes("g");
-  const caseInsensitive = flags.includes("i");
+  if (exprArgs.length === 0 || globArgs.length === 0) {
+    return { stdout: "sed: Usage: sed -i [-e] 's/old/new/[g]' ... <glob>", exitCode: 1 };
+  }
 
-  let regex: RegExp;
-  try {
-    regex = new RegExp(oldPattern, (global ? "g" : "") + (caseInsensitive ? "i" : ""));
-  } catch {
-    return { stdout: `sed: invalid regex '${oldPattern}'`, exitCode: 1 };
+  const replacements: Array<{ regex: RegExp; newStr: string }> = [];
+  for (const exprArg of exprArgs) {
+    const match = parseSedExpression(exprArg);
+    if (!match) {
+      return { stdout: `sed: invalid expression '${exprArg}'\nExpected format: s/old/new/[g]`, exitCode: 1 };
+    }
+    const oldPattern = match[2];
+    const newStr = match[3];
+    const flags = match[4];
+    const global = flags.includes("g");
+    const caseInsensitive = flags.includes("i");
+    try {
+      replacements.push({
+        regex: new RegExp(oldPattern, (global ? "g" : "") + (caseInsensitive ? "i" : "")),
+        newStr,
+      });
+    } catch {
+      return { stdout: `sed: invalid regex '${oldPattern}'`, exitCode: 1 };
+    }
   }
 
   const allFiles = await adapter.getFiles();
@@ -448,7 +530,10 @@ async function execSed(args: string[], adapter: Sandbox): Promise<CommandResult>
   const unchanged: string[] = [];
 
   for (const file of uniqueFiles) {
-    const newContent = file.content.replace(regex, newStr);
+    let newContent = file.content;
+    for (const replacement of replacements) {
+      newContent = newContent.replace(replacement.regex, replacement.newStr);
+    }
     const filePath = normalizePath(file.path);
     if (newContent !== file.content) {
       toWrite.push({ path: filePath, content: newContent });
@@ -515,12 +600,12 @@ export function createBashTool(adapter: Sandbox): Tool {
     description: `在虚拟文件系统中执行文件管理命令，用于重构、批量操作文件。
 
 支持的命令：
-- \`mv <src> <dst>\` — 移动/重命名文件。dst 以 / 结尾时视为目标目录。支持 glob 批量移动。
-- \`cp <src> <dst>\` — 复制文件。dst 以 / 结尾时视为目标目录。支持 glob 批量复制。
+- \`mv <src> <dst>\` — 移动/重命名文件或目录前缀。dst 以 / 结尾或已有文件以 dst/ 为前缀时视为目标目录。支持 glob 批量移动。
+- \`cp <src> <dst>\` — 复制文件。dst 以 / 结尾时视为目标目录。支持 glob 批量复制；\`cp -r <dir> <dst>\` 按路径前缀递归复制已有文件，支持多源目录，目标是否为已存在目录取决于是否已有文件以 \`<dst>/\` 为前缀。
 - \`rm <path>\` — 删除文件。支持 glob 批量删除；\`rm -r <dir>\` 递归删除目录下所有文件；\`-f\` 忽略不存在。
 - \`rename 's/old/new/' <glob>\` — 批量按正则替换路径中的片段，也支持 \`rename <old> <new> <glob>\`。
 - \`touch <path>\` — 创建空文件。
-- \`sed -i 's/old/new/g' <glob>\` — 批量替换文件内容中的文本，支持正则，支持 g（全局）、i（大小写不敏感）标志，仅在变量替换，字符替换等需要多文件替换场景下使用，否则还是${MULTI_EDIT_TOOL_NAME}更快速。
+- \`sed -i 's/old/new/g' <glob>\` — 批量替换文件内容中的文本，支持正则，支持 g（全局）、i（大小写不敏感）标志，支持多个 \`-e\` 表达式；仅在变量替换，字符替换等需要多文件替换场景下使用，否则还是${MULTI_EDIT_TOOL_NAME}更快速。
 
 注意：
 - 这是沙箱虚拟文件系统环境，不支持 cd、ls、cat、echo、git 等真实 shell 命令，只支持上述文件管理操作。
