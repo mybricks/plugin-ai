@@ -201,9 +201,12 @@ export function useSession(agent: Agent | undefined) {
         pendingContent = "";
         pendingThinking = "";
         pendingIdRef.current = turnId;
+        const nextRecord = turnsToMessageRecords(a.getTurns()).find((r) => r.id === turnId);
         setMessages((prev) =>
           prev.map((r) =>
-            r.id === turnId ? { ...r, status: "pending" as const, error: undefined } : r
+            r.id === turnId
+              ? { ...(nextRecord ?? r), status: "pending" as const, error: undefined }
+              : r
           )
         );
       }),

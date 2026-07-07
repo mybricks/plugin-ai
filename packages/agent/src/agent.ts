@@ -1,6 +1,6 @@
 import { randomUUID } from "./uuid";
 import { createRequestAsStream, LLMProviders } from "../../request/src";
-import type { ToolDescriptor } from "../../request/src";
+import type { ModelSelection, ToolDescriptor } from "../../request/src";
 import { AgentEvents } from "./events";
 import { HistoryManager } from "./history/manager";
 import type {
@@ -33,6 +33,7 @@ import { CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
 import { getTurnMode } from "./utils/core";
 import { getAvailableAgentModes, AgentModeEnum } from "./mode-manager";
 import { TOOL_OUTPUT_MAX_TOKENS } from "./content-limits";
+import { kv } from "./kv";
 
 export { AgentEvents };
 export type { AgentMode, Message, History, Tool, TurnRecord, ToolCallRecord, WarmupIter };
@@ -89,6 +90,13 @@ export function roughTokenCountEstimation(
 }
 
 type InternalAgentOptions = AgentOptions & { request: NonNullable<AgentOptions["request"]> };
+
+interface AgentTemporaryState {
+  mode?: AgentMode;
+  modelSelection?: ModelSelection;
+}
+
+const AGENT_TEMPORARY_STATE_KEY_PREFIX = "plugin-ai:agent-temporary:";
 
 function normalizeAgentMode(mode: any): AgentMode {
   return mode === AgentModeEnum.Plan ? AgentModeEnum.Plan : AgentModeEnum.Build;
@@ -485,6 +493,7 @@ export class Agent {
    */
   protected readonly rawRequest: NonNullable<AgentOptions["request"]>;
   private readonly llmProviders?: LLMProviders;
+  private readonly temporaryStorageKey?: string;
   /** 历史调用记录（SSE 事件粒度），从 History 加载，每轮 complete/abort/error 后 append */
   protected turns: TurnRecord[] = [];
   /**
@@ -510,23 +519,41 @@ export class Agent {
     const hasRetry = Object.prototype.hasOwnProperty.call(options, "retry");
 
     const retryOpts = hasRetry ? (options.retry ?? DEFAULT_RETRY) : DEFAULT_RETRY;
+    this.temporaryStorageKey = options.key && options.history
+      ? `${AGENT_TEMPORARY_STATE_KEY_PREFIX}${options.key}`
+      : undefined;
+    const temporaryState = this.temporaryStorageKey
+      ? kv.get<AgentTemporaryState>(this.temporaryStorageKey) ?? {}
+      : {};
     if (options.llm?.providers?.length) {
       this.llmProviders = new LLMProviders({ providers: options.llm.providers });
+      if (temporaryState.modelSelection) {
+        this.llmProviders.restoreSelection(temporaryState.modelSelection);
+      }
+      this.llmProviders.onSelectionChange((selection) => {
+        if (!this.temporaryStorageKey) return;
+        const state = kv.get<AgentTemporaryState>(this.temporaryStorageKey) ?? {};
+        kv.set<AgentTemporaryState>(this.temporaryStorageKey, {
+          ...state,
+          modelSelection: selection ?? undefined,
+        });
+      });
     }
     // llm.providers 存在时优先使用内部 LLMProviders.request，否则沿用传入的 request（向后兼容）
     const effectiveRequest = this.llmProviders ? this.llmProviders.request : (options.request ?? createRequestAsStream());
     this.rawRequest = effectiveRequest;
+    const initialMode = temporaryState.mode ?? options.mode;
 
     this.options = {
       ...options,
-      mode: normalizeAllowedAgentMode(options.mode, options),
+      mode: normalizeAllowedAgentMode(initialMode, options),
       request: wrapRequestWithRetry(this.rawRequest, retryOpts, this.events),
       ...(hasSummary ? {} : { summary: DEFAULT_SUMMARY }),
       ...(hasHandoff ? {} : { handoff: DEFAULT_HANDOFF }),
       ...(hasCompact ? {} : { compact: DEFAULT_COMPACT }),
       ...(hasRetry ? {} : { retry: retryOpts }),
     };
-    this._mode = normalizeAllowedAgentMode(options.mode, options);
+    this._mode = normalizeAllowedAgentMode(initialMode, options);
     this.key = options.key;
     this.historyManager = new HistoryManager({ history: this.options.history, key: this.key });
     // 构造时立即启动历史加载，UI 订阅后能直接感知 ready 通知，无需 UI 主动触发。
@@ -556,6 +583,10 @@ export class Agent {
     const previousMode = this._mode;
     this._mode = nextMode;
     this.options.mode = nextMode;
+    if (this.temporaryStorageKey) {
+      const state = kv.get<AgentTemporaryState>(this.temporaryStorageKey) ?? {};
+      kv.set<AgentTemporaryState>(this.temporaryStorageKey, { ...state, mode: nextMode });
+    }
     if (previousMode !== nextMode) {
       this.events.emit("mode:change", { mode: nextMode, previousMode, reason });
     }
@@ -637,21 +668,28 @@ export class Agent {
   }
 
   /**
-   * 重试失败的 turn。
-   * 
-   * - 第一步失败（iterations 为空）：清除历史，重新 requestAI
-   * - 中途失败（有 iterations）：从失败点继续执行
+   * 重试最后一轮对话。
+   *
+   * - error 且已有 LLM iter：从失败点继续执行
+   * - success/abort 或第一步失败：清空 AI 响应，复用用户输入重新生成
    */
   async retry(turnId: string): Promise<void> {
     await this.ensureHistoryReady();
     const turn = this.turns[this.turns.length - 1];
-    if (!turn || turn.id !== turnId || turn.status !== "error") {
+    if (!turn || turn.id !== turnId) {
       return;
     }
 
-    // 无 LLM iter：清空 iterations，复用 turn，从头重跑（含 beforeTurn/warmup）
-    if (getLLMIterations(turn.iterations).length === 0) {
+    const shouldRegenerate = turn.status !== "error" || getLLMIterations(turn.iterations).length === 0;
+    if (shouldRegenerate) {
       turn.iterations = [];
+      turn.status = "success";
+      turn.error = undefined;
+      turn.endTime = undefined;
+      turn.summary = undefined;
+      turn.handoff = undefined;
+      turn.suggestions = undefined;
+      turn.suggestionsDismissed = undefined;
     }
 
     this.events.emit("turn:resume", { turnId: turn.id });
