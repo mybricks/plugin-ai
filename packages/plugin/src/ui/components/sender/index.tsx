@@ -1096,9 +1096,6 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
             )}
             {renderAttachmentSuffix?.()}
             {!selectorRenderInTop && chatMode ? <ChatMode disabled={disabled || loading} chatMode={chatMode} onChange={onChatModeChange} /> : null}
-            {!selectorRenderInTop && modelSelector && modelSelector.models.length > 0 && (
-              <ModelSelector modelSelector={modelSelector} disabled={disabled || uploading || loading} />
-            )}
           </div>
           <div className={css.rightArea}>
             {renderActionPrefix?.({
@@ -1106,6 +1103,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
               inputContent,
               disabled: !!disabled,
             })}
+            {!selectorRenderInTop && modelSelector && modelSelector.models.length > 0 && (
+              <ModelSelector modelSelector={modelSelector} disabled={disabled || uploading || loading} />
+            )}
             <div data-zone-type="ai-request" className={classNames(css.sendButtonContainer, {
               [css.disabled]: !loading && (disabled || !inputContent || uploading || attachments.some((a) => a.uploading))
             })} onClick={onSendButtonClick}>
