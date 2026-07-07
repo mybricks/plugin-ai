@@ -26,6 +26,7 @@ import { renderMermaidInContainer } from "../../markdown/mermaid";
 import { PlanFileCardWithContent } from "./action-cards/plan-card";
 import { SuggestionsBlock } from "./action-cards/suggestions-card";
 import { ActionBar } from "./action-bar";
+import { context } from "../../../context";
 
 const md = markdownit();
 
@@ -55,7 +56,9 @@ export interface MessageListProps {
    * - 传递数组：按白名单顺序展示对应按钮
    */
   actionBar?: ActionBarItem[];
+  /** 自定义重试行为；不传时默认调用 agent.retry。 */
   onRetry?: (turnId: string) => void;
+  /** 自定义删除行为；不传时默认调用 agent.deleteTurn。 */
   onDelete?: (turnId: string) => void;
   onExecutePlan?: (title: string) => void;
   canExecutePlan?: boolean;
@@ -212,6 +215,32 @@ const MessageBubble = ({ record, toolRendererMap, actionBar, onRetry, onDelete, 
 
   // 重试状态：{ attempt, maxRetries } 或 null
   const [retryState, setRetryState] = useState<{ attempt: number; maxRetries: number } | null>(null);
+  const handleDeleteTurn = () => {
+    if (onDelete) {
+      onDelete(record.id);
+      return;
+    }
+    void agent?.deleteTurn(record.id);
+  };
+  const handleRetryTurn = () => {
+    if (onRetry) {
+      onRetry(record.id);
+      return;
+    }
+    if (!agent) return;
+    if (!agent.key) {
+      void agent.retry(record.id);
+      return;
+    }
+    context.aiQueue.send(
+      agent.key,
+      async () => {
+        context.aiQueue.registerAbort(agent.key!, () => agent.abort());
+        await agent.retry(record.id);
+      },
+      { message: "重试" }
+    );
+  };
 
   // 订阅 llm:retry 事件
   useEffect(() => {
@@ -384,13 +413,11 @@ const MessageBubble = ({ record, toolRendererMap, actionBar, onRetry, onDelete, 
             {record.status === "error" && record.error && (
               <div className={css["ai-chat-error-code-block"]}>
                 <div className={css["ai-chat-error-content"]}>{toUserFriendlyError(record.error)}</div>
-                {onRetry && !record.error.includes("连续调用，已自动中断") && (
+                {(onRetry || agent) && !record.error.includes("连续调用，已自动中断") && (
                   <div className={css["ai-chat-error-actions"]}>
                     <button
                       className={css["retry-button"]}
-                      onClick={() => {
-                        onRetry(record.id)
-                      }}
+                      onClick={handleRetryTurn}
                     >
                       重试
                     </button>
@@ -421,15 +448,15 @@ const MessageBubble = ({ record, toolRendererMap, actionBar, onRetry, onDelete, 
         </section>
         {/* ActionBar：turn 结束后显示 */}
         {record.status !== "pending" && actionBar.length > 0 && (
-          <ActionBar>
+          <ActionBar endTime={record.endTime ? formatTime(record.endTime) : undefined}>
             {actionBar.includes("copy") && (
               <ActionBar.Copy text={getTurnText(record)} />
             )}
-            {actionBar.includes("delete") && onDelete && (
-              <ActionBar.Delete onDelete={() => onDelete(record.id)} />
+            {actionBar.includes("delete") && (onDelete || agent) && (
+              <ActionBar.Delete onDelete={handleDeleteTurn} />
             )}
-            {actionBar.includes("retry") && isLast && onRetry && record.status !== "abort" && (
-              <ActionBar.Retry onRetry={() => onRetry(record.id)} />
+            {actionBar.includes("retry") && isLast && (onRetry || agent) && record.status !== "abort" && (
+              <ActionBar.Retry onRetry={handleRetryTurn} />
             )}
           </ActionBar>
         )}

@@ -3,21 +3,24 @@ import css from "./index.less";
 
 // ─── Line-style Icons (stroke, rounded) ──────────────────────────────────────
 
+const ACTION_ICON_COLOR = "#333";
+const ACTION_ICON_ACTIVE_COLOR = "#fa6400";
+
 const CopyIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke={ACTION_ICON_COLOR} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
   </svg>
 );
 
 const CopyDoneIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke={ACTION_ICON_ACTIVE_COLOR} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="20 6 9 17 4 12" />
   </svg>
 );
 
 const DeleteIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke={ACTION_ICON_COLOR} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="3 6 5 6 21 6" />
     <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
     <path d="M10 11v6" />
@@ -27,7 +30,7 @@ const DeleteIcon = () => (
 );
 
 const RetryIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke={ACTION_ICON_COLOR} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="1 4 1 10 7 10" />
     <path d="M3.51 15a9 9 0 1 0 .49-4.5" />
   </svg>
@@ -119,10 +122,14 @@ const Retry = ({ onRetry, disabled }: RetryProps) => (
 
 interface ActionBarProps {
   children: React.ReactNode;
+  endTime?: string;
 }
 
-const ActionBar = ({ children }: ActionBarProps) => (
-  <div className={css["action-bar"]}>{children}</div>
+const ActionBar = ({ children, endTime }: ActionBarProps) => (
+  <div className={css["action-bar"]}>
+    {children}
+    {endTime ? <span className={css["action-bar-end-time"]}>{endTime}</span> : null}
+  </div>
 );
 
 ActionBar.Copy = Copy;

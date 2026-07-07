@@ -1,8 +1,17 @@
 .action-bar {
   display: flex;
-  align-items: flex-start;
-  gap: 0;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  width: 100%;
+  box-sizing: border-box;
   padding: 2px 0 0;
+
+  &:hover {
+    .action-bar-end-time {
+      opacity: 0.45;
+    }
+  }
 }
 
 .action-bar-btn {
@@ -10,17 +19,14 @@
   align-items: center;
   justify-content: center;
   // small 下用固定尺寸保证可点区域足够
-  width: 22px;
+  min-width: 22px;
   height: 22px;
-  padding: 0;
+  padding: 0 4px;
   border: none;
   background: transparent;
   border-radius: 6px;
   cursor: pointer;
-  // 默认正文色，不加灰色 opacity 处理
-  color: var(--mybricks-text-color-main, #333);
-  opacity: 0.5;
-  transition: opacity 0.12s ease, color 0.12s ease;
+  transition: background 0.12s ease;
 
   svg {
     // small 基准 14px，medium/large 跟随变量放大
@@ -31,8 +37,7 @@
   }
 
   &:hover {
-    opacity: 1;
-    background: transparent;
+    background: var(--mybricks-bg-color-active, rgba(0, 0, 0, 0.05));
   }
 
   &:disabled {
@@ -43,6 +48,17 @@
   // 复制成功态：用 primary 色高亮
   &.action-bar-btn--active {
     opacity: 1;
-    color: var(--mybricks-color-primary, #fa6400);
   }
+}
+
+.action-bar-end-time {
+  margin-left: 6px;
+  font-size: var(--chat-font-size-sm, 12px);
+  line-height: 22px;
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0;
+  white-space: nowrap;
+  user-select: none;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
 }

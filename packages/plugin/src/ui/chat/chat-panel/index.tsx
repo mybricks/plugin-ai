@@ -9,7 +9,7 @@ import { AgentModeEnum } from "../../../../../agent/src";
 import type { ModelSelection } from "../../../../../request/src/providers";
 import { useSession } from "../use-session";
 import { MessageList } from "../messages";
-import type { HistoryCollapseConfig } from "../messages";
+import type { ActionBarItem, HistoryCollapseConfig } from "../messages";
 import { useHistoryCollapse } from "./use-history-collapse";
 import { Header } from "./header";
 import { ChatPanelProvider } from "./context";
@@ -93,6 +93,12 @@ export interface ChatPanelProps {
    */
   historyCollapse?: HistoryCollapseConfig;
   /**
+   * ActionBar 白名单配置。
+   * - 不传：默认只展示复制
+   * - 传递数组：按白名单展示对应按钮
+   */
+  actionBar?: ActionBarItem[];
+  /**
    * 是否将模式选择器和模型选择器渲染在 renderFocus / 附件区域下方、输入框上方。
    * 默认 false（保持渲染在底部操作栏左侧）。
    */
@@ -143,6 +149,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   style,
   markdownSkin,
   historyCollapse,
+  actionBar,
   selectorRenderInTop = false,
   supportFiles,
 }, ref) => {
@@ -360,6 +367,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
             ref={messageListRef}
             messages={messages}
             agent={agent}
+            actionBar={actionBar}
             onExecutePlan={onExecutePlan}
             canExecutePlan={canExecutePlan}
             renderEmpty={historyStatus === "ready" ? renderEmpty : undefined}
