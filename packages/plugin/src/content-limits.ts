@@ -3,6 +3,8 @@
 // 此文件集中管理 plugin/ui 层的所有内容大小/长度限制常量与类型。
 // Agent 内部（tool result 等）的限制请见 packages/agent/src/content-limits.ts。
 
+import { cleanMhtml } from "./utils/clean-mhtml";
+
 // ─── 图片上传限制 ─────────────────────────────────────────────────────────────
 
 /** 图片附件上传的最大文件大小（MB） */
@@ -65,6 +67,14 @@ export interface SupportFileEntry {
    * 超过时拒绝新增该类型文件。不填则不限。
    */
   totalBytesLimit?: number;
+  /**
+   * 文件内容前置处理函数。
+   * 在内容截断之前调用，可对原始文本做清理/转换（如 MHTML 深度精简）。
+   * 返回处理后的字符串，作为后续截断和 chip 内容的输入。
+   * @param content 原始文本内容
+   * @param file    原始 File 对象（可用于读取文件名、大小等元信息）
+   */
+  preProcess?: (content: string, file: File) => string | Promise<string>;
 }
 
 /**
@@ -156,4 +166,15 @@ export const DEFAULT_SUPPORT_FILES: SupportFiles = {
   vim: {},
   diff: {},
   patch: {},
+  // MHTML 网页存档（.mhtml / .mht），上传前深度清理以大幅压缩体积
+  mhtml: {
+    preProcess: (content) => cleanMhtml(content),
+    rejectAt: { bytes: 30 * 1024 * 1024 },   // 原始文件最大 30MB
+    truncateAt: { bytes: 2 * 1024 * 1024 },   // 清理后截到 2MB
+  },
+  mht: {
+    preProcess: (content) => cleanMhtml(content),
+    rejectAt: { bytes: 30 * 1024 * 1024 },
+    truncateAt: { bytes: 2 * 1024 * 1024 },
+  },
 };

@@ -244,7 +244,9 @@ export function inferLanguage(ext: string): string {
  * 调用前应已通过 checkFileReject 确认文件不应被拒绝。
  */
 export async function readFileAsChipData(file: File, entry: SupportFileEntry): Promise<FileChipData> {
-  const raw = await readFileAsText(file);
+  const rawText = await readFileAsText(file);
+  // 前置处理：在截断/行数检查前执行（如 MHTML 深度清理）
+  const raw = entry.preProcess ? await entry.preProcess(rawText, file) : rawText;
   const originalLines = raw.split("\n").length;
   const rejectCheck = checkFileReject(file, entry, originalLines);
   if (!rejectCheck.ok) {
