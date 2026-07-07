@@ -98,6 +98,11 @@ import {
   grepValidationCase,
 } from "./grep-search";
 import { skillUseThenContinueCase } from "./skill";
+import {
+  initProjectSubAgentErrorCase,
+  initProjectSubAgentImmediateErrorCase,
+  initProjectThirdCallWarnLargeCase,
+} from "./init-project-error";
 import { chatPanelSkinHistoryCase, chatPanelDefaultSkinCase, chatPanelSkinEmptyCase } from "./chat-panel-skin";
 import { historyCollapseRestoreCase, historyCollapseGrowingCase, historyCollapseCustomMaxItersCase } from "./ui-history-collapse";
 import { historySlowLoadCase, historyLoadErrorCase } from "./history-load";
@@ -137,6 +142,9 @@ export const ALL_CASES: TestCase[] = [
   multiEditPartialSuccessCase,
   skillUseThenContinueCase,
   planWriteGeneratedFileCase,
+  initProjectSubAgentErrorCase,
+  initProjectSubAgentImmediateErrorCase,
+  initProjectThirdCallWarnLargeCase,
   summaryBasicCase,
   suggestionsDisplayCase,
   abortThenNextTurnAwarenessCase,

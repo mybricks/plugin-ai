@@ -113,6 +113,8 @@ import React from 'react';
 4. 不要调用任何工具，只输出文件代码块。
 `;
 
+const LARGE_GENERATION_WARNING = '本轮生成内容较多，请注意是否继续生成。';
+
 /**
  * SubAgent 的 execute 逻辑
  */
@@ -122,7 +124,8 @@ async function executeSubAgent(
   ctx: { emitProgress: (data: any) => void; getUserMessage: () => { message: string; attachments?: any[] } },
   sandbox: Sandbox,
   expectedFiles: string[],
-  requirement?: string
+  requirement?: string,
+  shouldWarnLargeGeneration = false
 ) {
   // 获取父 Agent 当前轮的用户消息（包含附件）
   const parentUserMessage = ctx.getUserMessage();
@@ -226,15 +229,56 @@ ${prompt}
     flushEmitProgress();
   });
 
+  let requestError: Error | null = null;
+
   try {
     // 传递完整消息和附件
     await subAgent.requestAI({
       message: fullPrompt,
       attachments: parentUserMessage.attachments,
     });
+  } catch (err: any) {
+    requestError = err instanceof Error ? err : new Error(String(err));
   } finally {
     unsubscribe();
     unsubFlush();
+  }
+
+  // 请求中途出错：利用已有的 writtenFiles / progressState 构造中断 output
+  if (requestError) {
+    const writtenList = Array.from(writtenFiles);
+    const remainingFiles = expectedFiles.filter((f) => !writtenFiles.has(f));
+
+    const lines: string[] = [
+      `生成过程中断（${requestError.message}）`,
+    ];
+    if (writtenList.length > 0) {
+      lines.push(`已成功写入 ${writtenList.length} 个文件：${writtenList.join(', ')}`);
+    } else {
+      lines.push('无文件写入');
+    }
+    if (remainingFiles.length > 0) {
+      lines.push(
+        `以下文件未生成，可继续调用 init-project 工具生成：\n${remainingFiles.map((f) => `- ${f}`).join('\n')}`
+      );
+    }
+    if (shouldWarnLargeGeneration) {
+      lines.push(LARGE_GENERATION_WARNING);
+    }
+
+    const filesMetadataOnError = writtenList.map((p) => ({
+      path: p,
+      lineCount: progressState.files.find((f) => f.path === p)?.lineCount ?? 0,
+      status: 'success' as const,
+    }));
+
+    return {
+      output: lines.join('\n\n'),
+      metadata: {
+        requirement,
+        files: filesMetadataOnError,
+      },
+    };
   }
 
   // 处理输出
@@ -301,6 +345,9 @@ ${prompt}
   if (successFilesWithContent) {
     output += `\n\n已写入文件：\n${successFilesWithContent}`;
   }
+  if (shouldWarnLargeGeneration) {
+    output += `\n\n${LARGE_GENERATION_WARNING}`;
+  }
 
   // 提示缺失和额外的文件
   if (missingFiles.length > 0) {
@@ -312,7 +359,7 @@ ${prompt}
 
   // 根据写入情况补充提示
   if (filesFailed === 0 && missingFiles.length === 0) {
-    output += `\n\n已完成需求所有代码文件的生成和写入，如果不是有严重的需求不满足情况，请勿进行重复进行优化，接下来注意检查错误情况以及同步文档。`;
+    output += `\n\n已完成需求所有代码文件的生成和写入，如果需求已经满足，请勿过度优化代码，接下来注意检查错误情况以及同步文档。`;
   } else if (missingFiles.length > 0) {
     output += `\n\n部分文件未生成，请继续。`;
   } else {
@@ -367,6 +414,10 @@ export function createInitProjectTool(sandbox: Sandbox): Tool {
     },
     async execute(params: { requirement?: string, filesToGenerate: string[] }, toolContext: ToolExecutionContext) {
       const { requirement = '',filesToGenerate } = params;
+      const currentTurnCallCount = toolContext.iterations.reduce((count, iter) => {
+        return count + (iter.toolCalls?.filter((call) => call.name === INIT_PROJECT_TOOL_NAME).length ?? 0);
+      }, 0);
+      const shouldWarnLargeGeneration = currentTurnCallCount >= 3;
 
       // 拼接 prompt 传递给 subAgent
       const fileList = filesToGenerate.map((file) => `${file}`).join("\n");
@@ -380,10 +431,15 @@ export function createInitProjectTool(sandbox: Sandbox): Tool {
       const hasImage = attachments?.some((a: any) => a.type === "image");
 
       // 创建 SubAgent (使用 createFork)
+      // 禁用 retry：SubAgent 流式写入文件时 writtenFiles 不会在重试间清空，
+      // 重试会导致已写入文件被跳过，出现新旧内容混杂。
+      // 改为直接抛错，由 execute 捕获后在 output 中告知已写/未写文件，
+      // 让外层 Agent 决定是否继续调用 init-project 补全剩余文件。
       const subAgent = parentAgent.createFork({
         tools: [],
         system: SUB_AGENT_SYSTEM_PROMPT,
         aiRole: hasImage ? "image" : undefined,
+        retry: false,
       });
 
       // 执行 SubAgent 逻辑
@@ -396,7 +452,8 @@ export function createInitProjectTool(sandbox: Sandbox): Tool {
         },
         sandbox,
         filesToGenerate,
-        requirement
+        requirement,
+        shouldWarnLargeGeneration
       );
     },
   };
