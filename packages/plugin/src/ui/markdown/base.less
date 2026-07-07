@@ -78,7 +78,7 @@
   }
 
   ul > li {
-    padding-left: 1rem;
+    padding-left: var(--chat-markdown-ul-indent, 14px);
   }
 
   ul > li:before {
@@ -94,7 +94,7 @@
 
   ol { counter-reset: item; }
   ol > li {
-    padding-left: 1.5rem;
+    padding-left: var(--chat-markdown-ol-indent, 22px);
     counter-increment: item;
   }
 
@@ -103,7 +103,7 @@
     position: absolute;
     left: 0;
     top: 0;
-    min-width: 1.1rem;
+    min-width: var(--chat-markdown-ol-marker-width, 16px);
     text-align: right;
   }
 

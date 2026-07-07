@@ -126,7 +126,7 @@
   li { position: relative; margin: 6px 0; list-style-type: none; }
 
   /* 一级 ul */
-  ul > li { padding-left: 1.2rem; }
+  ul > li { padding-left: var(--chat-markdown-ul-indent, 14px); }
   ul > li::before {
     content: "";
     position: absolute;
@@ -139,25 +139,25 @@
   }
 
   /* 嵌套 ul（二级及以下）*/
-  ul ul { margin: 4px 0; padding-left: 1.2rem; }
+  ul ul { margin: 4px 0; padding-left: 0; }
   ul ul > li::before { width: 3px; height: 3px; border-radius: 0; }
-  ul ul ul { padding-left: 1.2rem; }
+  ul ul ul { padding-left: 0; }
   ul ul ul > li::before { width: 3px; height: 1px; border-radius: 0; top: 0.85em; }
 
   /* 有序列表 */
   ol { counter-reset: item; }
-  ol > li { padding-left: 1.8rem; counter-increment: item; }
+  ol > li { padding-left: var(--chat-markdown-ol-indent, 22px); counter-increment: item; }
   ol > li::before {
     content: counter(item) ".";
     position: absolute;
     left: 0;
     top: 0;
-    min-width: 1.3rem;
+    min-width: var(--chat-markdown-ol-marker-width, 16px);
     text-align: right;
     color: var(--mybricks-text-color-main, #333);
   }
   /* 嵌套 ol */
-  ol ol { margin: 4px 0; padding-left: 1.8rem; counter-reset: item; }
+  ol ol { margin: 4px 0; padding-left: 0; counter-reset: item; }
 
   /* ── 图片 ── */
   img {
