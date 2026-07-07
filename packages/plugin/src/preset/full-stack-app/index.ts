@@ -12,7 +12,10 @@ export interface FullStackAppPromptBuilderOptions {
   dbType?: FullStackAppDatabaseType;
 }
 
-
+/**
+ * 
+ * @deprecated
+ */
 export function fullStackAppPromptBuilder(options: FullStackAppPromptBuilderOptions = {}): PluginAIPreset {
   const dbType = options.dbType ?? "PostgreSQL";
 

@@ -2,6 +2,8 @@ import { BASH_TOOL_NAME, DELETE_TOOL_NAME, EDIT_TOOL_NAME, MULTI_EDIT_TOOL_NAME,
 import { GREP_TOOL_NAME } from "../../../../agent/src/code-agent/tools/grep";
 import { INIT_PROJECT_TOOL_NAME } from "../../sandbox/tools/init-project";
 
+import { frontend, backend } from './../common/sections'
+
 export const fullStackAppPromptSection = {
   agent: {
     identitySection: `你是一个通用代码助手，面向软件工程任务协助用户理解、修改、生成和维护项目代码。
@@ -169,20 +171,8 @@ permissions:
 4. 条件分支与异常；
 5. 路由跳转；
 6. 任何可能失败的操作。`,
-    environmentVariablesSection: `以下是系统注入的前端环境变量，可在组件代码中通过 \`process.env.<变量名>\` 访问，禁止自行声明或覆盖这些变量。
-
-| 变量名 | 类型 | 设计态值 | 运行态值 | 说明 |
-|--------|------|----------|----------|------|
-| \`process.env.POPUP_VISIBLE\` | \`boolean\` | true | false | **只能在 \`popupRef\` 包裹的组件内部使用**，否则会导致运行时报错。控制浮层（弹窗/抽屉等）的默认显示状态。设计态下为 true 使浮层保持展开，方便设计者选中浮层内元素进行编辑；运行态下为 false，由业务逻辑控制显隐。浮层组件必须将此变量与业务状态做 || 合并使用，例如：visible={process.env.POPUP_VISIBLE || visible} |
-| \`process.env.POPUP_NODE\` | \`HTMLElement\` | 设计器画布容器节点 | 页面容器节点 | **只能在 \`popupRef\` 包裹的组件内部使用**，否则会导致运行时报错。浮层的挂载容器。设计、运行态下均指向设计器画布，确保浮层渲染在画布内部。例如一些三方库的指定挂载节点：getContainer={() => process.env.POPUP_NODE} |`,
-    assetsUsageSection: `- 对于图标：为了保证视觉的统一与专业性，我们的共识是统一使用图标组件。
-  - 如果没有图标组件，则使用色块+文本占位，禁止使用 Emoji 或特殊字符。
-- 对于图片：图片是传递信息与氛围的关键。我们建议根据其用途选择合适的来源：
-  - https://ai.mybricks.world/image-search?term=searchWord&w=20&h=20，可以配置一个高质量的写实图片（比如摄影、人文等）；
-  具体来说
-  - 对于海报/写实/商品/图片等：我们建议使用高质量的写实图片；
-  - 对于Logo：我们建议使用色块+文本占位；
-  - 对于插画/装饰性图形：我们优先推荐使用简单的svg来占位，避免使用图片过于跳脱；`,
+    environmentVariablesSection: frontend.environmentVariablesSection,
+    assetsUsageSection: frontend.assetsUsageSection,
     jsDocUsageSection: `编写或修改 appRef / comRef / popupRef 节点代码时，必须为每一个节点同步编写或更新对应的 JSDoc 注释说明。JSDoc 注释属于代码的一部分，承载原 README.md 中的代码可视化说明信息，必须与节点代码一起生成、一起维护。禁止只给页面节点、根节点或少数组件写注释。
 维护时机：
 - 必须维护（强约束）：节点缺少 JSDoc 注释；或现有注释内容与「注释编写规范」不符；或需求明确要求更新注释（此时必须重新逐行审查源码与注释的差异，确保注释完全对齐当前源码，包括 events/datasource/state 的 className 标识、字段、流程图等）；或需求明确要求更新文档，注意用户要求的更新文档也包括了JSDoc注释；
@@ -495,142 +485,5 @@ class MyDatasource extends DataSource {
 export default new MyDatasource();
 \`\`\``,
   },
-  backend: {
-    metaSection: `---
-title: 服务端工程
-description: 服务端工程实现规范。
-permissions:
-  - read
-  - write
----`,
-    guideSection: `注意：这是一个 serverless 工程，各类 crypto、fs、path 等 nodejs 模块都禁止使用。如果需要 hash 等能力，可以走数据库相关能力。`,
-    codeRulesSection: `1. 后端接口路径统一挂在 \`api\` scope 下，例如 \`/api/todos\`、\`/api/users/:id\`。
-2. 路由处理函数中必须做好参数校验和异常捕获，避免未处理异常直接暴露给用户。
-3. 涉及数据库时，数据库表结构由工具调用进行准备；业务代码只负责查询和写入，不要在接口处理函数中执行建表逻辑。
-4. 路由拆分参考 Express Router 的思路：每个业务路由文件导出一个独立 router，入口文件只负责统一挂载，不要把所有接口都写进 \`backend/index.ts\`。
-
-### 日志规范
-1. 必须包含服务启动日志，以及在有路由的情况下，需要统一的请求中间件；
-2. 必要时可以单独拆分一个logger文件；
-
-### 路由返回规范
-1. 服务端返回统一使用 JSON，成功返回 \`{ success: true, data }\`，失败返回 \`{ success: false, message }\`，并设置合理 HTTP 状态码。`,
-    environmentVariablesSection: `以下是系统注入的后端环境变量，可在服务端代码中通过 \`process.env.<变量名>\` 访问，禁止自行声明或覆盖这些变量。
-
-| 变量名 | 类型 | 设计态值 | 运行态值 | 说明 |
-|--------|------|----------|----------|------|
-| \`process.env.db\` | \`object\` | - | - | 数据库连接配置。字段通常包含 user、password、host、port、database。服务端需要访问数据库时从该对象读取连接配置，禁止在业务代码中硬编码数据库连接信息。 |`,
-    honoUsageSection: `### Hono
-当前项目支持使用 Hono 进行服务端开发。入口文件创建并导出 Hono app，业务路由按领域拆分后通过 \`app.route\` 统一挂载。`,
-    pgUsageSection: `### pg
-服务端需要访问 PostgreSQL 数据库时，使用 \`pg\` 包的 \`Client\` 或 \`Pool\`。
-- 连接配置必须从 \`process.env.db\` 读取，禁止硬编码数据库连接信息。
-- 推荐在 \`backend/db.ts\` 中集中创建并导出连接池。
-- 查询结果通过 \`result.rows\` 读取。
-
-\`\`\`ts
-import { Pool } from "pg";
-
-export const pool = new Pool({
-  user: process.env.db.user,
-  password: process.env.db.password,
-  host: process.env.db.host,
-  port: process.env.db.port,
-  database: process.env.db.database,
-});
-\`\`\``,
-    mysqlUsageSection: `### mysql2/promise
-服务端需要访问 MySQL 数据库时，使用 \`mysql2/promise\` 包的 \`createPool\`。
-- 连接配置必须从 \`process.env.db\` 读取，禁止硬编码数据库连接信息。
-- 推荐在 \`backend/db.ts\` 中集中创建并导出连接池。
-- 查询结果通过 \`const [rows] = await pool.execute(...)\` 读取。
-
-\`\`\`ts
-import { createPool } from "mysql2/promise";
-
-export const pool = createPool({
-  host: process.env.db.host,
-  port: process.env.db.port,
-  user: process.env.db.user,
-  password: process.env.db.password,
-  database: process.env.db.database,
-});
-\`\`\``,
-    examplesSection: `1. 入口文件
-\`\`\`ts
-import { Hono } from "hono";
-import { logger } from "mybricks";
-import todoRoutes from "./routes/todo";
-
-const app = new Hono();
-const serverLogger = logger.child({ module: "backend" });
-
-const createRequestId = () => {
-  return \`\${Date.now().toString(36)}-\${Math.random().toString(36).slice(2, 8)}\`;
-};
-
-const requestHandle = async (c, next) => {
-  const requestId = c.req.header("x-request-id") ?? createRequestId();
-  const startedAt = Date.now();
-  const requestLogger = serverLogger.child({
-    requestId,
-    method: c.req.method,
-    path: c.req.path,
-  });
-
-  c.set("logger", requestLogger);
-  c.header("x-request-id", requestId);
-
-  try {
-    await next();
-  } catch (error) {
-    requestLogger.error({ error }, "服务端请求异常");
-
-    return c.json(
-      { success: false, message: "服务异常，请稍后重试" },
-      500,
-    );
-  } finally {
-    requestLogger.info({
-      status: c.res.status,
-      duration: Date.now() - startedAt,
-    }, "服务端请求完成");
-  }
-};
-
-app.use("*", requestHandle);
-app.route("/api/todos", todoRoutes);
-
-serverLogger.info("server start");
-
-export default app;
-\`\`\`
-
-2. 业务路由 todo.ts
-\`\`\`ts
-import { Hono } from "hono";
-
-interface Todo {
-  id: string;
-  title: string;
-  completed: boolean;
-}
-
-const todoRoutes = new Hono();
-
-todoRoutes.get("/", async (c) => {
-  const routeLogger = c.get("logger").child({ route: "todos", action: "list" });
-
-  try {
-    const items: Todo[] = [];
-    return c.json({ success: true, data: { items } });
-  } catch (error) {
-    routeLogger.error({ error }, "查询任务列表失败");
-    return c.json({ success: false, message: "查询任务列表失败" }, 500);
-  }
-});
-
-export default todoRoutes;
-\`\`\``,
-  },
+  backend: backend,
 } as const;
