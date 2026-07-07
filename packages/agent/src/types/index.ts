@@ -343,6 +343,12 @@ export interface TurnRecord {
   /** 用户是否主动关闭了本轮建议展示。 */
   suggestionsDismissed?: boolean;
 
+  /**
+   * 是否已被用户删除（软删除）。
+   * 标记后该 turn 不进入 LLM 上下文构建，也不在 UI 中展示。
+   */
+  deleted?: true;
+
 }
 
 export type LLMIteration = Exclude<TurnRecord["iterations"][number], WarmupIter>;
@@ -640,6 +646,7 @@ export function turnsToMessages(
   for (let i = 0; i < turns.length; i++) {
     const turn = turns[i];
     if (turn.retried) continue;
+    if (turn.deleted) continue;
 
     // 游标之前（含游标本身）的 turns 跳过，由 buildMessages 负责输出摘要消息对
     if (compactBoundaryIdx !== -1 && i <= compactBoundaryIdx) {

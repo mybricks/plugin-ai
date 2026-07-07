@@ -1,0 +1,48 @@
+.action-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  padding: 2px 0 0;
+}
+
+.action-bar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  // small 下用固定尺寸保证可点区域足够
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  // 默认正文色，不加灰色 opacity 处理
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.5;
+  transition: opacity 0.12s ease, color 0.12s ease;
+
+  svg {
+    // small 基准 14px，medium/large 跟随变量放大
+    width: var(--chat-icon-size, 14px);
+    height: var(--chat-icon-size, 14px);
+    display: block;
+    flex-shrink: 0;
+  }
+
+  &:hover {
+    opacity: 1;
+    background: transparent;
+  }
+
+  &:disabled {
+    opacity: 0.2;
+    cursor: not-allowed;
+  }
+
+  // 复制成功态：用 primary 色高亮
+  &.action-bar-btn--active {
+    opacity: 1;
+    color: var(--mybricks-color-primary, #fa6400);
+  }
+}

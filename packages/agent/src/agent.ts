@@ -596,6 +596,19 @@ export class Agent {
     this.events.emit("turn:suggestions:dismiss", { turnId });
   }
 
+  /**
+   * 软删除某轮对话。
+   * 将 turn.deleted 置为 true，不再参与 LLM 上下文构建，UI 也不再展示。
+   * 历史记录保留（持久化 deleted 标记），不做物理删除。
+   */
+  async deleteTurn(turnId: string): Promise<void> {
+    const idx = this.turns.findIndex((t) => t.id === turnId);
+    if (idx < 0) return;
+    this.turns[idx] = { ...this.turns[idx], deleted: true };
+    await this.historyManager.update(turnId, { deleted: true });
+    this.events.emit("turn:delete", { turnId });
+  }
+
   /** 获取 compact 记录（供 UI 或外部读取） */
   getCompactRecord(): CompactRecord | null {
     return this.compactRecord;
@@ -1699,6 +1712,7 @@ IMPORTANT: 不要调用工具！
       const turn = this.turns[i];
       if (this.compactRecord && turn.id === this.compactRecord.upToTurnId) break;
       if (turn.retried) continue;
+      if (turn.deleted) continue;
       contextTurnCount++;
       if (!lastUsage) {
         // 从最后一个有效 LLM iter 取 usage（跳过 warmup、无 usage 的 iter）

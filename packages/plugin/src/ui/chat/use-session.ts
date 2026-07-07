@@ -17,11 +17,13 @@ export interface Session {
 // ─── 辅助 ─────────────────────────────────────────────────────────────────────
 
 function turnsToMessageRecords(turns: TurnRecord[]): MessageRecord[] {
-  return turns.map((turn) => ({
-    ...turn,
-    // 进行中的 turn 尚未写入最终 status；历史中的 error/abort 要尊重原状态。
-    status: !turn.endTime && turn.status === "success" ? "pending" : turn.status,
-  }));
+  return turns
+    .filter((turn) => !turn.deleted)
+    .map((turn) => ({
+      ...turn,
+      // 进行中的 turn 尚未写入最终 status；历史中的 error/abort 要尊重原状态。
+      status: !turn.endTime && turn.status === "success" ? "pending" : turn.status,
+    }));
 }
 
 function findLastPendingId(records: MessageRecord[]): string | null {
@@ -414,6 +416,11 @@ export function useSession(agent: Agent | undefined) {
         setMessages((prev) =>
           prev.map((r) => (r.id === turnId ? { ...r, suggestionsDismissed: true } : r))
         );
+      }),
+
+      // turn:delete → 软删除，从 UI 列表中移除
+      a.events.on("turn:delete", ({ turnId }) => {
+        setMessages((prev) => prev.filter((r) => r.id !== turnId));
       })
     );
 

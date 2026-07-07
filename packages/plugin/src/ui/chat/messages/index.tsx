@@ -25,6 +25,7 @@ import messageSkinCss from "../../markdown/skin-message.less";
 import { renderMermaidInContainer } from "../../markdown/mermaid";
 import { PlanFileCardWithContent } from "./action-cards/plan-card";
 import { SuggestionsBlock } from "./action-cards/suggestions-card";
+import { ActionBar } from "./action-bar";
 
 const md = markdownit();
 
@@ -42,10 +43,20 @@ export interface HistoryCollapseConfig {
   maxIters?: number;
 }
 
+/** ActionBar 白名单项。不传时默认只有 copy。 */
+export type ActionBarItem = "copy" | "delete" | "retry";
+
 export interface MessageListProps {
   messages: MessageRecord[];
   agent?: CodeAgent;
+  /**
+   * ActionBar 白名单配置。
+   * - 不传：默认只展示复制
+   * - 传递数组：按白名单顺序展示对应按钮
+   */
+  actionBar?: ActionBarItem[];
   onRetry?: (turnId: string) => void;
+  onDelete?: (turnId: string) => void;
   onExecutePlan?: (title: string) => void;
   canExecutePlan?: boolean;
   /** 消息列表为空时在区域内居中展示的自定义内容 */
@@ -87,8 +98,11 @@ const CollapseBar = ({
 
 // ─── MessageList ──────────────────────────────────────────────────────────────
 
+const DEFAULT_ACTION_BAR: ActionBarItem[] = ["copy"];
+
 const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
-  function MessageListInner({ messages, agent, onRetry, onExecutePlan, canExecutePlan = true, renderEmpty, renderFooter, collapseCursor, onExpandHistory }, ref) {
+  function MessageListInner({ messages, agent, actionBar, onRetry, onDelete, onExecutePlan, canExecutePlan = true, renderEmpty, renderFooter, collapseCursor, onExpandHistory }, ref) {
+  const resolvedActionBar = actionBar ?? DEFAULT_ACTION_BAR;
   const mainRef = useRef<HTMLElement>(null);
   const scrollerRef = useRef<AutoScroller | null>(null);
   const { activePlan } = usePlanState(agent);
@@ -141,7 +155,9 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
                   key={record.id}
                   record={record}
                   toolRendererMap={toolRendererMap}
+                  actionBar={resolvedActionBar}
                   onRetry={index === messages.length - 1 ? onRetry : undefined}
+                  onDelete={onDelete}
                   isLast={index === messages.length - 1}
                   agent={agent}
                   onExecutePlan={onExecutePlan}
@@ -162,10 +178,12 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
 
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
-const MessageBubble = ({ record, toolRendererMap, onRetry, isLast, agent, onExecutePlan, canExecutePlan = true, activePlan }: {
+const MessageBubble = ({ record, toolRendererMap, actionBar, onRetry, onDelete, isLast, agent, onExecutePlan, canExecutePlan = true, activePlan }: {
   record: MessageRecord;
   toolRendererMap: Map<string, ToolRenderer>;
+  actionBar: ActionBarItem[];
   onRetry?: (turnId: string) => void;
+  onDelete?: (turnId: string) => void;
   isLast?: boolean;
   agent?: CodeAgent;
   onExecutePlan?: (title: string) => void;
@@ -401,6 +419,20 @@ const MessageBubble = ({ record, toolRendererMap, onRetry, isLast, agent, onExec
             )}
           </div>
         </section>
+        {/* ActionBar：turn 结束后显示 */}
+        {record.status !== "pending" && actionBar.length > 0 && (
+          <ActionBar>
+            {actionBar.includes("copy") && (
+              <ActionBar.Copy text={getTurnText(record)} />
+            )}
+            {actionBar.includes("delete") && onDelete && (
+              <ActionBar.Delete onDelete={() => onDelete(record.id)} />
+            )}
+            {actionBar.includes("retry") && isLast && onRetry && record.status !== "abort" && (
+              <ActionBar.Retry onRetry={() => onRetry(record.id)} />
+            )}
+          </ActionBar>
+        )}
       </div>
     </div>
   )
@@ -637,6 +669,15 @@ export { MessageList };
 
 function isPlanModeRecord(record: MessageRecord): boolean {
   return record.iterations.some((iter) => (iter as any).type !== "warmup" && (iter as any).mode === AgentModeEnum.Plan);
+}
+
+/** 提取一个 turn 中所有 iter 的文本内容，用于复制 */
+function getTurnText(record: MessageRecord): string {
+  return record.iterations
+    .filter((iter) => (iter as any).type !== "warmup")
+    .map((iter) => (iter as any).content ?? "")
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 function formatTime(ts: number): string {

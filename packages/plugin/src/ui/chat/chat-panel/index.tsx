@@ -366,18 +366,6 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
             renderFooter={scrollWithSender ? () => senderBlockNode : undefined}
             collapseCursor={collapseCursor}
             onExpandHistory={onExpandHistory}
-            onRetry={(id: string) => {
-              if (!agent) return;
-              context.aiQueue.clearQueue(agentKey);
-              context.aiQueue.send(
-                agentKey,
-                async () => {
-                  context.aiQueue.registerAbort(agentKey, () => agent.abort());
-                  await agent.retry(id);
-                },
-                { message: "" }
-              );
-            }}
           />
         </div>
         {scrollWithSender ? null : senderBlockNode}

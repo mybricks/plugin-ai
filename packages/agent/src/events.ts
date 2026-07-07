@@ -79,6 +79,15 @@ export type AgentEventMap = {
   };
 
   /**
+   * 用户删除某轮对话后触发（软删除，turn.deleted 置为 true）。
+   * UI 侧收到后将对应 MessageRecord 从列表中移除。
+   */
+  "turn:delete": {
+    /** 被删除的 TurnRecord.id */
+    turnId: string;
+  };
+
+  /**
    * Doom loop 警告：检测到连续 N 次完全相同的工具调用序列（相同 name + args，且顺序一致）。
    * 触发后循环将中断并进入 turn:error。
    *   - `toolName`  重复的工具名
