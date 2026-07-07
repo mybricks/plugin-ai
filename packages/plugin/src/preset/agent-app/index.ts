@@ -12,7 +12,6 @@ export type PluginAIPreset = Partial<PluginAIParams>;
  */
 export function agentAppPromptBuilder(): PluginAIPreset {
   return {
-    disallowedDebugEnvs: ["mock"],
     promptSections: {
       agent: agentAppPromptSection.agent,
       developeGuide: agentAppPromptSection.developeGuide,
