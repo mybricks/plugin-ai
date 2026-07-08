@@ -126,16 +126,8 @@ async function executeSubAgent(
   expectedFiles: string[],
   shouldWarnLargeGeneration = false
 ) {
-  // 获取父 Agent 当前轮的用户消息（包含附件）
-  const parentUserMessage = ctx.getUserMessage();
-
-  const realRequirement = parentUserMessage.message;
-
   // 拼接完整消息
-  const fullPrompt = `<用户原始需求>
-${parentUserMessage.message}
-</用户原始需求>
-
+  const fullPrompt = `开始生成和输出以下所有文件
 <需要你生成写入的文件>
 ${prompt}
 </需要你生成写入的文件>`;
@@ -233,7 +225,6 @@ ${prompt}
     // 传递完整消息和附件
     await subAgent.requestAI({
       message: fullPrompt,
-      attachments: parentUserMessage.attachments,
     });
   } catch (err: any) {
     requestError = err instanceof Error ? err : new Error(String(err));
