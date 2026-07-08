@@ -1068,8 +1068,9 @@ export class Agent {
               // 引导模型缩小查询范围，而非把大量内容塞入上下文。
               // read 工具本身已有提前检查（在 execute 内部抛错），此处为兜底保护。
               const outputTokens = roughTokenCountEstimation(result.output);
-              if (outputTokens > TOOL_OUTPUT_MAX_TOKENS) {
-                const overLimitMsg = `Error: Tool output exceeds the ${TOOL_OUTPUT_MAX_TOKENS} token limit (estimated ~${outputTokens} tokens). Return less data or narrow your query.`;
+              const maxOutputTokens = tool?.limits?.maxToken ?? TOOL_OUTPUT_MAX_TOKENS;
+              if (outputTokens > maxOutputTokens) {
+                const overLimitMsg = `Error: Tool output exceeds the ${maxOutputTokens} token limit (estimated ~${outputTokens} tokens). Return less data or narrow your query.`;
                 toolRecord.status = "error";
                 toolRecord.errorType = "normal";
                 toolRecord.error = overLimitMsg;

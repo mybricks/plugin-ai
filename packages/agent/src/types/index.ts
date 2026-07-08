@@ -541,6 +541,19 @@ export interface ToolResult {
   metadata?: Record<string, any>;
 }
 
+/**
+ * 工具的输出/行为限制配置。
+ * 所有约束统一收归此对象，便于统一管理和扩展。
+ */
+export interface ToolLimits {
+  /**
+   * 工具 output 的最大 token 数。
+   * 超过时以 error 替换真实 output，引导模型缩小查询范围。
+   * 不设置时使用全局默认值 TOOL_OUTPUT_MAX_TOKENS（25_000）。
+   */
+  maxToken?: number;
+}
+
 export interface Tool {
   name: string;
   /**
@@ -550,6 +563,11 @@ export interface Tool {
   title?: string;
   description: string;
   parameters?: Record<string, any>;
+  /**
+   * 工具级别的限制配置（可选）。
+   * 不设置时所有限制均使用全局默认值。
+   */
+  limits?: ToolLimits;
   /**
    * 参数校验（可选）。校验不通过时抛出 ToolValidationError。
    */
