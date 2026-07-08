@@ -109,6 +109,11 @@
     flex-direction: column;
     gap: var(--chat-message-group-gap, 2px);
     padding: var(--chat-message-group-padding, 4px 0);
+
+    &.chat-bubble-container--history:hover > .ai-bubble > .turn-action-bar {
+      opacity: 1;
+      visibility: visible;
+    }
   }
 
   // ── 单条气泡（user 或 ai）

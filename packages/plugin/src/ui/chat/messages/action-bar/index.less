@@ -12,6 +12,17 @@
       opacity: 0.45;
     }
   }
+
+  &.action-bar--hide-until-hover {
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.12s ease;
+
+    &:hover {
+      opacity: 1;
+      visibility: visible;
+    }
+  }
 }
 
 .action-bar-btn {

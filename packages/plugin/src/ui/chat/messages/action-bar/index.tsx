@@ -123,10 +123,12 @@ const Retry = ({ onRetry, disabled }: RetryProps) => (
 interface ActionBarProps {
   children: React.ReactNode;
   endTime?: string;
+  hideUntilHover?: boolean;
+  className?: string;
 }
 
-const ActionBar = ({ children, endTime }: ActionBarProps) => (
-  <div className={css["action-bar"]}>
+const ActionBar = ({ children, endTime, hideUntilHover, className }: ActionBarProps) => (
+  <div className={`${css["action-bar"]}${hideUntilHover ? ` ${css["action-bar--hide-until-hover"]}` : ""}${className ? ` ${className}` : ""}`}>
     {children}
     {endTime ? <span className={css["action-bar-end-time"]}>{endTime}</span> : null}
   </div>

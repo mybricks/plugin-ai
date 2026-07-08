@@ -262,7 +262,7 @@ const MessageBubble = ({ record, toolRendererMap, actionBar, onRetry, onDelete, 
   }, [agent, record.status]);
 
   return (
-    <div className={css["chat-bubble-container"]}>
+    <div className={classNames(css["chat-bubble-container"], !isLast && css["chat-bubble-container--history"])}>
       {/* 时间戳居中 */}
       <div className={css["chat-bubble-time"]}>{formatTime(record.startTime)}</div>
 
@@ -448,7 +448,11 @@ const MessageBubble = ({ record, toolRendererMap, actionBar, onRetry, onDelete, 
         </section>
         {/* ActionBar：turn 结束后显示 */}
         {record.status !== "pending" && actionBar.length > 0 && (
-          <ActionBar endTime={record.endTime ? formatTime(record.endTime) : undefined}>
+          <ActionBar
+            className={css["turn-action-bar"]}
+            endTime={record.endTime ? formatTime(record.endTime) : undefined}
+            hideUntilHover={!isLast}
+          >
             {actionBar.includes("copy") && (
               <ActionBar.Copy text={getTurnText(record)} />
             )}
