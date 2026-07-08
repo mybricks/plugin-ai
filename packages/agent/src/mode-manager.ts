@@ -221,6 +221,7 @@ function getBuildPlanStatusSlug(planState?: PlanDirectoryState | null): string {
 
 function getBuildGuideSlug(planState?: PlanDirectoryState | null): string {
   return joinSections([
+    '当前模式的核心是直接操作项目文件，对于计划文件/方案，只维护和归档，不允许创建',
     getBuildPlanStatusSlug(planState),
     getPlanFileGuideSlug(),
   ]);
