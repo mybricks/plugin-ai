@@ -9,12 +9,6 @@ import css from "../render.less";
  * 初始化项目专用渲染器（为 init-project 工具设计）
  */
 export const InitProjectRenderer = ({ tool }: { tool: ToolRecord }) => {
-  // 从 args、progress 或 metadata 中获取需求
-  const requirement =
-    tool.args?.requirement ??
-    tool.progress?.requirement ??
-    tool.result?.metadata?.requirement ??
-    "";
   const isRunning = tool.status === "pending";
   const isError = tool.status === "error";
 
@@ -61,14 +55,6 @@ export const InitProjectRenderer = ({ tool }: { tool: ToolRecord }) => {
           />
         )}
       </div>
-
-      {/* 需求面板 */}
-      {requirement && (
-        <div className={css["init-project-requirement"]}>
-          <div className={css["init-project-section-title"]}>需求</div>
-          <div className={css["init-project-requirement-text"]}>{requirement}</div>
-        </div>
-      )}
 
       {/* 文件列表面板 */}
       {files.length > 0 && (

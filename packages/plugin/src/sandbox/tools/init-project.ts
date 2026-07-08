@@ -124,7 +124,6 @@ async function executeSubAgent(
   ctx: { emitProgress: (data: any) => void; getUserMessage: () => { message: string; attachments?: any[] } },
   sandbox: Sandbox,
   expectedFiles: string[],
-  requirement?: string,
   shouldWarnLargeGeneration = false
 ) {
   // 获取父 Agent 当前轮的用户消息（包含附件）
@@ -143,7 +142,6 @@ ${prompt}
 
   // 进度状态
   const progressState = {
-    requirement: realRequirement,
     content: "",
     thinkingContent: "",
     files: [] as Array<{
@@ -275,7 +273,6 @@ ${prompt}
     return {
       output: lines.join('\n\n'),
       metadata: {
-        requirement,
         files: filesMetadataOnError,
       },
     };
@@ -293,7 +290,7 @@ ${prompt}
   if (files.length === 0) {
     return {
       output: "未解析到任何文件，请检查输出格式是否正确。",
-      metadata: { requirement: realRequirement, files: [] },
+      metadata: { files: [] },
     };
   }
 
@@ -376,7 +373,6 @@ ${prompt}
   return {
     output,
     metadata: {
-      requirement,
       files: filesMetadata,
     },
   };
@@ -413,7 +409,7 @@ export function createInitProjectTool(sandbox: Sandbox): Tool {
       required: ["filesToGenerate"],
     },
     async execute(params: { requirement?: string, filesToGenerate: string[] }, toolContext: ToolExecutionContext) {
-      const { requirement = '',filesToGenerate } = params;
+      const { filesToGenerate } = params;
       const currentTurnCallCount = toolContext.iterations.reduce((count, iter) => {
         return count + (iter.toolCalls?.filter((call) => call.name === INIT_PROJECT_TOOL_NAME).length ?? 0);
       }, 0);
@@ -452,7 +448,6 @@ export function createInitProjectTool(sandbox: Sandbox): Tool {
         },
         sandbox,
         filesToGenerate,
-        requirement,
         shouldWarnLargeGeneration
       );
     },

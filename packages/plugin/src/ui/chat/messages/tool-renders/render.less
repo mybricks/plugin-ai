@@ -382,7 +382,7 @@
   flex-shrink: 0;
 }
 
-// 分节标题（需求、文件列表、错误）
+// 分节标题（文件列表、错误）
 .init-project-section-title {
   font-size: var(--chat-font-size-sm, 12px);
   font-weight: 600;
@@ -391,25 +391,6 @@
   padding: 6px 10px 4px;
   border-top: 1px solid var(--mybricks-border-color-main, #E6E6E6);
   background: var(--mybricks-bg-color-secondary, #F5F5F5);
-}
-
-// 需求面板
-.init-project-requirement {
-  background: transparent;
-}
-
-.init-project-requirement-text {
-  padding: var(--chat-card-padding, 6px 14px 8px);
-  font-size: var(--chat-font-size, 12px);
-  line-height: var(--chat-body-line-height-ratio, 1.5);
-  color: var(--mybricks-text-color-main, #333);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 80px;
-  overflow: auto;
-
-  &::-webkit-scrollbar { display: none; }
-  scrollbar-width: none;
 }
 
 // 文件列表面板
