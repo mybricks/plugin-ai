@@ -17,6 +17,7 @@ import { MULTI_EDIT_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/
 import { getToolRenderer } from "./tool-renders/index";
 import type { ToolRenderer } from "./tool-renders/index";
 import { DefaultToolRenderer } from "./tool-renders/renders";
+import { DefaultUserMessage } from "../chat-panel/user-message";
 import { useChatPanel } from "../chat-panel/context";
 import { isPlanFilePath, usePlanState } from "../../components/plan";
 import "./tool-renders/register";
@@ -279,7 +280,7 @@ const MessageBubble = ({ record, toolRendererMap, actionBar, onRetry, onDelete, 
           </header>
         )}
         <section className={classNames(css["chat-message-container"], css["user-message"])}>
-          {renderUserMessage ? renderUserMessage(record) : <UserMessageContent message={record.userText} />}
+          {renderUserMessage ? renderUserMessage(record) : <UserMessageContent record={record} />}
           {record.userAttachments.length > 0 && (
             <AttachmentsList
               className={css["attachments-list"]}
@@ -469,12 +470,12 @@ const MessageBubble = ({ record, toolRendererMap, actionBar, onRetry, onDelete, 
   )
 };
 
-const UserMessageContent = ({ message }: { message: string }) => {
-  if (/!\[[^\]]*]\([^)]+\)/.test(message)) {
-    return <MarkdownMessage message={message} className={css["user-message-text"]} />;
+const UserMessageContent = ({ record }: { record: MessageRecord }) => {
+  if (!record.meta?.focus && !record.meta?.chips?.length && /!\[[^\]]*]\([^)]+\)/.test(record.userText)) {
+    return <MarkdownMessage message={record.userText} className={css["user-message-text"]} />;
   }
 
-  return <div className={css["user-message-text"]}>{message}</div>;
+  return <DefaultUserMessage record={record} />;
 };
 
 function getActivePlanFileFromRecord(record: MessageRecord, activePlan: ActivePlanFile | null): ActivePlanFile | null {

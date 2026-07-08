@@ -2,6 +2,8 @@ import React from "react";
 import ReactDOM from "react-dom";
 import classNames from "classnames";
 import type { ChatChipDef, ChatChipInstance } from "../../../../../agent/src";
+import { fileChipDef } from "../../../../../agent/src";
+export { fileChipDef };
 import { FILE_CHIP_TYPE, type FileChipData } from "./upload";
 import css from "./index.less";
 
@@ -195,43 +197,5 @@ export function removeChipFromEditor(
   if (id) chipMap.delete(id);
 }
 
-// ─── 内置 file chip 定义 ──────────────────────────────────────────────────────
-
-/**
- * 内置的文件 chip 类型定义。
- * format 模式：行内占位符替换为简短引用（「文件名」），详细文件内容追加到消息末尾。
- * 与 dom chip 保持一致，避免大段内容打断消息主体。
- */
-export const fileChipDef: ChatChipDef = {
-  type: FILE_CHIP_TYPE,
-  format({ message, chips }) {
-    // Step 1：行内占位符替换为简短引用
-    let resolved = message;
-    const fileBlocks: string[] = [];
-
-    for (const chip of chips) {
-      const data = chip.data as FileChipData | undefined;
-      if (!data) continue;
-
-      const nameAttr = data.filePath ?? data.fileName;
-      // 行内用「临时文件 文件名」自然引用，可嵌入句子任意位置
-      resolved = resolved.replace(`[[chip:${chip.id}]]`, `「临时文件 ${data.fileName}」`);
-      // Step 2：收集详细内容，追加到消息末尾
-      const lineCount = data.content.split("\n").length;
-      const truncatedNote = data.truncated ? `（内容已截断，仅展示前 ${lineCount} 行）` : "";
-      const langFence = data.language ? `\`\`\`${data.language}` : "```";
-      fileBlocks.push(
-        `<file name="${nameAttr}" lines="${lineCount}"${data.truncated ? ' truncated="true"' : ""}>${truncatedNote}\n` +
-        `${langFence}\n${data.content}\n\`\`\`\n` +
-        `</file>`
-      );
-    }
-
-    // Step 3：有文件内容时追加到消息末尾
-    if (fileBlocks.length > 0) {
-      resolved = `${resolved}\n\n文件内容（以下均为用户临时上传的文件，不属于工作区，无法被读取或修改，仅供内容参考）：\n${fileBlocks.join("\n\n")}`;
-    }
-
-    return resolved;
-  },
-};
+// fileChipDef 已迁移到 agent 包，此处仅 re-export 供外部引用（由 index.tsx 的 allChipTypes 使用）
+// 实际导出在文件顶部 import 处完成

@@ -16,17 +16,16 @@ import { LoadingViewWithStyles, ComChatStartViewWithStyles, PrdRenderWithStyles 
 import { context } from "../context";
 import { ensureAIPanelOpen, ensureFocusComId } from "../utils/ensure-ai-panel-open";
 import { createDomChip } from "../utils/dom-info";
-import { fileChipDef } from "../ui/components/sender/chip";
 
 // ─── 类型定义 ─────────────────────────────────────────────────────────────────
 
 /**
  * plugin-ai 全局 chip 注册表。
- * 在 setup.ts 初始化时创建，供 chat-focus-view 等 UI 层注册 chip 类型，
- * 并通过 wrapFormatUserMessage 自动挂入每个 CodeAgent 的 formatUserMessage 链。
+ * 在 setup.ts 初始化时创建，供 chat-focus-view 等 UI 层注册 chip 类型。
+ * 创建 CodeAgent 时会把当前已注册 chip 同步到 Agent 实例的 chipRegistry。
  */
 export const chipRegistry = new ChipRegistry();
-chipRegistry.register(fileChipDef);
+// fileChipDef 已内置到 ChipRegistry 构造函数中，无需手动注册
 
 export interface SendToAgentParams {
   message: string;
@@ -647,7 +646,7 @@ function connectToAI(
       if (custom) sections.push(custom);
       return sections;
     },
-    formatUserMessage: chipRegistry.wrapFormatUserMessage(async (params) => {
+    formatUserMessage: async (params) => {
       const sandboxFormattedParams = {
         message: params.message,
         attachments: params.attachments,
@@ -664,8 +663,9 @@ function connectToAI(
         // 目前 pluginAI 侧只让返回值中的 message 生效，attachments/meta/sender 暂不接管。
         message: userFormattedParams.message,
       };
-    }),
+    },
   });
+  agent.chipRegistry = chipRegistry;
   agentRef = agent;
 
   context.sandboxMap.set(agentKey, { sandbox, designerRef });

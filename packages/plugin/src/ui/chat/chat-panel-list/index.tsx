@@ -1,11 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import classNames from "classnames";
 import { Sender, SenderRef } from "../../components/sender";
-import { MentionTag } from "../../components/mention";
 import { context } from "../../../context";
 import { ChatPanel } from "../chat-panel";
 import type { ChatPanelProps, ChatPanelRef } from "../chat-panel";
-import type { MessageRecord } from "../use-session";
 import type { SendToAgentParams } from "../../../sandbox";
 import type { ChatChipInstance } from "../../../../../agent/src";
 import { createDomChip, DOM_CHIP_TYPE, matchDefaultDomFocusContent } from "../../../utils/dom-info";
@@ -37,53 +35,6 @@ interface ComInstance {
   focusSnapshot: any;
 }
 
-const DomTag = ({ label, className }: { label: string; className?: string }) => {
-  return (
-    <span className={`${css["focus-tag"]}${className ? ` ${className}` : ""}`}>
-      <span className={css["focus-tag-text"]}>{label}</span>
-    </span>
-  );
-};
-
-// ─── 用户消息中的 dom chip 标签（与 renderFocus 的 DomTag 一致）───────────────
-
-const DomChipTag = ({ label, tightLeft }: { label: string; tightLeft?: boolean }) => (
-  <DomTag
-    label={label}
-    className={`${css["dom-chip-tag"]}${tightLeft ? ` ${css["dom-chip-tag-tight-left"]}` : ""}`}
-  />
-);
-
-/**
- * 解析 userText 中的 [[chip:id]] 占位符，从 meta.chips 查实例，渲染成 ChipTag。
- * 其余文本段直接渲染为文字。
- */
-function renderUserTextWithChips(userText: string, chips?: { id: string; label: string }[]): React.ReactNode {
-  if (!chips?.length || !userText.includes("[[chip:")) {
-    return userText;
-  }
-  const chipMap = new Map(chips.map((c) => [c.id, c]));
-  const parts = userText.split(/(\[\[chip:[^\]]+\]\])/);
-  let previousRenderedNodeIsChip = false;
-  return (
-    <>
-      {parts.map((part, i) => {
-        const match = part.match(/^\[\[chip:([^\]]+)\]\]$/);
-        if (match) {
-          const chip = chipMap.get(match[1]);
-          if (!chip) return null;
-          const node = <DomChipTag key={i} label={chip.label} tightLeft={previousRenderedNodeIsChip} />;
-          previousRenderedNodeIsChip = true;
-          return node;
-        }
-        if (!part) return null;
-        previousRenderedNodeIsChip = false;
-        return <React.Fragment key={i}>{part}</React.Fragment>;
-      })}
-    </>
-  );
-}
-
 function isLastSegmentSameDomChip(message: string, chips: ChatChipInstance[] | undefined, ele: HTMLElement): boolean {
   const lastChip = chips?.[chips.length - 1];
   return !!(
@@ -92,25 +43,6 @@ function isLastSegmentSameDomChip(message: string, chips: ChatChipInstance[] | u
     message.trim().endsWith(`[[chip:${lastChip.id}]]`)
   );
 }
-
-// ─── 默认 renderUserMessage ────────────────────────────────────────────────────
-// 兼容历史 focus meta，并渲染消息文本中的 chip
-
-const pluginRenderUserMessage = (record: MessageRecord) => {
-  const focus = record.meta?.focus;
-  const chips = record.meta?.chips as { id: string; label: string }[] | undefined;
-  return (
-    <span>
-      {focus && (
-        <span className={css["user-message-focus"]}>
-          <MentionTag focus={focus} />
-          {" "}
-        </span>
-      )}
-      {renderUserTextWithChips(record.userText, chips)}
-    </span>
-  );
-};
 
 // ─── ChatPanelList ────────────────────────────────────────────────────────────
 //
@@ -311,7 +243,6 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
               title={title}
               disabled={contextDisabled}
               size={size}
-              renderUserMessage={pluginRenderUserMessage}
               matchDefaultFocusContent={matchDefaultDomFocusContent}
               defaultFocusPlaceholder="您可以描述对于此区域的需求"
               renderAttachmentSuffix={context.pluginParams.renderAttachmentSuffix}

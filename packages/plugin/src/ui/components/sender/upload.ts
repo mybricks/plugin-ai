@@ -14,6 +14,11 @@ import {
 } from "../../../content-limits";
 import type { SupportFileEntry, SupportFiles } from "../../../content-limits";
 
+// FILE_CHIP_TYPE 和 FileChipData 已迁移到 agent 包，此处 re-export 保持向后兼容
+export { FILE_CHIP_TYPE } from "../../../../../agent/src";
+export type { FileChipData } from "../../../../../agent/src";
+import type { FileChipData } from "../../../../../agent/src";
+
 // ─── 图片工具 ─────────────────────────────────────────────────────────────────
 
 export {
@@ -62,34 +67,6 @@ export const getImageSize = (file: File): Promise<{ width: number; height: numbe
     image.src = url;
   });
 };
-
-// ─── 文件 chip 类型标识 ───────────────────────────────────────────────────────
-
-export const FILE_CHIP_TYPE = "file";
-
-// ─── 文件 chip data 结构 ──────────────────────────────────────────────────────
-
-export interface FileChipData {
-  /** 文件名（含扩展名），仅文件名部分，如 "index.ts" */
-  fileName: string;
-  /**
-   * 文件路径（可选）。
-   * 浏览器拖拽/点击上传时无法获取，为 undefined。
-   * 通过 insertChip 编程式插入时（如从文件树引用）可携带，如 "src/utils/index.ts"。
-   * format 时有路径则使用路径，否则 fallback 到 fileName。
-   */
-  filePath?: string;
-  /** 文件文本内容（已按阈值截断） */
-  content: string;
-  /** 推断的语言标识，如 "typescript"，用于 format 时 code fence */
-  language: string;
-  /** 内容是否被截断 */
-  truncated: boolean;
-  /** 原始字节数 */
-  originalSize: number;
-  /** 原始行数（仅在已读取文本时计算） */
-  originalLines?: number;
-}
 
 // ─── 文件路由 ─────────────────────────────────────────────────────────────────
 

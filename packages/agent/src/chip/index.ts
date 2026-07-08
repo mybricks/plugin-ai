@@ -28,7 +28,7 @@ export interface ChatChipFormatContext {
 /**
  * Chat chip 类型定义。
  * 注册到 ChipRegistry 后，可在输入框中插入该类型的 chip，
- * 发送时由 ChipRegistry.formatUserMessage 自动格式化为 LLM 可读的文本。
+ * 发送时由 Agent 通过 ChipRegistry 自动格式化为 LLM 可读的文本。
  */
 export interface ChatChipDef {
   /** chip 类型标识（唯一），对应 ChatChipInstance.type */
@@ -49,6 +49,71 @@ export interface ChatChipDef {
   format: (context: ChatChipFormatContext) => string;
 }
 
+// ─── 内置文件 chip ────────────────────────────────────────────────────────────
+
+/** 内置文件 chip 的类型标识 */
+export const FILE_CHIP_TYPE = "file";
+
+/**
+ * 文件 chip 的数据结构（存入 ChatChipInstance.data）。
+ * 由 Sender 上传文件时填充，format 时展开为 <file> 代码块。
+ */
+export interface FileChipData {
+  /** 文件名（含扩展名），仅文件名部分，如 "index.ts" */
+  fileName: string;
+  /**
+   * 文件路径（可选）。
+   * 浏览器拖拽/点击上传时无法获取，为 undefined。
+   * 通过 insertChip 编程式插入时（如从文件树引用）可携带，如 "src/utils/index.ts"。
+   * format 时有路径则使用路径，否则 fallback 到 fileName。
+   */
+  filePath?: string;
+  /** 文件文本内容（已按阈值截断） */
+  content: string;
+  /** 推断的语言标识，如 "typescript"，用于 format 时 code fence */
+  language: string;
+  /** 内容是否被截断 */
+  truncated: boolean;
+  /** 原始字节数 */
+  originalSize: number;
+  /** 原始行数（仅在已读取文本时计算） */
+  originalLines?: number;
+}
+
+/**
+ * 内置文件 chip 类型定义。
+ * format 模式：行内占位符替换为简短引用（「文件名」），详细文件内容追加到消息末尾。
+ */
+export const fileChipDef: ChatChipDef = {
+  type: FILE_CHIP_TYPE,
+  format({ message, chips }) {
+    let resolved = message;
+    const fileBlocks: string[] = [];
+
+    for (const chip of chips) {
+      const data = chip.data as FileChipData | undefined;
+      if (!data) continue;
+
+      const nameAttr = data.filePath ?? data.fileName;
+      resolved = resolved.replace(`[[chip:${chip.id}]]`, `「临时文件 ${data.fileName}」`);
+      const lineCount = data.content.split("\n").length;
+      const truncatedNote = data.truncated ? `（内容已截断，仅展示前 ${lineCount} 行）` : "";
+      const langFence = data.language ? `\`\`\`${data.language}` : "```";
+      fileBlocks.push(
+        `<file name="${nameAttr}" lines="${lineCount}"${data.truncated ? ' truncated="true"' : ""}>${truncatedNote}\n` +
+        `${langFence}\n${data.content}\n\`\`\`\n` +
+        `</file>`
+      );
+    }
+
+    if (fileBlocks.length > 0) {
+      resolved = `${resolved}\n\n文件内容（以下均为用户临时上传的文件，不属于工作区，无法被读取或修改，仅供内容参考）：\n${fileBlocks.join("\n\n")}`;
+    }
+
+    return resolved;
+  },
+};
+
 // ─── ChipRegistry ─────────────────────────────────────────────────────────────
 
 /**
@@ -56,22 +121,25 @@ export interface ChatChipDef {
  *
  * 职责：
  * 1. 管理 chip 类型（register / get / getAll）
- * 2. 提供 wrapFormatUserMessage，将 chip 格式化逻辑包装到外部 formatUserMessage 之前执行，
- *    完全不侵入 Agent 核心代码，通过 meta.chips 约定透传实例数据。
+ * 2. 提供 formatRequestParams，将 meta.chips 中的占位符格式化为 LLM 可读文本。
  *
  * 使用方式：
  * ```ts
  * const chipRegistry = new ChipRegistry();
  * chipRegistry.register(domChipDef);
- *
- * const agent = new CodeAgent({
- *   formatUserMessage: chipRegistry.wrapFormatUserMessage(externalFormatUserMessage),
- *   // ...
- * });
+ * const formattedParams = chipRegistry.formatRequestParams(requestParams);
  * ```
+ *
+ * 内置 chip 类型（无需手动注册）：
+ * - `file`（FILE_CHIP_TYPE）：文件 chip，对应 Sender 上传的文本/代码文件
  */
 export class ChipRegistry {
   private _types = new Map<string, ChatChipDef>();
+
+  constructor() {
+    // 预注册内置 chip 类型（外部 register 同 type 可覆盖）
+    this._types.set(fileChipDef.type, fileChipDef);
+  }
 
   /** 注册一个 chip 类型（重复注册会覆盖） */
   register(def: ChatChipDef): void {
@@ -89,44 +157,27 @@ export class ChipRegistry {
   }
 
   /**
-   * 包装 formatUserMessage：在外部 formatUserMessage 执行之前，
-   * 先对 meta.chips 做占位符替换，然后把 chips 处理完的 message 传给外部函数。
-   *
-   * @param externalFormatUserMessage 外部（pluginAI 调用方）传入的 formatUserMessage，可为 undefined
-   * @returns 合并后的 formatUserMessage，可直接传给 CodeAgent options
+   * 格式化 request params：先按 chip type 分组调用 def.format，再返回新的 params。
+   * 不修改原对象；如果 message 没有变化，返回原 params 引用。
    */
-  wrapFormatUserMessage(
-  externalFormatUserMessage?: (params: any) => Promise<any> | any
-  ): (params: any) => Promise<any> {
-    return async (params: any) => {
-      // ── Step 1：chip 占位符替换（最先执行）
-      const chips = params.meta?.chips as ChatChipInstance[] | undefined;
-      let resolvedParams = params;
+  formatRequestParams<T extends { message: string; meta?: Record<string, any> }>(params: T): T {
+    const chips = params.meta?.chips as ChatChipInstance[] | undefined;
+    if (!chips?.length || this._types.size === 0) return params;
 
-      if (chips?.length && this._types.size > 0) {
-        // 按 type 分组，每种 def.format 只调一次，拿整条 message 做变换
-        const typeGroups = new Map<string, ChatChipInstance[]>();
-        for (const chip of chips) {
-          if (!typeGroups.has(chip.type)) typeGroups.set(chip.type, []);
-          typeGroups.get(chip.type)!.push(chip);
-        }
+    const typeGroups = new Map<string, ChatChipInstance[]>();
+    for (const chip of chips) {
+      if (!typeGroups.has(chip.type)) typeGroups.set(chip.type, []);
+      typeGroups.get(chip.type)!.push(chip);
+    }
 
-        let message = params.message as string;
-        for (const [type, groupChips] of Array.from(typeGroups)) {
-          const def = this._types.get(type);
-          if (def) {
-            message = def.format({ message, chips: groupChips });
-          }
-        }
-
-        if (message !== params.message) {
-          resolvedParams = { ...params, message };
-        }
+    let message = params.message;
+    for (const [type, groupChips] of Array.from(typeGroups)) {
+      const def = this._types.get(type);
+      if (def) {
+        message = def.format({ message, chips: groupChips });
       }
+    }
 
-      // ── Step 2：外部 formatUserMessage（如果有）
-      if (!externalFormatUserMessage) return resolvedParams;
-      return externalFormatUserMessage(resolvedParams);
-    };
+    return message === params.message ? params : { ...params, message };
   }
 }
