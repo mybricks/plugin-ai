@@ -567,8 +567,7 @@ function connectToAI(
 
       if (mainFiles.length === 0) {
         sections.push([
-          '## 前端工程',
-          'MyBricks的前端工程项目，需要遵循前端开发规范进行开发。',
+          '## 项目工程',
           '权限：读取、写入',
           '当前没有任何代码文件。可以使用类似 `index.tsx` 的路径来操作文件。建议使用初始化来同时生成多份文件。',
         ].join('\n'));
@@ -579,8 +578,7 @@ function connectToAI(
           return `- ${normalizeMainPath(f.path)} (${lineCount} lines)`;
         }).join('\n');
         sections.push([
-          '## 前端工程',
-          'MyBricks的前端工程项目，需要遵循前端开发规范进行开发。',
+          '## 项目工程',
           '权限：读取、写入',
           `总计：${mainFiles.length} 个文件（${suffixSummary}）`,
           '文件：',
