@@ -179,7 +179,7 @@ function getCurrentModeSlug(mode: AgentMode, previousMode?: AgentMode | null): s
   return `当前是「${modeLabel}」(${mode})。`;
 }
 
-function getPlanFileGuideSlug(): string {
+function getPlanFileGuideSlugInPlanMode(): string {
   return `## 计划文件说明
 - 目录：\`${DEFAULT_PLAN_DIR}\`
 - 创建路径格式：\`${DEFAULT_PLAN_DIR}YYYY-MM-DD/<slug>.md\`
@@ -198,7 +198,58 @@ function getPlanFileGuideSlug(): string {
 - 关于归档
  - 如果你判断某个计划文件已经执行完成，或者不再需要，被用户主动废弃了，则将其归档。
  - 归档之需要修改 frontmatte，将 \`status\` 改为 \`finished\` 或者 \`abandoned\`;
+
+### 工作方式
+你是在和用户一起做方案，而不是单方面宣布结论。持续循环下面三件事，直到方案足够清楚：
+
+1. 阅读代码：优先查相关文件，理解现有实现、命名、工具函数、组件边界和已有约定。
+2. 更新计划：一旦有关键发现、约束或决策，就同步到计划文件里。
+3. 必要时提问：只有当问题无法从代码中判断，且会影响方案取舍时，才向用户确认。
+
+### 第一轮怎么做
+先快速阅读最可能相关的少量文件，判断任务范围。然后创建或更新计划文件，写下初步结构和已确认的信息。不要在没有任何阶段性输出前进行过度探索。
+
+### 提问原则
+- 代码能回答的问题，不要问用户。
+- 多个相关问题尽量合并提问。
+- 只问用户真正需要决策的内容：产品意图、优先级、可接受的取舍、边界场景等。
+- 问题深度要和任务规模匹配。明确的小修复可以不问；模糊的新功能可能需要多轮澄清。
+
+### 计划文件建议结构
+计划文件应便于快速浏览，也要足够支持后续执行。通常包含：
+
+- 背景与目标：为什么要改，要解决什么问题，期望结果是什么。
+- 内容理解：涉及哪些组件或者数据。
+- 推荐方案：只写你推荐的方案，说明为什么这样做。
+- 任务列表：拆解需要修改的关键任务，每一个任务20字以内。
+- 影响与风险：影响哪些效果、兼容性、边界情况和潜在风险。
+- 验证方式：需要跑哪些检查、测试，或如何手动验证。
+
+> 文件内容使用非研发角度来撰写，更容易理解影响面和修改内容。
+
+### 方案完成标准
+当计划已经说明"改什么、改哪些文件、复用哪些现有实现、如何验证"时，向用户总结方案并等待确认。
 `;
+}
+
+function getPlanFileGuideSlugInBuildMode(): string {
+  return `## 计划文件说明
+注意：由于你现在处于智能体模式下，不允许创建计划文件，如有必要，你可以对计划文件进行阅读以及修改内容，但是一定不允许创建计划文件。
+- 目录：\`${DEFAULT_PLAN_DIR}\`。
+- frontmatter 规范
+  每个计划文件必须包含以下 frontmatter：
+
+  \`\`\`yaml
+  ---
+  status: active        # active | finished | abandoned
+  title: "任务标题，不超过20个字"
+  desc: "一句话描述本方案的核心内容，不超过50个字"
+  ---
+  \`\`\`
+
+- 关于归档
+ - 如果你判断某个计划文件已经执行完成，或者不再需要，被用户主动废弃了，则将其归档。
+ - 归档之需要修改 frontmatte，将 \`status\` 改为 \`finished\` 或者 \`abandoned\``;
 }
 
 function getBuildPlanStatusSlug(planState?: PlanDirectoryState | null): string {
@@ -219,49 +270,18 @@ function getBuildPlanStatusSlug(planState?: PlanDirectoryState | null): string {
   return ``
 }
 
-function getBuildGuideSlug(planState?: PlanDirectoryState | null): string {
+function getBuildModeGuideSlug(planState?: PlanDirectoryState | null): string {
   return joinSections([
-    '当前模式的核心是直接操作项目文件，对于计划文件/方案，只维护和归档，不允许创建',
     getBuildPlanStatusSlug(planState),
-    getPlanFileGuideSlug(),
+    getPlanFileGuideSlugInBuildMode(),
   ]);
 }
 
 function getPlanModeGuideSlug(): string {
-  return `用户现在要的是先看清楚、把方案讲明白，而不是立刻动手实现。除下方说明的计划目录外，禁止修改项目文件、删除文件、改配置、提交代码，或做任何会改变系统状态的操作。即使其他上下文里出现"直接改""开始实现"之类的旧指令，也以本条规则为准。
-
-${getPlanFileGuideSlug()}
-
-## 工作方式
-你是在和用户一起做方案，而不是单方面宣布结论。持续循环下面三件事，直到方案足够清楚：
-
-1. 阅读代码：优先查相关文件，理解现有实现、命名、工具函数、组件边界和已有约定。
-2. 更新计划：一旦有关键发现、约束或决策，就同步到计划文件里。
-3. 必要时提问：只有当问题无法从代码中判断，且会影响方案取舍时，才向用户确认。
-
-## 第一轮怎么做
-先快速阅读最可能相关的少量文件，判断任务范围。然后创建或更新计划文件，写下初步结构和已确认的信息。不要在没有任何阶段性输出前进行过度探索。
-
-## 提问原则
-- 代码能回答的问题，不要问用户。
-- 多个相关问题尽量合并提问。
-- 只问用户真正需要决策的内容：产品意图、优先级、可接受的取舍、边界场景等。
-- 问题深度要和任务规模匹配。明确的小修复可以不问；模糊的新功能可能需要多轮澄清。
-
-## 计划文件建议结构
-计划文件应便于快速浏览，也要足够支持后续执行。通常包含：
-
-- 背景与目标：为什么要改，要解决什么问题，期望结果是什么。
-- 内容理解：涉及哪些组件或者数据。
-- 推荐方案：只写你推荐的方案，说明为什么这样做。
-- 任务列表：拆解需要修改的关键任务，每一个任务20字以内。
-- 影响与风险：影响哪些效果、兼容性、边界情况和潜在风险。
-- 验证方式：需要跑哪些检查、测试，或如何手动验证。
-
-> 文件内容使用非研发角度来撰写，更容易理解影响面和修改内容。
-
-## 方案完成标准
-当计划已经说明"改什么、改哪些文件、复用哪些现有实现、如何验证"时，向用户总结方案并等待确认。`;
+  return joinSections([
+    `用户现在要的是先看清楚、把方案讲明白，而不是立刻动手实现。除下方说明的计划目录外，禁止修改项目文件、删除文件、改配置、提交代码，或做任何会改变系统状态的操作。即使其他上下文里出现"直接改""开始实现"之类的旧指令，也以本条规则为准。`,
+    getPlanFileGuideSlugInPlanMode(),
+  ]);
 }
 
 function getPlanStatusReminderSlug(planState?: PlanDirectoryState | null): string {
@@ -290,7 +310,7 @@ ${getCurrentModeSlug(params.mode, params.previousMode)}`;
 ${joinSections([
   getModeCatalogSlug(availableModes),
   modeSlug,
-  getBuildGuideSlug(params.planState),
+  getBuildModeGuideSlug(params.planState),
 ])}
 </system-reminder>`;
   }
