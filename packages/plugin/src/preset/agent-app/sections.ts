@@ -179,7 +179,8 @@ permissions:
 |  |  ├─ server                        # 可选，skill 下内置的服务目录，为当前 skill 提供接口
 |  |  |  ├─ index.ts                   # 必选，服务入口，在这里创建 Hono app
 ├─ index.tsx                           # 必选，前端入口文件，固定编码占位，与 前端示例 中 index.tsx 保持一致
-\`\`\``,
+\`\`\`
+IMPORTANT：每个 skill 是独立的功能单元，必须自包含。严禁跨 skill 引用或复用任何文件。`,
   },
   frontend: {
 
