@@ -9,6 +9,13 @@ import {
   createGrepTool,
   createBashTool,
   createSkillTool,
+  READ_TOOL_NAME,
+  WRITE_TOOL_NAME,
+  EDIT_TOOL_NAME,
+  MULTI_EDIT_TOOL_NAME,
+  DELETE_TOOL_NAME,
+  GREP_TOOL_NAME,
+  BASH_TOOL_NAME,
   USE_SKILL_TOOL_NAME,
 } from "./tools";
 import { buildModeSection, getActivePlanFile, type ActivePlanFile } from "../mode-manager";
@@ -180,6 +187,25 @@ export interface CodeAgentPlugin {
   additionalDirectories?: () => Promise<AdditionalDirectory[]>;
 }
 
+export type CodeAgentBuiltinToolName =
+  | typeof READ_TOOL_NAME
+  | typeof WRITE_TOOL_NAME
+  | typeof EDIT_TOOL_NAME
+  | typeof MULTI_EDIT_TOOL_NAME
+  | typeof DELETE_TOOL_NAME
+  | typeof GREP_TOOL_NAME
+  | typeof BASH_TOOL_NAME;
+
+const DEFAULT_BUILTIN_TOOLS: CodeAgentBuiltinToolName[] = [
+  READ_TOOL_NAME,
+  WRITE_TOOL_NAME,
+  EDIT_TOOL_NAME,
+  MULTI_EDIT_TOOL_NAME,
+  DELETE_TOOL_NAME,
+  GREP_TOOL_NAME,
+  BASH_TOOL_NAME,
+];
+
 // ─── 沙箱接口 ─────────────────────────────────────────────────────────────────
 
 /**
@@ -259,6 +285,16 @@ export interface CodeAgentOptions extends Omit<AgentOptions, "system"> {
    * 插件启用状态通过 enablePlugin / disablePlugin 控制，初始状态由 plugin.enabled 字段决定（默认 true）。
    */
   plugins?: CodeAgentPlugin[];
+  /**
+   * 控制 CodeAgent 内置文件工具。
+   *
+   * - undefined：启用默认内置工具
+   * - false / []：不启用任何内置文件工具
+   * - 指定工具名数组：只启用这些内置文件工具
+   *
+   * `tools` 仍然表示额外追加的自定义工具，不承担禁用内置工具的语义。
+   */
+  builtinTools?: false | CodeAgentBuiltinToolName[];
 }
 
 /** 虚拟 agent 资源路径前缀 */
@@ -381,6 +417,7 @@ export class CodeAgent extends Agent {
       system,
       subAgents,
       plugins = [],
+      builtinTools,
       ...agentOptions
     } = options;
 
@@ -472,15 +509,22 @@ export class CodeAgent extends Agent {
       ...(sandbox.getSandboxMetaSection ? { getSandboxMetaSection: sandbox.getSandboxMetaSection.bind(sandbox) } : {}),
     };
 
-    const sandboxTools: Tool[] = [
-      createReadTool(wrappedSandbox),
-      createWriteTool(wrappedSandbox),
-      createEditTool(wrappedSandbox),
-      createMultiEditTool(wrappedSandbox),
-      createDeleteTool(wrappedSandbox),
-      createGrepTool(wrappedSandbox),
-      createBashTool(wrappedSandbox),
+    const enabledBuiltinToolNames = builtinTools === false
+      ? []
+      : builtinTools ?? DEFAULT_BUILTIN_TOOLS;
+    const enabledBuiltinToolNameSet = new Set(enabledBuiltinToolNames);
+    const allSandboxTools: Array<[CodeAgentBuiltinToolName, Tool]> = [
+      [READ_TOOL_NAME, createReadTool(wrappedSandbox)],
+      [WRITE_TOOL_NAME, createWriteTool(wrappedSandbox)],
+      [EDIT_TOOL_NAME, createEditTool(wrappedSandbox)],
+      [MULTI_EDIT_TOOL_NAME, createMultiEditTool(wrappedSandbox)],
+      [DELETE_TOOL_NAME, createDeleteTool(wrappedSandbox)],
+      [GREP_TOOL_NAME, createGrepTool(wrappedSandbox)],
+      [BASH_TOOL_NAME, createBashTool(wrappedSandbox)],
     ];
+    const sandboxTools: Tool[] = allSandboxTools
+      .filter(([name]) => enabledBuiltinToolNameSet.has(name))
+      .map(([, tool]) => tool);
 
     const base = {
       skills: baseSkills,
