@@ -4,6 +4,7 @@ import type { ProviderConfig } from "@request/providers";
 import type { Tool } from "@agent/types";
 import type { CodeAgent } from "@agent/code-agent";
 import type { SkillFile } from "@agent/code-agent";
+import type { ChatPanelProps } from "@plugin/ui/chat";
 import type { FsFile } from "../lib/mem-fs";
 import type { RequestSnapshot } from "../lib/use-request-inspector";
 import type React from "react";
@@ -81,6 +82,8 @@ export interface TestCase {
   renderEmpty?: () => React.ReactNode;
   /** 是否让 ChatPanel 的消息滚动容器包含 Sender 区域。 */
   scrollWithSender?: boolean;
+  /** ChatPanel 工具消息展示形态。 */
+  messagesRenderVariant?: ChatPanelProps["messagesRenderVariant"];
   /** 在 Sender 下方渲染的自定义内容。 */
   renderSenderFooter?: () => React.ReactNode;
   /** 在右侧 Inspector 上方渲染的自定义操作区。 */

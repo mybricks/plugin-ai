@@ -2,11 +2,12 @@
  * 内置工具渲染器共享组件和工具函数。
  * 供 built-ins/ 下各渲染文件引用。
  */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Success, Loading, ErrorIcon } from "../../../components/icons";
 import { TextShimmer } from "../../../components/text-shimmer";
 import { ElapsedTime } from "../../../components/elapsed-time";
 import type { ToolRecord } from "./index";
+import { useChatPanel } from "../../chat-panel/context";
 import css from "./render.less";
 
 // ─── 状态图标 ─────────────────────────────────────────────────────────────────
@@ -50,6 +51,18 @@ export const Label = ({ tool, text }: { tool: ToolRecord; text: string }) =>
 // ─── 基础渲染（未注册专属渲染时的默认样式）────────────────────────────────────
 
 export const DefaultToolRenderer = ({ tool }: { tool: ToolRecord }) => {
+  const { messagesRenderVariant } = useChatPanel();
+
+  if (messagesRenderVariant === "line") {
+    return (
+      <LineToolRenderer
+        tool={tool}
+        title={`调用${tool.title ?? tool.name}工具`}
+        detail={formatToolDetail(tool)}
+      />
+    );
+  }
+
   return (
     <div className={css["tool-card"]}>
       <StatusIcon tool={tool} />
@@ -58,6 +71,102 @@ export const DefaultToolRenderer = ({ tool }: { tool: ToolRecord }) => {
     </div>
   )
 };
+
+export interface LineToolRendererProps {
+  tool: ToolRecord;
+  icon?: React.ReactElement;
+  title: string;
+  meta?: React.ReactNode;
+  detail?: React.ReactNode;
+  children?: React.ReactNode;
+}
+
+export const LineToolRenderer = ({ tool, icon, title, meta, detail, children }: LineToolRendererProps) => {
+  const [expanded, setExpanded] = useState(false);
+  const content = children ?? detail;
+  const canExpand = content !== undefined && content !== null && content !== false && content !== "";
+  const isPending = tool.status === "pending";
+
+  return (
+    <div className={css["tool-line"]}>
+      <div
+        className={`${css["tool-line-header"]}${canExpand ? ` ${css["tool-line-header-expandable"]}` : ""}`}
+        onClick={() => canExpand && setExpanded((prev) => !prev)}
+      >
+        <span className={css["tool-line-icon"]}>
+          <StatusIcon tool={tool} icon={icon} />
+        </span>
+        {isPending
+          ? <span className={css["tool-line-title"]}><TextShimmer>{title}</TextShimmer></span>
+          : <span className={css["tool-line-title"]}>{title}</span>}
+        {meta ? <span className={css["tool-line-meta"]}>{meta}</span> : null}
+        <LineDuration tool={tool} />
+        {canExpand ? (
+          <span className={css["tool-line-toggle"]}>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} width="1em" height="1em"><path d="M9 18l6-6-6-6"/></svg>
+          </span>
+        ) : null}
+      </div>
+      {canExpand && expanded ? (
+        <div className={css["tool-line-detail"]}>
+          {typeof content === "string" ? <pre>{content}</pre> : content}
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
+const LineDuration = ({ tool }: { tool: ToolRecord }) => {
+  const [elapsed, setElapsed] = useState(() => {
+    if (!tool.execStartTime) return 0;
+    return (tool.status !== "pending" && tool.execEndTime ? tool.execEndTime : Date.now()) - tool.execStartTime;
+  });
+
+  useEffect(() => {
+    if (!tool.execStartTime) return;
+
+    if (tool.status !== "pending" && tool.execEndTime) {
+      setElapsed(tool.execEndTime - tool.execStartTime);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setElapsed(Date.now() - tool.execStartTime!);
+    }, 200);
+    return () => clearInterval(timer);
+  }, [tool.execStartTime, tool.execEndTime, tool.status]);
+
+  if (!tool.execStartTime) return null;
+
+  return <span className={css["tool-line-duration"]}>耗时 {formatLineElapsed(elapsed)}</span>;
+};
+
+function formatLineElapsed(elapsed: number): string {
+  if (elapsed >= 60000) return `${(elapsed / 60000).toFixed(1)}m`;
+  if (elapsed >= 10000) return `${Math.floor(elapsed / 1000)}s`;
+  return `${(elapsed / 1000).toFixed(1)}s`;
+}
+
+export function formatToolDetail(tool: ToolRecord): string {
+  const parts: string[] = [];
+  if (tool.args && Object.keys(tool.args).length > 0) {
+    parts.push(`参数:\n${safeStringify(tool.args)}`);
+  }
+  if (tool.result?.output) {
+    parts.push(`结果:\n${String(tool.result.output)}`);
+  } else if (tool.error) {
+    parts.push(`错误:\n${String(tool.error)}`);
+  }
+  return parts.join("\n\n");
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
 
 // ─── 简单行级 diff ────────────────────────────────────────────────────────────
 

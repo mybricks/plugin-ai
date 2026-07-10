@@ -24,6 +24,8 @@ export interface MarkdownSkinConfig {
   plan?: string;
 }
 
+export type MessagesRenderVariant = "card" | "line";
+
 interface ChatPanelContextValue {
   /** 用户信息（头像、名称），用于消息气泡展示 */
   user?: User;
@@ -41,10 +43,13 @@ interface ChatPanelContextValue {
    * 不传时使用内置默认皮肤。
    */
   markdownSkin?: MarkdownSkinConfig;
+  /** 消息内工具调用的展示形态，默认 card。 */
+  messagesRenderVariant: MessagesRenderVariant;
 }
 
 const ChatPanelContext = createContext<ChatPanelContextValue>({
   disabled: false,
+  messagesRenderVariant: "card",
 });
 
 /** 在 ChatPanel 根节点注入面板级上下文 */

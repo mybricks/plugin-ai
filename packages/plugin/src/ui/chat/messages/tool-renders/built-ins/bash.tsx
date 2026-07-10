@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import { Code } from "../../../../components/icons";
 import type { ToolRecord } from "../index";
-import { StatusIcon, Duration } from "../shared";
+import { StatusIcon, Duration, LineToolRenderer } from "../shared";
+import { useChatPanel } from "../../../chat-panel/context";
 import css from "../render.less";
 
 export const BashRenderer = ({ tool }: { tool: ToolRecord }) => {
+  const { messagesRenderVariant } = useChatPanel();
   const [collapsed, setCollapsed] = useState(true);
 
   const command: string = tool.args?.command ?? "";
@@ -18,6 +20,17 @@ export const BashRenderer = ({ tool }: { tool: ToolRecord }) => {
   const output: string = tool.result?.output ?? "";
   const hasOutput = tool.status === "success" && !!output;
   const canToggle = hasOutput;
+
+  if (messagesRenderVariant === "line") {
+    return (
+      <LineToolRenderer
+        tool={tool}
+        icon={<Code />}
+        title={isPending ? `${title}...` : title}
+        meta={verb !== "bash" ? verb : undefined}
+      />
+    );
+  }
 
   return (
     <div className={css["code-card"]}>

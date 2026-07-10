@@ -60,6 +60,97 @@
   flex-shrink: 0;
 }
 
+// ── 行式工具展示 ─────────────────────────────────────────────────────────────
+
+.tool-line {
+  margin: 4px 0;
+  font-size: var(--chat-font-size, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  user-select: none;
+}
+
+.tool-line-header {
+  display: flex;
+  align-items: center;
+  gap: var(--chat-block-gap, 6px);
+  min-height: 28px;
+  cursor: default;
+}
+
+.tool-line-header-expandable {
+  cursor: pointer;
+}
+
+.tool-line-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--chat-icon-size, 12px);
+  height: var(--chat-icon-size, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.62;
+
+  svg { width: var(--chat-icon-size, 12px); height: var(--chat-icon-size, 12px); }
+}
+
+.tool-line-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--chat-font-size-sm, 12px);
+  color: var(--mybricks-text-color-main, #333);
+}
+
+.tool-line-meta {
+  flex: 0 0 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--chat-font-size-sm, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.45;
+}
+
+.tool-line-duration {
+  font-size: var(--chat-font-size-sm, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.62;
+  flex-shrink: 0;
+}
+
+.tool-line-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.38;
+  flex-shrink: 0;
+}
+
+.tool-line-detail {
+  margin: 2px 0 6px calc(var(--chat-icon-size, 12px) + var(--chat-block-gap, 6px));
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.56;
+  font-size: var(--chat-font-size-sm, 12px);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+
+  pre {
+    margin: 0;
+    font: inherit;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}
+
 // ── 代码卡片（write / edit 完成后展示）────────────────────────────────────────
 
 .code-card {

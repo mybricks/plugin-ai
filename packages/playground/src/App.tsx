@@ -486,6 +486,7 @@ export default function App() {
                   ) : (
                     <>
                       <span>size=large</span>
+                      <span>messagesRenderVariant=line</span>
                       <span>className=pg-chat-panel-skin</span>
                       <span>style=custom variables</span>
                     </>
@@ -519,6 +520,7 @@ export default function App() {
                   renderEmpty={activeCase?.renderEmpty}
                   scrollWithSender={activeCase?.scrollWithSender}
                   renderSenderFooter={activeCase?.renderSenderFooter}
+                  messagesRenderVariant={activeCase?.messagesRenderVariant}
                   actionBar={["copy", "delete", "retry"]}
                   placeholder={isDefaultChatPanelSkin ? "输入一句话，继续检查默认皮肤下的 ChatPanel" : "输入一句话，继续检查 large + 自定义变量下的 ChatPanel"}
                   markdownSkin={isDefaultChatPanelSkin ? undefined : {

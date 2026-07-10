@@ -8,6 +8,7 @@ export {
   StatusIcon,
   Duration,
   Label,
+  LineToolRenderer,
   CodeCard,
   PendingCodeCard,
   StreamingCodeCard,

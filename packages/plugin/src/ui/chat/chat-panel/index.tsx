@@ -13,7 +13,7 @@ import type { ActionBarItem, HistoryCollapseConfig } from "../messages";
 import { useHistoryCollapse } from "./use-history-collapse";
 import { Header } from "./header";
 import { ChatPanelProvider } from "./context";
-import type { MarkdownSkinConfig } from "./context";
+import type { MarkdownSkinConfig, MessagesRenderVariant } from "./context";
 import type { MessageRecord } from "../use-session";
 import css from "./index.less";
 
@@ -71,6 +71,8 @@ export interface ChatPanelProps {
   renderSenderFooter?: () => React.ReactNode;
   /** 面板尺寸，默认 small；通过 CSS 变量控制消息列表、Sender 和卡片间距/字号 */
   size?: ChatPanelSize;
+  /** 消息内工具调用的展示形态，默认 card。 */
+  messagesRenderVariant?: MessagesRenderVariant;
   /**
    * 是否让消息滚动容器包含 Sender 区域。
    * 默认 false，保持 Sender 位于消息滚动容器外部的旧布局；
@@ -144,6 +146,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   renderEmpty,
   renderSenderFooter,
   size = "small",
+  messagesRenderVariant = "card",
   scrollWithSender = false,
   className,
   style,
@@ -347,7 +350,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   ) : senderNode;
 
   return (
-    <ChatPanelProvider value={{ user, copilot, disabled: isDisabled, renderUserMessage, markdownSkin }}>
+    <ChatPanelProvider value={{ user, copilot, disabled: isDisabled, renderUserMessage, markdownSkin, messagesRenderVariant }}>
       <div
         className={classNames(css["chat-panel"], css[`size-${size}`], className)}
         style={style}
@@ -383,3 +386,4 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
 });
 
 export { ChatPanel };
+export type { MessagesRenderVariant } from "./context";

@@ -21,7 +21,7 @@ import { createDomChip } from "./utils/dom-info";
 
 // ─── 工具类型重导出 ────────────────────────────────────────────────────────────
 
-export { Agent, CodeAgent, IDBHistory } from "../../agent/src";
+export { Agent, CodeAgent, IDBHistory, IDBSandbox } from "../../agent/src";
 export type { AdditionalDirectory, AgentEventMap, AgentsMdConfig, CodeAgentPlugin, SkillFile, UnifiedFile } from "../../agent/src";
 export { createRequestAsStream, createOnUpload } from "../../request/src";
 export type { RequestAsStreamFn } from "../../request/src";

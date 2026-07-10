@@ -10,7 +10,7 @@ const RICH_MARKDOWN = `我把 ChatPanel 的 **large 模式 + 自定义变量** �
 ## 覆盖范围
 
 - **消息基础结构**：用户气泡、AI 文本、时间、头像和消息组间距。
-- **普通工具调用**：历史记录里只放了 \`read_file\`、\`edit_file\`、\`check-status\` 这类普通工具。
+- **工具调用样式**：历史记录里包含 \`read_file\` 和 \`bash mv\`，用于检查 \`messagesRenderVariant="line"\` 的可展开行式工具展示。
 - **Markdown 富文本**：包含标题、列表、表格、引用、代码块和链接。
 - **large 模式**：通过 \`size="large"\` 放大字号、间距、Sender 和工具卡密度。
 - **自定义变量注入**：不新增内部变量，只从 \`ChatPanel\` 根节点注入现有 \`--mybricks-*\`。
@@ -88,6 +88,7 @@ flowchart TD
   agent={agent}
   header={false}
   size="large"
+  messagesRenderVariant="line"
   className="pg-chat-panel-skin"
   style={{
     "--mybricks-color-primary": "#2563eb",
@@ -121,9 +122,10 @@ export const chatPanelSkinHistoryCase: TestCase = {
   group: "特殊皮肤",
   priority: "P1",
   description: "专门预览 ChatPanel 右侧 UI：header=false、size=large、自定义 CSS 变量、历史工具调用和丰富 Markdown。",
-  expectedBehavior: "主区域不显示 Request Inspector / MemFS，右侧只展示 large 模式 + 自定义变量的 ChatPanel。",
+  expectedBehavior: "主区域不显示 Request Inspector / MemFS，右侧只展示 large 模式 + 自定义变量的 ChatPanel，read 和 bash/mv 工具使用 line 模式渲染。",
   playgroundLayout: "chat-panel-skin",
   chatPanelSkin: "custom",
+  messagesRenderVariant: "line",
   scrollWithSender: true,
   renderSenderFooter: () => (
     <div className="pg-chat-skin-sender-footer">
@@ -165,13 +167,12 @@ export const chatPanelSkinHistoryCase: TestCase = {
           content: RICH_MARKDOWN,
           toolCalls: [
             {
-              name: "edit_file",
+              name: "bash",
               args: {
-                path: "packages/playground/src/App.tsx",
-                old_str: "<ChatPanel agent={agent as any} title=\"playground\" header={true} />",
-                new_str: "<ChatPanel agent={agent as any} header={false} className=\"pg-chat-panel-skin\" />",
+                command: "mv packages/playground/src/old-chat-panel-skin.tsx packages/playground/src/chat-panel-skin.tsx",
+                description: "移动皮肤预览文件",
               },
-              result: "Edited packages/playground/src/App.tsx",
+              result: "renamed packages/playground/src/old-chat-panel-skin.tsx -> packages/playground/src/chat-panel-skin.tsx",
               durationMs: 520,
             },
             {
