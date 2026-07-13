@@ -1,8 +1,11 @@
-import type { PluginAIParams } from "../../index";
-import type { PromptSections } from "../../prompts";
+import type { CodeAgentPromptOptions } from "../../../../agent/src";
 
 export interface CopilotAppPromptBuilderOptions {
   name: string;
+}
+
+export interface CopilotAppPromptBuilderResult {
+  promptOptions: CodeAgentPromptOptions;
 }
 
 function createIdentitySection(name: string): string {
@@ -44,15 +47,13 @@ IMPORTANT：绝对禁止为了获取已有 UI 卡片的数据而重新渲染一�
 `;
 }
 
-export function copilotAppPromptBuilder(options: CopilotAppPromptBuilderOptions): Partial<PluginAIParams> {
+export function copilotAppPromptBuilder(options: CopilotAppPromptBuilderOptions): CopilotAppPromptBuilderResult {
   const { name } = options;
 
   return {
-    promptSections: {
-      agent: {
-        identitySection: createIdentitySection(name),
-        usingToolsSection: createUsingToolsSection(),
-      },
-    } satisfies PromptSections,
+    promptOptions: {
+      identitySection: createIdentitySection(name),
+      usingToolsSection: createUsingToolsSection(),
+    },
   };
 }
