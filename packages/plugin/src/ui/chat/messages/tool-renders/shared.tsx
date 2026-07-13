@@ -57,7 +57,7 @@ export const DefaultToolRenderer = ({ tool }: { tool: ToolRecord }) => {
     return (
       <LineToolRenderer
         tool={tool}
-        title={`调用${tool.title ?? tool.name}工具`}
+        title={tool.title ?? tool.name}
         detail={formatToolDetail(tool)}
       />
     );
