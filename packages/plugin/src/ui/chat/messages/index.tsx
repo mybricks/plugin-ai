@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useMemo, useState } from "react";
 import classNames from "classnames";
 import markdownit from "markdown-it";
-import { Image } from "antd";
 import { TextShimmer } from "../../components/text-shimmer";
 import { AttachmentsList } from "../../components/attachments";
+import { ImagePreviewGroup } from "../../components/image-preview";
 import { ElapsedTime } from "../../components/elapsed-time";
 import type { MessageRecord } from "../use-session";
 import type { ToolCallRecord, WarmupIter } from "../../../../../agent/src/types";
@@ -678,19 +678,13 @@ const MarkdownMessage = ({ message, className }: { message: string; className?: 
   return (
     <>
       <div className={classNames(css["message-content"], skinClass, className)} ref={ref} onClick={handleClick} />
-      <div style={{ display: "none" }}>
-        <Image.PreviewGroup
-          preview={{
-            visible: previewVisible,
-            onVisibleChange: setPreviewVisible,
-            current: previewCurrent,
-          }}
-        >
-          {imageUrls.map((src, index) => (
-            <Image key={`${src}-${index}`} src={src} />
-          ))}
-        </Image.PreviewGroup>
-      </div>
+      <ImagePreviewGroup
+        images={imageUrls}
+        visible={previewVisible}
+        current={previewCurrent}
+        onVisibleChange={setPreviewVisible}
+        onCurrentChange={setPreviewCurrent}
+      />
     </>
   );
 };

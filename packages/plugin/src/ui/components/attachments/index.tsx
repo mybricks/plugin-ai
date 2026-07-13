@@ -2,7 +2,7 @@ import React, { useRef, useState } from "react";
 import { Close } from "../icons";
 import css from "./index.less";
 import classNames from "classnames";
-import { Image } from "antd";
+import { ImagePreviewGroup } from "../image-preview";
 
 interface Attachment {
   type: "image";
@@ -43,19 +43,13 @@ const AttachmentsList = (props: AttachmentsProps) => {
           />
         )
       })}
-      <div style={{ display: 'none' }}>
-        <Image.PreviewGroup
-          preview={{
-            visible: preiviewVisible,
-            onVisibleChange: setPreiviewVisible,
-            current: preiviewCurrent,
-          }}
-        >
-          {previewableAttachments.map((attachment, index) => (
-            <Image key={index} src={attachment.content} />
-          ))}
-        </Image.PreviewGroup>
-      </div>
+      <ImagePreviewGroup
+        images={previewableAttachments.map((attachment) => attachment.content)}
+        visible={preiviewVisible}
+        current={preiviewCurrent}
+        onVisibleChange={setPreiviewVisible}
+        onCurrentChange={setPreiviewCurrent}
+      />
     </div>
   )
 }
