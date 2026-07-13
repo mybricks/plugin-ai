@@ -2,19 +2,22 @@ import type { PluginAIParams } from "../../index";
 import type { PromptSections } from "../../prompts";
 import { fullStackAppPromptSection } from './sections'
 
+/** @deprecated Use the agent-app preset exports instead. */
 export { fullStackAppPromptSection } from './sections'
 
+/** @deprecated Use PluginAIPreset from the agent-app preset instead. */
 export type PluginAIPreset = Partial<PluginAIParams>;
 
+/** @deprecated The full-stack-app preset is deprecated. */
 export type FullStackAppDatabaseType = "PostgreSQL" | "MySQL";
 
+/** @deprecated The full-stack-app preset is deprecated. */
 export interface FullStackAppPromptBuilderOptions {
   dbType?: FullStackAppDatabaseType;
 }
 
 /**
- * 
- * @deprecated
+ * @deprecated Use the agent-app preset exports instead.
  */
 export function fullStackAppPromptBuilder(options: FullStackAppPromptBuilderOptions = {}): PluginAIPreset {
   const dbType = options.dbType ?? "PostgreSQL";

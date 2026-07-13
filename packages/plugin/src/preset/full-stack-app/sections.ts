@@ -4,6 +4,7 @@ import { INIT_PROJECT_TOOL_NAME } from "../../sandbox/tools/init-project";
 
 import { frontend, backend } from './../common/sections'
 
+/** @deprecated Use the agent-app preset exports instead. */
 export const fullStackAppPromptSection = {
   agent: {
     identitySection: `你是一个通用代码助手，面向软件工程任务协助用户理解、修改、生成和维护项目代码。
