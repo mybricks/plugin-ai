@@ -1,18 +1,63 @@
-import type { CodeAgentPromptOptions } from "../../../../agent/src";
+import {
+  BASH_TOOL_NAME,
+  READ_TOOL_NAME,
+  type AgentOptions,
+  type CodeAgentBuiltinToolName,
+  type CodeAgentOptions,
+  type CodeAgentPromptOptions,
+  type Tool,
+} from "../../../../agent/src";
 
 export interface CopilotAppPromptBuilderOptions {
   name: string;
+  soulMd?: string;
+  agentsMd?: string;
+  builtInToolsMd?: string;
 }
 
 export interface CopilotAppPromptBuilderResult {
   promptOptions: CodeAgentPromptOptions;
 }
 
-function createIdentitySection(name: string): string {
+export interface BusinessSkillCard {
+  name?: string;
+  title?: string;
+  description?: string;
+  md?: string;
+  config?: unknown;
+  props?: unknown;
+  apis?: Array<{
+    name?: string;
+    description?: string;
+  }>;
+}
+
+export interface BusinessSkill {
+  name: string;
+  title?: string;
+  description?: string;
+  md?: string;
+  cards?: BusinessSkillCard[];
+  tools?: Tool[];
+}
+
+export interface CopilotAgentOptionBuilderOptions extends CodeAgentOptions {
+  businessSkills?: BusinessSkill[];
+}
+
+export type CopilotAgentOptionBuilderResult = CodeAgentOptions;
+
+function joinSections(sections: Array<string | undefined>): string {
+  return sections.map((section) => section?.trim()).filter(Boolean).join("\n\n");
+}
+
+function createIdentitySection(name: string, soulMd?: string, agentsMd?: string): string {
+  const resolvedSoulMd = soulMd?.trim() || `你是一个 ${name}，可以通过下方说明和可用的工具，协助用户达成完成任务，达成目的。`;
+
   return `你是一个个人助手，可以通过下方说明和可用的工具，协助用户达成完成任务，达成目的。
 
 # SOUL定义 - 你是谁
-你是一个 ${name}，可以通过下方说明和可用的工具，协助用户达成完成任务，达成目的。
+${resolvedSoulMd}
 
 ## 行为准则
 **真正有帮助，而不是表演式有帮助。** 跳过“好问题！”和“我很乐意帮忙！” - 直接帮忙。
@@ -28,10 +73,10 @@ function createIdentitySection(name: string): string {
 
 ## 输出格式
 你的输出内容将显示在聊天界面中，该聊天界面支持渲染 Markdown 格式内容。
-`;
+${agentsMd?.trim() ? `\n${agentsMd.trim()}\n` : ""}`;
 }
 
-function createUsingToolsSection(): string {
+function createUsingToolsSection(builtInToolsMd?: string): string {
   return `# 工具使用
 
 ## 调用原则
@@ -44,16 +89,111 @@ function createUsingToolsSection(): string {
 - show_ui_card：用于在聊天界面中给用户展示对应功能或信息的 UI 卡片。展示出来的 UI 卡片是**有状态的**，卡片对外提供 API 供 \`call_ui_card_api\` 调用，以获取卡片内部状态、数据信息。
 - call_ui_card_api：用于查询已经展示出来的 UI 卡片的内部状态或数据。
 IMPORTANT：绝对禁止为了获取已有 UI 卡片的数据而重新渲染一个新的 UI 卡片，应使用 \`call_ui_card_api\` 查询 UI 卡片数据。
-`;
+${builtInToolsMd?.trim() ? `\n${builtInToolsMd.trim()}\n` : ""}`;
+}
+
+function formatJsonLike(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function stripMarkdownFrontmatter(md: string | undefined): string | undefined {
+  const content = md?.trim();
+  if (!content) return undefined;
+  if (!content.startsWith("---")) return content;
+
+  const endIndex = content.indexOf("\n---", 3);
+  if (endIndex < 0) return content;
+
+  return content.slice(endIndex + 4).trim();
+}
+
+function buildBusinessCardsSection(cards: BusinessSkillCard[] | undefined): string {
+  if (!cards?.length) return "";
+
+  const cardLines = cards.map((card) => {
+    const lines = [
+      `- name: \`${card.name ?? ""}\`  title: ${card.title ?? ""}  desc: ${card.description ?? ""}`.trim(),
+    ];
+    const config = formatJsonLike(card.config ?? card.props);
+    if (config) lines.push(`  - config: ${config}`);
+    if (card.md?.trim()) lines.push(`  - md: ${card.md.trim()}`);
+    if (card.apis?.length) {
+      const apis = card.apis
+        .map((api) => `    - ${api.name ?? ""}: ${api.description ?? ""}`)
+        .join("\n");
+      lines.push(`  - apis:\n${apis}`);
+    }
+    return lines.join("\n");
+  });
+
+  return `## 可用卡片\n${cardLines.join("\n")}`;
+}
+
+function buildBusinessContextSection(businessSkills: BusinessSkill[] | undefined): string {
+  if (!businessSkills?.length) return "";
+
+  const skillBlocks = businessSkills.map((skill) => {
+    return joinSections([
+      `# ${skill.title ?? skill.name}`,
+      [
+        `name: ${skill.name}`,
+        skill.title ? `title: ${skill.title}` : undefined,
+        skill.description ? `description: ${skill.description}` : undefined,
+      ].filter(Boolean).join("\n"),
+      stripMarkdownFrontmatter(skill.md),
+      buildBusinessCardsSection(skill.cards),
+    ]);
+  });
+
+  return `<business_context>\n以下是当前可用的各类能力指导。\n\n${skillBlocks.join("\n\n---\n\n")}\n</business_context>`;
+}
+
+function collectBusinessTools(businessSkills: BusinessSkill[] | undefined): Tool[] {
+  return businessSkills?.flatMap((skill) => skill.tools ?? []) ?? [];
 }
 
 export function copilotAppPromptBuilder(options: CopilotAppPromptBuilderOptions): CopilotAppPromptBuilderResult {
-  const { name } = options;
+  const { name, soulMd, agentsMd, builtInToolsMd } = options;
 
   return {
     promptOptions: {
-      identitySection: createIdentitySection(name),
-      usingToolsSection: createUsingToolsSection(),
+      identitySection: createIdentitySection(name, soulMd, agentsMd),
+      usingToolsSection: createUsingToolsSection(builtInToolsMd),
+    },
+  };
+}
+
+export function copilotAgentOptionBuilder(options: CopilotAgentOptionBuilderOptions): CopilotAgentOptionBuilderResult {
+  const {
+    businessSkills,
+    tools,
+    disabledModes,
+    builtinTools,
+    getAttachmentContextMessages,
+    ...restOptions
+  } = options;
+  const businessTools = collectBusinessTools(businessSkills);
+  const defaultDisabledModes: AgentOptions["disabledModes"] = ["plan"];
+  const defaultBuiltinTools: CodeAgentBuiltinToolName[] = [READ_TOOL_NAME, BASH_TOOL_NAME];
+
+  return {
+    ...restOptions,
+    disabledModes: disabledModes ?? defaultDisabledModes,
+    builtinTools: builtinTools ?? defaultBuiltinTools,
+    tools: [...businessTools, ...(tools ?? [])],
+    getAttachmentContextMessages: async (ctx) => {
+      const sections: string[] = [];
+      const businessContext = buildBusinessContextSection(businessSkills);
+      if (businessContext) sections.push(businessContext);
+      const extra = await getAttachmentContextMessages?.(ctx);
+      if (extra?.length) sections.push(...extra);
+      return sections;
     },
   };
 }

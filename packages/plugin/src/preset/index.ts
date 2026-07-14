@@ -1,7 +1,13 @@
 export * from "./agent-app";
 
-export { copilotAppPromptBuilder } from "./copilot";
-export type { CopilotAppPromptBuilderOptions, CopilotAppPromptBuilderResult } from "./copilot";
+export { copilotAgentOptionBuilder, copilotAppPromptBuilder } from "./copilot";
+export type {
+  BusinessSkill,
+  CopilotAgentOptionBuilderOptions,
+  CopilotAgentOptionBuilderResult,
+  CopilotAppPromptBuilderOptions,
+  CopilotAppPromptBuilderResult,
+} from "./copilot";
 
 /** @deprecated Use the agent-app preset exports instead. */
 export { fullStackAppPromptBuilder } from "./full-stack-app";
