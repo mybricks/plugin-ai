@@ -86,9 +86,10 @@ export const LineToolRenderer = ({ tool, icon, title, meta, detail, children }: 
   const content = children ?? detail;
   const canExpand = content !== undefined && content !== null && content !== false && content !== "";
   const isPending = tool.status === "pending";
+  const isFinished = !isPending;
 
   return (
-    <div className={css["tool-line"]}>
+    <div className={`${css["tool-line"]}${isFinished ? ` ${css["tool-line-finished"]}` : ""}`}>
       <div
         className={`${css["tool-line-header"]}${canExpand ? ` ${css["tool-line-header-expandable"]}` : ""}`}
         onClick={() => canExpand && setExpanded((prev) => !prev)}
@@ -117,6 +118,7 @@ export const LineToolRenderer = ({ tool, icon, title, meta, detail, children }: 
 };
 
 const LineDuration = ({ tool }: { tool: ToolRecord }) => {
+  const minVisibleElapsed = 1000;
   const [elapsed, setElapsed] = useState(() => {
     if (!tool.execStartTime) return 0;
     return (tool.status !== "pending" && tool.execEndTime ? tool.execEndTime : Date.now()) - tool.execStartTime;
@@ -137,6 +139,7 @@ const LineDuration = ({ tool }: { tool: ToolRecord }) => {
   }, [tool.execStartTime, tool.execEndTime, tool.status]);
 
   if (!tool.execStartTime) return null;
+  if (tool.status !== "pending" && elapsed < minVisibleElapsed) return null;
 
   return <span className={css["tool-line-duration"]}>耗时 {formatLineElapsed(elapsed)}</span>;
 };

@@ -89,7 +89,11 @@ const FileIcon = () => (
 )
 
 const Skill = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M4.5 5.5c0-.83.67-1.5 1.5-1.5h4c1.1 0 2 .9 2 2v14c0-1.1-.9-2-2-2H6c-.83 0-1.5-.67-1.5-1.5v-11Z" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M19.5 5.5c0-.83-.67-1.5-1.5-1.5h-4c-1.1 0-2 .9-2 2v14c0-1.1.9-2 2-2h4c.83 0 1.5-.67 1.5-1.5v-11Z" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M8 8h1.5M8 11h1.5M14.5 8H16M14.5 11H16" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
+  </svg>
 )
 
 export { ArrowUp, Attachment, Loading, Close, Success, Send, Delete, Export, Chat, Code, Agent, Vibe, Check, Eye, Pencil, FileWrite, ErrorIcon, FileIcon, Skill }

@@ -72,8 +72,7 @@
 .tool-line-header {
   display: flex;
   align-items: center;
-  gap: var(--chat-block-gap, 6px);
-  min-height: 28px;
+  gap: 4px;
   cursor: default;
 }
 
@@ -102,6 +101,7 @@
   text-overflow: ellipsis;
   font-size: var(--chat-font-size-sm, 12px);
   color: var(--mybricks-text-color-main, #333);
+  opacity: 0.62;
 }
 
 .tool-line-meta {
@@ -119,6 +119,7 @@
   color: var(--mybricks-text-color-main, #333);
   opacity: 0.62;
   flex-shrink: 0;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
 }
 
 .tool-line-toggle {
@@ -132,6 +133,27 @@
   color: var(--mybricks-text-color-main, #333);
   opacity: 0.38;
   flex-shrink: 0;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+}
+
+.tool-line-finished {
+  .tool-line-duration,
+  .tool-line-toggle {
+    visibility: hidden;
+    opacity: 0;
+  }
+
+  &:hover {
+    .tool-line-duration {
+      visibility: visible;
+      opacity: 0.62;
+    }
+
+    .tool-line-toggle {
+      visibility: visible;
+      opacity: 0.38;
+    }
+  }
 }
 
 .tool-line-detail {
