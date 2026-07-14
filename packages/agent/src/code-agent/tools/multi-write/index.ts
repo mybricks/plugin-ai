@@ -12,6 +12,7 @@ export const MULTI_WRITE_TOOL_NAME = "multi_write";
 export function createMultiWriteTool(adapter: Sandbox): Tool {
   return {
     name: MULTI_WRITE_TOOL_NAME,
+    limits: { maxToken: false },
     description: `批量写入多个文件到项目中。一次调用写入多个文件，比多次调用 ${WRITE_TOOL_NAME} 更高效。
 特别适合空项目创建文件时使用，一次尽可能多创建文件，但不得超过6个。
 

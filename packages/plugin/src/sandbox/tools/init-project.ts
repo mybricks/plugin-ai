@@ -378,6 +378,7 @@ export function createInitProjectTool(sandbox: Sandbox): Tool {
   return {
     name: INIT_PROJECT_TOOL_NAME,
     title: "生成项目文件",
+    limits: { maxToken: false },
     description:
       "对空项目进行快速开发，根据需求生成并写入所需的所有文件",
     parameters: {

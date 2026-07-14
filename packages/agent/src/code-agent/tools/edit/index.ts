@@ -71,6 +71,7 @@ function appendActionHint(
 export function createEditTool(adapter: Sandbox): Tool {
   return {
     name: EDIT_TOOL_NAME,
+    limits: { maxToken: false },
     description: `对文件中的内容进行精确的字符串替换。
 
 用法：

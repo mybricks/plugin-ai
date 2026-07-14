@@ -61,6 +61,7 @@ function appendActionHint(
 export function createMultiEditTool(adapter: Sandbox): Tool {
   return {
     name: MULTI_EDIT_TOOL_NAME,
+    limits: { maxToken: false },
     description: `批量编辑多个文件，对每个文件进行精确的字符串替换。一次调用可以对多个文件同时进行编辑，比多次调用 ${EDIT_TOOL_NAME} 更高效。
 警告：
 - 如果 old_str 与文件内容不完全匹配（包括空白），工具将失败

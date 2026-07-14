@@ -549,9 +549,11 @@ export interface ToolLimits {
   /**
    * 工具 output 的最大 token 数。
    * 超过时以 error 替换真实 output，引导模型缩小查询范围。
+   * 设置为 false 时跳过通用 output token 限制，适用于文件写入/编辑等
+   * output 本身不会把大内容塞回上下文的工具。
    * 不设置时使用全局默认值 TOOL_OUTPUT_MAX_TOKENS（25_000）。
    */
-  maxToken?: number;
+  maxToken?: number | false;
 }
 
 export interface Tool {

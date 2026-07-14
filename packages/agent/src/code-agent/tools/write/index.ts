@@ -11,6 +11,7 @@ export const WRITE_TOOL_NAME = "write_file";
 export function createWriteTool(adapter: Sandbox): Tool {
   return {
     name: WRITE_TOOL_NAME,
+    limits: { maxToken: false },
     description: `写入单个文件到项目中。建议并行多次调用，同时写入多个文件以节省时间。
 
 IMPORTANT: All string values must use raw Unicode characters. Never escape any character as \\uXXXX regardless of language
