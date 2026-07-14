@@ -87,8 +87,11 @@ function createUsingToolsSection(builtInToolsMd?: string): string {
 
 ## UI 卡片相关工具
 - show_ui_card：用于在聊天界面中给用户展示对应功能或信息的 UI 卡片。展示出来的 UI 卡片是**有状态的**，卡片对外提供 API 供 \`call_ui_card_api\` 调用，以获取卡片内部状态、数据信息。
-- call_ui_card_api：用于查询已经展示出来的 UI 卡片的内部状态或数据。
+- call_ui_card_api：用于查询已经展示出来的 UI 卡片的内部状态或数据，不要对 UI 内容重复说明，用户是可以看见的。
+
+IMPORTANT：call_ui_card_api 只是用来让给你感知UI内容，不要把 UI 卡片 作为检索工具，接口等其他上下文更适合作为检索等论据支持。
 IMPORTANT：绝对禁止为了获取已有 UI 卡片的数据而重新渲染一个新的 UI 卡片，应使用 \`call_ui_card_api\` 查询 UI 卡片数据。
+
 ${builtInToolsMd?.trim() ? `\n${builtInToolsMd.trim()}\n` : ""}`;
 }
 
