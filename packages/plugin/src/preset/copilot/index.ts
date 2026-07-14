@@ -102,17 +102,6 @@ function formatJsonLike(value: unknown): string | undefined {
   }
 }
 
-function stripMarkdownFrontmatter(md: string | undefined): string | undefined {
-  const content = md?.trim();
-  if (!content) return undefined;
-  if (!content.startsWith("---")) return content;
-
-  const endIndex = content.indexOf("\n---", 3);
-  if (endIndex < 0) return content;
-
-  return content.slice(endIndex + 4).trim();
-}
-
 function buildBusinessCardsSection(cards: BusinessSkillCard[] | undefined): string {
   if (!cards?.length) return "";
 
@@ -146,7 +135,7 @@ function buildBusinessContextSection(businessSkills: BusinessSkill[] | undefined
         skill.title ? `title: ${skill.title}` : undefined,
         skill.description ? `description: ${skill.description}` : undefined,
       ].filter(Boolean).join("\n"),
-      stripMarkdownFrontmatter(skill.md),
+      skill.md?.trim(),
       buildBusinessCardsSection(skill.cards),
     ]);
   });
