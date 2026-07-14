@@ -1,4 +1,5 @@
 import React, { createContext, useContext } from "react";
+import type MarkdownIt from "markdown-it";
 import type { MessageRecord } from "../use-session";
 
 interface User {
@@ -24,6 +25,15 @@ export interface MarkdownSkinConfig {
   plan?: string;
 }
 
+/**
+ * Markdown 渲染配置。
+ * 当前只作用于 messages 中的 MarkdownMessage，不影响 plan / PRD 等其他 markdown 渲染入口。
+ */
+export interface ChatMarkdownItConfig {
+  /** 外部可在这里注册 markdown-it plugin、renderer.rules 或自定义 rule。 */
+  configure?: (md: MarkdownIt) => void;
+}
+
 export type MessagesRenderVariant = "card" | "line";
 
 interface ChatPanelContextValue {
@@ -43,6 +53,8 @@ interface ChatPanelContextValue {
    * 不传时使用内置默认皮肤。
    */
   markdownSkin?: MarkdownSkinConfig;
+  /** messages 专用 Markdown 扩展配置。 */
+  markdownit?: ChatMarkdownItConfig;
   /** 消息内工具调用的展示形态，默认 card。 */
   messagesRenderVariant: MessagesRenderVariant;
 }

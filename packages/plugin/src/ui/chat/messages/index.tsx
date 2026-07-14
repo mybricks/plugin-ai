@@ -29,8 +29,6 @@ import { SuggestionsBlock } from "./action-cards/suggestions-card";
 import { ActionBar } from "./action-bar";
 import { context } from "../../../context";
 
-const md = markdownit();
-
 /** 将通用网络失败映射为用户友好的提示；其余错误保留原始 message。 */
 function toUserFriendlyError(msg: string): string {
   if (msg === 'Failed to fetch' || msg === 'Load failed') {
@@ -630,10 +628,15 @@ const MarkdownMessage = ({ message, className }: { message: string; className?: 
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewCurrent, setPreviewCurrent] = useState(0);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
-  const { markdownSkin } = useChatPanel();
+  const { markdownSkin, markdownit: markdownitConfig } = useChatPanel();
 
   // 优先使用外部自定义皮肤，否则回退内置 skin-message
   const skinClass = markdownSkin?.message ?? messageSkinCss["markdown-skin-message"];
+  const md = useMemo(() => {
+    const instance = markdownit();
+    markdownitConfig?.configure?.(instance);
+    return instance;
+  }, [markdownitConfig]);
 
   useEffect(() => {
     if (!ref.current) return;

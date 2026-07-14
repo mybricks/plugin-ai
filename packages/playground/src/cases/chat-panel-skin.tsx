@@ -1,9 +1,72 @@
 import React from "react";
+import type MarkdownIt from "markdown-it";
 import type { TestCase } from "./types";
 import { makeScriptedRequest } from "../lib/scripted-request";
 import { makeTurn } from "../lib/fixtures";
 
 const baseTime = Date.now() - 14 * 60 * 1000;
+
+function configurePlaygroundFootnoteMarkdown(md: MarkdownIt) {
+  md.core.ruler.after("inline", "pg_collect_alert_footnotes", (state) => {
+    const footnotes: Record<string, string> = {};
+    const tokens = state.tokens;
+
+    for (let idx = 0; idx < tokens.length - 2; idx += 1) {
+      const openToken = tokens[idx];
+      const inlineToken = tokens[idx + 1];
+      const closeToken = tokens[idx + 2];
+
+      if (openToken.type !== "paragraph_open" || inlineToken.type !== "inline" || closeToken.type !== "paragraph_close") {
+        continue;
+      }
+
+      const match = inlineToken.content.match(/^\[\^([^\]]+)\]:\s*(.+)$/);
+      if (!match) continue;
+
+      footnotes[match[1]!] = match[2]!.trim();
+      openToken.hidden = true;
+      inlineToken.hidden = true;
+      closeToken.hidden = true;
+      inlineToken.children = [];
+    }
+
+    state.env.pgAlertFootnotes = {
+      ...(state.env.pgAlertFootnotes ?? {}),
+      ...footnotes,
+    };
+  });
+
+  md.inline.ruler.before("emphasis", "pg_alert_footnote", (state, silent) => {
+    const start = state.pos;
+    if (state.src.charCodeAt(start) !== 0x5b /* [ */ || state.src.charCodeAt(start + 1) !== 0x5e /* ^ */) {
+      return false;
+    }
+
+    const end = state.src.indexOf("]", start + 2);
+    if (end === -1) return false;
+
+    const label = state.src.slice(start + 2, end).trim();
+    if (!label) return false;
+
+    if (!silent) {
+      const token = state.push("pg_alert_footnote", "", 0);
+      token.content = label;
+      token.meta = { label };
+    }
+
+    state.pos = end + 1;
+    return true;
+  });
+
+  md.renderer.rules.pg_alert_footnote = (tokens, idx, _options, env) => {
+    const token = tokens[idx];
+    const label = String(token.meta?.label ?? token.content);
+    const detail = env.pgAlertFootnotes?.[label] ?? `未找到脚注定义：[^${label}]`;
+    const safeLabel = md.utils.escapeHtml(label);
+    const safeDetail = md.utils.escapeHtml(detail);
+    return `<sup class="pg-alert-footnote" role="button" tabindex="0" title="点击查看脚注" data-footnote-detail="${safeDetail}" onclick="alert(this.getAttribute('data-footnote-detail'))" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();alert(this.getAttribute('data-footnote-detail'))}">${safeLabel}</sup>`;
+  };
+}
 
 const RICH_MARKDOWN = `我把 ChatPanel 的 **large 模式 + 自定义变量** 检查点整理成一份完整预览，方便你直接看右侧 UI。
 
@@ -14,6 +77,9 @@ const RICH_MARKDOWN = `我把 ChatPanel 的 **large 模式 + 自定义变量** �
 - **Markdown 富文本**：包含标题、列表、表格、引用、代码块和链接。
 - **large 模式**：通过 \`size="large"\` 放大字号、间距、Sender 和工具卡密度。
 - **自定义变量注入**：不新增内部变量，只从 \`ChatPanel\` 根节点注入现有 \`--mybricks-*\`。
+- **外部 Markdown 扩展**：这里有一个脚注引用[^skin-note]，会渲染成右上角标记，点击后展示脚注定义里的详细信息。
+
+[^skin-note]: 这条信息来自 Markdown 正文中的脚注定义，playground 通过注入 markdown-it rule 读取 \`[^skin-note]\` 和 \`[^skin-note]: ...\`，并只作用于 ChatPanel messages。
 
 ## 检查顺序
 
@@ -126,6 +192,9 @@ export const chatPanelSkinHistoryCase: TestCase = {
   playgroundLayout: "chat-panel-skin",
   chatPanelSkin: "custom",
   messagesRenderVariant: "line",
+  markdownit: {
+    configure: configurePlaygroundFootnoteMarkdown,
+  },
   scrollWithSender: true,
   renderSenderFooter: () => (
     <div className="pg-chat-skin-sender-footer">

@@ -13,7 +13,7 @@ import type { ActionBarItem, HistoryCollapseConfig } from "../messages";
 import { useHistoryCollapse } from "./use-history-collapse";
 import { Header } from "./header";
 import { ChatPanelProvider } from "./context";
-import type { MarkdownSkinConfig, MessagesRenderVariant } from "./context";
+import type { ChatMarkdownItConfig, MarkdownSkinConfig, MessagesRenderVariant } from "./context";
 import type { MessageRecord } from "../use-session";
 import css from "./index.less";
 
@@ -90,6 +90,11 @@ export interface ChatPanelProps {
    */
   markdownSkin?: MarkdownSkinConfig;
   /**
+   * messages 专用 Markdown 扩展配置。
+   * 只影响消息区 MarkdownMessage，不影响 plan / PRD 等其他渲染入口。
+   */
+  markdownit?: ChatMarkdownItConfig;
+  /**
    * 超长历史折叠配置。
    * - maxIters：iter 数量上限，超过后折叠旧 turns，默认 50
    */
@@ -151,6 +156,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   className,
   style,
   markdownSkin,
+  markdownit,
   historyCollapse,
   actionBar,
   selectorRenderInTop = false,
@@ -350,7 +356,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   ) : senderNode;
 
   return (
-    <ChatPanelProvider value={{ user, copilot, disabled: isDisabled, renderUserMessage, markdownSkin, messagesRenderVariant }}>
+    <ChatPanelProvider value={{ user, copilot, disabled: isDisabled, renderUserMessage, markdownSkin, markdownit, messagesRenderVariant }}>
       <div
         className={classNames(css["chat-panel"], css[`size-${size}`], className)}
         style={style}
@@ -386,4 +392,4 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
 });
 
 export { ChatPanel };
-export type { MessagesRenderVariant } from "./context";
+export type { ChatMarkdownItConfig, MarkdownSkinConfig, MessagesRenderVariant } from "./context";

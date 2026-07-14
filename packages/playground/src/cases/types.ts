@@ -84,6 +84,8 @@ export interface TestCase {
   scrollWithSender?: boolean;
   /** ChatPanel 工具消息展示形态。 */
   messagesRenderVariant?: ChatPanelProps["messagesRenderVariant"];
+  /** ChatPanel messages 专用 Markdown 扩展配置。 */
+  markdownit?: ChatPanelProps["markdownit"];
   /** 在 Sender 下方渲染的自定义内容。 */
   renderSenderFooter?: () => React.ReactNode;
   /** 在右侧 Inspector 上方渲染的自定义操作区。 */

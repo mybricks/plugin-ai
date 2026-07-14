@@ -39,6 +39,34 @@
   }
   a:hover { text-decoration: underline; }
 
+  :global(.pg-alert-footnote) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    margin-left: 3px;
+    padding: 0 5px;
+    vertical-align: super;
+    transform: translateY(-2px);
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--mybricks-color-primary, #2563eb) 45%, var(--mybricks-border-color-main, #D9D9D9));
+    background: color-mix(in srgb, var(--mybricks-color-primary, #2563eb) 10%, var(--mybricks-bg-color-main, #fff));
+    color: var(--mybricks-color-primary, #2563eb);
+    font-size: 11px;
+    line-height: 1;
+    font-weight: 700;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  :global(.pg-alert-footnote:hover),
+  :global(.pg-alert-footnote:focus-visible) {
+    background: var(--mybricks-color-primary, #2563eb);
+    color: #fff;
+    outline: none;
+  }
+
   /* ── 引用：半透明主题色底 + 左右引号装饰 ── */
   blockquote {
     position: relative;
