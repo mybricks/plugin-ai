@@ -278,7 +278,9 @@ const MessageBubble = ({ record, toolRendererMap, actionBar, onRetry, onDelete, 
           </header>
         )}
         <section className={classNames(css["chat-message-container"], css["user-message"])}>
-          {renderUserMessage ? renderUserMessage(record) : <UserMessageContent record={record} />}
+          <div className={css["user-message-body"]}>
+            {renderUserMessage ? renderUserMessage(record) : <UserMessageContent record={record} />}
+          </div>
           {record.userAttachments.length > 0 && (
             <AttachmentsList
               className={css["attachments-list"]}

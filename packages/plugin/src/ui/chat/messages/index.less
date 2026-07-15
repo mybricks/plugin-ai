@@ -204,6 +204,12 @@
     word-break: break-word;
     border: 1px solid var(--chat-user-message-border-color, var(--mybricks-border-color-main, #E6E6E6));
 
+    .user-message-body {
+      max-height: var(--chat-user-message-max-height, 360px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+
     span {
       font-size: var(--chat-font-size, 12px);
       line-height: var(--chat-line-height, 20px);

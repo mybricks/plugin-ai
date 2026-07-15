@@ -191,6 +191,19 @@ const historyWithTenImages = [
   }),
 ];
 
+const oversizedUserText = Array.from({ length: 36 }, (_, index) => {
+  const step = String(index + 1).padStart(2, "0");
+  return `第 ${step} 段：请综合参考图里的布局密度、按钮层级、文字节奏、图片比例、留白方式和色彩关系，输出一套适合后台编辑器场景的 UI 建议。这里故意保留较长文本，用来验证用户消息气泡达到最大高度后可以在气泡内部滚动查看，而不会把整条聊天记录撑得过长。`;
+}).join("\n\n");
+
+const historyWithOversizedUserAndTenImages = [
+  makeTurn({
+    userText: oversizedUserText,
+    attachments: tenImageAttachments,
+    content: "收到，这条用户消息内容较长且包含 10 张图片，我会基于全部上下文进行归纳。",
+  }),
+];
+
 // ─── 助手返回 Markdown 中包含图片 ─────────────────────────────────────────────
 
 const MARKDOWN_IMAGE_URL =
@@ -253,6 +266,28 @@ export const userMessageWithTenImagesCase: TestCase = {
         "\n\n- 统一提取主色和辅助色",
         "\n- 对比图片里的留白、圆角和卡片层级",
         "\n- 输出可复用的页面视觉规范",
+      ],
+      ttftMs: 200,
+      chunkDelayMs: 25,
+    },
+  ]),
+};
+
+/** 用户消息超长且含 10 张图片：验证 user 气泡最大高度与内部滚动 */
+export const oversizedUserMessageWithTenImagesCase: TestCase = {
+  id: "ui-user-oversized-ten-images",
+  name: "用户消息超长 + 10 张图片",
+  group: "UI 渲染",
+  description: "预设历史中用户消息包含超长文本和 10 个图片附件，验证 user 气泡超过最大高度后内部滚动展示。",
+  expectedBehavior:
+    "用户气泡高度不超过最大高度；可在气泡内滚动查看完整长文本和 10 张图片；消息列表整体布局不被单条 user 消息撑开。",
+  initialTurns: historyWithOversizedUserAndTenImages,
+  request: makeScriptedRequest([
+    {
+      type: "content",
+      chunks: [
+        "这条超长用户消息已经被限制在气泡最大高度内，",
+        "文本和图片可以在气泡内部滚动查看。",
       ],
       ttftMs: 200,
       chunkDelayMs: 25,
