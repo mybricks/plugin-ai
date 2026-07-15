@@ -130,6 +130,41 @@ const ACCEPTED_TEXT_FILE_EXTENSIONS = [
   "zsh",
 ];
 
+const ACCEPTED_DOCUMENT_FILE_EXTENSIONS = [
+  "doc",
+  "docx",
+  "odp",
+  "ods",
+  "odt",
+  "pdf",
+  "pps",
+  "ppsx",
+  "ppt",
+  "pptx",
+  "rtf",
+  "xls",
+  "xlsb",
+  "xlsm",
+  "xlsx",
+];
+
+const ACCEPTED_DOCUMENT_MIME_TYPES = [
+  "application/msword",
+  "application/pdf",
+  "application/rtf",
+  "application/vnd.ms-excel",
+  "application/vnd.ms-excel.sheet.binary.macroEnabled.12",
+  "application/vnd.ms-excel.sheet.macroEnabled.12",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.oasis.opendocument.presentation",
+  "application/vnd.oasis.opendocument.spreadsheet",
+  "application/vnd.oasis.opendocument.text",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.openxmlformats-officedocument.presentationml.slideshow",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+];
+
 export const SUPPORTED_FILE_ACCEPT = [
   SUPPORTED_IMAGE_ACCEPT,
   "text/*",
@@ -137,7 +172,9 @@ export const SUPPORTED_FILE_ACCEPT = [
   "application/xml",
   "application/x-mhtml",
   "message/rfc822",
+  ...ACCEPTED_DOCUMENT_MIME_TYPES,
   ...ACCEPTED_TEXT_FILE_EXTENSIONS.map((ext) => `.${ext}`),
+  ...ACCEPTED_DOCUMENT_FILE_EXTENSIONS.map((ext) => `.${ext}`),
 ].join(",");
 
 const BLOCKED_FILE_MIME_PREFIXES = [
