@@ -33,7 +33,7 @@ export interface BusinessSkillCard {
 }
 
 export interface BusinessSkill {
-  name: string;
+  name?: string;
   title?: string;
   description?: string;
   md?: string;
@@ -109,9 +109,12 @@ function buildBusinessCardsSection(cards: BusinessSkillCard[] | undefined): stri
   if (!cards?.length) return "";
 
   const cardLines = cards.map((card) => {
-    const lines = [
-      `- name: \`${card.name ?? ""}\`  title: ${card.title ?? ""}  desc: ${card.description ?? ""}`.trim(),
-    ];
+    const summary = [
+      card.name ? `name: \`${card.name}\`` : undefined,
+      card.title ? `title: ${card.title}` : undefined,
+      card.description ? `desc: ${card.description}` : undefined,
+    ].filter(Boolean).join("  ");
+    const lines = summary ? [`- ${summary}`] : [];
     const config = formatJsonLike(card.config ?? card.props);
     if (config) lines.push(`  - config: ${config}`);
     if (card.md?.trim()) lines.push(`  - md: ${card.md.trim()}`);
@@ -122,7 +125,9 @@ function buildBusinessCardsSection(cards: BusinessSkillCard[] | undefined): stri
       lines.push(`  - apis:\n${apis}`);
     }
     return lines.join("\n");
-  });
+  }).filter(Boolean);
+
+  if (!cardLines.length) return "";
 
   return `## 可用卡片\n${cardLines.join("\n")}`;
 }
@@ -131,17 +136,22 @@ function buildBusinessContextSection(businessSkills: BusinessSkill[] | undefined
   if (!businessSkills?.length) return "";
 
   const skillBlocks = businessSkills.map((skill) => {
+    const heading = skill.title ?? skill.name;
+    const metadata = [
+      skill.name ? `name: ${skill.name}` : undefined,
+      skill.title ? `title: ${skill.title}` : undefined,
+      skill.description ? `description: ${skill.description}` : undefined,
+    ].filter(Boolean).join("\n");
+
     return joinSections([
-      `# ${skill.title ?? skill.name}`,
-      [
-        `name: ${skill.name}`,
-        skill.title ? `title: ${skill.title}` : undefined,
-        skill.description ? `description: ${skill.description}` : undefined,
-      ].filter(Boolean).join("\n"),
+      heading ? `# ${heading}` : undefined,
+      metadata,
       skill.md?.trim(),
       buildBusinessCardsSection(skill.cards),
     ]);
-  });
+  }).filter(Boolean);
+
+  if (!skillBlocks.length) return "";
 
   return `<business_context>\n以下是当前可用的各类能力指导。\n\n${skillBlocks.join("\n\n---\n\n")}\n</business_context>`;
 }
