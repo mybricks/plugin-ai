@@ -444,6 +444,75 @@ async function execTouch(args: string[], adapter: Sandbox): Promise<CommandResul
   };
 }
 
+async function execHead(args: string[], adapter: Sandbox): Promise<CommandResult> {
+  // head [-n <lines>] [-c <bytes>] <file>
+  let lineCount: number | null = null;
+  let byteCount: number | null = null;
+  let filePath: string | null = null;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "-n") {
+      const val = parseInt(args[++i], 10);
+      if (isNaN(val) || val < 0) return { stdout: `head: invalid line count '${args[i]}'`, exitCode: 1 };
+      lineCount = val;
+    } else if (arg === "-c") {
+      const raw = args[++i];
+      if (!raw) return { stdout: "head: option -c requires an argument", exitCode: 1 };
+      // 支持 k / m 后缀
+      const match = /^(\d+)([km]?)$/i.exec(raw);
+      if (!match) return { stdout: `head: invalid byte count '${raw}'`, exitCode: 1 };
+      const num = parseInt(match[1], 10);
+      const unit = match[2].toLowerCase();
+      byteCount = unit === "k" ? num * 1024 : unit === "m" ? num * 1024 * 1024 : num;
+    } else if (/^-n\d+$/.test(arg)) {
+      lineCount = parseInt(arg.slice(2), 10);
+    } else if (/^-c\d+[km]?$/i.test(arg)) {
+      const raw = arg.slice(2);
+      const match = /^(\d+)([km]?)$/i.exec(raw)!;
+      const num = parseInt(match[1], 10);
+      const unit = match[2].toLowerCase();
+      byteCount = unit === "k" ? num * 1024 : unit === "m" ? num * 1024 * 1024 : num;
+    } else if (!arg.startsWith("-")) {
+      filePath = normalizePath(arg);
+    }
+  }
+
+  if (!filePath) {
+    return { stdout: "head: missing file operand\nUsage: head [-n <lines>] [-c <bytes>] <file>", exitCode: 1 };
+  }
+
+  const allFiles = await adapter.getFiles();
+  const fileMap = new Map(allFiles.map((f) => [normalizePath(f.path), f]));
+  const file = fileMap.get(filePath);
+
+  if (!file) {
+    return { stdout: `head: '${filePath}': No such file`, exitCode: 1 };
+  }
+
+  const content = file.content;
+
+  if (byteCount !== null) {
+    // -c 模式：截取字节数（这里按字符数处理，UTF-8 环境近似）
+    const truncated = content.slice(0, byteCount);
+    const isTruncated = content.length > byteCount;
+    return {
+      stdout: isTruncated ? `${truncated}\n// [file truncated, total size: ${content.length} chars]` : truncated,
+      exitCode: 0,
+    };
+  }
+
+  // 默认 -n 模式，默认 10 行
+  const n = lineCount ?? 10;
+  const lines = content.split("\n");
+  const truncated = lines.slice(0, n).join("\n");
+  const isTruncated = lines.length > n;
+  return {
+    stdout: isTruncated ? `${truncated}\n// [${lines.length - n} more lines not shown]` : truncated,
+    exitCode: 0,
+  };
+}
+
 function parseSedExpression(expr: string): RegExpMatchArray | null {
   return /^s(.)(.+?)\1(.*?)\1([gim]*)$/.exec(expr);
 }
@@ -584,9 +653,11 @@ async function dispatchCommand(
       return execTouch(args, adapter);
     case "sed":
       return execSed(args, adapter);
+    case "head":
+      return execHead(args, adapter);
     default:
       return {
-        stdout: `bash: '${command}': command not supported in sandbox environment\nThe sandbox only supports virtual filesystem operations. Supported commands: mv, cp, rm, rename, touch, sed`,
+        stdout: `bash: '${command}': command not supported in sandbox environment\nThe sandbox only supports virtual filesystem operations. Supported commands: mv, cp, rm, rename, touch, sed, head`,
         exitCode: 1,
       };
   }
@@ -606,6 +677,7 @@ export function createBashTool(adapter: Sandbox): Tool {
 - \`rename 's/old/new/' <glob>\` — 批量按正则替换路径中的片段，也支持 \`rename <old> <new> <glob>\`。
 - \`touch <path>\` — 创建空文件。
 - \`sed -i 's/old/new/g' <glob>\` — 批量替换文件内容中的文本，支持正则，支持 g（全局）、i（大小写不敏感）标志，支持多个 \`-e\` 表达式；仅在变量替换，字符替换等需要多文件替换场景下使用，否则还是${MULTI_EDIT_TOOL_NAME}更快速。
+- \`head [-n <lines>] [-c <bytes>] <file>\` — 读取文件开头内容。默认输出前 10 行；\`-n N\` 指定行数；\`-c N\` 指定字节数（支持 k/m 后缀，如 \`-c 2k\`）。适用于预览超大单行文件（混淆 JS、压缩 JSON 等）。
 
 注意：
 - 这是沙箱虚拟文件系统环境，不支持 cd、ls、cat、echo、git 等真实 shell 命令，只支持上述文件管理操作。
