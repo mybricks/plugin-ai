@@ -731,6 +731,7 @@ export class Agent {
       try {
         await this.options.hooks?.beforeTurn?.({
           message: userParams.message,
+          formattedMessage: turn.userFormattedText ?? userParams.message,
           attachments: userParams.attachments ?? [],
           meta: userParams.meta,
           extra: userParams.extra,

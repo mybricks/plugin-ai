@@ -76,7 +76,15 @@ export interface AgentHooks {
    * 用户发送消息后、一轮 turn 开始时的钩子，在构建 turn 级消息快照之前调用。
    * 可用于初始化快照、收集日志等准备工作。
    */
-  beforeTurn?: (params: { message: string; attachments: any[]; meta?: any; extra?: Record<string, any> }) => Promise<void> | void;
+  beforeTurn?: (params: {
+    /** 原始用户输入，用于 UI 展示和历史记录 */
+    message: string;
+    /** 经过 chip format / formatUserMessage 后，实际发送给 LLM 的用户文本 */
+    formattedMessage: string;
+    attachments: any[];
+    meta?: any;
+    extra?: Record<string, any>;
+  }) => Promise<void> | void;
   /**
    * 每次 LLM 请求前触发（每个 step 都会调用）。
    * 可用于动态修改请求参数、注入上下文等。
