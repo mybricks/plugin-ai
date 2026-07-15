@@ -5,6 +5,7 @@ import type { Tool } from "@agent/types";
 import type { CodeAgent } from "@agent/code-agent";
 import type { SkillFile } from "@agent/code-agent";
 import type { ChatPanelProps } from "@plugin/ui/chat";
+import type { AttachProcessor } from "@plugin/content-limits";
 import type { FsFile } from "../lib/mem-fs";
 import type { RequestSnapshot } from "../lib/use-request-inspector";
 import type React from "react";
@@ -117,4 +118,9 @@ export interface TestCase {
    * 对应 ChatPanelProps.selectorRenderInTop。
    */
   selectorRenderInTop?: boolean;
+  /**
+   * 附件前置处理器列表。
+   * 对应 ChatPanelProps.attachProcessors，可在 case 中传入自定义处理器以测试文件上传行为。
+   */
+  attachProcessors?: AttachProcessor[];
 }

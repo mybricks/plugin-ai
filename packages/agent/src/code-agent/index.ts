@@ -78,7 +78,7 @@ export interface GetFilesOptions {
   exclude?: FileExclude | FileExclude[];
 }
 
-export const AGENT_INTERNAL_FILE_EXCLUDE = /(^|\/)\.agent(\/|$)/;
+export const AGENT_INTERNAL_FILE_EXCLUDE = /(^|\/)\.(agent|tmp)(\/|$)/;
 
 const normalizeFilePath = (path: string) => path.replace(/\\/g, '/').replace(/^\/+/, '');
 
@@ -618,6 +618,13 @@ export class CodeAgent extends Agent {
    */
   async getPlanFile(): Promise<ActivePlanFile | null> {
     return getActivePlanFile(this._sandbox.getFiles.bind(this._sandbox));
+  }
+
+  /**
+   * 获取当前 CodeAgent 使用的沙箱实例。
+   */
+  getSandbox(): Sandbox {
+    return this._sandbox;
   }
 
   /**

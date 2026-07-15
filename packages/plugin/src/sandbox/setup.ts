@@ -668,7 +668,6 @@ function connectToAI(
   agent.chipRegistry = chipRegistry;
   agentRef = agent;
 
-  context.sandboxMap.set(agentKey, { sandbox, designerRef });
   context.agentMap.set(agentKey, agent);
 
   return { history: agent.getHistory() };

@@ -7,6 +7,7 @@ import type { QueueItem } from "../../../context/queue";
 import type { AgentMode, CodeAgent } from "../../../../../agent/src";
 import { AgentModeEnum } from "../../../../../agent/src";
 import type { ModelSelection } from "../../../../../request/src/providers";
+import type { AttachProcessor } from "../../../content-limits";
 import { useSession } from "../use-session";
 import { MessageList } from "../messages";
 import type { ActionBarItem, HistoryCollapseConfig } from "../messages";
@@ -111,12 +112,13 @@ export interface ChatPanelProps {
    */
   selectorRenderInTop?: boolean;
   /**
-   * 支持上传的文件类型及限制配置。
-   * key 为不含点的文件扩展名（小写），如 "ts"、"md"。
-   * 不传时使用内置默认值（支持大部分常见文本/代码文件）。
-   * 图片（image/*）始终走 attachment 流程，无需在此声明。
+   * 附件前置处理器列表。
+   * - type: "file"  → match 测文件名，process 对 File 做转换
+   * - type: "link"  → match 测完整 URL，process 对 LinkAttachment 做转换
+   * ChatPanel 会根据 agent 类型自动选择 processInSandbox 还是 process，调用方无需关心。
+   * 图片（image/*）始终走 attachment 流程，不受此配置影响。
    */
-  supportFiles?: SenderProps["supportFiles"];
+  attachProcessors?: AttachProcessor[];
 }
 
 export interface ChatPanelRef {
@@ -160,7 +162,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   historyCollapse,
   actionBar,
   selectorRenderInTop = false,
-  supportFiles,
+  attachProcessors,
 }, ref) => {
   const agentKey = agent?.key ?? "";
 
@@ -344,7 +346,8 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       selectorRenderInTop={selectorRenderInTop}
       chipTypes={chipRegistry.getAll()}
       matchDefaultFocusContent={matchDefaultFocusContent}
-      supportFiles={supportFiles}
+      attachProcessors={attachProcessors}
+      agent={agent}
     />
   );
   const senderFooterNode = renderSenderFooter?.();

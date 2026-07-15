@@ -3,32 +3,30 @@
 //
 // 文件路由规则：
 //   image/*  → attachment（走 sender 的图片附件流程）
-//   其他扩展名 → 查找 supportFiles 配置，命中则 → file chip，未命中则忽略
+//   其他      → file chip（经由 attachProcessors + processFile* 处理）
 
 import {
   MAX_IMAGE_SIZE_BYTES,
   MAX_IMAGE_SIZE_MB,
   SUPPORTED_IMAGE_MIME_TYPES,
-  FILE_CHIP_TRUNCATE_BYTES,
-  FILE_CHIP_REJECT_BYTES,
+  SUPPORTED_IMAGE_ACCEPT,
+  SUPPORTED_IMAGE_LABEL,
 } from "../../../content-limits";
-import type { SupportFileEntry, SupportFiles } from "../../../content-limits";
 
 // FILE_CHIP_TYPE 和 FileChipData 已迁移到 agent 包，此处 re-export 保持向后兼容
 export { FILE_CHIP_TYPE } from "../../../../../agent/src";
 export type { FileChipData } from "../../../../../agent/src";
 import type { FileChipData } from "../../../../../agent/src";
 
-// ─── 图片工具 ─────────────────────────────────────────────────────────────────
-
 export {
   MAX_IMAGE_SIZE_MB,
   MAX_IMAGE_SIZE_BYTES,
   SUPPORTED_IMAGE_MIME_TYPES,
+  SUPPORTED_IMAGE_ACCEPT,
+  SUPPORTED_IMAGE_LABEL,
 };
 
-export const SUPPORTED_IMAGE_ACCEPT = "image/jpeg,image/png,image/webp";
-export const SUPPORTED_IMAGE_LABEL = "JPG、PNG、WEBP";
+// ─── 图片工具 ─────────────────────────────────────────────────────────────────
 
 export function isSupportedImageFile(file: File): boolean {
   const type = file.type.toLowerCase();
@@ -70,27 +68,206 @@ export const getImageSize = (file: File): Promise<{ width: number; height: numbe
 
 // ─── 文件路由 ─────────────────────────────────────────────────────────────────
 
+const ACCEPTED_TEXT_FILE_EXTENSIONS = [
+  "astro",
+  "bash",
+  "c",
+  "conf",
+  "config",
+  "cpp",
+  "cs",
+  "css",
+  "csv",
+  "cts",
+  "cxx",
+  "diff",
+  "env",
+  "graphql",
+  "h",
+  "hpp",
+  "htm",
+  "html",
+  "ini",
+  "java",
+  "jl",
+  "js",
+  "json",
+  "json5",
+  "jsonl",
+  "jsx",
+  "less",
+  "log",
+  "lua",
+  "mht",
+  "mhtml",
+  "md",
+  "mdx",
+  "mts",
+  "php",
+  "plist",
+  "properties",
+  "proto",
+  "py",
+  "r",
+  "rb",
+  "rs",
+  "sass",
+  "scala",
+  "scss",
+  "sh",
+  "sql",
+  "svelte",
+  "svg",
+  "swift",
+  "toml",
+  "ts",
+  "tsx",
+  "txt",
+  "vue",
+  "xml",
+  "yaml",
+  "yml",
+  "zsh",
+];
+
+export const SUPPORTED_FILE_ACCEPT = [
+  SUPPORTED_IMAGE_ACCEPT,
+  "text/*",
+  "application/json",
+  "application/xml",
+  "application/x-mhtml",
+  "message/rfc822",
+  ...ACCEPTED_TEXT_FILE_EXTENSIONS.map((ext) => `.${ext}`),
+].join(",");
+
+const BLOCKED_FILE_MIME_PREFIXES = [
+  "audio/",
+  "video/",
+  "font/",
+];
+
+const BLOCKED_FILE_MIME_TYPES = new Set([
+  "application/epub+zip",
+  "application/gzip",
+  "application/java-archive",
+  "application/octet-stream",
+  "application/vnd.android.package-archive",
+  "application/vnd.apple.installer+xml",
+  "application/vnd.ms-cab-compressed",
+  "application/x-7z-compressed",
+  "application/x-apple-diskimage",
+  "application/x-bzip",
+  "application/x-bzip2",
+  "application/x-compress",
+  "application/x-cpio",
+  "application/x-deb",
+  "application/x-dosexec",
+  "application/x-executable",
+  "application/x-gtar",
+  "application/x-gzip",
+  "application/x-iso9660-image",
+  "application/x-java-archive",
+  "application/x-msdownload",
+  "application/x-rar-compressed",
+  "application/x-rpm",
+  "application/x-shockwave-flash",
+  "application/x-tar",
+  "application/x-xz",
+  "application/zip",
+  "application/zstd",
+]);
+
+const BLOCKED_FILE_EXTENSIONS = new Set([
+  "7z",
+  "apk",
+  "app",
+  "avi",
+  "bin",
+  "bz",
+  "bz2",
+  "cab",
+  "class",
+  "cpio",
+  "deb",
+  "dmg",
+  "dll",
+  "ear",
+  "exe",
+  "flac",
+  "gz",
+  "iso",
+  "jar",
+  "m4a",
+  "m4v",
+  "mkv",
+  "mov",
+  "mp3",
+  "mp4",
+  "mpeg",
+  "mpg",
+  "msi",
+  "ogg",
+  "otf",
+  "pkg",
+  "rar",
+  "rpm",
+  "so",
+  "swf",
+  "tar",
+  "tgz",
+  "ttc",
+  "ttf",
+  "war",
+  "wav",
+  "webm",
+  "woff",
+  "woff2",
+  "xz",
+  "zip",
+  "zst",
+]);
+
+function getBlockedFileReason(file: File): string | null {
+  const type = file.type.toLowerCase();
+  const ext = getFileExt(file.name);
+
+  if (ext === "svg" || type === "image/svg+xml") {
+    return null;
+  }
+
+  if (type && BLOCKED_FILE_MIME_PREFIXES.some((prefix) => type.startsWith(prefix))) {
+    return "音视频/字体等二进制文件暂不支持";
+  }
+  if (type && BLOCKED_FILE_MIME_TYPES.has(type)) {
+    return "压缩包/可执行文件等二进制文件暂不支持";
+  }
+  if (BLOCKED_FILE_EXTENSIONS.has(ext)) {
+    return "压缩包、音视频、可执行文件等暂不支持";
+  }
+  if (type.startsWith("image/") && !isSupportedImageFile(file)) {
+    return `图片仅支持${SUPPORTED_IMAGE_LABEL}`;
+  }
+
+  return null;
+}
+
 /**
  * 根据文件类型判断文件的去向：
- * - 'image'   → attachment 流程
- * - 'chip'    → file chip 流程
- * - null      → 不支持，忽略
+ * - 'image' → attachment 流程
+ * - 'chip'  → file chip 流程（默认支持非黑名单文件）
+ * - 'blocked' → 黑名单文件，调用方跳过
  */
 export function resolveFileRoute(
   file: File,
-  supportFiles: SupportFiles
-): { target: "image" } | { target: "chip"; ext: string; entry: SupportFileEntry } | { target: null } {
+): { target: "image" } | { target: "chip" } | { target: "blocked"; reason: string } {
+  const blockedReason = getBlockedFileReason(file);
+  if (blockedReason) {
+    return { target: "blocked", reason: blockedReason };
+  }
   if (isSupportedImageFile(file)) {
     return { target: "image" };
   }
-
-  const ext = getFileExt(file.name);
-  const entry = supportFiles[ext];
-  if (entry !== undefined) {
-    return { target: "chip", ext, entry };
-  }
-
-  return { target: null };
+  return { target: "chip" };
 }
 
 /** 获取文件扩展名（小写，不含点） */
@@ -98,80 +275,6 @@ export function getFileExt(fileName: string): string {
   const dot = fileName.lastIndexOf(".");
   if (dot < 0) return "";
   return fileName.slice(dot + 1).toLowerCase();
-}
-
-// ─── 文件 chip 大小检查 ───────────────────────────────────────────────────────
-
-export interface FileSizeCheckResult {
-  /** 是否通过（不应拒绝） */
-  ok: boolean;
-  /** 如果不通过，说明原因 */
-  reason?: "bytes" | "lines";
-}
-
-export class FileRejectError extends Error {
-  reason: NonNullable<FileSizeCheckResult["reason"]>;
-
-  constructor(reason: NonNullable<FileSizeCheckResult["reason"]>) {
-    super(reason);
-    this.name = "FileRejectError";
-    this.reason = reason;
-  }
-}
-
-/**
- * 检查文件是否超过 rejectAt 阈值。
- * 注意：行数检查需要已读取内容，因此 lines 参数为可选。
- */
-export function checkFileReject(
-  file: File,
-  entry: SupportFileEntry,
-  lines?: number
-): FileSizeCheckResult {
-  const rejectBytes = entry.rejectAt?.bytes ?? FILE_CHIP_REJECT_BYTES;
-  if (file.size > rejectBytes) {
-    return { ok: false, reason: "bytes" };
-  }
-  const rejectLines = entry.rejectAt?.lines;
-  if (rejectLines !== undefined && lines !== undefined && lines > rejectLines) {
-    return { ok: false, reason: "lines" };
-  }
-  return { ok: true };
-}
-
-/**
- * 检查文件内容是否超过 truncateAt 阈值，并返回截断后的内容。
- */
-export function applyTruncate(
-  content: string,
-  entry: SupportFileEntry
-): { content: string; truncated: boolean } {
-  const truncateBytes = entry.truncateAt?.bytes ?? FILE_CHIP_TRUNCATE_BYTES;
-  const truncateLines = entry.truncateAt?.lines;
-
-  let result = content;
-  let truncated = false;
-
-  // 字节截断
-  const encoder = new TextEncoder();
-  const encoded = encoder.encode(content);
-  if (encoded.length > truncateBytes) {
-    // 按字节截断，再解码（避免切断多字节字符）
-    const decoder = new TextDecoder();
-    result = decoder.decode(encoded.slice(0, truncateBytes));
-    truncated = true;
-  }
-
-  // 行数截断（在字节截断基础上再截）
-  if (truncateLines !== undefined) {
-    const lines = result.split("\n");
-    if (lines.length > truncateLines) {
-      result = lines.slice(0, truncateLines).join("\n");
-      truncated = true;
-    }
-  }
-
-  return { content: result, truncated };
 }
 
 // ─── 语言推断 ─────────────────────────────────────────────────────────────────
@@ -217,37 +320,31 @@ export function inferLanguage(ext: string): string {
 // ─── 读取文件为 FileChipData ──────────────────────────────────────────────────
 
 /**
- * 读取文件文本，应用截断规则，返回 FileChipData。
- * 调用前应已通过 checkFileReject 确认文件不应被拒绝。
+ * 将 processFile* 返回的 FileContent | FileReference | null 转换为 FileChipData。
+ * 返回 null 表示文件已被跳过（上层应不插入 chip）。
  */
-export async function readFileAsChipData(file: File, entry: SupportFileEntry): Promise<FileChipData> {
-  const rawText = await readFileAsText(file);
-  // 前置处理：在截断/行数检查前执行（如 MHTML 深度清理）
-  const raw = entry.preProcess ? await entry.preProcess(rawText, file) : rawText;
-  const originalLines = raw.split("\n").length;
-  const rejectCheck = checkFileReject(file, entry, originalLines);
-  if (!rejectCheck.ok) {
-    throw new FileRejectError(rejectCheck.reason ?? "lines");
+export function toFileChipData(
+  file: File,
+  result: import("../../../content-limits").FileContent | import("../../../content-limits").FileReference | null
+): FileChipData | null {
+  if (result === null) return null;
+
+  if (result.type === "reference") {
+    return {
+      kind: "reference",
+      fileName: file.name,
+      originalSize: file.size,
+      referenceText: result.text,
+    };
   }
 
-  const { content, truncated } = applyTruncate(raw, entry);
-  const ext = getFileExt(file.name);
-
+  // FileContent
   return {
-    fileName: file.name,
-    content,
-    language: inferLanguage(ext),
-    truncated,
+    kind: "content",
+    fileName: result.fileName,
+    content: result.content,
+    language: result.language ?? inferLanguage(getFileExt(result.fileName)),
+    truncated: false,
     originalSize: file.size,
-    originalLines,
   };
-}
-
-function readFileAsText(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => resolve((e.target?.result as string) ?? "");
-    reader.onerror = (e) => reject(e);
-    reader.readAsText(file, "utf-8");
-  });
 }

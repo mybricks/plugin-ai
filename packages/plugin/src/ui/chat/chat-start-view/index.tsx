@@ -6,6 +6,7 @@ import { chipRegistry } from "../../../sandbox/setup";
 import type { AgentMode, CodeAgent } from "../../../../../agent/src";
 import { AgentModeEnum } from "../../../../../agent/src";
 import type { ModelSelection } from "../../../../../request/src/providers";
+import type { AttachProcessor } from "../../../content-limits";
 import type { ActivePlanFile } from "../../../../../agent/src/mode-manager";
 import { useSession } from "../use-session";
 import { SenderActivePlanCard, usePlanState } from "../../components/plan";
@@ -44,11 +45,9 @@ export interface ChatStartViewProps {
   /** 欢迎语标题文案 */
   welcomeTitle?: string;
   /**
-   * 支持上传的文件类型及限制配置。
-   * key 为不含点的文件扩展名（小写），如 "ts"、"md"。
-   * 不传时使用内置默认值（支持大部分常见文本/代码文件）。
+   * 附件前置处理器列表。详见 ChatPanelProps.attachProcessors。
    */
-  supportFiles?: SenderProps["supportFiles"];
+  attachProcessors?: AttachProcessor[];
 }
 
 const ChatStartView = ({
@@ -57,7 +56,7 @@ const ChatStartView = ({
   onUpload,
   placeholder = "请尽量详细描述您的需求，或者上传图片作为补充。完成后您可以导出源码或者Figma设计稿。",
   welcomeTitle = "在这里，开始您的需求",
-  supportFiles,
+  attachProcessors,
 }: ChatStartViewProps) => {
   const senderRef = useRef<SenderRef>(null);
   const agentKey = agent?.key ?? "";
@@ -197,7 +196,7 @@ const ChatStartView = ({
           chipTypes={chipRegistry.getAll()}
           modelSelector={modelSelector}
           abovePanels={abovePanels}
-          supportFiles={supportFiles}
+          attachProcessors={attachProcessors}
         />
       )}
     </div>

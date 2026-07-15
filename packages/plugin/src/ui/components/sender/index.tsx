@@ -29,19 +29,20 @@ import {
   readFileToBase64,
   getImageSize,
   resolveFileRoute,
-  checkFileReject,
-  readFileAsChipData,
+  FILE_CHIP_TYPE,
+  toFileChipData,
   MAX_IMAGE_SIZE_MB,
   MAX_IMAGE_SIZE_BYTES,
-  SUPPORTED_IMAGE_ACCEPT,
+  SUPPORTED_FILE_ACCEPT,
   SUPPORTED_IMAGE_LABEL,
-  FILE_CHIP_TYPE,
-  FileRejectError,
-  getFileExt,
-  type FileChipData,
 } from "./upload";
-import type { SupportFileEntry, SupportFiles } from "../../../content-limits";
-import { DEFAULT_SUPPORT_FILES } from "../../../content-limits";
+import {
+  applyFileProcessors,
+  processFileDefault,
+  processFileInSandbox,
+} from "./attach-processor";
+import type { AttachProcessor, FileContent } from "../../../content-limits";
+import { CodeAgent } from "../../../../../agent/src";
 import css from "./index.less"
 
 // ─── 全局鼠标位置追踪（模块级单例，供飞行动画读取起点）────────────────────────────
@@ -278,12 +279,19 @@ interface SenderProps {
    */
   selectorRenderInTop?: boolean;
   /**
-   * 支持上传的文件类型及限制配置。
-   * key 为不含点的文件扩展名（小写），如 "ts"、"md"。
-   * 不传时使用内置默认值（支持大部分常见文本/代码文件）。
-   * 图片（image/*）始终走 attachment 流程，无需在此声明。
+   * 附件前置处理器列表。
+   * 按顺序匹配，命中第一个即执行，不继续匹配后续处理器。
+   * - type: "file"  → match 测文件名，process 接收 File，返回转换后的 File / FileContent / FileReference
+   *   File / FileContent 会在发送前进入内置主处理；FileReference 会直接作为最终引用。
+   * - type: "link"  → match 测完整 URL，process 接收 LinkAttachment，返回转换后的 LinkAttachment
+   * 图片（image/*）始终走 attachment 流程，不受此配置影响。
    */
-  supportFiles?: SupportFiles;
+  attachProcessors?: AttachProcessor[];
+  /**
+   * 当前 agent 实例（由 ChatPanel 传入）。
+   * Sender 内部用于判断是否为 CodeAgent，以决定走 processFileInSandbox 还是 processFileDefault。
+   */
+  agent?: import("../../../../../agent/src").CodeAgent;
 }
 
 interface SenderRef {
@@ -333,7 +341,8 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     renderFocus, abovePanels, renderActionPrefix, renderAttachmentSuffix,
     modelSelector, className, chipTypes = [], matchDefaultFocusContent,
     selectorRenderInTop = false,
-    supportFiles = DEFAULT_SUPPORT_FILES,
+    attachProcessors,
+    agent,
   } = props;
 
   const isBubble = variant === 'bubble';
@@ -347,9 +356,11 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   /** 防止 dragLeave 在子元素之间移动时误触发，通过计数器追踪真正的进出 */
   const dragCounterRef = useRef(0);
+  const processingSendRef = useRef(false);
 
   /** chat chip 实例 Map：id → ChatChipInstance */
   const chipMapRef = useRef<Map<string, ChatChipInstance>>(new Map());
+  const pendingFileMapRef = useRef<Map<string, File | FileContent>>(new Map());
 
   /** 默认 focus 内容串的整体尺寸，用于把 placeholder 推到内容串后面。 */
   const [defaultFocusContentSize, setDefaultFocusContentSize] = useState<{ width: number; height: number } | null>(null);
@@ -526,6 +537,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         editor.normalize();
       }
       chipMapRef.current.delete(instance.id);
+      pendingFileMapRef.current.delete(instance.id);
       syncInputContent();
     };
 
@@ -611,23 +623,74 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     };
   }, [appendInput, attachments, mentions, insertChip, disabled, clearEditorContent, replaceFocusContent]);
 
-  const send = () => {
+  const resolvePendingFileChips = async (chips: ChatChipInstance[]): Promise<ChatChipInstance[] | null> => {
+    const sandbox = agent instanceof CodeAgent ? agent.getSandbox() : undefined;
+    const nextChips: ChatChipInstance[] = [];
+
+    for (const chip of chips) {
+      const pending = pendingFileMapRef.current.get(chip.id);
+      if (chip.type !== FILE_CHIP_TYPE || !pending) {
+        nextChips.push(chip);
+        continue;
+      }
+
+      const file = pending instanceof File ? pending : new File(
+        [pending.content],
+        pending.fileName,
+        { type: "text/plain" }
+      );
+      try {
+        const result = sandbox
+          ? await processFileInSandbox(file, sandbox)
+          : await processFileDefault(file);
+        const chipData = toFileChipData(file, result);
+        if (chipData === null) {
+          return null;
+        }
+        nextChips.push({
+          ...chip,
+          label: chipData.fileName,
+          data: chipData,
+        });
+      } catch (err) {
+        console.error("[@mybricks/plugin-ai - 处理文件失败]", err);
+        message.error(`处理「${file.name}」失败，已取消发送`);
+        return null;
+      }
+    }
+
+    return nextChips;
+  };
+
+  const send = async () => {
     const editor = inputEditorRef.current!;
     const { message: serializedMessage, chips } = serializeEditorContent(editor, chipMapRef.current);
     const hasUploadingAttachment = attachments.some((a) => a.uploading);
-    if (serializedMessage && !disabled && !uploading && !hasUploadingAttachment) {
+    if (serializedMessage && !disabled && !uploading && !hasUploadingAttachment && !processingSendRef.current) {
+      processingSendRef.current = true;
+      let resolvedChips: ChatChipInstance[] | null = null;
+      try {
+        setUploading(true);
+        resolvedChips = await resolvePendingFileChips(chips);
+      } finally {
+        setUploading(false);
+        processingSendRef.current = false;
+      }
+      if (resolvedChips === null) return;
+
       props.onSend({
         message: serializedMessage,
         attachments,
         mentions,
         ...(chatMode ? { mode: chatMode } : {}),
-        ...(chips.length > 0 ? { chips } : {}),
+        ...(resolvedChips.length > 0 ? { chips: resolvedChips } : {}),
       })
 
       // 清空输入框（卸载 chip React 实例后清空 DOM）
       editor.querySelectorAll<HTMLSpanElement>(`[data-chip-id]`).forEach(unmountChipContainer);
       editor.textContent = "";
       chipMapRef.current.clear();
+      pendingFileMapRef.current.clear();
       setIsDefaultFocusContent(false);
       setDefaultFocusContentSize(null);
       setAttachments([]);
@@ -638,7 +701,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const onSendButtonClick = (event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
-    send();
+    void send();
   };
 
   const onInput = () => {
@@ -655,7 +718,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
       } else {
         event.preventDefault();
-        send();
+        void send();
       }
       return;
     }
@@ -670,6 +733,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       const chipEl = editor ? getAdjacentChipAtCaret(editor, range, "backward") : null;
       if (editor && chipEl) {
         event.preventDefault();
+        pendingFileMapRef.current.delete(chipEl.dataset.chipId ?? "");
         removeChipFromEditor(editor, chipEl, chipMapRef.current);
         syncInputContent();
         return;
@@ -681,6 +745,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       const chipEl = editor ? getAdjacentChipAtCaret(editor, range, "forward") : null;
       if (editor && chipEl) {
         event.preventDefault();
+        pendingFileMapRef.current.delete(chipEl.dataset.chipId ?? "");
         removeChipFromEditor(editor, chipEl, chipMapRef.current);
         syncInputContent();
         return;
@@ -696,59 +761,24 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     setIsComposing(false);
   }
 
-  const getExistingFileBytesByExt = useCallback(() => {
-    const bytesByExt = new Map<string, number>();
-    chipMapRef.current.forEach((chip) => {
-      if (chip.type !== FILE_CHIP_TYPE) return;
-
-      const data = chip.data as FileChipData | undefined;
-      if (!data?.fileName) return;
-
-      const ext = getFileExt(data.fileName);
-      bytesByExt.set(ext, (bytesByExt.get(ext) ?? 0) + (data.originalSize ?? 0));
-    });
-    return bytesByExt;
-  }, []);
-
   // ─── 文件处理：统一分流入口 ───────────────────────────────────────────────
 
   /**
    * 统一处理多文件入口（拖拽、点击、粘贴）。
-   * 根据文件类型分流：图片 → attachment，文本/代码 → file chip，其余忽略。
+   * 根据文件类型分流：图片 → attachment，其他 → file chip。
+   * file chip 路径：先走 attachProcessors 前置处理；processFileInSandbox / processFileDefault 延迟到发送前。
    */
   const processFiles = useCallback(async (rawFiles: File[]) => {
     const imageFiles: File[] = [];
-    const chipFiles: Array<{ file: File; ext: string; entry: SupportFileEntry }> = [];
-    const unsupportedFiles: File[] = [];
-    const fileBytesByExt = getExistingFileBytesByExt();
+    const nonImageFiles: File[] = [];
 
     for (const file of rawFiles) {
-      const route = resolveFileRoute(file, supportFiles);
+      const route = resolveFileRoute(file);
       if (route.target === "image") {
         imageFiles.push(file);
       } else if (route.target === "chip") {
-        // 先做大小检查，超过 rejectAt 的直接忽略
-        const check = checkFileReject(file, route.entry);
-        if (!check.ok) {
-          message.info(`文件「${file.name}」超过大小限制，已跳过`);
-        } else if (
-          route.entry.totalBytesLimit !== undefined &&
-          (fileBytesByExt.get(route.ext) ?? 0) + file.size > route.entry.totalBytesLimit
-        ) {
-          message.info(`文件「${file.name}」会超过 .${route.ext} 文件累计大小限制，已跳过`);
-        } else {
-          chipFiles.push({ file, ext: route.ext, entry: route.entry });
-          fileBytesByExt.set(route.ext, (fileBytesByExt.get(route.ext) ?? 0) + file.size);
-        }
-      } else {
-        unsupportedFiles.push(file);
+        nonImageFiles.push(file);
       }
-    }
-
-    // 有不支持的文件时给一条提示
-    if (unsupportedFiles.length > 0 && imageFiles.length === 0 && chipFiles.length === 0) {
-      message.info(`不支持的文件类型，请上传图片或在 supportFiles 中配置的文件类型`);
-      return;
     }
 
     // 图片走 attachment 流程
@@ -756,27 +786,47 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       await updateAttachmentsByFiles(imageFiles);
     }
 
-    // 文本/代码文件走 chip 流程
-    for (const { file, entry } of chipFiles) {
+    // 非图片走 chip 流程：前置处理后暂存 File / FileContent，发送前再主处理。
+    // FileReference 已经是最终引用文本，可立即生成 chip 数据。
+    const processors = attachProcessors ?? [];
+
+    for (const rawFile of nonImageFiles) {
       try {
-        const data = await readFileAsChipData(file, entry);
+        // 1. 前置处理（first-match transform）
+        const transformed = await applyFileProcessors(rawFile, processors);
+        if (transformed === null) continue; // 处理器内部已弹提示
+
         const id = Math.random().toString(36).slice(2, 7);
+        const chipData = !(transformed instanceof File) && transformed.type === "reference"
+          ? toFileChipData(rawFile, transformed)
+          : null;
+        if (!(transformed instanceof File) && transformed.type === "reference" && chipData === null) continue;
+
+        const pendingFile = transformed instanceof File ? transformed : undefined;
+        const pendingContent = !(transformed instanceof File) && transformed.type === "content" ? transformed : undefined;
+        const label = chipData?.fileName ?? pendingFile?.name ?? pendingContent?.fileName ?? rawFile.name;
+        if (!chipData) {
+          pendingFileMapRef.current.set(id, pendingFile ?? pendingContent!);
+        }
         insertChip({
           id,
           type: FILE_CHIP_TYPE,
-          label: file.name,
-          data,
+          label,
+          data: chipData ?? {
+            kind: "content",
+            fileName: label,
+            content: "",
+            language: pendingContent?.language ?? "",
+            truncated: false,
+            originalSize: pendingFile?.size ?? rawFile.size,
+          },
         });
       } catch (err) {
-        if (err instanceof FileRejectError) {
-          message.info(`文件「${file.name}」超过${err.reason === "lines" ? "行数" : "大小"}限制，已跳过`);
-          continue;
-        }
         console.error("[@mybricks/plugin-ai - 读取文件失败]", err);
-        message.error(`读取「${file.name}」失败，已跳过`);
+        message.error(`读取「${rawFile.name}」失败，已跳过`);
       }
     }
-  }, [supportFiles, insertChip, getExistingFileBytesByExt]);
+  }, [attachProcessors, insertChip]);
 
   // ─── 图片 attachment 处理 ─────────────────────────────────────────────────
 
@@ -911,9 +961,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     }
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
-    // 接受图片 + supportFiles 中配置的扩展名
-    const supportedExts = Object.keys(supportFiles).map(ext => `.${ext}`).join(',');
-    fileInput.accept = `${SUPPORTED_IMAGE_ACCEPT}${supportedExts ? `,${supportedExts}` : ''}`;
+    fileInput.accept = SUPPORTED_FILE_ACCEPT;
     fileInput.multiple = true;
 
     fileInput.addEventListener('change', function (e) {
@@ -1037,7 +1085,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         {isDraggingOver && (
           <div className={css.dragOverlay}>
             <span className={css.dragOverlayTitle}>拖放文件至此</span>
-            <span className={css.dragOverlayHint}>支持 {SUPPORTED_IMAGE_LABEL} 及文本/代码文件，图片最大 {MAX_IMAGE_SIZE_MB}MB</span>
+            <span className={css.dragOverlayHint}>支持图片及常见文件，视频/压缩包等会跳过，图片最大 {MAX_IMAGE_SIZE_MB}MB</span>
           </div>
         )}
         {renderFocus ? (

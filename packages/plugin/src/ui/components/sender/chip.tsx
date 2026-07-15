@@ -4,7 +4,7 @@ import classNames from "classnames";
 import type { ChatChipDef, ChatChipInstance } from "../../../../../agent/src";
 import { fileChipDef } from "../../../../../agent/src";
 export { fileChipDef };
-import { FILE_CHIP_TYPE, type FileChipData } from "./upload";
+import { FILE_CHIP_TYPE } from "./upload";
 import css from "./index.less";
 
 // ─── ChipRemoveBtn ────────────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ export const ChatChipInner = ({
               : undefined
           }
         >
-          {chipData.content}
+          <span className={css.chipLabel}>{chipData.content}</span>
           <ChipRemoveBtn onRemove={onRemove} />
         </span>
       );

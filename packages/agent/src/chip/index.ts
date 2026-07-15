@@ -56,11 +56,17 @@ export const FILE_CHIP_TYPE = "file";
 
 /**
  * 文件 chip 的数据结构（存入 ChatChipInstance.data）。
- * 由 Sender 上传文件时填充，format 时展开为 <file> 代码块。
+ * 由 Sender 上传文件时填充，format 时展开为 <file> 代码块或引用文本。
  */
-export interface FileChipData {
+interface BaseFileChipData {
   /** 文件名（含扩展名），仅文件名部分，如 "index.ts" */
   fileName: string;
+  /** 原始字节数 */
+  originalSize: number;
+}
+
+export interface FileContentChipData extends BaseFileChipData {
+  kind: "content";
   /**
    * 文件路径（可选）。
    * 浏览器拖拽/点击上传时无法获取，为 undefined。
@@ -74,11 +80,17 @@ export interface FileChipData {
   language: string;
   /** 内容是否被截断 */
   truncated: boolean;
-  /** 原始字节数 */
-  originalSize: number;
   /** 原始行数（仅在已读取文本时计算） */
   originalLines?: number;
 }
+
+export interface FileReferenceChipData extends BaseFileChipData {
+  kind: "reference";
+  /** 原地替换 chip 占位符的引用文本，支持 Markdown */
+  referenceText: string;
+}
+
+export type FileChipData = FileContentChipData | FileReferenceChipData;
 
 /**
  * 内置文件 chip 类型定义。
@@ -94,20 +106,26 @@ export const fileChipDef: ChatChipDef = {
       const data = chip.data as FileChipData | undefined;
       if (!data) continue;
 
-      const nameAttr = data.filePath ?? data.fileName;
-      resolved = resolved.replace(`[[chip:${chip.id}]]`, `「临时文件 ${data.fileName}」`);
-      const lineCount = data.content.split("\n").length;
-      const truncatedNote = data.truncated ? `（内容已截断，仅展示前 ${lineCount} 行）` : "";
-      const langFence = data.language ? `\`\`\`${data.language}` : "```";
-      fileBlocks.push(
-        `<file name="${nameAttr}" lines="${lineCount}"${data.truncated ? ' truncated="true"' : ""}>${truncatedNote}\n` +
-        `${langFence}\n${data.content}\n\`\`\`\n` +
-        `</file>`
-      );
+      if (data.kind === "reference") {
+        // FileReference 模式：原地替换占位符，不追加尾部块
+        resolved = resolved.replace(`[[chip:${chip.id}]]`, data.referenceText);
+      } else {
+        // FileContent 模式：占位符替换为简短引用，内容追加到尾部
+        const nameAttr = data.filePath ?? data.fileName;
+        resolved = resolved.replace(`[[chip:${chip.id}]]`, `「临时文件 ${data.fileName}」`);
+        const lineCount = data.content.split("\n").length;
+        const truncatedNote = data.truncated ? `（内容已截断，仅展示前 ${lineCount} 行）` : "";
+        const langFence = data.language ? `\`\`\`${data.language}` : "```";
+        fileBlocks.push(
+          `<file name="${nameAttr}" lines="${lineCount}"${data.truncated ? ' truncated="true"' : ""}>${truncatedNote}\n` +
+          `${langFence}\n${data.content}\n\`\`\`\n` +
+          `</file>`
+        );
+      }
     }
 
     if (fileBlocks.length > 0) {
-      resolved = `${resolved}\n\n文件内容（以下均为用户临时上传的文件，不属于工作区，无法被读取或修改，仅供内容参考）：\n${fileBlocks.join("\n\n")}`;
+      resolved = `${resolved}\n\n文件内容（以下为用户临时上传并直接内联的文件内容）：\n${fileBlocks.join("\n\n")}`;
     }
 
     return resolved;

@@ -1,6 +1,5 @@
-import type { CodeAgent, Sandbox } from "../../../agent/src";
+import type { CodeAgent } from "../../../agent/src";
 import type { SendToAgentParams } from "../sandbox";
-import type { Designer, Hooks } from "../sandbox/types";
 import { AIRequestQueue } from "./queue";
 import type { ProviderConfig } from "../../../request/src";
 import type { SenderRef } from "../ui/components/sender";
@@ -12,15 +11,6 @@ type SenderInputValue = ReturnType<SenderRef["getInput"]>;
 export interface SettingValue {
   channel?: "infra" | "mybricks" | "custom";
   providers?: ProviderConfig[];
-}
-
-/** 沙箱注册信息 */
-export interface SandboxEntry {
-  sandbox: Sandbox;
-  /** designer ref，供 check-status 工具闭包访问（延迟绑定） */
-  designerRef?: { current: Designer | undefined };
-  /** hooks ref，供 beforeTurn / beforeRequest 闭包访问（延迟绑定） */
-  hooksRef?: { current: Hooks | undefined };
 }
 
 class Context {
@@ -72,12 +62,6 @@ class Context {
    * agent 在 plugin 侧统一管理，保证按 comId 复用
    */
   agentMap = new Map<string, CodeAgent>();
-
-  /**
-   * comId → SandboxEntry 映射
-   * 组件通过 window._registSandBox_ 注册沙箱能力
-   */
-  sandboxMap = new Map<string, SandboxEntry>();
 
   /** AI 请求队列（防并发 + loading 状态管理） */
   aiQueue = new AIRequestQueue();

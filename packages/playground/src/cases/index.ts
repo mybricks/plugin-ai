@@ -107,6 +107,13 @@ import { chatPanelSkinHistoryCase, chatPanelDefaultSkinCase, chatPanelSkinEmptyC
 import { historyCollapseRestoreCase, historyCollapseGrowingCase, historyCollapseCustomMaxItersCase } from "./ui-history-collapse";
 import { historySlowLoadCase, historyLoadErrorCase } from "./history-load";
 import {
+  fileUploadInlineCase,
+  fileUploadMhtmlCase,
+  fileUploadReferenceCase,
+  fileUploadProcessorReferenceCase,
+  fileUploadProcessorContentCase,
+} from "./file-upload";
+import {
   bashMvRenameCase,
   bashMvToDirectoryCase,
   bashMvRecursiveCase,
@@ -233,6 +240,12 @@ export const ALL_CASES: TestCase[] = [
   selectorRenderInTopCase,
   // 异常检测—工具后空 content
   toolThenEmptyContentCase,
+  // 文件上传
+  fileUploadInlineCase,
+  fileUploadMhtmlCase,
+  fileUploadReferenceCase,
+  fileUploadProcessorReferenceCase,
+  fileUploadProcessorContentCase,
   // 设置
   settingCase,
   modelSwitchCase,
