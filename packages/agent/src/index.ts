@@ -11,7 +11,7 @@ export type { Message, History, Tool, TurnRecord, TurnSender, ToolCallRecord, To
 export { ToolValidationError, bindHistory } from "./types";
 
 export { AGENT_INTERNAL_FILE_EXCLUDE, CodeAgent, isFileExcluded } from "./code-agent";
-export type { AdditionalDirectory, CodeAgentBuiltinToolName, CodeAgentOptions, CodeAgentPlugin, CodeAgentPromptOptions, FileExclude, GetFilesOptions, Sandbox, SkillFile, UnifiedFile } from "./code-agent";
+export type { AdditionalDirectory, CodeAgentBuiltinToolName, CodeAgentOptions, CodeAgentPlugin, CodeAgentPromptOptions, FileExclude, GetFilesOptions, Sandbox, SkillActivation, SkillFile, SkillMeta, UnifiedFile } from "./code-agent";
 export { IDBSandbox } from "./code-agent/idb-sandbox";
 export type { IDBSandboxFileRecord, IDBSandboxOptions, IDBSandboxState } from "./code-agent/idb-sandbox";
 export { READ_TOOL_NAME, WRITE_TOOL_NAME, MULTI_WRITE_TOOL_NAME, EDIT_TOOL_NAME, MULTI_EDIT_TOOL_NAME, DELETE_TOOL_NAME, GREP_TOOL_NAME, GLOB_TOOL_NAME, USE_SKILL_TOOL_NAME, BASH_TOOL_NAME } from "./code-agent/tools";

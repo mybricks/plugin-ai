@@ -1,7 +1,6 @@
 import type { Tool, ToolResult } from "../../../types";
 import { ToolValidationError } from "../../../types";
-import type { SkillFile } from "../../skills";
-import { resolveSkillMeta } from "../../skills";
+import { type SkillFile, renderSkillContent } from "../../skills";
 
 /** 与 `createSkillTool` 注册的 `name` 一致，供 UI 等侧注册渲染器使用 */
 export const USE_SKILL_TOOL_NAME = "use_skill";
@@ -63,29 +62,14 @@ export function createSkillTool(skills: SkillFile[]): Tool {
         throw new ToolValidationError(`SKILL.md not found in skill "${skill.name}". This skill is misconfigured.`);
       }
 
-      await skill.updateContent?.();
-
-      // ── 构造输出：<skill> 标签包裹 SKILL.md 内容 ───────────────────────────
-      let output = `<skill name="${skill.name}">
-${skillMd.content}
-</skill>`;
-
-      // ── 目录树（如有可读取的文件）───────────────────────────────────────────────
-      const supportFiles = skill.files.filter((f) => f.path !== "SKILL.md");
-      if (supportFiles.length > 0) {
-        output += `\n\n---\n\nSkill directory tree:\n.agent/skills/${skill.name}/`;
-        for (const f of skill.files) {
-          output += `\n  ${f.path}`;
-        }
-        output += `\n\nSupport files can be read using the read_file tool with paths like .agent/skills/${skill.name}/<path>`;
-      }
+      const { output, hasSupportFiles } = await renderSkillContent(skill);
 
       return {
         output,
         metadata: {
           skillName: skill.name,
           skillPath: `.agent/skills/${skill.name}/`,
-          hasSupportFiles: supportFiles.length > 0,
+          hasSupportFiles,
         },
       };
     },

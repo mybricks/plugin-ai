@@ -22,7 +22,15 @@ import { buildModeSection, getActivePlanFile, type ActivePlanFile } from "../mod
 import { splitFrontmatter } from "../utils/frontmatter";
 import { getCodeAgentSystemPrompt, type CodeAgentPromptOptions } from "./prompt";
 export type { CodeAgentPromptOptions };
-import { type SkillFile, resolveSkillMeta } from "./skills";
+import {
+  type SkillFile,
+  type SkillActivation,
+  type SkillMeta,
+  resolveSkillMeta,
+  renderSkillContent,
+  shouldAlwaysLoadSkill,
+  shouldExposeSkillToModel,
+} from "./skills";
 import {
   createSubAgentTool,
   resolveSubAgentMeta,
@@ -31,7 +39,7 @@ import {
 } from "../sub-agent";
 export type { SubAgentConfig };
 
-export type { SkillFile };
+export type { SkillActivation, SkillFile, SkillMeta };
 export { resolveSkillMeta, USE_SKILL_TOOL_NAME };
 
 // ─── UnifiedFile ────────────────────────────────────────────────────────────
@@ -336,20 +344,23 @@ function buildEnvironmentSection(skills?: SkillFile[], subAgents?: SubAgentConfi
 
   // ── Skills 目录 ───────────────────────────────────────────────────────────
   if (skills?.length) {
-    const lines = skills.map((s) => {
-      const skillMd = s.files.find((f) => f.path === "SKILL.md");
-      if (!skillMd) return `  ${s.name}`;
-      const { description, whenToUse } = resolveSkillMeta(skillMd.content, s.name);
-      let line = `  ${s.name}: ${description}`;
-      if (whenToUse) line += `（适用场景：${whenToUse}）`;
-      return line;
-    });
+    const modelSkills = skills.filter(shouldExposeSkillToModel);
+    if (modelSkills.length) {
+      const lines = modelSkills.map((s) => {
+        const skillMd = s.files.find((f) => f.path === "SKILL.md");
+        if (!skillMd) return `  ${s.name}`;
+        const { description, whenToUse } = resolveSkillMeta(skillMd.content, s.name);
+        let line = `  ${s.name}: ${description}`;
+        if (whenToUse) line += `（适用场景：${whenToUse}）`;
+        return line;
+      });
 
-    sections.push(
-      `可用 Skill（当任务涉及相关场景时，使用 ${USE_SKILL_TOOL_NAME} 工具调用指定 Skill 获取完整指导）：\n` +
-        `${lines.join("\n")}\n` +
-        `注意：When a skill matches the user's request, this is a BLOCKING REQUIREMENT. NEVER mention a skill without actually calling this tool.`
-    );
+      sections.push(
+        `可用 Skill（当任务涉及相关场景时，使用 ${USE_SKILL_TOOL_NAME} 工具调用指定 Skill 获取完整指导）：\n` +
+          `${lines.join("\n")}\n` +
+          `注意：When a skill matches the user's request, this is a BLOCKING REQUIREMENT. NEVER mention a skill without actually calling this tool.`
+      );
+    }
   }
 
   // ── SubAgent 目录 ─────────────────────────────────────────────────────────
@@ -372,6 +383,18 @@ function buildEnvironmentSection(skills?: SkillFile[], subAgents?: SubAgentConfi
   if (sections.length === 0) return "";
 
   return `<system-reminder>\n${sections.join("\n\n")}\n</system-reminder>`;
+}
+
+async function buildAlwaysLoadedSkillsSection(skills: SkillFile[]): Promise<string> {
+  const alwaysSkills = skills.filter(shouldAlwaysLoadSkill);
+  if (!alwaysSkills.length) return "";
+
+  const blocks: string[] = [];
+  for (const skill of alwaysSkills) {
+    blocks.push((await renderSkillContent(skill)).output);
+  }
+
+  return `<system-reminder>\n以下 Skill 已默认打开，请直接遵照执行，无需再调用 ${USE_SKILL_TOOL_NAME} 工具：\n\n${blocks.join("\n\n---\n\n")}\n</system-reminder>`;
 }
 
 // ─── CodeAgent ────────────────────────────────────────────────────────────────
@@ -554,13 +577,14 @@ export class CodeAgent extends Agent {
           skills.length ? skills : undefined,
           subAgents.length ? subAgents : undefined,
         );
+        const alwaysSkillsSection = await buildAlwaysLoadedSkillsSection(skills);
         const modeSection = await buildModeSection({
           mode: ctx.mode,
           previousMode: ctx.previousMode,
           disabledModes: agentOptions.disabledModes,
           getFiles: wrappedSandbox.getFiles.bind(wrappedSandbox),
         });
-        const envText = [baseSection, modeSection].filter(Boolean).join("\n\n");
+        const envText = [baseSection, alwaysSkillsSection, modeSection].filter(Boolean).join("\n\n");
         if (envText) sections.push(envText);
 
         // 2. 项目空间元信息（文件列表等）
@@ -648,7 +672,8 @@ export class CodeAgent extends Agent {
   private _rebuildDynamicTools(): void {
     const { skills, subAgents, tools } = this._getEnabledResources();
 
-    const skillTool = skills.length ? createSkillTool(skills) : null;
+    const modelSkills = skills.filter(shouldExposeSkillToModel);
+    const skillTool = modelSkills.length ? createSkillTool(modelSkills) : null;
     const subAgentTool = subAgents.length
       ? createSubAgentTool(
           () => this,
