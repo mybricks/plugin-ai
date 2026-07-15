@@ -50,7 +50,7 @@ export const fileUploadReferenceCase: TestCase = {
   name: "文件上传：倾向引用",
   group: "文件上传",
   description:
-    "上传 .log / .csv / .jsonl / .sql / lockfile 等低信噪比或结构化大块文件，验证即使小于阈值也会写入 .tmp/uploads 并以路径引用。",
+    "上传 .log / .csv / .jsonl / lockfile 等指定扩展名/文件名的文件，验证即使小于阈值也会写入 .tmp/uploads 并以路径引用。",
   expectedBehavior:
     "chip 显示在输入框；发送后 Inspector 中 chip 占位符被替换为 .tmp/uploads 下的 Markdown 链接，消息末尾不追加全文。",
   initialTurns: [],

@@ -3,7 +3,7 @@
 // 附件处理核心逻辑：
 //   applyAttachProcessors  — 执行用户自定义前置处理器（first-match）
 //   processFileDefault     — 默认文件处理（Agent 环境，400K 截断 / 800K 拒绝）
-//   processFileInSandbox   — 沙箱文件处理（CodeAgent 环境，普通小文件内联，低信噪比/大文件写 .tmp 引用）
+//   processFileInSandbox   — 沙箱文件处理（CodeAgent 环境，普通小文件内联，指定扩展名/大文件写 .tmp 引用）
 
 import { message as antdMessage } from "antd";
 import type { AttachProcessor, LinkAttachment, FileContent, FileReference } from "../../../content-limits";
@@ -139,7 +139,6 @@ const REFERENCE_PREFERRED_EXTENSIONS = new Set([
   "lock",
   "log",
   "ndjson",
-  "sql",
   "tsv",
 ]);
 
@@ -152,14 +151,12 @@ const REFERENCE_PREFERRED_FILE_NAMES = new Set([
   "yarn.lock",
 ]);
 
-function shouldPreferSandboxReference(file: File, content: string, originalLines: number): boolean {
+function shouldPreferSandboxReference(file: File): boolean {
   const ext = getFileExt(file.name);
   const lowerName = file.name.toLowerCase();
   if (REFERENCE_PREFERRED_EXTENSIONS.has(ext)) return true;
   if (REFERENCE_PREFERRED_FILE_NAMES.has(lowerName)) return true;
   if (/(\.|-)(log|trace|dump|report)\./i.test(file.name)) return true;
-  if (originalLines > 1200) return true;
-  if (content.length > 0 && originalLines <= 20 && content.length / originalLines > 1200) return true;
   return false;
 }
 
@@ -220,7 +217,7 @@ const SANDBOX_TEMP_DIR = ".tmp/uploads";
  * 沙箱文件处理（CodeAgent 环境）：
  * - MHTML：特例处理，先 cleanMhtml；原始文件 ≤30MB，清理后 ≤2MB 内联，>2MB 截断后内联
  * - 超过 FILE_CHIP_REJECT_BYTES（默认 800KB）：写入 sandbox 临时目录，返回 FileReference
- * - 小于阈值但更适合按需读取的文件（如 log / csv / jsonl / sql / lockfile / 超多行 / 超长行）：
+ * - 小于阈值但更适合按需读取的文件（如 log / csv / jsonl / lockfile）：
  *   写入 sandbox 临时目录，返回 FileReference
  * - 其余普通文本/代码文件：完整内联；超过 FILE_CHIP_TRUNCATE_BYTES（默认 400KB）则截断后内联
  *
@@ -251,9 +248,9 @@ export async function processFileInSandbox(
     return writeFileReference(file, sandbox);
   }
 
-  // 400KB 以下默认内联；低信噪比/结构化大块文件倾向写入 sandbox 后按需读取。
+  // 400KB 以下默认内联；指定扩展名/文件名倾向写入 sandbox 后按需读取。
   const { content, truncated, originalLines } = await readFileWithTruncate(file);
-  if (!truncated && shouldPreferSandboxReference(file, content, originalLines)) {
+  if (!truncated && shouldPreferSandboxReference(file)) {
     return writeFileReference(file, sandbox);
   }
 
