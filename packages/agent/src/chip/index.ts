@@ -112,20 +112,23 @@ export const fileChipDef: ChatChipDef = {
       } else {
         // FileContent 模式：占位符替换为简短引用，内容追加到尾部
         const nameAttr = data.filePath ?? data.fileName;
-        resolved = resolved.replace(`[[chip:${chip.id}]]`, `「临时文件 ${data.fileName}」`);
+        resolved = resolved.replace(`[[chip:${chip.id}]]`, `@${data.fileName}`);
         const lineCount = data.content.split("\n").length;
-        const truncatedNote = data.truncated ? `（内容已截断，仅展示前 ${lineCount} 行）` : "";
         const langFence = data.language ? `\`\`\`${data.language}` : "```";
+
+        // 截断说明放在标签外作为正文提示，模型更容易注意到
+        const header = data.truncated
+          ? `<file name="${nameAttr}">（内容过长已截断，仅展示前 ${lineCount} 行）`
+          : `<file name="${nameAttr}">`;
+
         fileBlocks.push(
-          `<file name="${nameAttr}" lines="${lineCount}"${data.truncated ? ' truncated="true"' : ""}>${truncatedNote}\n` +
-          `${langFence}\n${data.content}\n\`\`\`\n` +
-          `</file>`
+          `${header}\n${langFence}\n${data.content}\n\`\`\`\n</file>`
         );
       }
     }
 
     if (fileBlocks.length > 0) {
-      resolved = `${resolved}\n\n文件内容（以下为用户临时上传并直接内联的文件内容）：\n${fileBlocks.join("\n\n")}`;
+      resolved = `${resolved}\n\n以下是上方通过 @文件名 引用的文件内容：\n${fileBlocks.join("\n\n")}`;
     }
 
     return resolved;
