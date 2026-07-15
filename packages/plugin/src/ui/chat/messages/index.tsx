@@ -623,6 +623,22 @@ const ThinkingCard = ({
 
 // ─── MarkdownMessage ──────────────────────────────────────────────────────────
 
+function getOpenableLinkHref(anchor: HTMLAnchorElement): string | null {
+  const href = anchor.getAttribute("href");
+  if (!href) return null;
+
+  try {
+    const url = new URL(href, window.location.href);
+    if (url.protocol === "http:" || url.protocol === "https:" || url.protocol === "mailto:" || url.protocol === "tel:") {
+      return url.href;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 const MarkdownMessage = ({ message, className }: { message: string; className?: string }) => {
   const ref = useRef<HTMLDivElement>(null);
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -633,7 +649,7 @@ const MarkdownMessage = ({ message, className }: { message: string; className?: 
   // 优先使用外部自定义皮肤，否则回退内置 skin-message
   const skinClass = markdownSkin?.message ?? messageSkinCss["markdown-skin-message"];
   const md = useMemo(() => {
-    const instance = markdownit();
+    const instance = markdownit({ linkify: true });
     markdownitConfig?.configure?.(instance);
     return instance;
   }, [markdownitConfig]);
@@ -642,6 +658,12 @@ const MarkdownMessage = ({ message, className }: { message: string; className?: 
     if (!ref.current) return;
 
     ref.current.innerHTML = md.render(message);
+
+    Array.from(ref.current.querySelectorAll<HTMLAnchorElement>("a[href]")).forEach((anchor) => {
+      if (!getOpenableLinkHref(anchor)) return;
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+    });
 
     // 渲染 mermaid 流程图（异步，不阻塞内容展示）
     renderMermaidInContainer(ref.current).catch(() => {});
@@ -656,10 +678,21 @@ const MarkdownMessage = ({ message, className }: { message: string; className?: 
       }
       return nextImageUrls;
     });
-  }, [message]);
+  }, [message, md]);
 
   const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement | null;
+    const anchor = target?.closest?.("a[href]") as HTMLAnchorElement | null;
+    if (anchor) {
+      const href = getOpenableLinkHref(anchor);
+      if (href) {
+        event.preventDefault();
+        event.stopPropagation();
+        window.open(href, "_blank", "noopener,noreferrer");
+        return;
+      }
+    }
+
     const image = target?.closest?.("img") as HTMLImageElement | null;
     if (!image) return;
 

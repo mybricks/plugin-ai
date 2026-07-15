@@ -380,3 +380,37 @@ export const assistantMessageWithLinksCase: TestCase = {
     },
   ]),
 };
+
+const LINK_OPEN_MARKDOWN = `链接打开行为验证：
+
+- Markdown 链接：[React 文档](https://react.dev)
+- 裸 URL：https://developer.mozilla.org
+- 邮件链接：[联系支持](mailto:support@example.com)
+
+| 场景 | 链接 |
+|------|------|
+| GitHub | [github.com](https://github.com) |
+| Stack Overflow | https://stackoverflow.com |
+
+点击任意链接，应在新窗口或新标签页打开，不应在当前消息容器内跳转。
+`;
+
+/** LLM 返回链接：验证 Markdown 链接和裸 URL 都能新窗口打开 */
+export const assistantMessageLinkOpenCase: TestCase = {
+  id: "ui-assistant-link-open",
+  name: "助手消息链接新窗口",
+  group: "UI 渲染",
+  description:
+    "LLM 返回 Markdown 链接、裸 URL、mailto 和表格内链接，验证 messages 中链接点击行为。",
+  expectedBehavior:
+    "Markdown 链接和裸 URL 都渲染为可点击链接；点击后通过新窗口/新标签打开，当前聊天页面不发生跳转。",
+  initialTurns: [],
+  request: makeScriptedRequest([
+    {
+      type: "content",
+      chunks: LINK_OPEN_MARKDOWN.match(/[\s\S]{1,20}/g) ?? [LINK_OPEN_MARKDOWN],
+      ttftMs: 150,
+      chunkDelayMs: 20,
+    },
+  ]),
+};

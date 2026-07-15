@@ -71,7 +71,7 @@ import {
   compactBinaryExpandSuccessCase,
   compactMidTurnErrorRetryCase,
 } from "./compact";
-import { markdownRichCase, userMessageWithLinksCase, userMessageWithTenImagesCase, assistantMessageWithMarkdownImageCase, streamingMarkdownCase, toolThenEmptyContentCase, assistantMessageWithLinksCase } from "./ui-render";
+import { markdownRichCase, userMessageWithLinksCase, userMessageWithTenImagesCase, assistantMessageWithMarkdownImageCase, streamingMarkdownCase, toolThenEmptyContentCase, assistantMessageWithLinksCase, assistantMessageLinkOpenCase } from "./ui-render";
 import { renderEmptyAboveCase } from "./ui-render-empty-above";
 import { selectorRenderInTopCase } from "./ui-selector-render-in-top";
 import { multiEditSameFileCase, multiEditPartialSuccessCase } from "./multi-edit";
@@ -236,6 +236,7 @@ export const ALL_CASES: TestCase[] = [
   assistantMessageWithMarkdownImageCase,
   streamingMarkdownCase,
   assistantMessageWithLinksCase,
+  assistantMessageLinkOpenCase,
   renderEmptyAboveCase,
   selectorRenderInTopCase,
   // 异常检测—工具后空 content
