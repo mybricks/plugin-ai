@@ -68,6 +68,7 @@ export function createSkillTool(skills: SkillFile[]): Tool {
         output,
         metadata: {
           skillName: skill.name,
+          displayName: skill.displayName ?? skill.name,
           skillPath: `.agent/skills/${skill.name}/`,
           hasSupportFiles,
         },

@@ -8,7 +8,8 @@ import css from "../render.less";
 export const SkillRenderer = ({ tool }: { tool: ToolRecord }) => {
   const { messagesRenderVariant } = useChatPanel();
   const skillName: string = tool.args?.skill ?? "";
-  const title = skillName ? `使用技能 ${skillName}` : "使用技能";
+  const displayName: string = tool.result?.metadata?.displayName ?? skillName;
+  const title = displayName ? `使用技能 ${displayName}` : "使用技能";
 
   if (messagesRenderVariant === "line") {
     return (

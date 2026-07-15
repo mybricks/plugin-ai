@@ -32,6 +32,8 @@
 export interface SkillFile {
   /** 技能名称，作为虚拟目录名：.agent/skills/<name>/ */
   name: string;
+  /** 展示给用户看的技能名称；不影响工具调用和虚拟目录名 */
+  displayName?: string;
   /** 技能目录内的文件列表。必须包含 path === "SKILL.md" 的条目 */
   files: Array<{
     /** 相对于技能目录的路径（如 "SKILL.md"、"scripts/set.js"） */
