@@ -3,6 +3,7 @@
  * 供 built-ins/ 下各渲染文件引用。
  */
 import React, { useEffect, useState } from "react";
+import { RightOutlined } from "@ant-design/icons";
 import { Success, Loading, ErrorIcon } from "../../../components/icons";
 import { TextShimmer } from "../../../components/text-shimmer";
 import { ElapsedTime } from "../../../components/elapsed-time";
@@ -52,24 +53,41 @@ export const Label = ({ tool, text }: { tool: ToolRecord; text: string }) =>
 
 export const DefaultToolRenderer = ({ tool }: { tool: ToolRecord }) => {
   const { messagesRenderVariant } = useChatPanel();
+  const [expanded, setExpanded] = useState(false);
+  const detail = formatToolDetail(tool);
+  const canExpand = detail !== "";
 
   if (messagesRenderVariant === "line") {
     return (
       <LineToolRenderer
         tool={tool}
         title={tool.title ?? tool.name}
-        detail={formatToolDetail(tool)}
+        detail={detail}
       />
     );
   }
 
   return (
-    <div className={css["tool-card"]}>
-      <StatusIcon tool={tool} />
-      <Label tool={tool} text={tool.title ?? tool.name} />
-      <Duration tool={tool} />
+    <div className={css["code-card"]}>
+      <div
+        className={`${css["code-card-header"]}${expanded ? ` ${css["code-card-header-with-body"]}` : ""}`}
+        style={canExpand ? undefined : { cursor: "default" }}
+        onClick={() => canExpand && setExpanded((prev) => !prev)}
+      >
+        <StatusIcon tool={tool} />
+        <Label tool={tool} text={tool.title ?? tool.name} />
+        <Duration tool={tool} />
+        {canExpand ? (
+          <span className={css["code-card-toggle"]}>
+            <RightOutlined style={{ transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.2s" }} />
+          </span>
+        ) : null}
+      </div>
+      {canExpand && expanded ? (
+        <pre className={css["code-card-body"]}><code>{detail}</code></pre>
+      ) : null}
     </div>
-  )
+  );
 };
 
 export interface LineToolRendererProps {
@@ -154,10 +172,19 @@ export function formatToolDetail(tool: ToolRecord): string {
   const parts: string[] = [];
   if (tool.args && Object.keys(tool.args).length > 0) {
     parts.push(`参数:\n${safeStringify(tool.args)}`);
+  } else if (tool.argsContent) {
+    parts.push(`参数:\n${tool.argsContent}`);
+  }
+  if (tool.progress && Object.keys(tool.progress).length > 0) {
+    parts.push(`进度:\n${safeStringify(tool.progress)}`);
   }
   if (tool.result?.output) {
     parts.push(`结果:\n${String(tool.result.output)}`);
-  } else if (tool.error) {
+  }
+  if (tool.result?.metadata && Object.keys(tool.result.metadata).length > 0) {
+    parts.push(`元数据:\n${safeStringify(tool.result.metadata)}`);
+  }
+  if (tool.error) {
     parts.push(`错误:\n${String(tool.error)}`);
   }
   return parts.join("\n\n");
