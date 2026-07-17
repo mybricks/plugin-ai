@@ -424,7 +424,7 @@ function getDomCodeLocation(el: Element): string {
 function buildDomChipInfo(label: string, ele?: Element): string {
   if (!ele) {
     return [
-      `- ${label}：`,
+      `- @${label}：`,
       " - 代码位置：未知",
       " - 该区域到叶子节点的Dom结构摘要：未知",
     ].join("\n");
@@ -432,7 +432,7 @@ function buildDomChipInfo(label: string, ele?: Element): string {
 
   const repeatContextLines = formatRepeatContexts(collectRepeatAncestorContexts(ele));
   return [
-    `- ${label}：`,
+    `- @${label}：`,
     ` - 相关代码：${getDomCodeLocation(ele)}`,
     ...repeatContextLines,
     " - 该区域到叶子节点的Dom结构摘要：",
@@ -524,22 +524,26 @@ export function formatDomChipMessage({ message, chips }: ChatChipFormatContext):
   for (const chip of chips) {
     const ele = getChipElement(chip);
     const label = eleToLabel.get(ele) ?? "Dom节点";
-    resolved = resolved.split(`[[chip:${chip.id}]]`).join(` ${label} `);
+    // 行内占位符替换为 @节点名，让被引用实体在正文中一眼可辨，与文件 chip 的 @文件名 保持一致
+    resolved = resolved.split(`[[chip:${chip.id}]]`).join(` @${label} `);
   }
   resolved = normalizeDomChipSpacing(resolved);
 
-  const domInfo = labelToInfo.size === 0 ? '' : `\n\nDom节点说明：\n${
+  // Dom 节点说明用语义标签包裹，与正文显式分层，避免被当成待排查的任务。
+  const domInfo = labelToInfo.size === 0 ? '' : `\n\n<referenced-dom-nodes note="上方 @Dom 节点的详情，供参考。">\n${
     Array.from(labelToInfo).map(([label, { ele }]) => {
       return buildDomChipInfo(label, ele)
     }).join("\n")
-  }`
+  }\n</referenced-dom-nodes>`
 
   const zoneChipInfo = zoneChipMap.size === 0 ? '' : Array.from(zoneChipMap).map(([type, chipSet]) => {
-    return `\n\n${type}节点说明：\n${Array.from(chipSet).map(({ info }: any) => {
+    return `\n\n<referenced-nodes type="${type}" note="上方 @ 引用的${type}节点详情，供参考。">\n${Array.from(chipSet).map(({ info }: any) => {
       return info
-    }).join("\n")}`
-  })
+    }).join("\n")}\n</referenced-nodes>`
+  }).join('')
 
+  // 注意：<user_query> 的包裹由 agent.ts 在 chip format 之前统一处理，此处只负责 @ 替换与
+  // 追加实体说明块，追加的块会落在 </user_query> 之外，成为与正文平级的兄弟节点。
   return `${resolved}${domInfo}${zoneChipInfo}`
 }
 

@@ -1245,7 +1245,14 @@ export class Agent {
     // 外部 formatUserMessage 总是在 chip format 之后执行。
     // formatUserMessage 返回 { message, attachments?, meta?, extra? }，可覆盖原始参数
     // 注意：turn.userText 保留原始 message（UI 展示用），LLM 收到的是 formattedParams.message
-    const chipFormattedParams = this.chipRegistry.formatRequestParams({ ...params, mode: effectiveRequestMode });
+    //
+    // 仅当存在会被格式化的 chip 时，才把用户正文用 <user_query> 包裹：
+    // - 有 chip：占位符在正文内部，@ 替换正常生效；chip 追加的 <referenced-dom-nodes>/<file>
+    //   等实体说明块会落在 </user_query> 之外，成为平级兄弟节点，实现正文与引用块的显式分层。
+    // - 无 chip（纯文本消息）：不加标签，避免无意义的噪声。
+    const hasChips = this.chipRegistry.hasFormattableChips(params.meta?.chips as any);
+    const wrappedMessage = hasChips ? `<user_query>\n${message}\n</user_query>` : message;
+    const chipFormattedParams = this.chipRegistry.formatRequestParams({ ...params, message: wrappedMessage, mode: effectiveRequestMode });
     let formattedParams: RequestAIOptions & Partial<FormatUserMessageResult> = chipFormattedParams;
     if (this.options.formatUserMessage) {
       try {

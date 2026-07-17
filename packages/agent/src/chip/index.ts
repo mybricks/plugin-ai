@@ -177,6 +177,12 @@ export class ChipRegistry {
     return Array.from(this._types.values());
   }
 
+  /** 判断给定 chips 中是否存在会被实际格式化的项（type 已注册）。 */
+  hasFormattableChips(chips?: ChatChipInstance[]): boolean {
+    if (!chips?.length || this._types.size === 0) return false;
+    return chips.some((chip) => this._types.has(chip.type));
+  }
+
   /**
    * 格式化 request params：先按 chip type 分组调用 def.format，再返回新的 params。
    * 不修改原对象；如果 message 没有变化，返回原 params 引用。
