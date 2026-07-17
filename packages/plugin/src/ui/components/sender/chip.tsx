@@ -35,11 +35,23 @@ export const ChatChipInner = ({
   instance,
   chipDef,
   onRemove,
+  loading = false,
 }: {
   instance: ChatChipInstance;
   chipDef?: ChatChipDef;
   onRemove: () => void;
+  /** 是否处于上传/处理中的 loading 状态 */
+  loading?: boolean;
 }) => {
+  if (loading) {
+    return (
+      <span className={css.chip}>
+        <span className={css.chipSpinner} aria-hidden="true" />
+        <span className={css.chipText}>{instance.label}</span>
+        <ChipRemoveBtn onRemove={onRemove} />
+      </span>
+    );
+  }
   if (chipDef?.render) {
     const rendered = chipDef.render(instance.data);
     // 判断是否为 { color?, content } 对象
@@ -91,7 +103,8 @@ export function unmountChipContainer(wrapper: HTMLSpanElement) {
 export function createChipContainer(
   instance: ChatChipInstance,
   chipDef: ChatChipDef | undefined,
-  onRemove: () => void
+  onRemove: () => void,
+  loading = false
 ): HTMLSpanElement {
   const wrapper = document.createElement("span");
   wrapper.contentEditable = "false";
@@ -99,8 +112,24 @@ export function createChipContainer(
   wrapper.className = css.chipWrapper;
   const inner = document.createElement("span");
   wrapper.appendChild(inner);
-  ReactDOM.render(<ChatChipInner instance={instance} chipDef={chipDef} onRemove={onRemove} />, inner);
+  ReactDOM.render(<ChatChipInner instance={instance} chipDef={chipDef} onRemove={onRemove} loading={loading} />, inner);
   return wrapper;
+}
+
+/**
+ * 更新已挂载 chip 容器内的 React 内容（如从 loading 态切换到正常态，或更新 data）。
+ * 直接持有 wrapper 引用操作，无需 DOM 搜索。
+ */
+export function updateChipContainer(
+  wrapper: HTMLSpanElement,
+  instance: ChatChipInstance,
+  chipDef: ChatChipDef | undefined,
+  onRemove: () => void,
+  loading = false
+): void {
+  const inner = wrapper.firstChild as HTMLElement | null;
+  if (!inner) return;
+  ReactDOM.render(<ChatChipInner instance={instance} chipDef={chipDef} onRemove={onRemove} loading={loading} />, inner);
 }
 
 export function updateChipWrapperSpacing(editor: HTMLDivElement) {

@@ -17,6 +17,7 @@ import { removeLeadingPlaceholderBreakBeforeChip } from "./utils";
 import {
   unmountChipContainer,
   createChipContainer,
+  updateChipContainer,
   updateChipWrapperSpacing,
   serializeEditorContent,
   measureEditorContent,
@@ -360,6 +361,11 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
   /** chat chip 实例 Map：id → ChatChipInstance */
   const chipMapRef = useRef<Map<string, ChatChipInstance>>(new Map());
+  /** chip 容器 wrapper DOM 引用：id → HTMLSpanElement（直接持有，无需 DOM 搜索） */
+  const chipWrapperMapRef = useRef<Map<string, HTMLSpanElement>>(new Map());
+  /** 当前正在 applyFileProcessors 处理中的 chip id 集合 */
+  const loadingChipIdsRef = useRef<Set<string>>(new Set());
+  const [hasLoadingChips, setHasLoadingChips] = useState(false);
   const pendingFileMapRef = useRef<Map<string, File | FileContent>>(new Map());
 
   /** 默认 focus 内容串的整体尺寸，用于把 placeholder 推到内容串后面。 */
@@ -481,16 +487,20 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
             chipMapRef.current.set(instance.id, instance);
             const def = chipTypesMapRef.current.get(instance.type);
             const onRemove = () => {
-              const chipEl = editor.querySelector<HTMLSpanElement>(`[data-chip-id="${instance.id}"]`);
-              if (chipEl) {
-                unmountChipContainer(chipEl);
-                chipEl.parentNode?.removeChild(chipEl);
+              const w = chipWrapperMapRef.current.get(instance.id);
+              if (w) {
+                unmountChipContainer(w);
+                w.parentNode?.removeChild(w);
                 editor.normalize();
+                chipWrapperMapRef.current.delete(instance.id);
               }
               chipMapRef.current.delete(instance.id);
+              loadingChipIdsRef.current.delete(instance.id);
+              if (loadingChipIdsRef.current.size === 0) setHasLoadingChips(false);
               syncInputContent();
             };
             const chipEl = createChipContainer(instance, def, onRemove);
+            chipWrapperMapRef.current.set(instance.id, chipEl);
             editor.appendChild(chipEl);
           }
         } else if (part) {
@@ -519,7 +529,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   }, [syncInputContent, triggerReceiveAnimation]);
 
   /** 在当前光标位置插入一个 chat chip */
-  const insertChip = useCallback((instance: ChatChipInstance) => {
+  const insertChip = useCallback((instance: ChatChipInstance, loading = false) => {
     const editor = inputEditorRef.current;
     if (!editor) return;
 
@@ -530,18 +540,24 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
     // 点击删除按钮时：卸载 React、从 DOM 移除、清理 chipMap、同步内容
     const onRemove = () => {
-      const chipEl = editor.querySelector<HTMLSpanElement>(`[data-chip-id="${instance.id}"]`);
-      if (chipEl) {
-        unmountChipContainer(chipEl);
-        chipEl.parentNode?.removeChild(chipEl);
+      const wrapper = chipWrapperMapRef.current.get(instance.id);
+      if (wrapper) {
+        unmountChipContainer(wrapper);
+        wrapper.parentNode?.removeChild(wrapper);
         editor.normalize();
       }
       chipMapRef.current.delete(instance.id);
+      chipWrapperMapRef.current.delete(instance.id);
       pendingFileMapRef.current.delete(instance.id);
+      loadingChipIdsRef.current.delete(instance.id);
+      if (loadingChipIdsRef.current.size === 0) setHasLoadingChips(false);
       syncInputContent();
     };
 
-    const chipEl = createChipContainer(instance, def, onRemove);
+    const chipEl = createChipContainer(instance, def, onRemove, loading);
+
+    // 持有 wrapper 引用
+    chipWrapperMapRef.current.set(instance.id, chipEl);
 
     // 插入到当前光标位置
     const selection = window.getSelection();
@@ -573,6 +589,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     editor.querySelectorAll<HTMLSpanElement>(`[data-chip-id]`).forEach(unmountChipContainer);
     editor.textContent = "";
     chipMapRef.current.clear();
+    chipWrapperMapRef.current.clear();
+    loadingChipIdsRef.current.clear();
+    setHasLoadingChips(false);
     setInputContent("");
     setIsDefaultFocusContent(false);
     setDefaultFocusContentSize(null);
@@ -666,7 +685,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     const editor = inputEditorRef.current!;
     const { message: serializedMessage, chips } = serializeEditorContent(editor, chipMapRef.current);
     const hasUploadingAttachment = attachments.some((a) => a.uploading);
-    if (serializedMessage && !disabled && !uploading && !hasUploadingAttachment && !processingSendRef.current) {
+    if (serializedMessage && !disabled && !uploading && !hasLoadingChips && !hasUploadingAttachment && !processingSendRef.current) {
       processingSendRef.current = true;
       let resolvedChips: ChatChipInstance[] | null = null;
       try {
@@ -690,6 +709,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       editor.querySelectorAll<HTMLSpanElement>(`[data-chip-id]`).forEach(unmountChipContainer);
       editor.textContent = "";
       chipMapRef.current.clear();
+      chipWrapperMapRef.current.clear();
+      loadingChipIdsRef.current.clear();
+      setHasLoadingChips(false);
       pendingFileMapRef.current.clear();
       setIsDefaultFocusContent(false);
       setDefaultFocusContentSize(null);
@@ -791,16 +813,66 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     const processors = attachProcessors ?? [];
 
     for (const rawFile of nonImageFiles) {
-      try {
-        // 1. 前置处理（first-match transform）
-        const transformed = await applyFileProcessors(rawFile, processors);
-        if (transformed === null) continue; // 处理器内部已弹提示
+      const id = Math.random().toString(36).slice(2, 7);
+      const placeholderInstance: ChatChipInstance = {
+        id,
+        type: FILE_CHIP_TYPE,
+        label: rawFile.name,
+        data: {
+          kind: "content" as const,
+          fileName: rawFile.name,
+          content: "",
+          language: "",
+          truncated: false,
+          originalSize: rawFile.size,
+        },
+      };
 
-        const id = Math.random().toString(36).slice(2, 7);
+      // 1. 先插入 loading 态 chip，让用户立即看到反馈
+      loadingChipIdsRef.current.add(id);
+      setHasLoadingChips(true);
+      insertChip(placeholderInstance, true);
+
+      try {
+        // 2. 前置处理（first-match transform）—— 可能耗时
+        const transformed = await applyFileProcessors(rawFile, processors);
+        if (!chipWrapperMapRef.current.has(id)) {
+          continue;
+        }
+        if (transformed === null) {
+          // 处理器内部已弹提示，移除 loading chip
+          const wrapper = chipWrapperMapRef.current.get(id);
+          if (wrapper) {
+            unmountChipContainer(wrapper);
+            wrapper.parentNode?.removeChild(wrapper);
+            inputEditorRef.current?.normalize();
+            chipWrapperMapRef.current.delete(id);
+          }
+          chipMapRef.current.delete(id);
+          loadingChipIdsRef.current.delete(id);
+          if (loadingChipIdsRef.current.size === 0) setHasLoadingChips(false);
+          syncInputContent();
+          continue;
+        }
+
         const chipData = !(transformed instanceof File) && transformed.type === "reference"
           ? toFileChipData(rawFile, transformed)
           : null;
-        if (!(transformed instanceof File) && transformed.type === "reference" && chipData === null) continue;
+        if (!(transformed instanceof File) && transformed.type === "reference" && chipData === null) {
+          // 同上，移除
+          const wrapper = chipWrapperMapRef.current.get(id);
+          if (wrapper) {
+            unmountChipContainer(wrapper);
+            wrapper.parentNode?.removeChild(wrapper);
+            inputEditorRef.current?.normalize();
+            chipWrapperMapRef.current.delete(id);
+          }
+          chipMapRef.current.delete(id);
+          loadingChipIdsRef.current.delete(id);
+          if (loadingChipIdsRef.current.size === 0) setHasLoadingChips(false);
+          syncInputContent();
+          continue;
+        }
 
         const pendingFile = transformed instanceof File ? transformed : undefined;
         const pendingContent = !(transformed instanceof File) && transformed.type === "content" ? transformed : undefined;
@@ -808,22 +880,59 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         if (!chipData) {
           pendingFileMapRef.current.set(id, pendingFile ?? pendingContent!);
         }
-        insertChip({
+
+        // 3. 处理完毕：更新 chip 为正常态（直接用持有的 wrapper 引用）
+        const finalInstance: ChatChipInstance = {
           id,
           type: FILE_CHIP_TYPE,
           label,
           data: chipData ?? {
-            kind: "content",
+            kind: "content" as const,
             fileName: label,
             content: "",
             language: pendingContent?.language ?? "",
             truncated: false,
             originalSize: pendingFile?.size ?? rawFile.size,
           },
-        });
+        };
+        chipMapRef.current.set(id, finalInstance);
+        loadingChipIdsRef.current.delete(id);
+        if (loadingChipIdsRef.current.size === 0) setHasLoadingChips(false);
+
+        const wrapper = chipWrapperMapRef.current.get(id);
+        if (wrapper) {
+          const def = chipTypesMapRef.current.get(FILE_CHIP_TYPE);
+          const onRemove = () => {
+            const w = chipWrapperMapRef.current.get(id);
+            if (w) {
+              unmountChipContainer(w);
+              w.parentNode?.removeChild(w);
+              inputEditorRef.current?.normalize();
+              chipWrapperMapRef.current.delete(id);
+            }
+            chipMapRef.current.delete(id);
+            pendingFileMapRef.current.delete(id);
+            loadingChipIdsRef.current.delete(id);
+            if (loadingChipIdsRef.current.size === 0) setHasLoadingChips(false);
+            syncInputContent();
+          };
+          updateChipContainer(wrapper, finalInstance, def, onRemove, false);
+        }
+        syncInputContent();
       } catch (err) {
         console.error("[@mybricks/plugin-ai - 读取文件失败]", err);
         message.error(`读取「${rawFile.name}」失败，已跳过`);
+        const wrapper = chipWrapperMapRef.current.get(id);
+        if (wrapper) {
+          unmountChipContainer(wrapper);
+          wrapper.parentNode?.removeChild(wrapper);
+          inputEditorRef.current?.normalize();
+          chipWrapperMapRef.current.delete(id);
+        }
+        chipMapRef.current.delete(id);
+        loadingChipIdsRef.current.delete(id);
+        if (loadingChipIdsRef.current.size === 0) setHasLoadingChips(false);
+        syncInputContent();
       }
     }
   }, [attachProcessors, insertChip]);
@@ -1155,12 +1264,12 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
               <ModelSelector modelSelector={modelSelector} disabled={disabled || uploading || loading} />
             )}
             <div data-zone-type="ai-request" className={classNames(css.sendButtonContainer, {
-              [css.disabled]: !loading && (disabled || !inputContent || uploading || attachments.some((a) => a.uploading))
+              [css.disabled]: !loading && (disabled || !inputContent || uploading || hasLoadingChips || attachments.some((a) => a.uploading))
             })} onClick={onSendButtonClick}>
               <div
                 data-zone-type="ai-request"
                 className={classNames(css.sendButton, {
-                  [css.loadingButton]: loading || uploading
+                  [css.loadingButton]: loading || uploading || hasLoadingChips
                 })}
                 data-mybricks-tip={loading ? "停止" : ""}
                 onClick={(e) => {
@@ -1170,7 +1279,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
                   }
                 }}
               >
-                {(loading || uploading) ? <Loading /> : <Send />}
+                {(loading || uploading || hasLoadingChips) ? <Loading /> : <Send />}
               </div>
             </div>
           </div>

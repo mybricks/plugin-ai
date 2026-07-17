@@ -112,6 +112,7 @@ import {
   fileUploadReferenceCase,
   fileUploadProcessorReferenceCase,
   fileUploadProcessorContentCase,
+  fileUploadSlowProcessorCase,
 } from "./file-upload";
 import {
   bashMvRenameCase,
@@ -248,6 +249,7 @@ export const ALL_CASES: TestCase[] = [
   fileUploadReferenceCase,
   fileUploadProcessorReferenceCase,
   fileUploadProcessorContentCase,
+  fileUploadSlowProcessorCase,
   // 设置
   settingCase,
   modelSwitchCase,

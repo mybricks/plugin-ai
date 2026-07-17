@@ -97,6 +97,22 @@ const mockCsvCdnProcessor: AttachProcessor = {
   },
 };
 
+/** 模拟慢速上传（3 秒延迟），用于验证 chip loading 状态 */
+const mockSlowCdnProcessor: AttachProcessor = {
+  type: "file",
+  match: /\.(csv|txt|md|ts|js|json)$/i,
+  process: async (file) => {
+    await new Promise<void>((resolve) => setTimeout(resolve, 3000));
+    const encodedName = encodeURIComponent(file.name);
+    const url = `https://cdn.example.test/slow-uploads/${encodedName}`;
+    console.info(`[mock-slow-cdn] 上传完成 ${file.name} -> ${url}`);
+    return {
+      type: "reference",
+      text: `[${file.name}](${url})`,
+    };
+  },
+};
+
 export const fileUploadProcessorReferenceCase: TestCase = {
   id: "file-upload-processor-reference",
   name: "文件上传：AttachProcessor 返回 FileReference",
@@ -145,6 +161,29 @@ export const fileUploadProcessorContentCase: TestCase = {
     {
       type: "content",
       chunks: ["收到，CSV 已在 attachProcessor 中转换为 JSON 内容。"],
+      ttftMs: 300,
+      chunkDelayMs: 40,
+    },
+  ]),
+};
+
+export const fileUploadSlowProcessorCase: TestCase = {
+  id: "file-upload-slow-processor",
+  name: "文件上传：慢速 AttachProcessor Loading 状态",
+  group: "文件上传",
+  description:
+    "上传任意 .csv / .txt / .md / .ts / .js / .json 文件，attachProcessor 模拟 3 秒上传延迟。" +
+    "验证：chip 立即出现在输入框并显示旋转加载动画；上传完成前发送按钮处于禁用状态；" +
+    "3 秒后 chip 切换为正常态，发送按钮恢复可用。",
+  expectedBehavior:
+    "① 文件放入后 chip 立即出现（带旋转 spinner）；② 此时点击发送无效；" +
+    "③ 3 秒后 chip 变为正常显示，发送按钮亮起；④ 发送后 Inspector 中 chip 占位符被替换为 CDN 链接。",
+  initialTurns: [],
+  attachProcessors: [mockSlowCdnProcessor],
+  request: makeScriptedRequest([
+    {
+      type: "content",
+      chunks: ["收到，慢速上传已完成，文件以 CDN 链接形式提供。"],
       ttftMs: 300,
       chunkDelayMs: 40,
     },
