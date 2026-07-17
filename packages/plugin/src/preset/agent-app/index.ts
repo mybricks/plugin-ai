@@ -32,8 +32,10 @@ export function agentAppPromptBuilder(): PluginAIPreset {
             agentAppPromptSection.root.architectureSection,
             "## 可用的三方库",
             libraryDocsSection,
-            '# 可视化Skill & Tool 开发规范',
-            'TODO',
+            '# 业务技能Skill开发规范',
+            agentAppPromptSection.frontend.guideSection,
+            '## 开发示例',
+            agentAppPromptSection.frontend.examplesSection,
             '#服务端开发',
             'TODO'
           ].filter(Boolean).join("\n\n"),
