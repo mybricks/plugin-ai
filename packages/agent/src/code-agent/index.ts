@@ -259,8 +259,9 @@ export interface CodeAgentOptions extends Omit<AgentOptions, "system"> {
   sandbox: Sandbox;
   /**
    * 系统提示词定制选项（可覆盖内置默认值）。
+   * 传 false 则跳过所有内置段落，由 system 字段完全掌控系统提示词。
    */
-  promptOptions?: CodeAgentPromptOptions;
+  promptOptions?: CodeAgentPromptOptions | false;
   /**
    * 技能文件列表（Skills）。
    *
@@ -561,8 +562,12 @@ export class CodeAgent extends Agent {
       return [{ role: "user", content: ctx }];
     };
 
-    const builtinSystem = getCodeAgentSystemPrompt(agentOptions.promptOptions);
-    const finalSystem = system ? `${builtinSystem}\n\n${system}` : builtinSystem;
+    const builtinSystem = options.promptOptions === false
+      ? ""
+      : getCodeAgentSystemPrompt(agentOptions.promptOptions);
+    const finalSystem = system ? `${builtinSystem}
+
+${system}` : builtinSystem;
 
     super({
       ...agentOptions,
