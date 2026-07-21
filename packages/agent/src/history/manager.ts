@@ -134,13 +134,16 @@ export class HistoryManager {
 
     try {
       const turns = await history.load(key);
-      let compactRecord = await history.loadCompact(key);
-      if (compactRecord && typeof compactRecord === "string") {
-        try {
-          const parsed = JSON.parse(compactRecord as any);
-          compactRecord = parsed && "upToTurnId" in parsed ? parsed : null;
-        } catch {
-          compactRecord = null;
+      let compactRecord = null;
+      if (history?.loadCompact) {
+        compactRecord = await history.loadCompact(key);
+        if (compactRecord && typeof compactRecord === "string") {
+          try {
+            const parsed = JSON.parse(compactRecord as any);
+            compactRecord = parsed && "upToTurnId" in parsed ? parsed : null;
+          } catch {
+            compactRecord = null;
+          }
         }
       }
       // 注意：不在这里 emit ready，由 Agent.ensureHistoryReady 在写好 turns 后调 markReady()
