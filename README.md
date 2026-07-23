@@ -12,7 +12,7 @@
 
 ## 介绍
 
-`@mybricks//agent` 把「一次 AI 任务」抽象为一个可流式消费的循环：模型思考 → 调用工具 → 观察结果 → 继续思考，直到任务完成。框架负责这套循环里所有繁琐但关键的工程细节——多步推理、上下文治理、流式输出、工具编排、历史恢复——你只需专注在**如何设计提示词、接入哪个模型、装配哪些能力**上。
+`@mybricks/agent` 把「一次 AI 任务」抽象为一个可流式消费的循环：模型思考 → 调用工具 → 观察结果 → 继续思考，直到任务完成。框架负责这套循环里所有繁琐但关键的工程细节——多步推理、上下文治理、流式输出、工具编排、历史恢复——你只需专注在**如何设计提示词、接入哪个模型、装配哪些能力**上。
 
 基于一个**基础 Agent**，装配不同的工具、再用**提示词**赋予它角色与行为，就得到面向不同场景的智能体
 
@@ -34,7 +34,7 @@
 
 <div align="center">
 
-<img src="./assets/architecture.svg" alt="架构：模型 / 拓展 / SDK / 封装 / 智能体" width="720" />
+<img src="./packages/agent/assets/architecture.svg" alt="架构：模型 / 拓展 / SDK / 封装 / 智能体" width="100%" />
 
 </div>
 
@@ -42,7 +42,7 @@
 
 <div align="center">
 
-<img src="./assets/prompt-stack.svg" alt="提示词管理：提示词的组织结构" width="720" />
+<img src="./packages/agent/assets/prompt-stack.svg" alt="提示词管理：提示词的组织结构" width="100%" />
 
 </div>
 
