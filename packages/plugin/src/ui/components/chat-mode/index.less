@@ -1,0 +1,140 @@
+/*! plugin-ai-comp-view-anchor */
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--chat-message-group-gap, 4px);
+  padding: var(--chat-mode-trigger-padding, 3px 6px);
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: var(--mybricks-bg-color-main, #ffffff);
+  color: var(--mybricks-text-color-main, #333333);
+  cursor: pointer;
+  min-height: var(--chat-mode-trigger-min-height, 24px);
+  transition: background 0.15s ease, border-color 0.15s ease;
+  flex-shrink: 0;
+
+  &:hover {
+    background: var(--mybricks-bg-color-secondary, #f5f5f5);
+  }
+
+  &.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.iconSlot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+
+  svg {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+.agentIconSlot {
+  width: 16px;
+  height: 16px;
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+/* 莫比乌斯环图标 —— 线条流动动画 */
+.mobiusIcon path {
+  stroke-dasharray: 60;
+  stroke-dashoffset: 120;
+  animation: mobius-flow 2s linear infinite;
+
+  &:nth-child(2) {
+    animation-delay: -1s;
+  }
+}
+
+/* trigger 选中 plan 模式时用默认颜色 */
+.triggerBuild {
+  // build 模式已经有主色，plan 模式复用 trigger 默认样式即可
+}
+
+/* 兼容旧引用，无实际内容 */
+.triggerText { display: none; }
+.arrow {
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+
+.menu {
+  min-width: 160px;
+  padding: var(--chat-menu-padding, 4px 0);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  padding: var(--chat-menu-item-padding, 6px 10px);
+  cursor: pointer;
+  transition: background 0.15s;
+  color: var(--mybricks-text-color-main, #333333);
+
+  &:hover {
+    background: var(--mybricks-bg-color-secondary, #f5f5f5);
+  }
+
+  &.selected {
+    background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 7%, transparent);
+
+    .itemIcon {
+      color: var(--mybricks-color-primary, #FA6400);
+      opacity: 1;
+    }
+
+    .itemTitle {
+      color: var(--mybricks-color-primary, #FA6400);
+    }
+  }
+}
+
+.itemIcon {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--mybricks-text-color-main, #333333);
+  opacity: 0.72;
+
+  svg {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+.itemContent {
+  flex: 1;
+}
+
+.itemTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--chat-block-gap, 6px);
+  font-size: var(--chat-font-size, 12px);
+  font-weight: 500;
+  line-height: 1.3;
+  margin-bottom: 2px;
+}
+
+.itemDesc {
+  font-size: var(--chat-font-size-sm, 11px);
+  color: var(--mybricks-text-color-main, #333333);
+  opacity: 0.55;
+  line-height: 1.4;
+}

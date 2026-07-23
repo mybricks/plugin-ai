@@ -1,0 +1,60 @@
+import React from "react";
+import { Pencil, Loading } from "../../../../components/icons";
+import type { ToolRecord } from "../index";
+import {
+  StatusIcon, Duration, Label, BatchItem, BatchGroup,
+} from "../shared";
+import css from "../render.less";
+
+type EditItem = { path: string; old_str?: string; new_str?: string; replace_all?: boolean };
+type EditResult = { path: string; error?: string };
+
+export const MultiEditRenderer = ({ tool }: { tool: ToolRecord }) => {
+  const edits: EditItem[] = Array.isArray(tool.args?.edits) ? tool.args.edits : [];
+  const editResults: EditResult[] = Array.isArray(tool.result?.metadata?.edits) ? tool.result.metadata.edits : [];
+  const isPending = tool.status === "pending";
+
+  if (edits.length === 0) {
+    return (
+      <div className={css["tool-card"]}>
+        <StatusIcon tool={tool} icon={<Pencil />} />
+        <Label tool={tool} text="批量修改" />
+        <Duration tool={tool} />
+      </div>
+    );
+  }
+
+  const paths = edits.map((e) => e.path);
+  const hasPartialError = editResults.some((r) => r.error);
+  const items = edits.map((edit, idx) => {
+    const name = edit.path;
+    const oldStr = edit.old_str ?? "";
+    const newStr = edit.new_str ?? "";
+    const streamContent = newStr || oldStr;
+    const isLastAndPending = isPending && idx === edits.length - 1;
+    const editError = editResults[idx]?.error;
+    return (
+      <BatchItem
+        key={(edit.path || idx) + "-" + idx}
+        tool={tool}
+        path={edit.path}
+        name={name}
+        content={isPending ? streamContent : newStr}
+        diffMode={!isPending && oldStr && !editError ? { oldStr, newStr } : undefined}
+        streaming={isLastAndPending}
+        error={editError}
+      />
+    );
+  });
+
+  return (
+    <BatchGroup
+      tool={tool}
+      icon={<Pencil />}
+      verb="批量修改"
+      count={edits.length}
+      items={items}
+      hasPartialError={hasPartialError}
+    />
+  );
+};

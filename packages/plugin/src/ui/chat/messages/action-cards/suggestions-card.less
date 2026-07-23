@@ -1,0 +1,89 @@
+/*! plugin-ai-comp-view-anchor */
+
+// ─── Suggestions 建议选项 ──────────────────────────────────────────────────────
+.suggestions-message {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  animation: suggestion-slide-in 0.18s ease-out both;
+}
+
+.suggestions-block {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 8px 2px 0 2px;
+  box-sizing: border-box;
+  border-top: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+}
+
+.suggestions-options {
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
+}
+
+.suggestion-option {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 2px 4px;
+  box-sizing: border-box;
+  font-size: var(--chat-font-size, 12px);
+  line-height: 1.3;
+  color: var(--mybricks-color-primary, #4A72F6);
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  text-align: left;
+  user-select: none;
+  outline: none;
+  animation: suggestion-slide-in 0.22s ease-out both;
+  width: 100%;
+
+  &:hover {
+    .suggestion-option-text {
+      text-decoration: underline;
+    }
+  }
+
+  &:active {
+    opacity: 0.7;
+  }
+
+  &.suggestion-option-disabled {
+    opacity: 0.4 !important;
+    cursor: not-allowed;
+    pointer-events: none;
+    animation: none;
+  }
+}
+
+.suggestion-option-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  width: 12px;
+  height: 12px;
+  margin-top: 3px;
+  color: var(--mybricks-color-primary, #4A72F6);
+}
+
+.suggestion-option-text {
+  min-width: 0;
+  color: var(--mybricks-color-primary, #4A72F6);
+  word-break: break-word;
+}
+
+@keyframes suggestion-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

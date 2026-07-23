@@ -1,0 +1,23 @@
+/*! plugin-ai-comp-view-anchor */
+
+.text-shimmer {
+  display: inline-block;
+  background: linear-gradient(
+    90deg,
+    var(--mybricks-text-color-main, #333) 0%,
+    var(--mybricks-text-color-main, #333) 30%,
+    var(--mybricks-bg-color-main, #FFF) 50%,
+    var(--mybricks-text-color-main, #333) 70%,
+    var(--mybricks-text-color-main, #333) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 1.6s linear infinite;
+}
+
+@keyframes shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}

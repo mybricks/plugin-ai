@@ -1,0 +1,600 @@
+/*! plugin-ai-comp-view-anchor */
+
+// ── 通用工具卡片 ─────────────────────────────────────────────────────────────
+
+.tool-card {
+  display: flex;
+  align-items: center;
+  gap: var(--chat-block-gap, 6px);
+  border-radius: 6px;
+  border: 1px solid var(--chat-tool-card-border, var(--mybricks-border-color-main, #E6E6E6));
+  background: var(--mybricks-bg-color-secondary, #F5F5F5);
+  padding: var(--chat-card-option-padding, 5px 10px);
+  margin: 3px 0;
+  font-size: var(--chat-font-size, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  cursor: default;
+  user-select: none;
+  min-height: var(--chat-card-min-height, 28px);
+}
+
+.tool-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: inherit;
+
+  svg { width: var(--chat-icon-size, 12px); height: var(--chat-icon-size, 12px); }
+}
+
+// pending 时用空心圆占位图标
+.tool-icon-pending {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  font-size: var(--chat-font-size, 12px);
+  line-height: 1;
+  opacity: 0.5;
+  color: var(--mybricks-text-color-main, #333);
+}
+
+.tool-label {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--chat-font-size, 12px);
+  color: var(--mybricks-text-color-main, #333);
+}
+
+.tool-meta {
+  font-size: var(--chat-font-size-sm, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+
+.tool-duration {
+  font-size: var(--chat-font-size-sm, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  flex-shrink: 0;
+}
+
+// ── 行式工具展示 ─────────────────────────────────────────────────────────────
+
+.tool-line {
+  margin: 4px 0;
+  font-size: var(--chat-font-size, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  user-select: none;
+}
+
+.tool-line-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: default;
+}
+
+.tool-line-header-expandable {
+  cursor: pointer;
+}
+
+.tool-line-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--chat-icon-size, 12px);
+  height: var(--chat-icon-size, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.62;
+
+  svg { width: var(--chat-icon-size, 12px); height: var(--chat-icon-size, 12px); }
+}
+
+.tool-line-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--chat-font-size-sm, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.62;
+}
+
+.tool-line-meta {
+  flex: 0 0 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--chat-font-size-sm, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.45;
+}
+
+.tool-line-duration {
+  font-size: var(--chat-font-size-sm, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.62;
+  flex-shrink: 0;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+}
+
+.tool-line-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.38;
+  flex-shrink: 0;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+}
+
+.tool-line-finished {
+  .tool-line-duration,
+  .tool-line-toggle {
+    visibility: hidden;
+    opacity: 0;
+  }
+
+  &:hover {
+    .tool-line-duration {
+      visibility: visible;
+      opacity: 0.62;
+    }
+
+    .tool-line-toggle {
+      visibility: visible;
+      opacity: 0.38;
+    }
+  }
+}
+
+.tool-line-detail {
+  margin: 2px 0 6px calc(var(--chat-icon-size, 12px) + var(--chat-block-gap, 6px));
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.56;
+  font-size: var(--chat-font-size-sm, 12px);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+
+  pre {
+    margin: 0;
+    font: inherit;
+    white-space: pre-wrap;
+    word-break: break-word;
+    user-select: text;
+  }
+}
+
+// ── 代码卡片（write / edit 完成后展示）────────────────────────────────────────
+
+.code-card {
+  border-radius: 6px;
+  border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  background: var(--mybricks-bg-color-secondary, #F5F5F5);
+  margin: 3px 0;
+  overflow: hidden;
+  font-size: var(--chat-font-size, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  cursor: default;
+  user-select: none;
+}
+
+.code-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--chat-block-gap, 6px);
+  padding: var(--chat-card-option-padding, 5px 10px);
+  background: var(--mybricks-bg-color-secondary, #F5F5F5);
+  min-height: var(--chat-card-min-height, 28px);
+  cursor: pointer;
+  user-select: none;
+
+  &.code-card-header-with-body {
+    border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  }
+}
+
+.code-card-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: inherit;
+
+  svg { width: var(--chat-icon-size, 12px); height: var(--chat-icon-size, 12px); }
+}
+
+.code-card-filename {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--chat-font-size, 12px);
+  font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  color: var(--mybricks-text-color-main, #333);
+}
+
+.code-card-lines {
+  font-size: var(--chat-font-size-sm, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+
+.code-card-toggle {
+  font-size: 9px;
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.45;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.code-card-body {
+  margin: 0;
+  padding: var(--chat-card-padding, 8px 10px);
+  font-size: var(--chat-font-size-sm, 12px);
+  font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  line-height: 1.6;
+  overflow: auto;
+  max-height: calc(11px * 1.6 * 12 + 16px);
+  color: var(--mybricks-text-color-main, #333);
+  background: transparent;
+  white-space: pre;
+  user-select: text;
+
+  &::-webkit-scrollbar { display: none; }
+  scrollbar-width: none;
+
+  code {
+    background: transparent;
+    padding: 0;
+    font-size: inherit;
+    font-family: inherit;
+    user-select: text;
+  }
+}
+
+// ── diff 行样式 ────────────────────────────────────────────────────────────────
+
+// 每行：relative 容器，左侧留 14px 给符号占位
+.diff-add,
+.diff-del,
+.diff-ctx {
+  display: block;
+  position: relative;
+  padding-left: 14px;
+}
+
+.diff-add {
+  // background: rgba(40, 167, 69, 0.12);
+  color: #22863a;
+}
+
+.diff-del {
+  // background: rgba(255, 68, 68, 0.10);
+  color: #c0392b;
+}
+
+// +/- 符号 absolute 固定左侧，不影响内容缩进
+.diff-sign {
+  position: absolute;
+  left: 2px;
+  top: 0;
+  width: 10px;
+  text-align: center;
+  font-weight: 600;
+  user-select: none;
+  pointer-events: none;
+}
+
+// ── read_file 专属 ────────────────────────────────────────────────────────────
+
+.read-path {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--chat-font-size, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+// ── write_file / edit_file 专属 ──────────────────────────────────────────────
+
+.write-path {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--chat-font-size, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+// ── 批量操作组（multi_write / multi_edit）─────────────────────────────────────
+
+// 外层容器：圆角边框，整体一张卡片
+.batch-group {
+  border-radius: 6px;
+  border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  background: var(--mybricks-bg-color-secondary, #F5F5F5);
+  margin: 3px 0;
+  overflow: hidden;
+  font-size: var(--chat-font-size, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  user-select: none;
+}
+
+// 顶部 header：操作名 + 文件数 + 耗时
+.batch-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--chat-block-gap, 6px);
+  padding: var(--chat-card-option-padding, 5px 10px);
+  background: var(--mybricks-bg-color-secondary, #F5F5F5);
+  border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  min-height: var(--chat-card-min-height, 28px);
+  cursor: default;
+}
+
+.batch-group-header-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: inherit;
+  svg { width: var(--chat-icon-size, 12px); height: var(--chat-icon-size, 12px); }
+}
+
+.batch-group-header-title {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--chat-font-size, 12px);
+  color: var(--mybricks-text-color-main, #333);
+}
+
+.batch-group-header-meta {
+  font-size: var(--chat-font-size-sm, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+
+// 文件列表区域
+.batch-group-body {
+  display: flex;
+  flex-direction: column;
+}
+
+// 组内的单个文件行：无外边框、无外 margin、与相邻行用分隔线区分
+.batch-item {
+  border-top: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  background: transparent;
+  overflow: hidden;
+
+  &:first-child {
+    border-top: none;
+  }
+}
+
+// 组内文件行 header（可点击展开）
+.batch-item-header {
+  display: flex;
+  align-items: center;
+  gap: var(--chat-block-gap, 6px);
+  padding: 4px 10px 4px 14px; // 左缩进对齐层次感
+  min-height: 26px;
+  cursor: pointer;
+  user-select: none;
+
+  &.batch-item-header-no-toggle {
+    cursor: default;
+  }
+}
+
+.batch-item-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: inherit;
+  svg { width: calc(var(--chat-icon-size, 12px) - 1px); height: calc(var(--chat-icon-size, 12px) - 1px); }
+}
+
+.batch-item-filename {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--chat-font-size-sm, 12px);
+  font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.85;
+}
+
+.batch-item-lines {
+  font-size: 10px;
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+
+.batch-item-toggle {
+  font-size: 8px;
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.4;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+// 组内代码体：直接复用 code-card-body，仅覆盖 border-top 和 max-height
+.batch-item-body {
+  border-top: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  max-height: calc(11px * 1.6 * 10 + 12px);
+  margin: 0 !important;
+}
+
+// 兼容旧名（可逐步迁移）
+.multi-write-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+// ── 初始化项目卡片（call-sub-agent type="init-project"）──────────────────────
+
+.init-project-card {
+  border-radius: 6px;
+  border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  background: var(--mybricks-bg-color-secondary, #F5F5F5);
+  margin: 3px 0;
+  overflow: hidden;
+  font-size: var(--chat-font-size, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  user-select: none;
+}
+
+// Header（任务名 + 状态）
+.init-project-header {
+  display: flex;
+  align-items: center;
+  gap: var(--chat-block-gap, 6px);
+  padding: var(--chat-card-option-padding, 5px 10px);
+  background: var(--mybricks-bg-color-secondary, #F5F5F5);
+  border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  min-height: var(--chat-card-min-height, 28px);
+  cursor: default;
+}
+
+.init-project-header-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: inherit;
+  svg { width: var(--chat-icon-size, 12px); height: var(--chat-icon-size, 12px); }
+}
+
+.init-project-header-title {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--chat-font-size, 12px);
+  color: var(--mybricks-text-color-main, #333);
+}
+
+.init-project-header-meta {
+  font-size: var(--chat-font-size-sm, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+
+// 分节标题（文件列表、错误）
+.init-project-section-title {
+  font-size: var(--chat-font-size-sm, 12px);
+  font-weight: 600;
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.6;
+  padding: 6px 10px 4px;
+  border-top: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  background: var(--mybricks-bg-color-secondary, #F5F5F5);
+}
+
+// 文件列表面板
+.init-project-files {
+  background: transparent;
+}
+
+.init-project-files-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.init-project-file-item {
+  display: flex;
+  align-items: center;
+  gap: var(--chat-block-gap, 6px);
+  padding: 4px 14px;
+  min-height: 24px;
+  border-top: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+
+  &:first-child {
+    border-top: none;
+  }
+}
+
+.init-project-file-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: inherit;
+  svg { width: calc(var(--chat-icon-size, 12px) - 1px); height: calc(var(--chat-icon-size, 12px) - 1px); }
+}
+
+.init-project-file-name {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--chat-font-size-sm, 12px);
+  font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.85;
+}
+
+.init-project-file-lines {
+  font-size: 10px;
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+
+// 输出面板
+.init-project-output {
+  background: transparent;
+}
+
+.init-project-output-content {
+  margin: 0;
+  padding: var(--chat-card-padding, 8px 14px);
+  font-size: var(--chat-font-size-sm, 12px);
+  line-height: 1.6;
+  font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  color: var(--mybricks-text-color-main, #333);
+  background: transparent;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: calc(11px * 1.6 * 20 + 16px);
+  overflow-y: auto;
+
+  code {
+    font-family: inherit;
+    font-size: inherit;
+    background: transparent;
+  }
+}
+
+// 错误面板
+.init-project-error {
+  background: transparent;
+}
+
+.init-project-error-text {
+  padding: var(--chat-card-padding, 6px 14px 8px);
+  font-size: var(--chat-font-size-sm, 12px);
+  line-height: 1.5;
+  color: #c0392b;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: rgba(255, 68, 68, 0.06);
+}

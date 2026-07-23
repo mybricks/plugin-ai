@@ -1,0 +1,24 @@
+/*! plugin-ai-comp-view-anchor */
+
+@import "./base.less";
+
+// ── 消息皮肤（AI 流式输出场景）────────────────────────────────────────────────
+// 场景特征：字号紧凑、h1-h6 全部锁死为 chat-font-size（12px）
+// 消费方：ui/chat/messages/index.tsx → MarkdownMessage 组件
+
+.markdown-skin-message {
+  &:extend(.markdown-base all);
+
+  font-size: var(--chat-font-size, 12px);
+
+  h1, h2, h3, h4, h5, h6 {
+    margin-top: 20px;
+    margin-bottom: 10px;
+    font-size: var(--chat-font-size, 12px) !important;
+  }
+
+  code {
+    color: var(--mybricks-text-color-secondary, #888) !important;
+    background-color: var(--mybricks-bg-color-secondary, #F5F5F5) !important;
+  }
+}

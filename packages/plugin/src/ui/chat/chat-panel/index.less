@@ -1,0 +1,202 @@
+/*! plugin-ai-comp-view-anchor */
+
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.chat-panel-list {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.size-small {
+}
+
+.size-medium {
+  --chat-font-size: 14px;
+  --chat-font-size-sm: 12px;
+  --chat-caption-font-size: 11px;
+  --chat-line-height: 24px;
+  --chat-title-line-height: 22px;
+  --chat-header-height: 46px;
+  --chat-header-padding: 0 68px 0 16px;
+  --chat-message-group-gap: 4px;
+  --chat-message-group-padding: 6px 0;
+  --chat-bubble-padding: 3px 14px 0;
+  --chat-time-padding: 5px 0 3px;
+  --chat-avatar-size: 22px;
+  --chat-user-message-margin-top: 8px;
+  --chat-user-message-padding: 10px 14px;
+  --chat-user-message-max-offset: 40px;
+  --chat-block-gap: 8px;
+  --chat-card-padding: 10px 12px;
+  --chat-card-body-padding: 10px 12px 6px;
+  --chat-card-footer-padding: 6px 10px 8px;
+  --chat-card-option-padding: 7px 10px;
+  --chat-card-min-height: 34px;
+  --chat-plan-header-min-height: 38px;
+  --chat-action-height: 26px;
+  --chat-action-line-height: 24px;
+  --chat-sender-padding: 10px;
+  --chat-sender-mentions-padding: 10px 10px 0 10px;
+  --chat-sender-input-padding: 10px 10px 12px;
+  --chat-sender-action-padding: 0 10px;
+  --chat-sender-action-margin-top: 3px;
+  --chat-sender-action-margin-bottom: 10px;
+  --chat-sender-input-min-height: 72px;
+  --chat-sender-input-max-height: 168px;
+  --chat-sender-editor-line-height: 24px;
+  --chat-control-size: 30px;
+  --chat-control-icon-size: 16px;
+  --chat-icon-size: 14px;
+  --chat-chip-font-size: 12px;
+  --chat-chip-height: 22px;
+  --chat-chip-line-height: 20px;
+  --chat-mode-trigger-padding: 4px 8px;
+  --chat-mode-trigger-min-height: 28px;
+  --chat-menu-padding: 6px 0;
+  --chat-menu-item-padding: 8px 12px;
+  --chat-menu-group-title-padding: 5px 12px;
+  --chat-modal-title-font-size: 15px;
+  --chat-modal-body-padding: 14px 18px;
+  --chat-markdown-ul-indent: 14px;
+  --chat-markdown-ol-indent: 22px;
+  --chat-markdown-ol-marker-width: 16px;
+}
+
+.size-large {
+  --chat-font-size: 16px;
+  --chat-font-size-sm: 14px;
+  --chat-caption-font-size: 12px;
+  --chat-line-height: 28px;
+  --chat-title-line-height: 24px;
+  --chat-message-title-font-weight: 600;
+  --chat-header-height: 52px;
+  --chat-header-padding: 0 76px 0 18px;
+  --chat-message-group-gap: 6px;
+  --chat-message-group-padding: 8px 0;
+  --chat-bubble-padding: 4px 16px 0;
+  --chat-time-padding: 6px 0 4px;
+  --chat-avatar-size: 24px;
+  --chat-user-message-margin-top: 10px;
+  --chat-user-message-padding: 12px 16px;
+  --chat-user-message-max-offset: 48px;
+  --chat-block-gap: 10px;
+  --chat-card-padding: 12px 14px;
+  --chat-card-body-padding: 12px 14px 8px;
+  --chat-card-footer-padding: 8px 12px 10px;
+  --chat-card-option-padding: 8px 12px;
+  --chat-card-min-height: 40px;
+  --chat-plan-header-min-height: 44px;
+  --chat-action-height: 30px;
+  --chat-action-line-height: 28px;
+  --chat-sender-padding: 12px;
+  --chat-sender-mentions-padding: 12px 12px 0 12px;
+  --chat-sender-input-padding: 16px 16px 18px;
+  --chat-sender-action-padding: 0 12px;
+  --chat-sender-action-margin-top: 4px;
+  --chat-sender-action-margin-bottom: 12px;
+  --chat-sender-input-min-height: 56px;
+  --chat-sender-input-max-height: 196px;
+  --chat-sender-editor-line-height: 28px;
+  --chat-control-size: 34px;
+  --chat-control-icon-size: 18px;
+  --chat-icon-size: 16px;
+  --chat-chip-font-size: 13px;
+  --chat-chip-height: 24px;
+  --chat-chip-line-height: 22px;
+  --chat-mode-trigger-padding: 5px 10px;
+  --chat-mode-trigger-min-height: 32px;
+  --chat-menu-padding: 8px 0;
+  --chat-menu-item-padding: 10px 14px;
+  --chat-menu-group-title-padding: 6px 14px;
+  --chat-modal-title-font-size: 17px;
+  --chat-modal-body-padding: 16px 20px;
+  --chat-markdown-ul-indent: 16px;
+  --chat-markdown-ol-indent: 24px;
+  --chat-markdown-ol-marker-width: 18px;
+}
+
+.messages-area {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.history-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--chat-font-size, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.5;
+  text-align: center;
+  pointer-events: none;
+}
+
+.sender-block {
+  flex-shrink: 0;
+}
+
+.sender-footer {
+  flex-shrink: 0;
+}
+
+.empty-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: var(--chat-font-size, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.5;
+  text-align: center;
+  padding: 0 var(--chat-empty-padding-x, 16px);
+}
+
+// ── 历史用户消息中的 focus（mention）信息
+.user-message-focus {
+  display: inline;
+  gap: var(--chat-message-group-gap, 2px);
+  font-size: var(--chat-font-size, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  margin-right: 2px;
+}
+
+.user-message-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--chat-chip-gap, 4px);
+  max-width: 100%;
+  margin: -2px 3px 0;
+  vertical-align: middle;
+  height: var(--chat-chip-height, 20px);
+  padding: 0 8px 0 6px;
+  border-radius: 4px;
+  color: var(--mybricks-color-primary, #FA6400);
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 8%, transparent);
+  box-sizing: border-box;
+
+  &,
+  span {
+    color: var(--mybricks-color-primary, #FA6400) !important;
+  }
+}
+
+.user-message-chip-tight-left {
+  margin-left: 0;
+}
+
+.user-message-chip-text {
+  font-size: var(--chat-chip-font-size, 12px) !important;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

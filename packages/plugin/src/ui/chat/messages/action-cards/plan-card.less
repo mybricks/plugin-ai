@@ -1,0 +1,322 @@
+/*! plugin-ai-comp-view-anchor */
+
+.plan-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  margin: var(--chat-block-gap, 8px) 0 var(--chat-message-group-gap, 4px);
+  border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  border-radius: 6px;
+  background: var(--mybricks-bg-color-main, #FFF);
+  overflow: hidden;
+
+  &.plan-card-abandoned {
+    opacity: 0.65;
+    border-style: dashed;
+  }
+}
+
+.plan-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--chat-block-gap, 8px);
+  min-height: var(--chat-plan-header-min-height, 32px);
+  padding: var(--chat-card-padding, 6px 8px);
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  background: var(--mybricks-bg-color-secondary, #F5F5F5);
+}
+
+.plan-card-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--chat-block-gap, 6px);
+  min-width: 0;
+}
+
+.plan-card-title-text {
+  flex-shrink: 0;
+  font-size: var(--chat-font-size, 12px);
+  line-height: var(--chat-title-line-height, 18px);
+  font-weight: 600;
+  color: var(--mybricks-text-color-main, #333);
+}
+
+.plan-card-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--chat-font-size-sm, 12px);
+  line-height: var(--chat-title-line-height, 18px);
+  color: var(--mybricks-text-color-secondary, #888);
+}
+
+.plan-card-icon-button {
+  flex-shrink: 0;
+  width: var(--chat-action-height, 22px);
+  height: var(--chat-action-height, 22px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  border-radius: 4px;
+  background: var(--mybricks-bg-color-main, #FFF);
+  color: var(--mybricks-text-color-secondary, #888);
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: var(--mybricks-color-primary, #FA6400);
+    color: var(--mybricks-color-primary, #FA6400);
+    background: var(--mybricks-bg-color-main, #FFF);
+  }
+}
+
+
+.plan-card-body {
+  max-height: 240px;
+  padding: var(--chat-card-body-padding, 8px 10px 4px);
+  box-sizing: border-box;
+  overflow: auto;
+  user-select: text;
+  cursor: text;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--mybricks-color-border, rgba(0, 0, 0, 0.15));
+    border-radius: 3px;
+  }
+}
+
+.plan-card-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--chat-block-gap, 6px);
+  padding: var(--chat-card-footer-padding, 4px 8px 6px);
+  box-sizing: border-box;
+}
+
+.plan-card-execute-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 60px;
+  height: var(--chat-action-height, 22px);
+  padding: 0 8px;
+  box-sizing: border-box;
+  border: 1px solid var(--mybricks-color-primary, #FA6400);
+  border-radius: 4px;
+  background: var(--mybricks-color-primary, #FA6400);
+  color: var(--mybricks-text-color-on-primary, #fff);
+  font-size: var(--chat-font-size-sm, 12px);
+  line-height: var(--chat-action-line-height, 20px);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s;
+
+  &:hover {
+    opacity: 0.85;
+  }
+
+  &.plan-card-execute-button-disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+    background: var(--mybricks-bg-color-disabled, #F5F5F5);
+    border-color: var(--mybricks-border-color-main, #E6E6E6);
+    color: var(--mybricks-text-color-disabled, rgba(0, 0, 0, 0.25));
+  }
+}
+
+// ─── Modal 内部样式 ──────────────────────────────────────────────────────────
+
+.plan-card-abandoned-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: rgba(255, 77, 79, 0.1);
+  border: 1px solid rgba(255, 77, 79, 0.3);
+  color: #ff4d4f;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 500;
+  user-select: none;
+}
+
+.plan-card-executed-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: rgba(82, 196, 26, 0.1);
+  border: 1px solid rgba(82, 196, 26, 0.3);
+  color: #52c41a;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 500;
+  user-select: none;
+}
+
+.plan-card-abandon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 60px;
+  height: var(--chat-action-height, 22px);
+  padding: 0 8px;
+  box-sizing: border-box;
+  border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  border-radius: 4px;
+  background: var(--mybricks-bg-color-main, #FFF);
+  color: var(--mybricks-text-color-secondary, #888);
+  font-size: var(--chat-font-size-sm, 12px);
+  line-height: var(--chat-action-line-height, 20px);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: #ff4d4f;
+    color: #ff4d4f;
+    background: #fff1f0;
+  }
+}
+
+.plan-card-modal-title-text {
+  flex-shrink: 0;
+  font-size: var(--chat-modal-title-font-size, 13px);
+  line-height: var(--chat-title-line-height, 18px);
+  font-weight: 600;
+  color: var(--mybricks-text-color-main, #333);
+}
+
+.plan-card-modal-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--chat-font-size, 12px);
+  line-height: var(--chat-title-line-height, 18px);
+  color: var(--mybricks-text-color-secondary, #888);
+}
+
+.plan-card-modal-body {
+  padding: var(--chat-modal-body-padding, 12px 16px);
+  box-sizing: border-box;
+}
+
+.plan-card-footer-inner {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--chat-block-gap, 6px);
+}
+
+// ─── RelatedPlanBanner（两行卡片）────────────────────────────────────────────
+
+.plan-banner {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  margin: var(--chat-block-gap, 8px) 0 var(--chat-message-group-gap, 4px);
+  border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  border-radius: 6px;
+  background: var(--mybricks-bg-color-secondary, #F5F5F5);
+  overflow: hidden;
+}
+
+// 第一行：方案标题 + 打开预览
+.plan-banner-row1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--chat-block-gap, 8px);
+  min-height: var(--chat-card-min-height, 30px);
+  padding: var(--chat-card-option-padding, 5px 8px 4px);
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+}
+
+// 第二行：desc + 废弃/执行
+.plan-banner-row2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--chat-block-gap, 8px);
+  min-height: var(--chat-card-min-height, 30px);
+  padding: var(--chat-card-option-padding, 4px 8px 5px);
+  box-sizing: border-box;
+}
+
+.plan-banner-left {
+  display: flex;
+  align-items: center;
+  gap: var(--chat-message-group-gap, 4px);
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.plan-banner-label {
+  flex-shrink: 0;
+  font-size: var(--chat-font-size, 12px);
+  line-height: var(--chat-title-line-height, 18px);
+  font-weight: 600;
+  color: var(--mybricks-text-color-main, #333);
+}
+
+.plan-banner-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--chat-font-size, 12px);
+  line-height: var(--chat-title-line-height, 18px);
+  color: var(--mybricks-text-color-main, #333);
+  font-weight: 500;
+  user-select: text;
+}
+
+.plan-banner-open-btn {
+  flex-shrink: 0;
+  font-size: var(--chat-font-size-sm, 12px);
+  line-height: var(--chat-title-line-height, 18px);
+  color: var(--mybricks-color-primary, #FA6400);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+
+  &:hover {
+    opacity: 0.75;
+  }
+}
+
+.plan-banner-desc {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--chat-font-size-sm, 12px);
+  line-height: var(--chat-title-line-height, 18px);
+  color: var(--mybricks-text-color-secondary, #888);
+  user-select: text;
+}
+
+.plan-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--chat-block-gap, 6px);
+  flex-shrink: 0;
+}

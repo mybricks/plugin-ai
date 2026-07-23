@@ -1,0 +1,168 @@
+/*! plugin-ai-comp-view-anchor */
+
+// ── Markdown 公共骨架层 ────────────────────────────────────────────────────────
+// 本文件仅包含两套及以上皮肤共享的结构样式。
+// 具体场景差异（h1-h6 字号、间距松紧）在各 skin-*.less 中覆盖。
+// 消费方：skin-message.less / skin-plan.less / skin-prd.less
+
+.markdown-base {
+  color: var(--mybricks-text-color-main, #333);
+  word-break: break-word;
+
+  p {
+    margin: var(--chat-block-gap, 8px) 0 0;
+    color: var(--mybricks-text-color-main, #333);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    line-height: 1.5;
+    color: var(--mybricks-text-color-main, #333);
+    // ⚠️ 字号由各皮肤覆盖，此处不设定
+  }
+
+  h1 { border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6); padding-bottom: .3em; }
+  h2 { border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6); padding-bottom: .3em; }
+
+  a {
+    color: var(--mybricks-color-primary, #FA6400);
+    text-decoration: none;
+    &:hover { text-decoration: underline; }
+  }
+
+  blockquote {
+    padding: var(--chat-card-padding, 6px 10px);
+    color: var(--mybricks-text-color-main, #333);
+    opacity: 0.78;
+    background-color: var(--mybricks-bg-color-secondary, #F5F5F5);
+    border-left: 3px solid var(--mybricks-color-primary, #FA6400);
+    border-radius: 4px;
+    margin: 16px 0;
+    > p { margin: 0; }
+  }
+
+  table {
+    border-spacing: 0;
+    border-collapse: collapse;
+    width: 100%;
+    margin-bottom: 6px;
+    font-size: var(--chat-font-size-sm, 12px);
+
+    th, td {
+      padding: var(--chat-table-cell-padding, 4px 8px);
+      border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+      text-align: left;
+    }
+
+    th {
+      font-weight: 600;
+      background-color: var(--mybricks-bg-color-secondary, #F5F5F5);
+    }
+
+    tr:nth-child(even) td {
+      background-color: var(--mybricks-bg-color-main, #FFF);
+    }
+  }
+
+  // ── list：统一使用 A 方案（伪元素 absolute，reset list-style）──────────────
+
+  ul, ol {
+    margin: var(--chat-block-gap, 8px) 0;
+    padding-left: 0;
+  }
+
+  li {
+    position: relative;
+    margin: 4px 0;
+    list-style-type: none;
+  }
+
+  ul > li {
+    padding-left: var(--chat-markdown-ul-indent, 14px);
+  }
+
+  ul > li:before {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: .75em;
+    width: 3px;
+    height: 3px;
+    background-color: currentColor;
+    border-radius: 50%;
+  }
+
+  ol { counter-reset: item; }
+  ol > li {
+    padding-left: var(--chat-markdown-ol-indent, 22px);
+    counter-increment: item;
+  }
+
+  ol > li:before {
+    content: counter(item) ".";
+    position: absolute;
+    left: 0;
+    top: 0;
+    min-width: var(--chat-markdown-ol-marker-width, 16px);
+    text-align: right;
+  }
+
+  // ── 代码 ──────────────────────────────────────────────────────────────────
+
+  code {
+    font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+    color: var(--mybricks-text-color-secondary, #888);
+    background-color: var(--mybricks-bg-color-secondary, #F5F5F5);
+    border-radius: 6px;
+    font-size: 85%;
+    padding: .2em .4em;
+  }
+
+  pre {
+    background-color: var(--mybricks-bg-color-secondary, #F5F5F5);
+    border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+    border-radius: 6px;
+    padding: var(--chat-card-padding, 8px 10px);
+    overflow-x: auto;
+    margin: 8px 0;
+
+    code {
+      display: block;
+      background-color: transparent;
+      color: inherit;
+      border-radius: 0;
+      padding: 0;
+      font-size: 100%;
+      line-height: 1.6;
+    }
+  }
+
+  // ── 图片 ──────────────────────────────────────────────────────────────────
+
+  img {
+    max-width: 100%;
+    border-radius: 4px;
+  }
+
+  hr {
+    height: 1px;
+    border: none;
+    background-color: var(--mybricks-border-color-main, #E6E6E6);
+    margin: 8px 0;
+  }
+
+  // ── Mermaid 图表（三套皮肤统一支持）───────────────────────────────────────
+
+  :global(.mermaid-diagram) {
+    margin-bottom: 6px;
+    overflow-x: auto;
+    background-color: var(--mybricks-bg-color-secondary, #F5F5F5);
+    border-radius: 4px;
+    padding: 10px;
+
+    svg {
+      max-width: 100%;
+      height: auto;
+    }
+  }
+}

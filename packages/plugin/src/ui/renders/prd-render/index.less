@@ -1,0 +1,43 @@
+/*! plugin-ai-comp-view-anchor */
+
+@import "../../markdown/skin-prd.less";
+
+// ── PRD 渲染容器（外壳样式，非 markdown 内容样式）──────────────────────────────
+// markdown 内容样式已统一迁移至 ui/markdown/skin-prd.less
+
+.prd-render {
+  width: 100%;
+  background-color: var(--mybricks-bg-color-main, #fff);
+  color: var(--mybricks-text-color-main, #333);
+  border-radius: 8px;
+  box-sizing: border-box;
+  padding: 10px 14px;
+
+  &::-webkit-scrollbar {
+    width: 5px;
+    height: 0;
+    background-color: transparent;
+  }
+
+  &::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--mybricks-border-color-main, #d9d9d9);
+    border-radius: 4px;
+  }
+}
+
+.prd-render-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mybricks-text-color-main, #333);
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--mybricks-border-color-main, #e8e8e8);
+  letter-spacing: 0.3px;
+}
+
+// .prd-render-body 已迁移至 ui/markdown/skin-prd.less（通过文件顶部 @import 引入）
+// 消费方请使用 css["markdown-skin-prd"] 作为 class 名

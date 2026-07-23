@@ -1,0 +1,75 @@
+.action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 2px 0 0;
+
+  &:hover {
+    .action-bar-end-time {
+      opacity: 0.45;
+    }
+  }
+
+  &.action-bar--hide-until-hover {
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.12s ease;
+
+    &:hover {
+      opacity: 1;
+      visibility: visible;
+    }
+  }
+}
+
+.action-bar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  // small 下用固定尺寸保证可点区域足够
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+
+  svg {
+    // small 基准 14px，medium/large 跟随变量放大
+    width: var(--chat-icon-size, 14px);
+    height: var(--chat-icon-size, 14px);
+    display: block;
+    flex-shrink: 0;
+  }
+
+  &:hover {
+    background: var(--mybricks-bg-color-active, rgba(0, 0, 0, 0.05));
+  }
+
+  &:disabled {
+    opacity: 0.2;
+    cursor: not-allowed;
+  }
+
+  // 复制成功态：用 primary 色高亮
+  &.action-bar-btn--active {
+    opacity: 1;
+  }
+}
+
+.action-bar-end-time {
+  margin-left: 6px;
+  font-size: var(--chat-font-size-sm, 12px);
+  line-height: 22px;
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0;
+  white-space: nowrap;
+  user-select: none;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}

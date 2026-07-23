@@ -1,0 +1,65 @@
+export { Agent, AgentEvents, ForkAgent } from "./agent";
+export type { AgentMode, AgentOptions, AgentHooks, RequestAIOptions, MaskOptions, HandoffOptions, ForkOptions, ForkAgentOptions, CompactRecord, FormatUserMessageResult, AgentsMdConfig, AgentsMdConfigResolver } from "./agent";
+export { maskMessages } from "./mask";
+export { computeHandoffTurnIds } from "./handoff";
+
+export { ChipRegistry, fileChipDef, FILE_CHIP_TYPE } from "./chip";
+export type { ChatChipDef, ChatChipFormatContext, ChatChipInstance, FileChipData } from "./chip";
+
+export type { AgentEventMap } from "./events";
+export type { Message, History, Tool, TurnRecord, TurnSender, ToolCallRecord, ToolResult, VersionFile, VersionRecord, BoundHistory, Attachment, IterationTrace } from "./types";
+export { ToolValidationError, bindHistory } from "./types";
+
+export { AGENT_INTERNAL_FILE_EXCLUDE, CodeAgent, isFileExcluded } from "./code-agent";
+export type { AdditionalDirectory, CodeAgentBuiltinToolName, CodeAgentOptions, CodeAgentPlugin, CodeAgentPromptOptions, FileExclude, GetFilesOptions, Sandbox, SkillActivation, SkillFile, SkillMeta, UnifiedFile } from "./code-agent";
+export { IDBSandbox } from "./code-agent/idb-sandbox";
+export type { IDBSandboxFileRecord, IDBSandboxOptions, IDBSandboxState } from "./code-agent/idb-sandbox";
+export { READ_TOOL_NAME, WRITE_TOOL_NAME, MULTI_WRITE_TOOL_NAME, EDIT_TOOL_NAME, MULTI_EDIT_TOOL_NAME, DELETE_TOOL_NAME, GREP_TOOL_NAME, GLOB_TOOL_NAME, USE_SKILL_TOOL_NAME, BASH_TOOL_NAME } from "./code-agent/tools";
+export { SWITCH_MODE_TOOL_NAME, getAvailableAgentModes, AgentModeEnum } from "./mode-manager";
+export { kv } from "./kv";
+
+export { IDBHistory } from "./history/idb-history";
+export { HTTPHistory } from "./history/http-history";
+export { HistoryManager } from "./history/manager";
+export type { HistoryManagerSnapshot, HistoryStatus } from "./history/manager";
+
+export { createSubAgentTool, resolveSubAgentMeta, CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
+export type { SubAgentConfig, SubAgentFile, SubAgentMeta } from "./sub-agent";
+
+export type { RetryOptions } from "./retry";
+export { AbortError, isAbortError } from "./errors";
+
+// ─── Tools 公共工具集 ──────────────────────────────────────────────────────────
+//
+// 独立于 CodeAgent 的通用工具集，在创建 Agent 时通过 tools 数组传入：
+//
+//   import { Tools } from "@mybricks/plugin-ai/agent";
+//
+//   new CodeAgent({
+//     tools: [Tools.createWebFetch({ headers: { Authorization: "Bearer xxx" } })],
+//     // ...
+//   });
+//
+import { createWebFetchTool } from "./tools/web-fetch";
+export type { WebFetchConfig } from "./tools/web-fetch";
+export { WEB_FETCH_TOOL_NAME } from "./tools/web-fetch";
+
+export const Tools = {
+  /**
+   * 创建 web_fetch 工具。
+   *
+   * 允许 LLM 通过 HTTP GET 请求获取网页内容，
+   * 支持 text / markdown / html 三种返回格式，可配置超时、大小限制和自定义 headers。
+   *
+   * @param config 可选配置
+   * @returns 符合 Tool 接口的工具对象，通过 Agent 构造器的 tools 数组传入
+   *
+   * @example
+   * ```ts
+   * new CodeAgent({
+   *   tools: [Tools.createWebFetch()],
+   * });
+   * ```
+   */
+  createWebFetch: createWebFetchTool,
+} as const;

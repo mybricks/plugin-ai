@@ -1,0 +1,36 @@
+/*! plugin-ai-comp-view-anchor */
+
+.scroll-bar() {
+  &::-webkit-scrollbar-thumb {
+    background-color: transparent !important;
+  }
+
+  &:hover {
+    background: transparent; //防止没有激活
+    &::-webkit-scrollbar-thumb {
+      background-color: rgba(0, 0, 0, 0.3) !important;
+    }
+  }
+}
+
+.loading-shimmer {
+  -webkit-text-fill-color: transparent;
+  animation-duration: 3s;
+  animation-iteration-count: infinite;
+  animation-name: loading-shimmer;
+  background: #adadad linear-gradient(to right, #adadad 0, #1a1a1abf 40%, #1a1a1abf 60%, #adadad 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  background-repeat: no-repeat;
+  background-size: 50% 200%;
+  display: inline-block;
+}
+
+@keyframes loading-shimmer {
+  0% {
+    background-position: -100% 0;
+  }
+  100% {
+    background-position: 250% 0;
+  }
+}
