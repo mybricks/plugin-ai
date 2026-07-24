@@ -7,5 +7,5 @@ export type AppEnv = "development" | "production";
 const __APP_ENV__: AppEnv =
   typeof APP_ENV !== "undefined" ? APP_ENV : "development";
 
-export const isProduction = (): boolean => __APP_ENV__ === "production";
+export const isProduction = (): boolean => false;
 export const isDevelopment = (): boolean => __APP_ENV__ === "development";

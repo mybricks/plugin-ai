@@ -1,14 +1,10 @@
-import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
 import classNames from "classnames";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
 import { chipRegistry } from "../../../sandbox/setup";
-import type { QueueItem } from "../../../context/queue";
-import type { AgentMode, CodeAgent } from "../../../../../agent/src";
-import { AgentModeEnum } from "../../../../../agent/src";
-import type { ModelSelection } from "../../../../../request/src/providers";
+import type { AgentMode } from "../../../../../agent/src";
 import type { AttachProcessor } from "../../../content-limits";
-import { useSession } from "../use-session";
 import { MessageList } from "../messages";
 import type { ActionBarItem, HistoryCollapseConfig } from "../messages";
 import { useHistoryCollapse } from "./use-history-collapse";
@@ -16,6 +12,7 @@ import { Header } from "./header";
 import { ChatPanelProvider } from "./context";
 import type { ChatMarkdownItConfig, MarkdownSkinConfig, MessagesRenderVariant } from "./context";
 import type { MessageRecord } from "../use-session";
+import { useAgent, type ChatAgent } from "./use-agent";
 import css from "./index.less";
 
 interface User {
@@ -31,7 +28,7 @@ export interface ChatPanelProps {
   /** 是否展示 Header，默认 true；传函数时自定义渲染 Header */
   header?: boolean | (() => React.ReactNode);
   /** agent 实例 */
-  agent?: CodeAgent;
+  agent?: ChatAgent;
   /** 上传文件回调，不传时回退到 context.pluginParams.onUpload */
   onUpload?: (file: File) => Promise<string>;
   /** Header 标题，不传时读 context.name */
@@ -164,42 +161,34 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   selectorRenderInTop = false,
   attachProcessors,
 }, ref) => {
-  const agentKey = agent?.key ?? "";
-
   const senderRef = useRef<SenderRef>(null);
-  const [loading, setLoading] = useState(() => context.aiQueue.isLoading(agentKey));
-  const [pendingQueue, setPendingQueue] = useState<QueueItem[]>(() => context.aiQueue.getQueue(agentKey));
-  const availableModes = agent?.getAvailableModes() ?? [AgentModeEnum.Build];
-  const showChatMode = availableModes.length > 1;
-  const [chatMode, setChatMode] = useState<AgentMode>(() => agent?.getMode() ?? availableModes[0] ?? AgentModeEnum.Build);
-
-  // 模型选择器状态跟随当前 Agent，避免多 Agent/多面板串状态。
-  const llmProviders = agent?.getLLMProviders();
-  const hasLLMProviders = !!(llmProviders && llmProviders.isValid());
-  const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(
-    () => llmProviders?.getSelected() ?? null
-  );
-
-  useEffect(() => {
-    const lp = llmProviders;
-    if (!lp) return;
-    setSelectedModel(lp.getSelected());
-    return lp.onSelectionChange((sel) => setSelectedModel(sel));
-  }, [llmProviders]);
-
-  const modelSelector = useMemo(() => {
-    if (!hasLLMProviders || !llmProviders) return undefined;
-    return {
-      models: llmProviders.getValidModels(),
-      selected: selectedModel,
-      onSelect: (selection: ModelSelection) => {
-        llmProviders.setSelected(selection.providerId, selection.modelId);
-      },
-    };
-  }, [hasLLMProviders, llmProviders, selectedModel]);
-
-  const { messages, historyStatus, historyError, subscribeSession, clearSession } = useSession(agent);
   const messageListRef = useRef<{ scrollToBottom: () => void }>(null);
+
+  const scrollToBottom = useCallback(() => {
+    messageListRef.current?.scrollToBottom();
+  }, []);
+
+  const localAgent = useAgent({
+    agent,
+    disabled,
+    onTurnStart: scrollToBottom,
+    onTurnEnd: scrollToBottom,
+  });
+  const chatAgent = localAgent;
+
+  const {
+    messages,
+    historyStatus,
+    historyError,
+    loading,
+    pendingQueue,
+    showChatMode,
+    chatMode,
+    modelSelector,
+    isDisabled,
+    canExecutePlan,
+  } = chatAgent;
+
   const maxHistoryIters = historyCollapse?.maxIters ?? 50;
   const {
     collapseCursor,
@@ -223,104 +212,23 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     },
   }), []);
 
-  // 订阅 turn 事件 + turn 滚底；历史状态由 agent.historyManager 驱动。
-  useEffect(() => {
-    if (!agent) return;
-    const scrollToBottom = () => messageListRef.current?.scrollToBottom();
-    const handleTurnEnd = () => {
-      scrollToBottom();
-    };
-    // 先订阅 turn 事件，避免面板挂载瞬间错过新请求事件。
-    const unsubSession = subscribeSession(agent, { onTurnStart: scrollToBottom, onTurnEnd: handleTurnEnd });
-    // 同步 agent 内部的 mode 变化（如 requestAI 带 mode 参数）
-    const unsubMode = agent.events.on("mode:change", ({ mode }) => setChatMode(mode));
-    return () => {
-      unsubSession?.();
-      unsubMode();
-    };
-  }, [agent, subscribeSession]);
-
   // aiViewDisplay 时自动聚焦输入框
   useEffect(() => {
-    if (!agent || disabled) return;
+    if (isDisabled) return;
     senderRef.current?.focus()
     const unDisplay = context.events.on("aiViewDisplay", () => {
       setTimeout(() => senderRef.current?.focus());
     });
     return unDisplay;
-  }, [agent, disabled]);
-
-  // 监听 aiQueue loading / queue 状态
-  useEffect(() => {
-    const unL = context.aiQueue.events.on("loading", (d) => {
-      if (d.key === agentKey) setLoading(d.loading);
-    });
-    const unQ = context.aiQueue.events.on("queue", (d) => {
-      if (d.key === agentKey) setPendingQueue([...d.queue]);
-    });
-    return () => { unL(); unQ(); };
-  }, [agentKey]);
-
-  const onClear = async () => {
-    if (!agent || isDisabled) return;
-    await agent.clearHistory();
-    clearSession();
-  };
-
-  const onExportHistory = async () => {
-    if (!agent) return;
-
-    try {
-      const content = {
-        agentKey: agent.key,
-        exportedAt: new Date().toISOString(),
-        turns: agent.getTurns(),
-        compactRecord: agent.getCompactRecord?.() ?? null,
-      };
-      const name = `rxai-${Date.now()}.json`;
-      await context.pluginParams.onDownload({ name, content: JSON.stringify(content) });
-    } catch (e) {
-      console.error("[plugin-ai] export history failed", e);
-    }
-  };
-
-  // 统一入口：带 mode 调用 requestAI 时同步更新 Sender UI
-  const onSend = (sendMessage: Parameters<SenderProps["onSend"]>[0]) => {
-    const { message, attachments, chips, mode } = sendMessage;
-    if (!agent) return;
-    const meta = chips?.length ? { chips } : undefined;
-    context.aiQueue.send(
-      agentKey,
-      async () => {
-        context.aiQueue.registerAbort(agentKey, () => agent.abort());
-        await agent.requestAI({ message, attachments, ...(mode ? { mode } : {}), ...(meta ? { meta } : {}) });
-      },
-      { message, attachments }
-    );
-  };
+  }, [isDisabled]);
 
   const historyFailed = historyStatus === "error";
   const historyLoading = historyStatus === "idle" || historyStatus === "loading";
-  const isDisabled = !agent || !!disabled || historyLoading || historyFailed;
-  const canExecutePlan = Boolean(agent && !isDisabled && availableModes.includes(AgentModeEnum.Build));
-
-  const onExecutePlan = (title: string) => {
-    if (!agent || !canExecutePlan) return;
-    const message = `执行「${title}」方案`;
-    context.aiQueue.send(
-      agentKey,
-      async () => {
-        context.aiQueue.registerAbort(agentKey, () => agent.abort());
-        await agent.requestAI({ message, mode: AgentModeEnum.Build });
-      },
-      { message }
-    );
-  };
 
   const headerNode = typeof header === "function"
     ? header()
     : header
-      ? <Header title={title} onClear={onClear} onExport={onExportHistory} disabled={isDisabled} />
+      ? <Header title={title} onClear={chatAgent.clear} onExport={chatAgent.exportHistory} disabled={isDisabled} />
       : null;
 
   const senderNode = (
@@ -332,14 +240,14 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       disabled={isDisabled}
       mode="mention"
       chatMode={showChatMode ? chatMode : null}
-      onSend={onSend}
+      onSend={chatAgent.send}
       onChatModeChange={(nextMode: AgentMode | null) => {
-        if (nextMode) agent?.setMode(nextMode, "ui-change");
+        chatAgent.setChatMode(nextMode);
       }}
       onUpload={onUpload ?? context.pluginParams.onUpload}
-      onStop={() => context.aiQueue.stop(agentKey)}
+      onStop={chatAgent.stop}
       pendingQueue={pendingQueue}
-      onRemoveFromQueue={(id: string) => context.aiQueue.removeFromQueue(agentKey, id)}
+      onRemoveFromQueue={chatAgent.removeFromQueue}
       renderFocus={renderFocus}
       renderAttachmentSuffix={renderAttachmentSuffix}
       modelSelector={modelSelector}
@@ -347,7 +255,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       chipTypes={chipRegistry.getAll()}
       matchDefaultFocusContent={matchDefaultFocusContent}
       attachProcessors={attachProcessors}
-      agent={agent}
+      agent={chatAgent.source === "local" ? agent as any : undefined}
     />
   );
   const senderFooterNode = renderSenderFooter?.();
@@ -378,9 +286,11 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
           <MessageList
             ref={messageListRef}
             messages={messages}
-            agent={agent}
+            agent={chatAgent.source === "local" ? agent as any : undefined}
             actionBar={actionBar}
-            onExecutePlan={onExecutePlan}
+            onRetry={chatAgent.retry}
+            onDelete={chatAgent.deleteTurn}
+            onExecutePlan={chatAgent.executePlan}
             canExecutePlan={canExecutePlan}
             renderEmpty={historyStatus === "ready" ? renderEmpty : undefined}
             renderFooter={scrollWithSender ? () => senderBlockNode : undefined}
@@ -396,3 +306,8 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
 
 export { ChatPanel };
 export type { ChatMarkdownItConfig, MarkdownSkinConfig, MessagesRenderVariant } from "./context";
+export { useAgent } from "./use-agent";
+export { HttpAgent, isHttpAgent } from "./http-agent";
+export { useAguiAgentSession } from "./use-agui-agent-session";
+export type { ChatAgent, ChatPanelAgentState } from "./use-agent";
+export type { HttpAgentOptions, AguiEvent, AguiEventType } from "./http-agent";

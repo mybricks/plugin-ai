@@ -1,4 +1,3 @@
-import type { CodeAgent } from "../../../agent/src";
 import type { SendToAgentParams } from "../sandbox";
 import { AIRequestQueue } from "./queue";
 import type { ProviderConfig } from "../../../request/src";
@@ -61,7 +60,7 @@ class Context {
    * comId → CodeAgent 映射
    * agent 在 plugin 侧统一管理，保证按 comId 复用
    */
-  agentMap = new Map<string, CodeAgent>();
+  agentMap = new Map<string, any>();
 
   /** AI 请求队列（防并发 + loading 状态管理） */
   aiQueue = new AIRequestQueue();
@@ -122,7 +121,7 @@ class Context {
   enablePlugin(name: string) {
     this._pluginEnabledOverrides.set(name, true);
     for (const agent of this.agentMap.values()) {
-      agent.enablePlugin(name);
+      agent.enablePlugin?.(name);
     }
   }
 
@@ -132,7 +131,7 @@ class Context {
   disablePlugin(name: string) {
     this._pluginEnabledOverrides.set(name, false);
     for (const agent of this.agentMap.values()) {
-      agent.disablePlugin(name);
+      agent.disablePlugin?.(name);
     }
   }
 }

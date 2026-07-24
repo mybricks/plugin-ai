@@ -11,6 +11,8 @@ import { buildGuideUserContext } from "./context-builders";
 import { createCheckStatusTool } from "./tools/check-status";
 import { createInitProjectTool } from "./tools/init-project";
 import { LoadingView, type ComChatStartViewProps, type LoadingViewProps } from "../ui/chat";
+import { HttpAgent } from "../ui/chat/chat-panel/http-agent";
+import type { HttpAgentOptions } from "../ui/chat/chat-panel/http-agent";
 import type { PrdRenderProps } from "../ui/renders/prd-render";
 import { LoadingViewWithStyles, ComChatStartViewWithStyles, PrdRenderWithStyles } from "../ui/renders/register";
 import { context } from "../context";
@@ -112,6 +114,21 @@ type MaybePromise<T> = T | Promise<T>;
 
 export type PluginGetUserContextMessage = () => MaybePromise<string | null | undefined>;
 
+export type AgentRuntimeConfig =
+  | { type?: "local" }
+  | ({
+      type: "http" | "server";
+      /** 方舟测试环境默认值：http://localhost:3001/api */
+      baseUrl?: string;
+      /** 不传时默认使用当前 comId 对应的 agentKey，保证多组件隔离。 */
+      workspaceId?: string | ((context: { comId: string; agentKey: string }) => string);
+      /** 方舟测试环境默认 agentId：default */
+      agentId?: string;
+      key?: string | ((context: { comId: string; agentKey: string; workspaceId: string }) => string);
+      headers?: HttpAgentOptions["headers"];
+      streamContentMode?: HttpAgentOptions["streamContentMode"];
+    });
+
 export interface VirtualFilesRuntimeContext {
   getEffectiveLibrariesSection: (options?: { path?: string; moduleKey?: string }) => Promise<string>;
 }
@@ -198,6 +215,8 @@ export interface SetupSandboxParams {
   disabledModes?: AgentOptions["disabledModes"];
   /** 透传给 CodeAgent 的历史记录实现，不传时使用内置 IDBHistory */
   history?: History;
+  /** Agent 运行模式。默认 local；server/http 模式会对接方舟 AGUI 服务。 */
+  agentRuntime?: AgentRuntimeConfig;
   /** 消息发送者信息，注入到每条用户消息中，UI 展示时优先使用 */
   sender?: TurnSender;
 }
@@ -209,12 +228,12 @@ export interface SetupSandboxParams {
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
 export function setupSandbox(params: SetupSandboxParams): void {
-  const { requestAsStream, llm, virtualFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, sender } = params;
+  const { requestAsStream, llm, virtualFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, sender } = params;
 
   window._sandbox_ = {
     // ── sandbox → Plugin ──────────────────────────────────────────────────────
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
-      return connectToAI(comId, config, { requestAsStream, llm, virtualFiles, skills, plugins, promptOptions: promptSections?.agent, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, sender });
+      return connectToAI(comId, config, { requestAsStream, llm, virtualFiles, skills, plugins, promptOptions: promptSections?.agent, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, sender });
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
@@ -289,6 +308,7 @@ interface PluginParams {
   formatUserMessage?: AgentOptions["formatUserMessage"];
   disabledModes?: AgentOptions["disabledModes"];
   history?: History;
+  agentRuntime?: AgentRuntimeConfig;
   sender?: TurnSender;
 }
 
@@ -336,7 +356,7 @@ function formatLibraryDocs(libraries: Array<{ name: string; version?: string; us
 function connectToAI(
   comId: string,
   { designer, hooks }: RegistSandBoxConfig,
-  { requestAsStream, llm, virtualFiles, skills, plugins, promptOptions, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, sender }: PluginParams
+  { requestAsStream, llm, virtualFiles, skills, plugins, promptOptions, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, sender }: PluginParams
 ): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
   const runtimeContext: SkillRuntimeContext = { designer, codeRules, designRules };
@@ -625,6 +645,26 @@ function connectToAI(
   const designerRef: { current: Designer | undefined } = { current: designer };
   const checkStatusTool = createCheckStatusTool(designerRef);
   const initProjectTool = createInitProjectTool(sandbox);
+
+  if (agentRuntime?.type === "http" || agentRuntime?.type === "server") {
+    const workspaceId = typeof agentRuntime.workspaceId === "function"
+      ? agentRuntime.workspaceId({ comId, agentKey })
+      : agentRuntime.workspaceId ?? agentKey;
+    const httpKey = typeof agentRuntime.key === "function"
+      ? agentRuntime.key({ comId, agentKey, workspaceId })
+      : agentRuntime.key ?? agentKey;
+    const agent = new HttpAgent({
+      key: httpKey,
+      baseUrl: agentRuntime.baseUrl,
+      workspaceId,
+      agentId: agentRuntime.agentId,
+      headers: agentRuntime.headers,
+      streamContentMode: agentRuntime.streamContentMode,
+    });
+    agent.files.connectAndSync(sandbox);
+    context.agentMap.set(agentKey, agent);
+    return { history: null };
+  }
 
   const agent = new CodeAgent({
     key: agentKey,

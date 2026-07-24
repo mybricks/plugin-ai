@@ -33,6 +33,8 @@ function createRequestAsStream(config?: { useInfra?: boolean }): RequestAsStream
 
   return async function (params) {
 
+    console.log('isProduction', isProduction())
+
     // return requestAsStreamInfra(params)
   
     // 开发环境

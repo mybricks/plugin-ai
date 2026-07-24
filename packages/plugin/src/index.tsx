@@ -12,7 +12,7 @@ import { resolvePromptOptions, type PromptSections } from "./prompts";
 import { DEFAULT_PLUGIN_SKILLS } from "./skills/default";
 
 import { context } from "./context";
-import { setupSandbox } from "./sandbox";
+import { setupSandbox, type AgentRuntimeConfig } from "./sandbox";
 import type { Designer, Hooks, RegistSandBoxConfig, PluginGetUserContextMessage, SendToAgentParams } from "./sandbox";
 import { ChatPanelList } from "./ui/chat/chat-panel-list";
 import { ComChatFocusView } from "./ui/chat/chat-focus-view";
@@ -31,7 +31,8 @@ export type { Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, 
 // ProviderConfig / ModelConfig 已由 request 包导出，此处仅导出 plugin 专属类型
 export type { SettingValue } from "./ui/setting";
 export { ChatPanel } from "./ui/chat";
-export type { ChatPanelProps, ChatPanelRef } from "./ui/chat";
+export { HttpAgent } from "./ui/chat";
+export type { ChatPanelProps, ChatPanelRef, HttpAgentOptions } from "./ui/chat";
 export * from "./preset";
 
 // ─── PluginAI 实例 API ────────────────────────────────────────────────────────
@@ -183,6 +184,8 @@ export interface PluginAIParams {
   };
   /** 透传给 CodeAgent 的历史记录实现，不传时使用内置 IDBHistory */
   history?: import("../../agent/src").History;
+  /** Agent 运行模式。默认 local；server/http 模式会对接方舟 AGUI 服务。 */
+  agentRuntime?: AgentRuntimeConfig;
   /** 消息发送者信息，注入到每条用户消息中，UI 展示时优先使用 */
   sender?: TurnSender;
 }
@@ -208,6 +211,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     disallowedDebugEnvs,
     llm,
     history,
+    agentRuntime,
     sender,
     renderAttachmentSuffix,
   } = params;
@@ -296,6 +300,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     designRules: codingConfig?.designRules,
     componentRuntime,
     history,
+    agentRuntime,
     sender,
   });
 
