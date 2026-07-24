@@ -208,6 +208,52 @@
       max-height: var(--chat-user-message-max-height, 360px);
       overflow-y: auto;
       overscroll-behavior: contain;
+      scrollbar-width: none; // Firefox
+      &::-webkit-scrollbar {
+        display: none; // Chrome / Safari
+      }
+    }
+
+    .collapsible-message {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .collapsible-body {
+      overflow: visible;
+
+      &--collapsed {
+        // 折叠时内部是纯文本截断预览，不需要 max-height 裁切
+      }
+    }
+
+    .collapsible-preview {
+      // 折叠态展示截断纯文本，末尾加省略指示
+      display: block;
+      white-space: pre-wrap;
+      word-break: break-word;
+      &::after {
+        content: "...";
+        opacity: 0.5;
+      }
+    }
+
+    .collapsible-toggle {
+      align-self: flex-end;
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      font-size: var(--chat-font-size, 12px);
+      color: var(--mybricks-color-primary, #5f6cff);
+      line-height: 1.4;
+      opacity: 0.85;
+
+      &:hover {
+        opacity: 1;
+        text-decoration: underline;
+      }
     }
 
     span {

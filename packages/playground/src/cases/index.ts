@@ -105,6 +105,12 @@ import {
 } from "./init-project-error";
 import { chatPanelSkinHistoryCase, chatPanelDefaultSkinCase, chatPanelSkinEmptyCase } from "./chat-panel-skin";
 import { historyCollapseRestoreCase, historyCollapseGrowingCase, historyCollapseCustomMaxItersCase } from "./ui-history-collapse";
+import {
+  userMessageShortCase,
+  userMessageLongCase,
+  userMessageVeryLongCase,
+  userMessageMixedCase,
+} from "./ui-user-message-collapse";
 import { historySlowLoadCase, historyLoadErrorCase } from "./history-load";
 import {
   fileUploadInlineCase,
@@ -231,6 +237,11 @@ export const ALL_CASES: TestCase[] = [
   webFetchValidationCase,
   webFetchHttpErrorCase,
   // UI 渲染
+  // 用户消息折叠
+  userMessageShortCase,
+  userMessageLongCase,
+  userMessageVeryLongCase,
+  userMessageMixedCase,
   markdownRichCase,
   userMessageWithLinksCase,
   userMessageWithTenImagesCase,

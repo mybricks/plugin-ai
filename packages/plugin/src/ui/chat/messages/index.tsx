@@ -470,12 +470,57 @@ const MessageBubble = ({ record, toolRendererMap, actionBar, onRetry, onDelete, 
   )
 };
 
-const UserMessageContent = ({ record }: { record: MessageRecord }) => {
-  if (!record.meta?.focus && !record.meta?.chips?.length && /!\[[^\]]*]\([^)]+\)/.test(record.userText)) {
-    return <MarkdownMessage message={record.userText} className={css["user-message-text"]} />;
+/** 字符数超过此值时折叠，避免长文本首次渲染开销 */
+const COLLAPSE_CHAR_THRESHOLD = 300;
+/** 折叠时展示的最大字符数（纯文本截断，不做 markdown 解析） */
+const COLLAPSE_PREVIEW_CHARS = 200;
+
+interface CollapsibleUserMessageProps {
+  /** 原始文本，用于判断是否需要折叠，以及折叠时展示纯文本预览 */
+  text: string;
+  /** 展开后渲染的完整内容，折叠时不调用，避免不必要的渲染开销 */
+  renderFull: () => React.ReactNode;
+}
+
+const CollapsibleUserMessage = ({ text, renderFull }: CollapsibleUserMessageProps) => {
+  const needsCollapse = text.length > COLLAPSE_CHAR_THRESHOLD;
+  const [collapsed, setCollapsed] = useState(true);
+
+  if (!needsCollapse) {
+    return <>{renderFull()}</>;
   }
 
-  return <DefaultUserMessage record={record} />;
+  return (
+    <div className={css["collapsible-message"]}>
+      <div className={classNames(css["collapsible-body"], collapsed && css["collapsible-body--collapsed"])}>
+        {collapsed
+          ? <span className={css["collapsible-preview"]}>{text.slice(0, COLLAPSE_PREVIEW_CHARS)}</span>
+          : renderFull()
+        }
+      </div>
+      <button
+        className={css["collapsible-toggle"]}
+        onClick={() => setCollapsed((c) => !c)}
+      >
+        {collapsed ? "展开" : "收起"}
+      </button>
+    </div>
+  );
+};
+
+const UserMessageContent = ({ record }: { record: MessageRecord }) => {
+  const isMarkdown = !record.meta?.focus && !record.meta?.chips?.length && /!\[[^\]]*]\([^)]+\)/.test(record.userText);
+
+  return (
+    <CollapsibleUserMessage
+      text={record.userText}
+      renderFull={() =>
+        isMarkdown
+          ? <MarkdownMessage message={record.userText} className={css["user-message-text"]} />
+          : <DefaultUserMessage record={record} />
+      }
+    />
+  );
 };
 
 function getActivePlanFileFromRecord(record: MessageRecord, activePlan: ActivePlanFile | null): ActivePlanFile | null {
@@ -768,17 +813,62 @@ function formatTime(ts: number): string {
 
 // ─── AutoScroller ─────────────────────────────────────────────────────────────
 
+type DebouncedFunction<T extends (...args: any[]) => void> = ((...args: Parameters<T>) => void) & {
+  cancel: () => void;
+};
+
+function createDebouncedFunction<T extends (...args: any[]) => void>(fn: T, wait: number): DebouncedFunction<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const debounced = ((...args: Parameters<T>) => {
+    if (timer !== null) {
+      clearTimeout(timer);
+    }
+    timer = setTimeout(() => {
+      timer = null;
+      fn(...args);
+    }, wait);
+  }) as DebouncedFunction<T>;
+
+  debounced.cancel = () => {
+    if (timer === null) return;
+    clearTimeout(timer);
+    timer = null;
+  };
+
+  return debounced;
+}
+
 class AutoScroller {
   private isLockedToBottom = true;
   private resizeObserver: ResizeObserver | null = null;
   private mutationObserver: MutationObserver | null = null;
   private scrollRafId: number | null = null;
+  private lastClientHeight = 0;
+  private lastScrollHeight = 0;
+  private boundHandleScroll = this.handleScroll.bind(this);
+  private scheduleResizeScrollToBottom = createDebouncedFunction(() => {
+    if (!this.isLockedToBottom) return;
+    this.scheduleScrollToBottom();
+  }, 120);
 
   constructor(private container: HTMLElement) {
     if (!container) return;
-    container.addEventListener("scroll", this.handleScroll.bind(this));
+    this.lastClientHeight = container.clientHeight;
+    this.lastScrollHeight = container.scrollHeight;
+    container.addEventListener("scroll", this.boundHandleScroll);
     this.resizeObserver = new ResizeObserver(() => {
-      if (this.isLockedToBottom) this.scheduleScrollToBottom();
+      const nextClientHeight = this.container.clientHeight;
+      const nextScrollHeight = this.container.scrollHeight;
+      const heightChanged = nextClientHeight !== this.lastClientHeight;
+      const contentHeightChanged = nextScrollHeight !== this.lastScrollHeight;
+
+      this.lastClientHeight = nextClientHeight;
+      this.lastScrollHeight = nextScrollHeight;
+
+      if (this.isLockedToBottom && (heightChanged || contentHeightChanged)) {
+        this.scheduleResizeScrollToBottom("resize-height-or-content");
+      }
     });
     this.resizeObserver.observe(container);
     this.mutationObserver = new MutationObserver(() => {
@@ -812,12 +902,13 @@ class AutoScroller {
   }
 
   destroy() {
+    this.scheduleResizeScrollToBottom.cancel();
     if (this.scrollRafId !== null) {
       cancelAnimationFrame(this.scrollRafId);
       this.scrollRafId = null;
     }
     this.mutationObserver?.disconnect();
     this.resizeObserver?.disconnect();
-    this.container?.removeEventListener("scroll", this.handleScroll.bind(this));
+    this.container?.removeEventListener("scroll", this.boundHandleScroll);
   }
 }
