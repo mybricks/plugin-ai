@@ -50,14 +50,6 @@
 
 ## 快速开始
 
-安装：
-
-```bash
-npm install @mybricks/agent
-```
-
-所有 API 从子路径 `@mybricks/agent` 导入。
-
 ### 在浏览器中运行
 
 无需任何后端即可跑起一个完整的代码智能体：
@@ -66,24 +58,18 @@ npm install @mybricks/agent
 import { CodeAgent, IDBSandbox, Tools } from "@mybricks/agent";
 import type { RemoteProviderConfig } from "@mybricks/agent";
 
-const openai: RemoteProviderConfig = {
-  providerId: "openai",
+const openrouter: RemoteProviderConfig = {
+  providerId: "openrouter",
   format: "openai",
-  baseUrl: "https://api.openai.com/v1",
-  apiKey: import.meta.env.VITE_OPENAI_API_KEY,
-  models: [{ id: "gpt-4o", name: "GPT-4o" }],
+  baseUrl: "https://openrouter.ai/api/v1",
+  apiKey: import.meta.env.VITE_OPENROUTER_API_KEY,
+  models: [{ id: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash" }],
 };
 
 const agent = new CodeAgent({
   key: "my-agent",
-  sandbox: new IDBSandbox({
-    key: "my-agent",
-    initialFiles: [
-      { path: "README.md", content: "# Hello" },
-      { path: "src/index.ts", content: "console.log('hi');" },
-    ],
-  }),
-  llm: { providers: [openai] },
+  sandbox: new IDBSandbox({ key: "my-agent" }),
+  llm: { providers: [openrouter] },
   tools: [Tools.createWebFetch()], // 可选：联网能力
 });
 
@@ -128,40 +114,81 @@ const nodeSandbox: Sandbox = {
   },
 };
 
-const anthropic: RemoteProviderConfig = {
-  providerId: "anthropic",
-  format: "anthropic",
-  baseUrl: "https://api.anthropic.com/v1",
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-  models: [{ id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5" }],
+const openrouter: RemoteProviderConfig = {
+  providerId: "openrouter",
+  format: "openai",
+  baseUrl: "https://openrouter.ai/api/v1",
+  apiKey: process.env.OPENROUTER_API_KEY!,
+  models: [{ id: "deepseek/deepseek-chat-v3-0324", name: "DeepSeek V3" }],
 };
 
 const agent = new CodeAgent({
   key: "server-agent",
   sandbox: nodeSandbox,
-  llm: { providers: [anthropic] },
+  llm: { providers: [openrouter] },
   system: "你是一个谨慎的代码助手，改动前先读取确认。",
 });
 
 await agent.requestAI({ message: "给所有 .ts 文件补上类型注解" });
 ```
 
+## 安装
+
+> **npm 包暂未发布**，目前可通过以下方式接入：
+
+**源码引用**（推荐，支持 Tree-shaking）：
+
+```bash
+# 克隆仓库后作为 workspace 依赖引入
+git clone https://github.com/mybricks/plugin-ai.git
+```
+
+```jsonc
+// package.json
+{
+  "dependencies": {
+    "@mybricks/agent": "file:../plugin-ai/packages/agent"
+  }
+}
+```
+
+所有 API 从 `@mybricks/agent` 导入，TypeScript 开箱即用。
+
+**UMD 打包**（适用于浏览器 `<script>` 引入）：
+
+```bash
+# 构建 UMD 产物
+npm run build
+# 产物位于 packages/plugin/dist/index.umd.js
+```
+
+```html
+<script src="node_modules/react/umd/react.production.min.js"></script>
+<script src="node_modules/react-dom/umd/react-dom.production.min.js"></script>
+<script src="node_modules/antd/dist/antd.min.js"></script>
+<script src="packages/plugin/dist/index.umd.js"></script>
+<script>
+  const { CodeAgent, IDBSandbox, Tools } = MyBricksPluginAI;
+  // 即可使用 ...
+</script>
+```
+
 ## 对接三方 API
 
 模型对接统一走 `llm.providers`，两种方式：
 
-**直连供应商** —— 对接 OpenAI / Anthropic 兼容接口，框架自动拼装端点：
+**直连供应商** —— 对接 OpenAI / Anthropic 兼容接口，框架自动拼装端点。以 [OpenRouter](https://openrouter.ai) 为例，一个端点即可访问数百个模型：
 
 ```ts
-const openai: RemoteProviderConfig = {
-  providerId: "openai",
-  format: "openai",          // 或 "anthropic"
-  baseUrl: "https://api.openai.com/v1",
-  apiKey: process.env.OPENAI_API_KEY!,
-  models: [{ id: "gpt-4o", name: "GPT-4o" }],
+const openrouter: RemoteProviderConfig = {
+  providerId: "openrouter",
+  format: "openai",                // 或 "anthropic"
+  baseUrl: "https://openrouter.ai/api/v1",
+  apiKey: process.env.OPENROUTER_API_KEY!,
+  models: [{ id: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash" }],
 };
 
-new CodeAgent({ llm: { providers: [openai] } });
+new CodeAgent({ llm: { providers: [openrouter] } });
 ```
 
 **自定义网关** —— 把请求委托给你自己的函数，适用于自建路由、私有化部署或本地模型：
@@ -208,7 +235,7 @@ const searchTool: Tool = {
 new Agent({
   system: "你是一名研究员，先检索事实再作答，最终输出结构化报告。",
   tools: [searchTool, Tools.createWebFetch()],
-  llm: { providers: [openai] },
+  llm: { providers: [openrouter] },
 });
 ```
 
@@ -221,3 +248,5 @@ new Agent({
 - **Skills** —— 可复用技能包，模型按需加载，不占用常驻上下文
 - **SubAgents** —— 委派任务给拥有独立上下文的子智能体
 - **Plugins** —— 把 Skills / SubAgents / 工具打包成可开关的插件
+
+> 当前文档仅为基础版本使用，更多拓展能力（提示词配置、Skill 配置、SubAgent 编排等）文档建设中，如有需要欢迎联系我们一起共建。
