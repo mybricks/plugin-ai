@@ -122,11 +122,15 @@ export type AgentRuntimeConfig =
       baseUrl?: string;
       /** 不传时默认使用当前 comId 对应的 agentKey，保证多组件隔离。 */
       workspaceId?: string | ((context: { comId: string; agentKey: string }) => string);
-      /** 方舟测试环境默认 agentId：default */
+      /** 显式 Session。未传时使用 workspace 的 default session。 */
+      sessionId?: string;
+      /** @deprecated 服务端已改为 workspace default session，保留仅用于旧调用方迁移。 */
       agentId?: string;
+      /** 传给服务端平台接口的用户身份。 */
+      userId?: string;
       key?: string | ((context: { comId: string; agentKey: string; workspaceId: string }) => string);
       headers?: HttpAgentOptions["headers"];
-      streamContentMode?: HttpAgentOptions["streamContentMode"];
+      browserToolHandler?: HttpAgentOptions["browserToolHandler"];
     });
 
 export interface VirtualFilesRuntimeContext {
@@ -135,15 +139,15 @@ export interface VirtualFilesRuntimeContext {
 
 /**
  * connectToAI 的返回值。
- * sandbox 可通过此对象访问该 comId 对应的 History 实例，用于版本管理。
+ * sandbox 可通过此对象访问该 comId 对应的 History 绑定视图，用于版本管理。
  */
 export interface ConnectToAIResult {
   /**
-   * 该 comId 对应的 History 实例。
+   * 该 comId 对应的 History 绑定视图。
    * 总是从 agent 实例上取，保证与 Agent 内部共享同一个引用。
    * 若 Agent 未配置 history 则为 null（正常情况下不会出现）。
    */
-  history: History | null;
+  history: BoundHistory | null;
 }
 
 export interface SandboxAPI {
@@ -215,7 +219,7 @@ export interface SetupSandboxParams {
   disabledModes?: AgentOptions["disabledModes"];
   /** 透传给 CodeAgent 的历史记录实现，不传时使用内置 IDBHistory */
   history?: History;
-  /** Agent 运行模式。默认 local；server/http 模式会对接方舟 AGUI 服务。 */
+  /** Agent 运行模式。默认 local；server/http 模式会对接远程 CodeAgent 服务。 */
   agentRuntime?: AgentRuntimeConfig;
   /** 消息发送者信息，注入到每条用户消息中，UI 展示时优先使用 */
   sender?: TurnSender;
@@ -245,11 +249,10 @@ export function setupSandbox(params: SetupSandboxParams): void {
         if (!agent) return;
         ensureAIPanelOpen(comId).then(() => {
           context.aiQueue.send(
-            agentKey,
+            agent,
             async () => {
               await ensureFocusComId(comId);
               const requestParams = withMentionFocus(params);
-              context.aiQueue.registerAbort(agentKey, () => agent.abort());
               await agent.requestAI({
                 message: requestParams.message,
                 attachments: requestParams.attachments ?? [],
@@ -657,13 +660,19 @@ function connectToAI(
       key: httpKey,
       baseUrl: agentRuntime.baseUrl,
       workspaceId,
+      sessionId: agentRuntime.sessionId,
       agentId: agentRuntime.agentId,
+      userId: agentRuntime.userId,
       headers: agentRuntime.headers,
-      streamContentMode: agentRuntime.streamContentMode,
+      browserToolHandler: agentRuntime.browserToolHandler,
     });
-    agent.files.connectAndSync(sandbox);
+    agent.files.bindSandbox(sandbox);
+    agent.setBrowserConnectionEnabled(!context.disabled);
+    context.events.on("disabled", (disabled: boolean) => {
+      agent.setBrowserConnectionEnabled(!disabled);
+    });
     context.agentMap.set(agentKey, agent);
-    return { history: null };
+    return { history: agent.getHistory() };
   }
 
   const agent = new CodeAgent({

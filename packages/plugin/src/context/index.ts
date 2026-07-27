@@ -1,5 +1,5 @@
 import type { SendToAgentParams } from "../sandbox";
-import { AIRequestQueue } from "./queue";
+import { AgentQueue } from "./queue";
 import type { ProviderConfig } from "../../../request/src";
 import type { SenderRef } from "../ui/components/sender";
 import { PluginAIKVStore } from "./kv";
@@ -63,7 +63,7 @@ class Context {
   agentMap = new Map<string, any>();
 
   /** AI 请求队列（防并发 + loading 状态管理） */
-  aiQueue = new AIRequestQueue();
+  aiQueue = new AgentQueue();
 
   /** LLM 配置值 */
   settingValue?: SettingValue;

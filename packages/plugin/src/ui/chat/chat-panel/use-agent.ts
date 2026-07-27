@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { context } from "../../../context";
-import type { QueueItem } from "../../../context/queue";
+import type {
+  AgentQueueState,
+  QueueItem,
+} from "../../../context/queue";
 import type { SenderProps } from "../../components/sender";
 import type { AgentMode, CodeAgent } from "../../../../../agent/src";
 import { AgentModeEnum } from "../../../../../agent/src";
@@ -8,7 +11,6 @@ import type { HistoryStatus } from "../../../../../agent/src";
 import type { ModelSelection } from "../../../../../request/src/providers";
 import { useSession } from "../use-session";
 import { isHttpAgent, type HttpAgent } from "./http-agent";
-import { useAguiAgentSession } from "./use-agui-agent-session";
 
 export type ChatAgent = CodeAgent | HttpAgent;
 
@@ -45,17 +47,17 @@ export interface UseAgentOptions {
 }
 
 export function useAgent({ agent, disabled = false, onTurnStart, onTurnEnd }: UseAgentOptions): ChatPanelAgentState {
-  const httpAgent = isHttpAgent(agent) ? agent : undefined;
-  const localAgent = !isHttpAgent(agent) ? agent : undefined;
-  const local = useLocalAgentSession({ agent: localAgent, disabled, onTurnStart, onTurnEnd });
-  const agui = useAguiAgentSession({ agent: httpAgent, disabled, onTurnStart, onTurnEnd });
-  return httpAgent ? agui : local;
+  return useAgentSession({ agent, disabled, onTurnStart, onTurnEnd });
 }
 
-function useLocalAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd }: { agent?: CodeAgent; disabled?: boolean; onTurnStart?: () => void; onTurnEnd?: () => void; }): ChatPanelAgentState {
-  const agentKey = agent?.key ?? "";
-  const [loading, setLoading] = useState(() => context.aiQueue.isLoading(agentKey));
-  const [pendingQueue, setPendingQueue] = useState<QueueItem[]>(() => context.aiQueue.getQueue(agentKey));
+function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd }: { agent?: ChatAgent; disabled?: boolean; onTurnStart?: () => void; onTurnEnd?: () => void; }): ChatPanelAgentState {
+  const [queueState, setQueueState] = useState<AgentQueueState>(() =>
+    agent
+      ? context.aiQueue.getState(agent)
+      : { running: false, queue: [] },
+  );
+  const loading = queueState.running;
+  const pendingQueue = queueState.queue;
   const availableModes = agent?.getAvailableModes() ?? [AgentModeEnum.Build];
   const showChatMode = availableModes.length > 1;
   const [chatMode, setChatModeState] = useState<AgentMode>(() => agent?.getMode() ?? availableModes[0] ?? AgentModeEnum.Build);
@@ -69,9 +71,12 @@ function useLocalAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd 
   const { messages, historyStatus, historyError, subscribeSession, clearSession } = useSession(agent);
 
   useEffect(() => {
-    setLoading(context.aiQueue.isLoading(agentKey));
-    setPendingQueue(context.aiQueue.getQueue(agentKey));
-  }, [agentKey]);
+    if (!agent) {
+      setQueueState({ running: false, queue: [] });
+      return;
+    }
+    return context.aiQueue.subscribe(agent, setQueueState);
+  }, [agent]);
 
   useEffect(() => {
     const lp = llmProviders;
@@ -105,19 +110,6 @@ function useLocalAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd 
     };
   }, [agent, onTurnEnd, onTurnStart, subscribeSession]);
 
-  useEffect(() => {
-    const unLoading = context.aiQueue.events.on("loading", (data) => {
-      if (data.key === agentKey) setLoading(data.loading);
-    });
-    const unQueue = context.aiQueue.events.on("queue", (data) => {
-      if (data.key === agentKey) setPendingQueue([...data.queue]);
-    });
-    return () => {
-      unLoading();
-      unQueue();
-    };
-  }, [agentKey]);
-
   const historyFailed = historyStatus === "error";
   const historyLoading = historyStatus === "idle" || historyStatus === "loading";
   const isDisabled = !agent || !!disabled || historyLoading || historyFailed;
@@ -128,22 +120,21 @@ function useLocalAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd 
     if (!agent) return;
     const meta = chips?.length ? { chips } : undefined;
     context.aiQueue.send(
-      agentKey,
+      agent,
       async () => {
-        context.aiQueue.registerAbort(agentKey, () => agent.abort());
         await agent.requestAI({ message, attachments, ...(mode ? { mode } : {}), ...(meta ? { meta } : {}) });
       },
       { message, attachments }
     );
-  }, [agent, agentKey]);
+  }, [agent]);
 
   const stop = useCallback(() => {
-    context.aiQueue.stop(agentKey);
-  }, [agentKey]);
+    if (agent) context.aiQueue.stop(agent);
+  }, [agent]);
 
   const removeFromQueue = useCallback((id: string) => {
-    context.aiQueue.removeFromQueue(agentKey, id);
-  }, [agentKey]);
+    if (agent) context.aiQueue.remove(agent, id);
+  }, [agent]);
 
   const clear = useCallback(async () => {
     if (!agent || isDisabled) return;
@@ -171,21 +162,20 @@ function useLocalAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd 
     if (!agent || !canExecutePlan) return;
     const message = `执行「${title}」方案`;
     context.aiQueue.send(
-      agentKey,
+      agent,
       async () => {
-        context.aiQueue.registerAbort(agentKey, () => agent.abort());
         await agent.requestAI({ message, mode: AgentModeEnum.Build });
       },
       { message }
     );
-  }, [agent, agentKey, canExecutePlan]);
+  }, [agent, canExecutePlan]);
 
   const setChatMode = useCallback((mode: AgentMode | null) => {
     if (mode) agent?.setMode(mode, "ui-change");
   }, [agent]);
 
   return {
-    source: "local",
+    source: isHttpAgent(agent) ? "http" : "local",
     agent,
     messages,
     historyStatus,

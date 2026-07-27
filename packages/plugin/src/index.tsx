@@ -32,7 +32,14 @@ export type { Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, 
 export type { SettingValue } from "./ui/setting";
 export { ChatPanel } from "./ui/chat";
 export { HttpAgent } from "./ui/chat";
-export type { ChatPanelProps, ChatPanelRef, HttpAgentOptions } from "./ui/chat";
+export type {
+  BrowserToolHandler,
+  BrowserToolRequest,
+  BrowserToolResult,
+  ChatPanelProps,
+  ChatPanelRef,
+  HttpAgentOptions,
+} from "./ui/chat";
 export * from "./preset";
 
 // ─── PluginAI 实例 API ────────────────────────────────────────────────────────
@@ -184,7 +191,7 @@ export interface PluginAIParams {
   };
   /** 透传给 CodeAgent 的历史记录实现，不传时使用内置 IDBHistory */
   history?: import("../../agent/src").History;
-  /** Agent 运行模式。默认 local；server/http 模式会对接方舟 AGUI 服务。 */
+  /** Agent 运行模式。默认 local；server/http 模式会对接远程 CodeAgent 服务。 */
   agentRuntime?: AgentRuntimeConfig;
   /** 消息发送者信息，注入到每条用户消息中，UI 展示时优先使用 */
   sender?: TurnSender;
@@ -263,6 +270,11 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
         const currentAgentKey = context.getAgentKey();
         if (!currentAgentKey) {
           alert("当前没有聚焦的组件，请先点击一个组件后再导入");
+          return;
+        }
+        const currentAgent = context.agentMap.get(currentAgentKey);
+        if (currentAgent?.kind === "http") {
+          alert("当前是服务端 Agent，历史导入需要走服务端 history 接口，不能写入本地 IDB。");
           return;
         }
         
@@ -371,7 +383,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
               context.currentFocus = currentFocus;
 
               // 后续要干掉
-              window._ai_focus_params_ = params
+              ;(window as any)._ai_focus_params_ = params
 
               context.events.emit("focus", currentFocus);
             },
@@ -406,10 +418,9 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
 
               ensureAIPanelOpen(comId).then(() => {
                 context.aiQueue.send(
-                  agentKey,
+                  agent,
                   async () => {
                     await ensureFocusComId(comId);
-                    context.aiQueue.registerAbort(agentKey, () => agent.abort());
                     await agent.requestAI({
                       message: requestMessage,
                       attachments,

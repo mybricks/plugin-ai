@@ -308,6 +308,11 @@ export { ChatPanel };
 export type { ChatMarkdownItConfig, MarkdownSkinConfig, MessagesRenderVariant } from "./context";
 export { useAgent } from "./use-agent";
 export { HttpAgent, isHttpAgent } from "./http-agent";
-export { useAguiAgentSession } from "./use-agui-agent-session";
 export type { ChatAgent, ChatPanelAgentState } from "./use-agent";
-export type { HttpAgentOptions, AguiEvent, AguiEventType } from "./http-agent";
+export type {
+  BrowserToolHandler,
+  BrowserToolRequest,
+  BrowserToolResult,
+  HttpAgentOptions,
+  RemoteAgentEvent,
+} from "./http-agent";

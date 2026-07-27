@@ -18,11 +18,9 @@ export const SuggestionsBlock = ({
 
   const handleClick = (option: string) => {
     if (disabled) return;
-    const agentKey = agent.key;
     context.aiQueue.send(
-      agentKey,
+      agent,
       async () => {
-        context.aiQueue.registerAbort(agentKey, () => agent.abort());
         await agent.requestAI({ message: option });
       },
       { message: option }

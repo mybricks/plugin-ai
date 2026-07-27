@@ -1,5 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import type { Agent, HistoryStatus, TurnRecord } from "../../../agent/src";
+import type {
+  Agent,
+  AgentEventMap,
+  HistoryStatus,
+  TurnRecord,
+} from "../../../../agent/src";
 
 // ─── 数据模型 ─────────────────────────────────────────────────────────────────
 
@@ -13,6 +18,12 @@ export interface MessageRecord extends Omit<TurnRecord, "status" | "endTime"> {
 export interface Session {
   messages: MessageRecord[];
 }
+
+/** 本地 Agent 与远程 Agent 共用的消息状态输入边界。 */
+export type SessionAgent = Pick<
+  Agent,
+  "events" | "historyManager" | "getTurns" | "getTools"
+>;
 
 // ─── 辅助 ─────────────────────────────────────────────────────────────────────
 
@@ -40,7 +51,7 @@ function findLastPendingId(records: MessageRecord[]): string | null {
 // 无需外部手动调用 addMessage / subscribeAgent，任何调用 agent.requestAI() 的入口
 // 都能被自动感知，包括 ChatStartView、ChatPanel、外部直接调用等。
 
-export function useSession(agent: Agent | undefined) {
+export function useSession(agent: SessionAgent | undefined) {
   const [messages, setMessages] = useState<MessageRecord[]>([]);
   const [historyStatus, setHistoryStatus] = useState<HistoryStatus>(() =>
     agent?.historyManager.getSnapshot().status ?? "ready"
@@ -90,7 +101,8 @@ export function useSession(agent: Agent | undefined) {
    * - turn:start      → 创建新的 pending MessageRecord，记录 pendingId
    * - llm:start       → push 新 iteration
    * - llm:content     → 实时写入当前 iteration content/thinkingContent
-   * - llm:complete    → done=true 时更新 record.content；done=false 时记录 iteration endTime
+   * - llm:complete    → 写入当前 step 的 endTime/usage
+   * - turn:complete   → 将当前 turn 标记为 success
    * - tool:args      → 预创建 ToolCallView（argsContent 流式累积）
    * - tool:call       → 更新 ToolCallRecord args/startTime
    * - tool:result     → 更新工具结果
@@ -101,13 +113,17 @@ export function useSession(agent: Agent | undefined) {
    *
    * 每次调用都会先清除上一次注册的监听器（同一个组件切换 agent 时安全）。
    */
-  const subscribeSession = useCallback((a: Agent, opts?: { onTurnStart?: () => void; onTurnEnd?: () => void }) => {
+  const subscribeSession = useCallback((a: SessionAgent, opts?: { onTurnStart?: () => void; onTurnEnd?: () => void }) => {
     unsubsRef.current.forEach((u) => u());
     unsubsRef.current = [];
     pendingIdRef.current = null;
 
     let pendingContent = "";
     let pendingThinking = "";
+    const on = <K extends keyof AgentEventMap>(
+      event: K,
+      handler: (data: AgentEventMap[K]) => void,
+    ) => a.events.on(event, handler);
 
     const syncFromAgentSnapshot = () => {
       const records = turnsToMessageRecords(a.getTurns());
@@ -170,7 +186,7 @@ export function useSession(agent: Agent | undefined) {
 
     unsubsRef.current.push(
       // turn:start → 自动创建 pending MessageRecord
-      a.events.on("turn:start", ({ turnId, message, attachments, meta, userFormattedText, sender }) => {
+      on("turn:start", ({ turnId, message, attachments, meta, userFormattedText, sender }) => {
         pendingContent = "";
         pendingThinking = "";
         pendingIdRef.current = turnId;
@@ -197,7 +213,7 @@ export function useSession(agent: Agent | undefined) {
         opts?.onTurnStart?.();
       }),
 
-      a.events.on("turn:resume", ({ turnId }) => {
+      on("turn:resume", ({ turnId }) => {
         pendingContent = "";
         pendingThinking = "";
         pendingIdRef.current = turnId;
@@ -211,7 +227,7 @@ export function useSession(agent: Agent | undefined) {
         );
       }),
 
-      a.events.on("llm:start", ({ step, startTime }) => {
+      on("llm:start", ({ step, startTime }) => {
         pendingContent = "";
         pendingThinking = "";
         update((r) => {
@@ -224,33 +240,39 @@ export function useSession(agent: Agent | undefined) {
         });
       }),
 
-      a.events.on("llm:content", ({ content, thinkingContent }) => {
+      on("llm:content", ({ content, thinkingContent }) => {
         ensureLastLLMIter();
         pendingContent = content;
         if (thinkingContent !== undefined) pendingThinking = thinkingContent;
+        // React 可能批量延后执行 updater；必须捕获本次事件值，不能在 updater
+        // 中读取随后会被 llm:complete 清空的可变闭包变量。
+        const contentSnapshot = pendingContent;
+        const thinkingSnapshot = pendingThinking;
         updateLastLLMIter((iter) => ({
           ...iter,
-          content: pendingContent,
+          content: contentSnapshot,
           responseTime: (iter as any).responseTime ?? Date.now(),
-          ...(thinkingContent !== undefined ? { thinkingContent: pendingThinking } : {}),
+          ...(thinkingContent !== undefined ? { thinkingContent: thinkingSnapshot } : {}),
         }));
       }),
 
-      a.events.on("llm:complete", ({ done }) => {
-        if (done) {
-          pendingContent = "";
-          pendingThinking = "";
-          syncFromAgentSnapshot();
-          pendingIdRef.current = null;
-          opts?.onTurnEnd?.();
-        } else {
-          syncFromAgentSnapshot();
-          pendingContent = "";
-          pendingThinking = "";
-        }
+      on("llm:complete", ({ endTime, usage }) => {
+        updateLastLLMIter((iter) => ({
+          ...iter,
+          endTime,
+          ...(usage ? { usage } : {}),
+        }));
+        pendingContent = "";
+        pendingThinking = "";
       }),
 
-      a.events.on("turn:abort", () => {
+      on("turn:complete", () => {
+        update((r) => ({ ...r, status: "success", endTime: Date.now() }));
+        opts?.onTurnEnd?.();
+        pendingIdRef.current = null;
+      }),
+
+      on("turn:abort", () => {
         pendingContent = "";
         pendingThinking = "";
         update((r) => {
@@ -277,7 +299,7 @@ export function useSession(agent: Agent | undefined) {
         pendingIdRef.current = null;
       }),
 
-      a.events.on("turn:error", ({ error }) => {
+      on("turn:error", ({ error }) => {
         pendingContent = "";
         pendingThinking = "";
         update((r) => {
@@ -302,7 +324,7 @@ export function useSession(agent: Agent | undefined) {
         pendingIdRef.current = null;
       }),
 
-      a.events.on("tool:args", ({ callId, name, content }) => {
+      on("tool:args", ({ callId, name, content }) => {
         const toolTitle = a.getTools().find(t => t.name === name)?.title;
         updateLastLLMIter((iter) => {
           const existing = iter.toolCalls.find((t) => t.callId === callId);
@@ -326,7 +348,7 @@ export function useSession(agent: Agent | undefined) {
         });
       }),
 
-      a.events.on("tool:call", ({ callId, name, args, startTime }) => {
+      on("tool:call", ({ callId, name, args, startTime }) => {
         pendingContent = "";
         const toolTitle = a.getTools().find(t => t.name === name)?.title;
         const argsRaw = args && typeof args === "object" && "_argsRaw" in args
@@ -343,7 +365,7 @@ export function useSession(agent: Agent | undefined) {
                       ...t,
                       title: toolTitle,
                       ...(argsRaw !== undefined
-                        ? { argsContent: t.argsContent ?? argsRaw }
+                        ? { argsContent: (t as any).argsContent ?? argsRaw }
                         : args !== undefined
                           ? { args, argsContent: undefined }
                           : {}),
@@ -363,20 +385,20 @@ export function useSession(agent: Agent | undefined) {
         });
       }),
 
-      a.events.on("tool:result", ({ callId, result, endTime }) => {
+      on("tool:result", ({ callId, result, endTime }) => {
         updateLastLLMIterTool(callId, (t) => ({ ...t, status: "success", execEndTime: endTime, result }));
       }),
 
-      a.events.on("tool:error", ({ callId, error, errorType, endTime }) => {
+      on("tool:error", ({ callId, error, errorType, endTime }) => {
         updateLastLLMIterTool(callId, (t) => ({ ...t, status: "error", execEndTime: endTime, error, ...(errorType ? { errorType } : {}) }));
       }),
 
-      a.events.on("tool:progress", ({ callId, data }) => {
+      on("tool:progress", ({ callId, data }) => {
         updateLastLLMIterTool(callId, (t) => ({ ...t, progress: data }));
       }),
 
       // warmup:start → push WarmupIter（status: loading）到 iterations
-      a.events.on("warmup:start", ({ startTime, content }) => {
+      on("warmup:start", ({ startTime, content }) => {
         update((r) => ({
           ...r,
           iterations: [...r.iterations, { type: "warmup" as const, status: "loading" as const, content, startTime, toolCalls: [] as [] }],
@@ -384,45 +406,45 @@ export function useSession(agent: Agent | undefined) {
       }),
 
       // warmup:content → 更新最后一个 warmup iter 的 content
-      a.events.on("warmup:content", ({ content }) => {
+      on("warmup:content", ({ content }) => {
         update((r) => {
           if (r.iterations.length === 0) return r;
           const iters = [...r.iterations];
           const last = iters[iters.length - 1];
-          if (last.type !== "warmup") return r;
+          if (!("type" in last) || last.type !== "warmup") return r;
           iters[iters.length - 1] = { ...last, content };
           return { ...r, iterations: iters };
         });
       }),
 
       // warmup:complete → 更新最后一个 warmup iter 的 status/endTime/content
-      a.events.on("warmup:complete", ({ status, content, endTime }) => {
+      on("warmup:complete", ({ status, content, endTime }) => {
         update((r) => {
           if (r.iterations.length === 0) return r;
           const iters = [...r.iterations];
           const last = iters[iters.length - 1];
-          if (last.type !== "warmup") return r;
+          if (!("type" in last) || last.type !== "warmup") return r;
           iters[iters.length - 1] = { ...last, status, content, endTime };
           return { ...r, iterations: iters };
         });
       }),
 
       // turn:suggestions → autoSummary 异步写入 suggestions 后更新对应 MessageRecord
-      a.events.on("turn:suggestions", ({ turnId, suggestions }) => {
+      on("turn:suggestions", ({ turnId, suggestions }) => {
         setMessages((prev) =>
           prev.map((r) => (r.id === turnId ? { ...r, suggestions } : r))
         );
       }),
 
       // turn:suggestions:dismiss → 用户主动关闭建议展示
-      a.events.on("turn:suggestions:dismiss", ({ turnId }) => {
+      on("turn:suggestions:dismiss", ({ turnId }) => {
         setMessages((prev) =>
           prev.map((r) => (r.id === turnId ? { ...r, suggestionsDismissed: true } : r))
         );
       }),
 
       // turn:delete → 软删除，从 UI 列表中移除
-      a.events.on("turn:delete", ({ turnId }) => {
+      on("turn:delete", ({ turnId }) => {
         setMessages((prev) => prev.filter((r) => r.id !== turnId));
       })
     );

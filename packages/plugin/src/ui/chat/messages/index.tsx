@@ -232,9 +232,8 @@ const MessageBubble = ({ record, toolRendererMap, actionBar, onRetry, onDelete, 
       return;
     }
     context.aiQueue.send(
-      agent.key,
+      agent,
       async () => {
-        context.aiQueue.registerAbort(agent.key!, () => agent.abort());
         await agent.retry(record.id);
       },
       { message: "重试" }

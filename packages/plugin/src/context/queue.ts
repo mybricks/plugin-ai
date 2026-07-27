@@ -1,4 +1,10 @@
 import { AbortError } from "./../../../agent/src/errors";
+import {
+  createAgentRuntime,
+  type AgentRuntime,
+  type AgentRuntimeState,
+  type RuntimeAgent,
+} from "./agent-runtime";
 
 export interface AIRequestParams {
   message?: string;
@@ -15,48 +21,59 @@ export interface QueueItem {
   runFn: () => Promise<void>;
 }
 
-type EventMap = {
-  loading: { key: string; loading: boolean };
-  queue: { key: string; queue: QueueItem[] };
-};
+export interface AgentQueueState {
+  running: boolean;
+  queue: QueueItem[];
+  error?: unknown;
+}
 
-class Events<T extends Record<string, any>> {
-  private listeners: Partial<{ [K in keyof T]: Array<(data: T[K]) => void> }> = {};
+interface QueueEntry {
+  key: string;
+  agent: RuntimeAgent;
+  runtime: AgentRuntime;
+  unsubscribeRuntime: () => void;
+  requestRunning: boolean;
+  agentState: AgentRuntimeState;
+  queue: QueueItem[];
+}
 
-  on<K extends keyof T>(event: K, handler: (data: T[K]) => void): () => void {
-    if (!this.listeners[event]) this.listeners[event] = [];
-    this.listeners[event]!.push(handler);
+/** 统一本地与远程 Agent 运行态的前端请求队列。 */
+export class AgentQueue {
+  private entries = new Map<string, QueueEntry>();
+  private agentKeys = new WeakMap<RuntimeAgent, string>();
+  private listeners = new Map<
+    string,
+    Set<(state: AgentQueueState) => void>
+  >();
+  private idCounter = 0;
+
+  getState(agent: RuntimeAgent): AgentQueueState {
+    return this.toState(this.ensureEntry(agent));
+  }
+
+  subscribe(
+    agent: RuntimeAgent,
+    listener: (state: AgentQueueState) => void,
+  ): () => void {
+    const entry = this.ensureEntry(agent);
+    const listeners = this.listeners.get(entry.key) ?? new Set();
+    listeners.add(listener);
+    this.listeners.set(entry.key, listeners);
+    listener(this.toState(entry));
     return () => {
-      this.listeners[event] = this.listeners[event]!.filter(h => h !== handler);
+      listeners.delete(listener);
+      if (!listeners.size) this.listeners.delete(entry.key);
     };
   }
 
-  emit<K extends keyof T>(event: K, data: T[K]) {
-    this.listeners[event]?.forEach(h => h(data));
-  }
-}
-
-/** 防并发 AI 请求队列 */
-export class AIRequestQueue {
-  private loadingKeys = new Set<string>();
-  private queues = new Map<string, QueueItem[]>();
-  private abortMap = new Map<string, () => void>();
-  private idCounter = 0;
-
-  readonly events = new Events<EventMap>();
-
-  isLoading(key: string): boolean {
-    return this.loadingKeys.has(key);
-  }
-
-  getQueue(key: string): QueueItem[] {
-    return this.queues.get(key) ?? [];
-  }
-
-  /** 发送请求；如果同 key 正在 loading，自动排队 */
-  send(key: string, runFn: () => Promise<void>, params: AIRequestParams) {
-    if (this.loadingKeys.has(key)) {
-      const queue = this.queues.get(key) ?? [];
+  /** 发送请求；Agent 或当前请求正在运行时，进入浏览器内队列。 */
+  send(
+    agent: RuntimeAgent,
+    runFn: () => Promise<void>,
+    params: AIRequestParams,
+  ) {
+    const entry = this.ensureEntry(agent);
+    if (this.isRunning(entry)) {
       const item: QueueItem = {
         id: `q-${++this.idCounter}`,
         message: params.message ?? "",
@@ -64,63 +81,101 @@ export class AIRequestQueue {
         params,
         runFn,
       };
-      queue.push(item);
-      this.queues.set(key, queue);
-      this.events.emit("queue", { key, queue: [...queue] });
+      entry.queue.push(item);
+      this.notify(entry);
       return;
     }
-    this.run(key, runFn, params);
-  }
-
-  /** 注册当前请求的 abort 函数（由 runFn 内部调用，通常是 agent.abort） */
-  registerAbort(key: string, abortFn: () => void) {
-    this.abortMap.set(key, abortFn);
+    this.run(entry, runFn);
   }
 
   /** 中止当前正在执行的请求 */
-  stop(key: string) {
-    this.abortMap.get(key)?.();
-  }
-  removeFromQueue(key: string, id: string) {
-    const queue = this.queues.get(key);
-    if (!queue) return;
-    const next = queue.filter(item => item.id !== id);
-    this.queues.set(key, next);
-    this.events.emit("queue", { key, queue: [...next] });
+  stop(agent: RuntimeAgent) {
+    const entry = this.ensureEntry(agent);
+    if (this.isRunning(entry)) void entry.runtime.abort();
   }
 
-  /** 清空指定 key 的排队消息（不影响当前正在执行的请求） */
-  clearQueue(key: string) {
-    this.queues.set(key, []);
-    this.events.emit("queue", { key, queue: [] });
+  remove(agent: RuntimeAgent, id: string) {
+    const entry = this.ensureEntry(agent);
+    entry.queue = entry.queue.filter((item) => item.id !== id);
+    this.notify(entry);
   }
 
-  private run(key: string, runFn: () => Promise<void>, _params: AIRequestParams) {
-    this.loadingKeys.add(key);
-    this.events.emit("loading", { key, loading: true });
+  private ensureEntry(agent: RuntimeAgent): QueueEntry {
+    const key = this.resolveKey(agent);
+    const existing = this.entries.get(key);
+    if (existing?.agent === agent) return existing;
+    existing?.unsubscribeRuntime();
 
+    const runtime = createAgentRuntime(agent);
+    const entry: QueueEntry = {
+      key,
+      agent,
+      runtime,
+      unsubscribeRuntime: () => {},
+      requestRunning: false,
+      agentState: runtime.getState(),
+      queue: existing?.queue ?? [],
+    };
+    entry.unsubscribeRuntime = runtime.subscribe((state) => {
+      const wasRunning = this.isRunning(entry);
+      entry.agentState = state;
+      this.notify(entry);
+      if (wasRunning && !this.isRunning(entry)) this.drain(entry);
+    });
+    this.entries.set(key, entry);
+    return entry;
+  }
+
+  private run(entry: QueueEntry, runFn: () => Promise<void>) {
+    entry.requestRunning = true;
+    this.notify(entry);
     Promise.resolve(runFn())
       .catch((error: any) => {
-        // AbortError 是正常的取消操作，不应该打印错误
         if (!(error instanceof AbortError)) {
           console.error(error);
         }
       })
       .finally(() => {
-        this.loadingKeys.delete(key);
-        this.abortMap.delete(key);
-        this.events.emit("loading", { key, loading: false });
-
-        const queue = this.queues.get(key);
-        if (queue?.length) {
-          const next = queue.shift()!;
-          this.queues.set(key, queue);
-          this.events.emit("queue", { key, queue: [...queue] });
-          // 执行队列中的下一个请求
-          this.run(key, next.runFn, next.params);
-        } else {
-          this.events.emit("queue", { key, queue: [] });
-        }
+        entry.requestRunning = false;
+        this.notify(entry);
+        this.drain(entry);
       });
+  }
+
+  private drain(entry: QueueEntry) {
+    if (this.isRunning(entry)) return;
+    const next = entry.queue.shift();
+    this.notify(entry);
+    if (next) this.run(entry, next.runFn);
+  }
+
+  private isRunning(entry: QueueEntry): boolean {
+    return entry.requestRunning || entry.agentState.running;
+  }
+
+  private toState(entry: QueueEntry): AgentQueueState {
+    return {
+      running: this.isRunning(entry),
+      queue: [...entry.queue],
+      ...(entry.agentState.error !== undefined
+        ? { error: entry.agentState.error }
+        : {}),
+    };
+  }
+
+  private notify(entry: QueueEntry) {
+    const state = this.toState(entry);
+    for (const listener of this.listeners.get(entry.key) ?? []) {
+      listener(state);
+    }
+  }
+
+  private resolveKey(agent: RuntimeAgent): string {
+    if (agent.key) return agent.key;
+    const existing = this.agentKeys.get(agent);
+    if (existing) return existing;
+    const key = `agent:${++this.idCounter}`;
+    this.agentKeys.set(agent, key);
+    return key;
   }
 }
