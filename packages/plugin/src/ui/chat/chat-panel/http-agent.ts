@@ -1,4 +1,3 @@
-import { io, type Socket } from "socket.io-client";
 import {
   AgentEvents,
   HistoryManager,
@@ -15,6 +14,15 @@ import {
 } from "../../../../../agent/src";
 import type { Sandbox } from "../../../../../agent/src/code-agent";
 import type { AgentRuntimeState } from "../../../context/agent-runtime";
+import type {
+  BrowserToolHandler as WorkspaceBrowserToolHandler,
+} from "./workspace-bridge";
+import { WorkspaceBridge } from "./workspace-bridge";
+
+export type {
+  BrowserToolRequest,
+  BrowserToolResult,
+} from "./workspace-bridge";
 
 type ApiResponse<T> = T | { code: number; message?: string; data: T };
 
@@ -29,32 +37,6 @@ export interface TurnsPage {
   turns?: TurnRecord[];
   hasMore?: boolean;
   oldestTurnId?: string | null;
-}
-
-interface FileTreeItem {
-  path: string;
-  content?: string;
-  hash?: string;
-  size?: number;
-}
-
-interface FileTreeResponse {
-  workspaceId: string;
-  version?: number;
-  files?: FileTreeItem[];
-}
-
-interface BrowserFileChangeEvent {
-  version: number;
-  changes: Array<{ path: string; hash: string | null }>;
-}
-
-interface WorkspaceJoinResponse {
-  ok?: boolean;
-  error?: string;
-  currentVersion?: number;
-  snapshotRequired?: boolean;
-  changes?: BrowserFileChangeEvent[];
 }
 
 export interface HttpAgentOptions {
@@ -72,6 +54,8 @@ export interface HttpAgentOptions {
   headers?: Record<string, string>;
   /** 执行服务端 scene 下发的浏览器端工具请求。 */
   browserToolHandler?: BrowserToolHandler;
+  /** 注册到浏览器端执行的工具。服务端可通过 browser-tool:request 按 name 调用。 */
+  browserTools?: Tool[];
 }
 
 export interface HttpAgentRequestAIParams {
@@ -90,30 +74,7 @@ export interface HttpAgentRequestAIParams {
   [key: string]: any;
 }
 
-export interface BrowserToolRequest {
-  requestId: string;
-  workspaceId: string;
-  browserId: string;
-  name: string;
-  input: Record<string, unknown>;
-}
-
-export interface BrowserToolResult {
-  requestId?: string;
-  workspaceId?: string;
-  browserId?: string;
-  output?: unknown;
-  metadata?: Record<string, unknown>;
-  error?: string;
-}
-
-export type BrowserToolHandler = (
-  request: BrowserToolRequest,
-  context: {
-    agent: HttpAgent;
-    sandbox?: Sandbox;
-  },
-) => Promise<BrowserToolResult | unknown> | BrowserToolResult | unknown;
+export type BrowserToolHandler = WorkspaceBrowserToolHandler<HttpAgent>;
 
 const DEFAULT_BASE_URL = "http://localhost:3001/api";
 const DEFAULT_AGENT_ID = "default";
@@ -131,23 +92,10 @@ export class HttpAgent {
   readonly key: string;
   readonly headers?: Record<string, string>;
   readonly historyManager: HistoryManager;
-  private browserToolHandler?: BrowserToolHandler;
+  private readonly workspaceBridge: WorkspaceBridge<HttpAgent>;
   private mode: AgentMode = AgentModeEnum.Build;
   private turns: TurnRecord[] = [];
   private compactRecord: CompactRecord | null = null;
-  private fileSyncSandbox?: Sandbox;
-  private fileSyncDisconnect?: () => void;
-  private fileSocket?: Socket;
-  private browserConnectionPromise?: Promise<void>;
-  private browserConnectionEnabled = false;
-  private fileVersion = 0;
-  private fileManifestReady = false;
-  private fileBaselineReady = false;
-  private fileJoinReady = false;
-  private browserReady = false;
-  private fileApplyFailed = false;
-  private pendingFileChanges: BrowserFileChangeEvent[] = [];
-  private fileApplyPromise: Promise<void> = Promise.resolve();
   private sessionState: AgentRuntimeState = { running: false };
   private sessionStateListeners = new Set<
     (state: AgentRuntimeState) => void
@@ -164,7 +112,17 @@ export class HttpAgent {
       options.key ??
       `http:${this.baseUrl}:${this.workspaceId}:${this.sessionId ?? "default"}`;
     this.headers = options.headers;
-    this.browserToolHandler = options.browserToolHandler;
+    this.workspaceBridge = new WorkspaceBridge<HttpAgent>({
+      origin: getSocketOrigin(this.baseUrl),
+      workspaceId: this.workspaceId,
+      requestJson: <T>(path: string, init?: RequestInit) =>
+        this.requestJson<T>(path, init),
+      agent: this,
+      tools: options.browserTools,
+      handler: options.browserToolHandler,
+      getMode: () => this.getMode(),
+      setMode: (mode, reason) => this.setMode(mode, reason),
+    });
     this.historyManager = new HistoryManager({
       history: this.remoteHistoryStore,
       key: this.key,
@@ -198,7 +156,7 @@ export class HttpAgent {
   }
 
   getTools(): Tool[] {
-    return [];
+    return this.workspaceBridge.getTools();
   }
 
   getTurns(): TurnRecord[] {
@@ -226,24 +184,15 @@ export class HttpAgent {
   }
 
   setBrowserToolHandler(handler?: BrowserToolHandler): void {
-    this.browserToolHandler = handler;
+    this.workspaceBridge.setToolHandler(handler);
+  }
+
+  setBrowserTools(tools: Tool[]): void {
+    this.workspaceBridge.setTools(tools);
   }
 
   setBrowserConnectionEnabled(enabled: boolean): void {
-    this.browserConnectionEnabled = enabled;
-    if (!enabled) {
-      this.files.disconnect();
-      return;
-    }
-    if (this.fileApplyFailed && this.fileSyncSandbox) {
-      void this.files.syncSnapshot(this.fileSyncSandbox).catch((error) => {
-        console.error("[plugin-ai] recover remote files snapshot failed", error);
-      });
-      return;
-    }
-    if (this.fileManifestReady) {
-      void this.files.ensureBrowserConnected();
-    }
+    this.workspaceBridge.setEnabled(enabled);
   }
 
   async requestAI(params: HttpAgentRequestAIParams): Promise<void> {
@@ -434,174 +383,16 @@ export class HttpAgent {
 
   readonly files = {
     syncSnapshot: async (sandbox: Sandbox): Promise<void> => {
-      const tree = await this.requestJson<FileTreeResponse>(
-        `/workspaces/${encodeURIComponent(this.workspaceId)}/files`,
-      );
-      this.fileVersion = Number(tree.version || 0);
-      this.fileManifestReady = true;
-      this.fileBaselineReady = false;
-      this.browserReady = false;
-      this.fileApplyFailed = false;
-      if (this.browserConnectionEnabled) {
-        void this.files.ensureBrowserConnected();
-      }
-
-      const existing = await this.getSandboxFiles(sandbox);
-      const existingByPath = new Map(
-        existing.map((file) => [file.path, file] as const),
-      );
-      const remotePaths = new Set(
-        (tree.files ?? []).map((file) => file.path).filter(Boolean),
-      );
-      const deletePaths = existing
-        .map((file) => file.path)
-        .filter((path) => !remotePaths.has(path));
-
-      const files = await mapWithConcurrency(
-        tree.files ?? [],
-        4,
-        async (file) => {
-          if (!file?.path) return null;
-          const local = existingByPath.get(file.path);
-          if (local && file.hash) {
-            const localHash = await sha256(local.content);
-            if (localHash === file.hash) return null;
-          } else if (
-            local &&
-            "content" in file &&
-            local.content === String(file.content ?? "")
-          ) {
-            return null;
-          }
-          return this.resolveRemoteFile(file);
-        },
-      );
-      const writableFiles = files.filter(
-        (file): file is { path: string; content: string } => !!file,
-      );
-      for (const batch of splitFileBatches(writableFiles)) {
-        this.logUpdateFiles("snapshot", batch);
-        await sandbox.updateFiles(batch);
-      }
-      if (deletePaths.length) await sandbox.deleteFiles(deletePaths);
-
-      this.fileBaselineReady = true;
-      await this.flushPendingFileChanges(sandbox);
-    },
-    connect: (sandbox: Sandbox): (() => void) => {
-      this.fileSocket?.disconnect();
-      this.browserConnectionPromise = undefined;
-      this.fileJoinReady = false;
-      this.browserReady = false;
-      const socket = io(`${getSocketOrigin(this.baseUrl)}/ws`, {
-        transports: ["websocket"],
-        reconnection: true,
-      });
-      this.fileSocket = socket;
-      this.browserConnectionPromise = new Promise<void>((resolve) => {
-        let resolved = false;
-        const markResolved = () => {
-          if (resolved) return;
-          resolved = true;
-          resolve();
-        };
-        socket.on("connect_error", markResolved);
-        socket.on("connect", () => {
-          this.fileJoinReady = false;
-          this.browserReady = false;
-          socket
-            .timeout(10_000)
-            .emit(
-              "workspace:join",
-              {
-                workspaceId: this.workspaceId,
-                sinceVersion: this.fileVersion,
-              },
-              (
-                error: Error | null,
-                response?: WorkspaceJoinResponse,
-              ) => {
-                if (error || response?.error) {
-                  console.error(
-                    "[plugin-ai] workspace ws join failed",
-                    error ?? response?.error,
-                  );
-                  markResolved();
-                  return;
-                }
-                this.pendingFileChanges.push(...(response?.changes ?? []));
-                this.fileJoinReady = true;
-                if (response?.snapshotRequired || this.fileApplyFailed) {
-                  void this.files
-                    .syncSnapshot(sandbox)
-                    .catch((snapshotError) => {
-                      console.error(
-                        "[plugin-ai] resync remote files snapshot failed",
-                        snapshotError,
-                      );
-                    });
-                } else {
-                  void this.flushPendingFileChanges(sandbox);
-                }
-                markResolved();
-              },
-            );
-        });
-      });
-      socket.on(
-        "file:change",
-        (event: BrowserFileChangeEvent) => {
-          if (!event || !Number.isFinite(event.version)) return;
-          if (
-            !this.fileBaselineReady ||
-            !this.fileJoinReady ||
-            this.fileApplyFailed
-          ) {
-            this.pendingFileChanges.push(event);
-            return;
-          }
-          this.enqueueFileChange(event, sandbox);
-        },
-      );
-      socket.on("browser-tool:request", (request: BrowserToolRequest) => {
-        void this.handleBrowserToolRequest(request);
-      });
-      socket.on("connect_error", (error) => {
-        console.error("[plugin-ai] workspace ws connect failed", error);
-      });
-      socket.on("disconnect", () => {
-        this.fileJoinReady = false;
-        this.browserReady = false;
-        this.pendingFileChanges = [];
-      });
-      return () => {
-        socket.emit("workspace:leave", { workspaceId: this.workspaceId });
-        socket.disconnect();
-        this.fileJoinReady = false;
-        this.browserReady = false;
-        this.pendingFileChanges = [];
-        if (this.fileSocket === socket) this.fileSocket = undefined;
-        if (!this.fileSocket) this.browserConnectionPromise = undefined;
-      };
+      await this.workspaceBridge.syncSnapshot(sandbox);
     },
     bindSandbox: (sandbox: Sandbox): void => {
-      this.fileSyncSandbox = sandbox;
-      void this.files.syncSnapshot(sandbox).catch((error) => {
-        console.error("[plugin-ai] sync remote files snapshot failed", error);
-      });
+      this.workspaceBridge.bindSandbox(sandbox);
     },
     ensureBrowserConnected: async (): Promise<void> => {
-      if (!this.browserConnectionEnabled) return;
-      const sandbox = this.fileSyncSandbox;
-      if (!sandbox) return;
-      if (!this.fileSyncDisconnect) {
-        this.fileSyncDisconnect = this.files.connect(sandbox);
-      }
-      await this.browserConnectionPromise;
+      await this.workspaceBridge.ensureConnected();
     },
     disconnect: (): void => {
-      this.fileSyncDisconnect?.();
-      this.fileSyncDisconnect = undefined;
+      this.workspaceBridge.disconnect();
     },
   };
 
@@ -741,37 +532,6 @@ export class HttpAgent {
     return `/workspaces/${workspace}/${action}`;
   }
 
-  private async handleBrowserToolRequest(
-    request: BrowserToolRequest,
-  ): Promise<void> {
-    if (!request?.requestId || request.workspaceId !== this.workspaceId) {
-      return;
-    }
-    const result: BrowserToolResult = {
-      requestId: request.requestId,
-      workspaceId: request.workspaceId,
-      browserId: request.browserId,
-    };
-    try {
-      if (!this.browserToolHandler) {
-        throw new Error(
-          `No browser tool handler registered for ${request.name}.`,
-        );
-      }
-      const output = await this.browserToolHandler(request, {
-        agent: this,
-        sandbox: this.fileSyncSandbox,
-      });
-      Object.assign(result, normalizeBrowserToolResult(output));
-      result.requestId = request.requestId;
-      result.workspaceId = request.workspaceId;
-      result.browserId = request.browserId;
-    } catch (error) {
-      result.error = error instanceof Error ? error.message : String(error);
-    }
-    this.fileSocket?.emit("browser-tool:result", result);
-  }
-
   private async requestEventStream(
     path: string,
     init: RequestInit,
@@ -828,144 +588,6 @@ export class HttpAgent {
       throw error;
     }
   }
-
-  private enqueueFileChange(
-    event: BrowserFileChangeEvent,
-    sandbox: Sandbox,
-  ): void {
-    this.fileApplyPromise = this.fileApplyPromise
-      .then(async () => {
-        if (event.version <= this.fileVersion) return;
-        await this.applyFileChangeEvent(event, sandbox);
-        this.fileVersion = event.version;
-      })
-      .catch((error) => {
-        this.fileApplyFailed = true;
-        this.browserReady = false;
-        this.fileSocket?.emit("browser:not-ready", {
-          workspaceId: this.workspaceId,
-        });
-        console.error("[plugin-ai] apply remote file change failed", error);
-      });
-  }
-
-  private async flushPendingFileChanges(sandbox: Sandbox): Promise<void> {
-    if (
-      !this.fileBaselineReady ||
-      !this.fileJoinReady ||
-      this.browserReady ||
-      this.fileApplyFailed
-    ) {
-      return;
-    }
-
-    const pending = this.pendingFileChanges
-      .splice(0)
-      .sort((left, right) => left.version - right.version);
-    for (const event of pending) {
-      this.enqueueFileChange(event, sandbox);
-    }
-
-    let applying = this.fileApplyPromise;
-    await applying;
-    while (applying !== this.fileApplyPromise) {
-      applying = this.fileApplyPromise;
-      await applying;
-    }
-
-    if (
-      !this.fileSocket?.connected ||
-      !this.fileBaselineReady ||
-      !this.fileJoinReady ||
-      this.fileApplyFailed
-    ) {
-      return;
-    }
-    this.browserReady = true;
-    this.fileSocket.emit("browser:ready", {
-      workspaceId: this.workspaceId,
-      version: this.fileVersion,
-    });
-  }
-
-  private async applyFileChangeEvent(
-    event: BrowserFileChangeEvent,
-    sandbox: Sandbox,
-  ): Promise<void> {
-    const latestByPath = new Map<
-      string,
-      { path: string; hash: string | null }
-    >();
-    for (const change of event.changes ?? []) {
-      const path = String(change?.path ?? "");
-      if (path) latestByPath.set(path, { path, hash: change.hash ?? null });
-    }
-
-    const deletePaths: string[] = [];
-    const writes: Array<{ path: string; hash: string | null }> = [];
-    for (const change of latestByPath.values()) {
-      if (change.hash === null) deletePaths.push(change.path);
-      else writes.push(change);
-    }
-
-    const files = (
-      await mapWithConcurrency(writes, 4, (change) =>
-        this.readRemoteFile(change.path),
-      )
-    ).filter(
-      (file): file is { path: string; content: string } => file !== null,
-    );
-    for (const batch of splitFileBatches(files)) {
-      this.logUpdateFiles("change", batch);
-      await sandbox.updateFiles(batch);
-    }
-    if (deletePaths.length) await sandbox.deleteFiles(deletePaths);
-  }
-
-  private logUpdateFiles(
-    source: "snapshot" | "change",
-    files: Array<{ path: string; content: string }>,
-  ): void {
-    console.log("[plugin-ai][files] sandbox.updateFiles", {
-      source,
-      workspaceId: this.workspaceId,
-      files,
-    });
-  }
-
-  private async readRemoteFile(
-    path: string,
-  ): Promise<{ path: string; content: string } | null> {
-    const query = new URLSearchParams({ path });
-    const file = await this.requestJson<{
-      path?: string;
-      content?: string;
-    } | null>(
-      `/workspaces/${encodeURIComponent(this.workspaceId)}/files/content?${query.toString()}`,
-    );
-    if (!file?.path) return null;
-    return { path: file.path, content: String(file.content ?? "") };
-  }
-
-  private async resolveRemoteFile(
-    file: FileTreeItem,
-  ): Promise<{ path: string; content: string } | null> {
-    if (!file?.path) return null;
-    if ("content" in file) {
-      return { path: file.path, content: String(file.content ?? "") };
-    }
-    return this.readRemoteFile(file.path);
-  }
-
-  private async getSandboxFiles(
-    sandbox: Sandbox,
-  ): Promise<Array<{ path: string; content: string }>> {
-    try {
-      return await sandbox.getFiles();
-    } catch {
-      return [];
-    }
-  }
 }
 
 export function isHttpAgent(agent: unknown): agent is HttpAgent {
@@ -991,17 +613,6 @@ function unwrapApiResponse<T>(response: ApiResponse<T>): T {
     return wrapped.data;
   }
   return response as T;
-}
-
-function normalizeBrowserToolResult(value: unknown): BrowserToolResult {
-  if (
-    value &&
-    typeof value === "object" &&
-    ("output" in value || "metadata" in value || "error" in value)
-  ) {
-    return value as BrowserToolResult;
-  }
-  return { output: value };
 }
 
 function normalizeVersionsPage(
@@ -1054,61 +665,4 @@ function getSocketOrigin(baseUrl: string): string {
   } catch {
     return trimRight(baseUrl.replace(/\/api\/?$/, ""), "/");
   }
-}
-
-async function sha256(content: string): Promise<string | null> {
-  if (!globalThis.crypto?.subtle) return null;
-  const digest = await globalThis.crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(content),
-  );
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-async function mapWithConcurrency<T, R>(
-  values: T[],
-  concurrency: number,
-  mapper: (value: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(values.length);
-  let nextIndex = 0;
-  const workers = Array.from(
-    { length: Math.min(Math.max(concurrency, 1), values.length) },
-    async () => {
-      while (nextIndex < values.length) {
-        const index = nextIndex++;
-        results[index] = await mapper(values[index], index);
-      }
-    },
-  );
-  await Promise.all(workers);
-  return results;
-}
-
-function splitFileBatches(
-  files: Array<{ path: string; content: string }>,
-  maxFiles = 20,
-  maxBytes = 2 * 1024 * 1024,
-): Array<Array<{ path: string; content: string }>> {
-  const batches: Array<Array<{ path: string; content: string }>> = [];
-  let batch: Array<{ path: string; content: string }> = [];
-  let batchBytes = 0;
-
-  for (const file of files) {
-    const fileBytes = new TextEncoder().encode(file.content).byteLength;
-    if (
-      batch.length &&
-      (batch.length >= maxFiles || batchBytes + fileBytes > maxBytes)
-    ) {
-      batches.push(batch);
-      batch = [];
-      batchBytes = 0;
-    }
-    batch.push(file);
-    batchBytes += fileBytes;
-  }
-  if (batch.length) batches.push(batch);
-  return batches;
 }

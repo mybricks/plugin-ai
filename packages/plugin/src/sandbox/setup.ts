@@ -350,6 +350,26 @@ function injectPluginRuntimeContext(
   };
 }
 
+function prefixPluginBrowserToolName(pluginName: string, tool: Tool): Tool {
+  return {
+    ...tool,
+    name: `${pluginName}_${tool.name}`,
+  };
+}
+
+function collectBrowserTools(params: {
+  baseTools: Tool[];
+  plugins?: CodeAgentPlugin[];
+}): Tool[] {
+  const enabledPlugins = params.plugins?.filter((plugin) => plugin.enabled !== false) ?? [];
+  return [
+    ...params.baseTools,
+    ...enabledPlugins.flatMap((plugin) =>
+      (plugin.tools ?? []).map((tool) => prefixPluginBrowserToolName(plugin.name, tool))
+    ),
+  ];
+}
+
 function formatLibraryDocs(libraries: Array<{ name: string; version?: string; usage: string }>): string {
   return libraries
     .map((library) => `---\nname: ${library.name}\nversion: ${library.version ?? ""}\n---\n${library.usage}`)
@@ -648,6 +668,10 @@ function connectToAI(
   const designerRef: { current: Designer | undefined } = { current: designer };
   const checkStatusTool = createCheckStatusTool(designerRef);
   const initProjectTool = createInitProjectTool(sandbox);
+  const browserTools = collectBrowserTools({
+    baseTools: [checkStatusTool, initProjectTool, ...(tools ?? [])],
+    plugins: effectivePlugins,
+  });
 
   if (agentRuntime?.type === "http" || agentRuntime?.type === "server") {
     const workspaceId = typeof agentRuntime.workspaceId === "function"
@@ -665,6 +689,7 @@ function connectToAI(
       userId: agentRuntime.userId,
       headers: agentRuntime.headers,
       browserToolHandler: agentRuntime.browserToolHandler,
+      browserTools,
     });
     agent.files.bindSandbox(sandbox);
     agent.setBrowserConnectionEnabled(!context.disabled);
