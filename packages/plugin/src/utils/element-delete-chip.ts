@@ -1,6 +1,12 @@
 import type { ChatChipFormatContext, ChatChipInstance, ElementDeleteChipData } from "../../../agent/src";
 import { ELEMENT_DELETE_CHIP_TYPE } from "../../../agent/src";
-import { extractDomSummary, formatElementRepeatContextLines } from "./dom-info";
+import {
+  buildElementRepeatContextInfo,
+  createChatChipId,
+  extractDomSummary,
+  getElementCodeLocation,
+  indentText,
+} from "./dom-info";
 
 export { ELEMENT_DELETE_CHIP_TYPE };
 
@@ -19,57 +25,11 @@ export function createElementDeleteChip(
   const data: ElementDeleteChipData = { ele, label };
   const chipLabel = `删除「${label ?? ele.tagName}」`;
   return {
-    id: Math.random().toString(36).slice(2, 8),
+    id: createChatChipId(),
     type: ELEMENT_DELETE_CHIP_TYPE,
     label: chipLabel,
     data,
   };
-}
-
-// ─── 辅助：从 DOM 中提取代码位置描述 ────────────────────────────────────────
-
-interface DomLoc {
-  codeLine?: { start?: number; end?: number };
-  files?: { jsx?: string; less?: string };
-}
-
-function safeParseJson<T>(value: string | null): T | undefined {
-  if (!value) return undefined;
-  try {
-    return JSON.parse(value) as T;
-  } catch (_) {
-    return undefined;
-  }
-}
-
-function getClosestDomLoc<T extends DomLoc>(el: Element): T | undefined {
-  let current: Element | null = el;
-  while (current) {
-    const loc = safeParseJson<T>(current.getAttribute("data-loc"));
-    if (loc) return loc;
-    current = current.parentElement;
-  }
-  return undefined;
-}
-
-function getCodeLocation(el: Element): string {
-  const loc = getClosestDomLoc<DomLoc>(el);
-  if (!loc) return "未知";
-
-  const jsxFile = loc.files?.jsx;
-  const startLine = loc.codeLine?.start;
-  const endLine = loc.codeLine?.end;
-
-  if (!jsxFile && !startLine) return "未知";
-
-  const lineDesc =
-    startLine && endLine && endLine !== startLine
-      ? `L${startLine}-L${endLine}`
-      : startLine
-      ? `L${startLine}`
-      : "未知行";
-
-  return jsxFile ? `${jsxFile} ${lineDesc}` : lineDesc;
 }
 
 // ─── 格式化函数 ───────────────────────────────────────────────────────────────
@@ -102,16 +62,9 @@ export function formatElementDeleteChipMessage({ message, chips }: ChatChipForma
       .join(`执行「${opLabel}」，`);
 
     // 追加详细上下文块
-    const codeLocation = ele ? getCodeLocation(ele) : "未知";
+    const codeLocation = getElementCodeLocation(ele);
     const domSummary = ele ? extractDomSummary(ele) : "无";
-    const repeatContextLines = ele ? formatElementRepeatContextLines(ele, `- `) : [];
-    const hasRepeatContext = repeatContextLines.length > 0;
-    const repeatContextBlock = hasRepeatContext
-      ? [
-          `- 循环/重复上下文：`,
-          ...repeatContextLines.map((line) => `  ${line}`),
-        ].join("\n")
-      : `- 循环/重复上下文：未发现疑似循环 JSX / map 重复项`;
+    const { hasRepeatContext, block: repeatContextBlock } = buildElementRepeatContextInfo(ele);
 
     const changeRequirements = [
       `1. 从 JSX 中完整移除【被删除元素】节点（含其所有子节点）`,
@@ -144,10 +97,7 @@ export function formatElementDeleteChipMessage({ message, chips }: ChatChipForma
         `- 代码位置：${codeLocation}`,
         repeatContextBlock,
         `- DOM 结构摘要：`,
-        domSummary
-          .split("\n")
-          .map((l) => `  ${l}`)
-          .join("\n"),
+        indentText(domSummary, "  "),
         ``,
         `## 修改要求`,
         ...changeRequirements,

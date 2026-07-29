@@ -1,6 +1,11 @@
 import type { ChatChipFormatContext, ChatChipInstance, ElementMoveChipData } from "../../../agent/src";
 import { ELEMENT_MOVE_CHIP_TYPE } from "../../../agent/src";
-import { extractDomSummary } from "./dom-info";
+import {
+  createChatChipId,
+  extractDomSummary,
+  getElementCodeLocation,
+  indentText,
+} from "./dom-info";
 
 export { ELEMENT_MOVE_CHIP_TYPE };
 
@@ -34,57 +39,11 @@ export function createElementMoveChip(
   const direction = PLACEMENT_LABEL[placement] ?? placement;
   const label = `将「${fromLabel ?? fromEle.tagName}」移到「${toLabel ?? toEle.tagName}」${direction}`;
   return {
-    id: Math.random().toString(36).slice(2, 8),
+    id: createChatChipId(),
     type: ELEMENT_MOVE_CHIP_TYPE,
     label,
     data,
   };
-}
-
-// ─── 辅助：从 DOM 中提取代码位置描述 ────────────────────────────────────────
-
-interface DomLoc {
-  codeLine?: { start?: number; end?: number };
-  files?: { jsx?: string; less?: string };
-}
-
-function safeParseJson<T>(value: string | null): T | undefined {
-  if (!value) return undefined;
-  try {
-    return JSON.parse(value) as T;
-  } catch (_) {
-    return undefined;
-  }
-}
-
-function getClosestDomLoc<T extends DomLoc>(el: Element): T | undefined {
-  let current: Element | null = el;
-  while (current) {
-    const loc = safeParseJson<T>(current.getAttribute("data-loc"));
-    if (loc) return loc;
-    current = current.parentElement;
-  }
-  return undefined;
-}
-
-function getCodeLocation(el: Element): string {
-  const loc = getClosestDomLoc<DomLoc>(el);
-  if (!loc) return "未知";
-
-  const jsxFile = loc.files?.jsx;
-  const startLine = loc.codeLine?.start;
-  const endLine = loc.codeLine?.end;
-
-  if (!jsxFile && !startLine) return "未知";
-
-  const lineDesc =
-    startLine && endLine && endLine !== startLine
-      ? `L${startLine}-L${endLine}`
-      : startLine
-      ? `L${startLine}`
-      : "未知行";
-
-  return jsxFile ? `${jsxFile} ${lineDesc}` : lineDesc;
 }
 
 // ─── 格式化函数 ───────────────────────────────────────────────────────────────
@@ -119,10 +78,19 @@ export function formatElementMoveChipMessage({ message, chips }: ChatChipFormatC
       .join(`执行「${opLabel}」，`);
 
     // 追加详细上下文块
-    const fromCode = fromEle ? getCodeLocation(fromEle) : "未知";
-    const toCode = toEle ? getCodeLocation(toEle) : "未知";
+    const fromCode = getElementCodeLocation(fromEle);
+    const toCode = getElementCodeLocation(toEle);
     const fromSummary = fromEle ? extractDomSummary(fromEle) : "无";
     const toSummary = toEle ? extractDomSummary(toEle) : "无";
+    const changeRequirements = [
+      `1. 只移动【被拖拽元素】的 JSX 节点（含其完整子树），不修改任何属性或样式`,
+      `2. 将【被拖拽元素】放到【参照元素】的${direction}`,
+      `3. 保持其余元素的顺序和缩进不变`,
+      `4. 如果两个元素在不同父容器中，请自行判断最合理的移动方案`,
+    ];
+    const notes = [
+      `如果你认为此操作不合法，请用一句话向用户说明原因，不要修改任何代码。`,
+    ];
 
     infoBlocks.push(
       [
@@ -134,28 +102,19 @@ export function formatElementMoveChipMessage({ message, chips }: ChatChipFormatC
         `- 名称：${from}`,
         `- 代码位置：${fromCode}`,
         `- DOM 结构摘要：`,
-        fromSummary
-          .split("\n")
-          .map((l) => `  ${l}`)
-          .join("\n"),
+        indentText(fromSummary, "  "),
         ``,
         `## 参照元素（位置不变，作为锚点）`,
         `- 名称：${to}`,
         `- 代码位置：${toCode}`,
         `- DOM 结构摘要：`,
-        toSummary
-          .split("\n")
-          .map((l) => `  ${l}`)
-          .join("\n"),
+        indentText(toSummary, "  "),
         ``,
         `## 修改要求`,
-        `1. 只移动【被拖拽元素】的 JSX 节点（含其完整子树），不修改任何属性或样式`,
-        `2. 将【被拖拽元素】放到【参照元素】的${direction}`,
-        `3. 保持其余元素的顺序和缩进不变`,
-        `4. 如果两个元素在不同父容器中，请自行判断最合理的移动方案`,
+        ...changeRequirements,
         ``,
         `## 注意`,
-        `如果你认为此操作不合法，请用一句话向用户说明原因，不要修改任何代码。`,
+        ...notes,
         `</element-move-operation>`,
       ].join("\n")
     );

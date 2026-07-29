@@ -6,6 +6,7 @@ import type { ChatChipDef } from "../../../../../agent/src";
 import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
 import { createDomChip, DOM_CHIP_TYPE, formatDomChipMessage, matchDefaultDomFocusContent } from "../../../utils/dom-info";
 import { ELEMENT_MOVE_CHIP_TYPE, formatElementMoveChipMessage } from "../../../utils/element-move-chip";
+import { ELEMENT_TEXT_UPDATE_CHIP_TYPE, formatElementTextUpdateChipMessage } from "../../../utils/element-text-update-chip";
 import { ELEMENT_DELETE_CHIP_TYPE, formatElementDeleteChipMessage } from "../../../utils/element-delete-chip";
 import css from "./index.less";
 
@@ -49,6 +50,22 @@ const elementMoveChipDef: ChatChipDef = {
 };
 
 chipRegistry.register(elementMoveChipDef);
+
+// ─── element-text-update chip 类型定义 ────────────────────────────────────────
+
+/**
+ * element-text-update chip：代表一次文本元素文案修改操作。
+ * - 无自定义 render：使用默认 chip 样式（label 文字，即 "修改「A」文案"）。
+ * - format：将占位符替换为操作简述，并在消息末尾追加含目标元素和新文案的详细上下文块。
+ *
+ * chip 实例的 data 字段格式：ElementTextUpdateChipData
+ */
+const elementTextUpdateChipDef: ChatChipDef = {
+  type: ELEMENT_TEXT_UPDATE_CHIP_TYPE,
+  format: formatElementTextUpdateChipMessage,
+};
+
+chipRegistry.register(elementTextUpdateChipDef);
 
 // ─── element-delete chip 类型定义 ─────────────────────────────────────────────
 

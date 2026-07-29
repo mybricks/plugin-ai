@@ -161,6 +161,24 @@ export interface ElementMoveChipData {
   toLabel?: string;
 }
 
+// ─── 内置文本元素修改 chip ──────────────────────────────────────────────────────
+
+/** 内置文本元素修改 chip 的类型标识 */
+export const ELEMENT_TEXT_UPDATE_CHIP_TYPE = "element-text-update";
+
+/**
+ * 文本元素修改 chip 的数据结构（存入 ChatChipInstance.data）。
+ * 由文本编辑操作触发时填充，format 时展开为包含目标元素和新文案的 LLM 可读描述。
+ */
+export interface ElementTextUpdateChipData {
+  /** 需要修改文案的目标元素 */
+  ele: Element;
+  /** 目标元素的显示名称（用于 UI 呈现） */
+  label?: string;
+  /** 用户期望写入的新文案 */
+  content: string;
+}
+
 // ─── 内置元素删除 chip ──────────────────────────────────────────────────────────
 
 /** 内置元素删除 chip 的类型标识 */
