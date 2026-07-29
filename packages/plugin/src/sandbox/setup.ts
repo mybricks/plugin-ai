@@ -16,6 +16,7 @@ import { LoadingViewWithStyles, ComChatStartViewWithStyles, PrdRenderWithStyles 
 import { context } from "../context";
 import { ensureAIPanelOpen, ensureFocusComId } from "../utils/ensure-ai-panel-open";
 import { createDomChip } from "../utils/dom-info";
+import { registerChipRemoveHandlers } from "./chip-remove";
 
 // ─── 类型定义 ─────────────────────────────────────────────────────────────────
 
@@ -335,10 +336,11 @@ function formatLibraryDocs(libraries: Array<{ name: string; version?: string; us
 
 function connectToAI(
   comId: string,
-  { designer, hooks }: RegistSandBoxConfig,
+  { designer, hooks, chipRemoveHandlers }: RegistSandBoxConfig,
   { requestAsStream, llm, virtualFiles, skills, plugins, promptOptions, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, sender }: PluginParams
 ): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
+  registerChipRemoveHandlers(agentKey, chipRemoveHandlers);
   const runtimeContext: SkillRuntimeContext = { designer, codeRules, designRules };
   const runtimeSkills = skills?.map((skill) => injectSkillRuntimeContext(skill, runtimeContext));
   const runtimePlugins = plugins?.map((plugin) => injectPluginRuntimeContext(plugin, runtimeContext));

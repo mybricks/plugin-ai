@@ -38,10 +38,20 @@ export interface Designer {
 
 }
 
-import type { AgentHooks } from "../../../agent/src";
+import type { AgentHooks, ChatChipInstance } from "../../../agent/src";
 
 /** 沙箱 hooks，即 AgentHooks */
 export type Hooks = AgentHooks;
+
+/**
+ * Chat chip 被用户从 Sender 中移除时触发的回调。
+ */
+export type ChatChipRemoveHandler = (chip: ChatChipInstance) => void;
+
+/**
+ * 按 ChatChipInstance.type 注册的 remove 回调集合。
+ */
+export type ChatChipRemoveHandlers = Record<string, ChatChipRemoveHandler>;
 
 /**
  * window._registSandBox_ 的第二个参数。
@@ -49,4 +59,9 @@ export type Hooks = AgentHooks;
 export interface RegistSandBoxConfig {
   designer: Designer;
   hooks?: Hooks;
+  /**
+   * 按 chip type 注册用户手动移除 chip 时的回调。
+   * 通过 window._sandbox_.connectToAI 注册；重复注册同 type 会覆盖旧回调。
+   */
+  chipRemoveHandlers?: ChatChipRemoveHandlers;
 }

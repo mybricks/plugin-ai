@@ -12,6 +12,7 @@ import type { ModelSelectorProps } from "../model-selector";
 import type { QueueItem } from "../../../context/queue";
 import type { ModelSelection } from "../../../../../request/src/providers";
 import type { SendToAgentParams } from "../../../sandbox";
+import { triggerChipRemove } from "../../../sandbox/chip-remove";
 import type { AgentMode, ChatChipDef, ChatChipInstance } from "../../../../../agent/src";
 import { removeLeadingPlaceholderBreakBeforeChip } from "./utils";
 import {
@@ -380,6 +381,10 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
    * 外部传入相同 type 的 def 时，外部优先（放后面 Map 会覆盖）。
    */
   const allChipTypes = [fileChipDef, ...chipTypes];
+  const notifyChipRemove = useCallback((chip: ChatChipInstance | undefined) => {
+    if (!chip || !agent?.key) return;
+    triggerChipRemove(agent.key, chip);
+  }, [agent?.key]);
 
   /** chipTypes 的 Map 形式（type → def），方便查找 */
   const chipTypesMapRef = useRef<Map<string, ChatChipDef>>(new Map());
@@ -487,6 +492,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
             chipMapRef.current.set(instance.id, instance);
             const def = chipTypesMapRef.current.get(instance.type);
             const onRemove = () => {
+              notifyChipRemove(instance);
               const w = chipWrapperMapRef.current.get(instance.id);
               if (w) {
                 unmountChipContainer(w);
@@ -526,7 +532,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       const animLabel = firstChip?.label ?? (content?.slice(0, 12) ?? '内容');
       triggerReceiveAnimation(animLabel);
     }
-  }, [syncInputContent, triggerReceiveAnimation]);
+  }, [syncInputContent, triggerReceiveAnimation, notifyChipRemove]);
 
   /** 在当前光标位置插入一个 chat chip */
   const insertChip = useCallback((instance: ChatChipInstance, loading = false) => {
@@ -540,6 +546,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
     // 点击删除按钮时：卸载 React、从 DOM 移除、清理 chipMap、同步内容
     const onRemove = () => {
+      notifyChipRemove(instance);
       const wrapper = chipWrapperMapRef.current.get(instance.id);
       if (wrapper) {
         unmountChipContainer(wrapper);
@@ -581,7 +588,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     }
 
     syncInputContent();
-  }, [syncInputContent]);
+  }, [syncInputContent, notifyChipRemove]);
 
   const clearEditorContent = useCallback(() => {
     const editor = inputEditorRef.current;
@@ -755,7 +762,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       const chipEl = editor ? getAdjacentChipAtCaret(editor, range, "backward") : null;
       if (editor && chipEl) {
         event.preventDefault();
-        pendingFileMapRef.current.delete(chipEl.dataset.chipId ?? "");
+        const chipId = chipEl.dataset.chipId ?? "";
+        notifyChipRemove(chipMapRef.current.get(chipId));
+        pendingFileMapRef.current.delete(chipId);
         removeChipFromEditor(editor, chipEl, chipMapRef.current);
         syncInputContent();
         return;
@@ -767,7 +776,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       const chipEl = editor ? getAdjacentChipAtCaret(editor, range, "forward") : null;
       if (editor && chipEl) {
         event.preventDefault();
-        pendingFileMapRef.current.delete(chipEl.dataset.chipId ?? "");
+        const chipId = chipEl.dataset.chipId ?? "";
+        notifyChipRemove(chipMapRef.current.get(chipId));
+        pendingFileMapRef.current.delete(chipId);
         removeChipFromEditor(editor, chipEl, chipMapRef.current);
         syncInputContent();
         return;
@@ -903,6 +914,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         if (wrapper) {
           const def = chipTypesMapRef.current.get(FILE_CHIP_TYPE);
           const onRemove = () => {
+            notifyChipRemove(chipMapRef.current.get(id));
             const w = chipWrapperMapRef.current.get(id);
             if (w) {
               unmountChipContainer(w);
@@ -935,7 +947,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         syncInputContent();
       }
     }
-  }, [attachProcessors, insertChip]);
+  }, [attachProcessors, insertChip, notifyChipRemove]);
 
   // ─── 图片 attachment 处理 ─────────────────────────────────────────────────
 

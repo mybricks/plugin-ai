@@ -161,6 +161,22 @@ export interface ElementMoveChipData {
   toLabel?: string;
 }
 
+// ─── 内置元素删除 chip ──────────────────────────────────────────────────────────
+
+/** 内置元素删除 chip 的类型标识 */
+export const ELEMENT_DELETE_CHIP_TYPE = "element-delete";
+
+/**
+ * 元素删除 chip 的数据结构（存入 ChatChipInstance.data）。
+ * 由删除操作触发时填充，format 时展开为包含被删除元素信息的 LLM 可读描述。
+ */
+export interface ElementDeleteChipData {
+  /** 被删除的目标元素 */
+  ele: Element;
+  /** 被删除元素的显示名称（用于 UI 呈现） */
+  label?: string;
+}
+
 // ─── ChipRegistry ─────────────────────────────────────────────────────────────
 
 /**

@@ -6,6 +6,7 @@ import type { ChatChipDef } from "../../../../../agent/src";
 import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
 import { createDomChip, DOM_CHIP_TYPE, formatDomChipMessage, matchDefaultDomFocusContent } from "../../../utils/dom-info";
 import { ELEMENT_MOVE_CHIP_TYPE, formatElementMoveChipMessage } from "../../../utils/element-move-chip";
+import { ELEMENT_DELETE_CHIP_TYPE, formatElementDeleteChipMessage } from "../../../utils/element-delete-chip";
 import css from "./index.less";
 
 export interface ChatFocusViewProps {
@@ -48,6 +49,22 @@ const elementMoveChipDef: ChatChipDef = {
 };
 
 chipRegistry.register(elementMoveChipDef);
+
+// ─── element-delete chip 类型定义 ─────────────────────────────────────────────
+
+/**
+ * element-delete chip：代表一次元素删除操作。
+ * - 无自定义 render：使用默认 chip 样式（label 文字，即 "删除「A」"）。
+ * - format：将占位符替换为操作简述，并在消息末尾追加含被删除元素详细上下文块。
+ *
+ * chip 实例的 data 字段格式：ElementDeleteChipData
+ */
+const elementDeleteChipDef: ChatChipDef = {
+  type: ELEMENT_DELETE_CHIP_TYPE,
+  format: formatElementDeleteChipMessage,
+};
+
+chipRegistry.register(elementDeleteChipDef);
 
 /**
  *
