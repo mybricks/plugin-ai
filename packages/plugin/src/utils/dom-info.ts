@@ -61,9 +61,13 @@ interface RepeatAncestorContext {
   skipped?: boolean;
 }
 
+export function createChatChipId(): string {
+  return Math.random().toString(36).slice(2, 8);
+}
+
 export function createDomChip(focus?: AiServiceFocusParams): ChatChipInstance {
   return {
-    id: Math.random().toString(36).slice(2, 8),
+    id: createChatChipId(),
     type: DOM_CHIP_TYPE,
     label: focus?.focusArea?.title ?? focus?.title ?? "当前聚焦元素",
     data: { ele: focus?.focusArea?.ele },
@@ -193,6 +197,28 @@ function getClosestDomLoc<T extends DomLoc>(el: Element): T | undefined {
   return undefined;
 }
 
+export function getElementCodeLocation(el?: Element): string {
+  if (!el) return "未知";
+
+  const loc = getClosestDomLoc<DomLoc>(el);
+  if (!loc) return "未知";
+
+  const jsxFile = loc.files?.jsx;
+  const startLine = loc.codeLine?.start;
+  const endLine = loc.codeLine?.end;
+
+  if (!jsxFile && !startLine) return "未知";
+
+  const lineDesc =
+    startLine && endLine && endLine !== startLine
+      ? `L${startLine}-L${endLine}`
+      : startLine
+      ? `L${startLine}`
+      : "未知行";
+
+  return jsxFile ? `${jsxFile} ${lineDesc}` : lineDesc;
+}
+
 function formatCodeLoc(loc: DomLoc): string | null {
   const jsxFile = loc.files?.jsx;
   const startLine = loc.codeLine?.start;
@@ -276,7 +302,7 @@ function getElementPath(root: Element, target: Element): number[] | null {
   let node: Element | null = target;
 
   while (node && node !== root) {
-    const parent = node.parentElement;
+    const parent: HTMLElement | null = node.parentElement;
     if (!parent) return null;
     const index = Array.prototype.indexOf.call(parent.children, node);
     if (index < 0) return null;
@@ -290,7 +316,7 @@ function getElementPath(root: Element, target: Element): number[] | null {
 function getElementByPath(root: Element, path: number[]): Element | null {
   let node: Element | null = root;
   for (const index of path) {
-    const child = node.children[index];
+    const child: Element | undefined = node.children[index];
     if (!(child instanceof Element)) return null;
     node = child;
   }
@@ -386,6 +412,26 @@ function formatRepeatContexts(contexts: RepeatAncestorContext[], indent = " - ")
   return lines;
 }
 
+export function formatElementRepeatContextLines(el: Element, indent = " - "): string[] {
+  return formatRepeatContexts(collectRepeatAncestorContexts(el), indent);
+}
+
+export interface ElementRepeatContextInfo {
+  lines: string[];
+  hasRepeatContext: boolean;
+  block: string;
+}
+
+export function buildElementRepeatContextInfo(el?: Element): ElementRepeatContextInfo {
+  const lines = el ? formatElementRepeatContextLines(el, `- `) : [];
+  const hasRepeatContext = lines.length > 0;
+  const block = hasRepeatContext
+    ? [`- 循环/重复上下文：`, ...lines.map((line) => `  ${line}`)].join("\n")
+    : `- 循环/重复上下文：未发现疑似循环 JSX / map 重复项`;
+
+  return { lines, hasRepeatContext, block };
+}
+
 function getDomClassNames(el: Element): string {
   const attrClassNames = el.getAttribute("data-zone-classnames");
   if (attrClassNames?.trim()) return attrClassNames;
@@ -440,7 +486,7 @@ function buildDomChipInfo(label: string, ele?: Element): string {
   ].join("\n");
 }
 
-function indentText(text: string, indent: string): string {
+export function indentText(text: string, indent: string): string {
   return text
     .split("\n")
     .map((line) => `${indent}${line}`)

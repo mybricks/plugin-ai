@@ -5,6 +5,7 @@ import { context } from "../../../context";
 import { chipRegistry } from "../../../sandbox/setup";
 import type { AgentMode } from "../../../../../agent/src";
 import type { AttachProcessor } from "../../../content-limits";
+import type { MentionProvider } from "../../components/types";
 import { MessageList } from "../messages";
 import type { ActionBarItem, HistoryCollapseConfig } from "../messages";
 import { useHistoryCollapse } from "./use-history-collapse";
@@ -116,6 +117,8 @@ export interface ChatPanelProps {
    * 图片（image/*）始终走 attachment 流程，不受此配置影响。
    */
   attachProcessors?: AttachProcessor[];
+  /** 自定义 mention 注册源，透传给 Sender */
+  mentions?: MentionProvider[];
 }
 
 export interface ChatPanelRef {
@@ -160,8 +163,13 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   actionBar,
   selectorRenderInTop = false,
   attachProcessors,
+  mentions = (context.pluginParams.mentions ?? []) as MentionProvider[],
 }, ref) => {
   const senderRef = useRef<SenderRef>(null);
+
+  useEffect(() => {
+    mentions.forEach((mention) => chipRegistry.register(mention.chip));
+  }, [mentions]);
   const messageListRef = useRef<{ scrollToBottom: () => void }>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -203,7 +211,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     appendInput: (params) => {
       senderRef.current?.appendInput(params);
     },
-    getInput: () => senderRef.current?.getInput() ?? { message: "", attachments: [], mentions: [], chips: [] },
+    getInput: () => senderRef.current?.getInput() ?? { message: "", attachments: [], chips: [] },
     replaceFocusContent: (params) => {
       senderRef.current?.replaceFocusContent(params);
     },
@@ -253,6 +261,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       modelSelector={modelSelector}
       selectorRenderInTop={selectorRenderInTop}
       chipTypes={chipRegistry.getAll()}
+      mentions={mentions}
       matchDefaultFocusContent={matchDefaultFocusContent}
       attachProcessors={attachProcessors}
       agent={chatAgent.source === "local" ? agent as any : undefined}

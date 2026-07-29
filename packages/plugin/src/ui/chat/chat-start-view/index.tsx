@@ -5,6 +5,7 @@ import { context } from "../../../context";
 import { chipRegistry } from "../../../sandbox/setup";
 import type { AgentMode, CodeAgent } from "../../../../../agent/src";
 import type { AttachProcessor } from "../../../content-limits";
+import type { MentionProvider } from "../../components/types";
 import type { ActivePlanFile } from "../../../../../agent/src/mode-manager";
 import { SenderActivePlanCard, usePlanState } from "../../components/plan";
 import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
@@ -47,6 +48,8 @@ export interface ChatStartViewProps {
    * 附件前置处理器列表。详见 ChatPanelProps.attachProcessors。
    */
   attachProcessors?: AttachProcessor[];
+  /** 自定义 mention 注册源 */
+  mentions?: MentionProvider[];
 }
 
 const ChatStartView = ({
@@ -56,6 +59,7 @@ const ChatStartView = ({
   placeholder = "请尽量详细描述您的需求，或者上传图片作为补充。完成后您可以导出源码或者Figma设计稿。",
   welcomeTitle = "在这里，开始您的需求",
   attachProcessors,
+  mentions = context.pluginParams.mentions ?? [],
 }: ChatStartViewProps) => {
   const senderRef = useRef<SenderRef>(null);
   const [empty, setEmpty] = useState(true);
@@ -133,6 +137,7 @@ const ChatStartView = ({
           abovePanels={abovePanels}
           attachProcessors={attachProcessors}
           agent={localAgent}
+          mentions={mentions}
         />
       )}
     </div>

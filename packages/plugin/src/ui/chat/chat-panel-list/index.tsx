@@ -214,6 +214,28 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
 
   return (
     <div className={classNames(css["chat-panel-list"], css[`size-${size}`], className)} style={style}>
+      {/* 无 focus 时展示 disabled sender 提示 */}
+      {!currentComId && (
+        <>
+          <div className={css["empty-hint"]}>
+            请先从画布中选择场景或组件，再开始对话
+          </div>
+          <Sender
+            ref={disabledSenderRef}
+            loading={false}
+            placeholder={`您好，我是${context.name}，请先从画布中选择场景或组件，再开始对话`}
+            disabled={true}
+            mode="mention"
+            chatMode={null}
+            onSend={() => {}}
+            onChatModeChange={() => {}}
+            onUpload={onUpload ?? context.pluginParams.onUpload}
+            renderAttachmentSuffix={context.pluginParams.renderAttachmentSuffix}
+            mentions={context.pluginParams.mentions}
+          />
+        </>
+      )}
+
       {/* 每个 comId 对应一个独立 ChatPanel 实例 */}
       {instances.map(({ comId, focusSnapshot }) => {
         const agentKey = context.getAgentKey(comId);
@@ -237,6 +259,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
               matchDefaultFocusContent={matchDefaultDomFocusContent}
               defaultFocusPlaceholder="您可以描述对于此区域的需求"
               renderAttachmentSuffix={context.pluginParams.renderAttachmentSuffix}
+              mentions={context.pluginParams.mentions}
             />
           </div>
         );

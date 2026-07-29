@@ -13,11 +13,13 @@ import { DEFAULT_PLUGIN_SKILLS } from "./skills/default";
 
 import { context } from "./context";
 import { setupSandbox, type AgentRuntimeConfig } from "./sandbox";
+import { chipRegistry } from "./sandbox/setup";
 import type { Designer, Hooks, RegistSandBoxConfig, PluginGetUserContextMessage, SendToAgentParams } from "./sandbox";
 import { ChatPanelList } from "./ui/chat/chat-panel-list";
 import { ComChatFocusView } from "./ui/chat/chat-focus-view";
 import { ensureAIPanelOpen, ensureFocusComId } from "./utils/ensure-ai-panel-open";
 import { createDomChip } from "./utils/dom-info";
+import type { MentionProvider } from "./ui/components/types";
 
 // ─── 工具类型重导出 ────────────────────────────────────────────────────────────
 
@@ -27,7 +29,8 @@ export { createRequestAsStream, createOnUpload } from "../../request/src";
 export type { RequestAsStreamFn } from "../../request/src";
 export { openSetting, closeSetting, SettingModal } from "./ui/setting";
 export type { SettingModalProps } from "./ui/setting";
-export type { Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams, PluginGetUserContextMessage, VirtualFilesRuntimeContext } from "./sandbox";
+export type { Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams, PluginGetUserContextMessage, VirtualFilesRuntimeContext, ChatChipRemoveHandler, SandboxChipConfig, SandboxChipRecordConfig, SandboxChipsConfig } from "./sandbox";
+export type { MentionProvider, MentionMenuItem } from "./ui/components/types";
 // ProviderConfig / ModelConfig 已由 request 包导出，此处仅导出 plugin 专属类型
 export type { SettingValue } from "./ui/setting";
 export { ChatPanel } from "./ui/chat";
@@ -67,7 +70,7 @@ export interface PluginAIController {
   /** 向指定 comId 的对话输入框追加文本或图片附件。 */
   appendInput(comId: string, input: string | SendToAgentParams): void;
   /**
-   * 获取指定 comId 对话框的当前输入草稿（文本 + 附件 + mentions）。
+   * 获取指定 comId 对话框的当前输入草稿（文本 + 附件 + chips）。
    * 不传 comId 时返回当前活跃面板的草稿；面板未挂载时返回 undefined。
    */
   getInput(comId?: string): ReturnType<import("./ui/components/sender").SenderRef["getInput"]> | undefined;
@@ -179,6 +182,11 @@ export interface PluginAIParams {
    * 在 Sender 附件上传按钮之后插入自定义渲染内容。
    */
   renderAttachmentSuffix?: () => React.ReactNode;
+  /**
+   * 自定义 mention 注册源。
+   * 点击 Sender 的 + 号或输入 @ 时可选择，选中后插入 chip，发送前由 chip.format 转成模型上下文。
+   */
+  mentions?: MentionProvider[];
   /** LLM 配置（自定义渠道时使用） */
   llm?: {
     /**
@@ -221,6 +229,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     agentRuntime,
     sender,
     renderAttachmentSuffix,
+    mentions,
   } = params;
 
   const mergedPromptSections = resolvePromptOptions(promptSections);
@@ -246,7 +255,8 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
 
   context.name = name;
   context.setPluginKey(pluginKey);
-  context.pluginParams = { name, user, onUpload: upload, onDownload: download, renderAttachmentSuffix };
+  (mentions ?? []).forEach((mention) => chipRegistry.register(mention.chip));
+  context.pluginParams = { name, user, onUpload: upload, onDownload: download, renderAttachmentSuffix, mentions };
 
   // ── 调试工具：导入历史记录 ─────────────────────────────────────────────────
 

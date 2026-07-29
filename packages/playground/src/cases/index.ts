@@ -105,6 +105,12 @@ import {
 } from "./init-project-error";
 import { chatPanelSkinHistoryCase, chatPanelDefaultSkinCase, chatPanelSkinEmptyCase } from "./chat-panel-skin";
 import { historyCollapseRestoreCase, historyCollapseGrowingCase, historyCollapseCustomMaxItersCase } from "./ui-history-collapse";
+import {
+  userMessageShortCase,
+  userMessageLongCase,
+  userMessageVeryLongCase,
+  userMessageMixedCase,
+} from "./ui-user-message-collapse";
 import { historySlowLoadCase, historyLoadErrorCase } from "./history-load";
 import {
   fileUploadInlineCase,
@@ -114,6 +120,9 @@ import {
   fileUploadProcessorContentCase,
   fileUploadSlowProcessorCase,
 } from "./file-upload";
+import { mentionCustomCase } from "./mention";
+import { renderAttachmentSuffixCase } from "./attachment-suffix";
+import { renderFocusCase } from "./render-focus";
 import {
   bashMvRenameCase,
   bashMvToDirectoryCase,
@@ -231,6 +240,11 @@ export const ALL_CASES: TestCase[] = [
   webFetchValidationCase,
   webFetchHttpErrorCase,
   // UI 渲染
+  // 用户消息折叠
+  userMessageShortCase,
+  userMessageLongCase,
+  userMessageVeryLongCase,
+  userMessageMixedCase,
   markdownRichCase,
   userMessageWithLinksCase,
   userMessageWithTenImagesCase,
@@ -241,6 +255,9 @@ export const ALL_CASES: TestCase[] = [
   assistantMessageLinkOpenCase,
   renderEmptyAboveCase,
   selectorRenderInTopCase,
+  renderAttachmentSuffixCase,
+  renderFocusCase,
+  mentionCustomCase,
   // 异常检测—工具后空 content
   toolThenEmptyContentCase,
   // 文件上传

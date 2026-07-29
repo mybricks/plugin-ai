@@ -110,7 +110,7 @@ class Context {
   }
 
   /**
-   * 获取指定 comId 对话框的当前输入草稿（文本 + 附件 + mentions）。
+   * 获取指定 comId 对话框的当前输入草稿（文本 + 附件 + chips）。
    * 不传 comId 时返回当前活跃面板的草稿；面板不存在时返回 undefined。
    */
   getInput(comId?: string): SenderInputValue | undefined {

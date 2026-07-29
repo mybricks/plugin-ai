@@ -6,7 +6,7 @@ import { GLOB_TOOL_NAME  } from "../../../agent/src/code-agent/tools";
 import type { Tool, Sandbox, CodeAgentPlugin, CodeAgentPromptOptions, History, BoundHistory, TurnSender, AdditionalDirectory, AgentsMdConfig, SkillFile, UnifiedFile, AgentOptions, AgentMode, ChatChipInstance } from "../../../agent/src";
 import type { PromptSections } from "../prompts";
 import type { RequestAsStreamFn } from "../../../request/src";
-import type { Designer, RegistSandBoxConfig } from "./types";
+import type { Designer, RegistSandBoxConfig, SandboxChipConfig, SandboxChipsConfig } from "./types";
 import { buildGuideUserContext } from "./context-builders";
 import { createCheckStatusTool } from "./tools/check-status";
 import { createInitProjectTool } from "./tools/init-project";
@@ -18,6 +18,7 @@ import { LoadingViewWithStyles, ComChatStartViewWithStyles, PrdRenderWithStyles 
 import { context } from "../context";
 import { ensureAIPanelOpen, ensureFocusComId } from "../utils/ensure-ai-panel-open";
 import { createDomChip } from "../utils/dom-info";
+import { registerChipRemoveHandlers } from "./chip-remove";
 
 // ─── 类型定义 ─────────────────────────────────────────────────────────────────
 
@@ -28,6 +29,28 @@ import { createDomChip } from "../utils/dom-info";
  */
 export const chipRegistry = new ChipRegistry();
 // fileChipDef 已内置到 ChipRegistry 构造函数中，无需手动注册
+
+function normalizeChipConfigs(chips?: SandboxChipsConfig): SandboxChipConfig[] {
+  if (!chips) return [];
+  if (Array.isArray(chips)) return chips;
+
+  return Object.entries(chips).map(([type, config]) => ({
+    ...config,
+    type: config.type ?? type,
+  }));
+}
+
+function registerChips(agentKey: string, chips?: SandboxChipsConfig): void {
+  const configs = normalizeChipConfigs(chips);
+  if (!configs.length) return;
+
+  for (const config of configs) {
+    if (config.def) {
+      chipRegistry.register(config.def);
+    }
+  }
+  registerChipRemoveHandlers(agentKey, configs);
+}
 
 export interface SendToAgentParams {
   message: string;
@@ -378,10 +401,11 @@ function formatLibraryDocs(libraries: Array<{ name: string; version?: string; us
 
 function connectToAI(
   comId: string,
-  { designer, hooks }: RegistSandBoxConfig,
+  { designer, hooks, chips }: RegistSandBoxConfig,
   { requestAsStream, llm, virtualFiles, skills, plugins, promptOptions, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, sender }: PluginParams
 ): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
+  registerChips(agentKey, chips);
   const runtimeContext: SkillRuntimeContext = { designer, codeRules, designRules };
   const runtimeSkills = skills?.map((skill) => injectSkillRuntimeContext(skill, runtimeContext));
   const runtimePlugins = plugins?.map((plugin) => injectPluginRuntimeContext(plugin, runtimeContext));

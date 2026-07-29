@@ -1,17 +1,18 @@
 import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback } from "react"
 import classNames from "classnames";
 import { message } from "antd";
-import { Attachment, Loading, Send } from "../icons";
-import { MentionTag } from "../mention";
+import { Loading, Plus, Send } from "../icons";
+import { Popup } from "../popup";
 import { AttachmentsList } from "../attachments";
 import type { Attachment as AttachmentItem } from "../attachments";
-import { Mention, Attachments } from "../types";
+import type { Attachments, MentionProvider } from "../types";
 import { ChatMode, type ChatModeType } from "../chat-mode";
 import { ModelSelector } from "../model-selector";
 import type { ModelSelectorProps } from "../model-selector";
 import type { QueueItem } from "../../../context/queue";
 import type { ModelSelection } from "../../../../../request/src/providers";
 import type { SendToAgentParams } from "../../../sandbox";
+import { triggerChipRemove } from "../../../sandbox/chip-remove";
 import type { AgentMode, ChatChipDef, ChatChipInstance } from "../../../../../agent/src";
 import { removeLeadingPlaceholderBreakBeforeChip } from "./utils";
 import {
@@ -42,6 +43,14 @@ import {
   processFileDefault,
   processFileInSandbox,
 } from "./attach-processor";
+import {
+  MentionMenu,
+  buildRootMentionEntries,
+  createFileMentionEntry,
+  flattenMentionItems,
+  toMentionEntries,
+  type MentionMenuEntry,
+} from "./mention";
 import type { AttachProcessor, FileContent } from "../../../content-limits";
 import { CodeAgent } from "../../../../../agent/src";
 import css from "./index.less"
@@ -222,12 +231,10 @@ interface SenderProps {
   onSend: (message: {
     message: string;
     attachments: Attachments;
-    mentions: Mention[];
     chips?: ChatChipInstance[];
     mode?: AgentMode;
     [key: string]: any;
   }) => void;
-  onMentionClick?: (mention: Mention) => void;
   loading?: boolean;
   placeholder?: string;
   /** 命中默认 focus 内容串时展示的 placeholder，不传则复用普通 placeholder。 */
@@ -270,6 +277,13 @@ interface SenderProps {
    */
   chipTypes?: ChatChipDef[];
   /**
+   * 自定义 mention 注册源。
+   * - 点击 + 号时展示 provider/menu
+   * - 输入 @ 时搜索 provider items
+   * - 选中后插入 ChatChipInstance，发送前由对应 ChatChipDef.format 转为模型上下文
+   */
+  mentions?: MentionProvider[];
+  /**
    * 判断当前输入是否是默认 focus 内容串。
    * Sender 不理解具体 prefix/chip 结构，只根据返回值决定 placeholder 是否后移展示。
    */
@@ -306,16 +320,12 @@ interface SenderRef {
    *   meta.chips 提供对应实例，appendInput 内部会将占位符渲染成 chip span。
    */
   appendInput: (params: SenderAppendInputParams) => void;
-  // TODO: 目前仅展示聚焦组件且单个比较简单直接set即可，后续可通过输入框@唤起选择多个
-  setMentions: (mentions: Mention[]) => void;
-  /** 获取输入框当前草稿内容（文本 + 附件 + mentions + chips） */
+  /** 获取输入框当前草稿内容（文本 + 附件 + chips） */
   getInput: () => {
     /** 输入框当前文本（含 [[chip:id]] 占位符） */
     message: string;
     /** 当前附件列表（含上传中的占位项） */
     attachments: AttachmentItem[];
-    /** 当前 @提及 / focus mentions */
-    mentions: Mention[];
     /** 当前 chat chip 实例列表 */
     chips: ChatChipInstance[];
   };
@@ -337,13 +347,14 @@ interface SenderRef {
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const {
     loading, placeholder = "请输入", defaultFocusPlaceholder, disabled,
-    onMentionClick, onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange,
+    onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange,
     variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue,
     renderFocus, abovePanels, renderActionPrefix, renderAttachmentSuffix,
     modelSelector, className, chipTypes = [], matchDefaultFocusContent,
     selectorRenderInTop = false,
     attachProcessors,
     agent,
+    mentions: mentionProviders = [],
   } = props;
 
   const isBubble = variant === 'bubble';
@@ -351,10 +362,16 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const [isComposing, setIsComposing] = useState(false);
   const [inputContent, setInputContent] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
-  const [mentions, setMentions] = useState<Mention[]>([]);
-  const [vibeCoding, setVibeCoding] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [mentionMenuOpen, setMentionMenuOpen] = useState(false);
+  const [mentionMenuTitle, setMentionMenuTitle] = useState("添加");
+  const [mentionMenuEntries, setMentionMenuEntries] = useState<MentionMenuEntry[]>([]);
+  const [mentionMenuLoading, setMentionMenuLoading] = useState(false);
+  const [mentionMenuCanBack, setMentionMenuCanBack] = useState(false);
+  const [mentionMenuMode, setMentionMenuMode] = useState<"plus" | "trigger">("plus");
+  const [mentionAnchorRect, setMentionAnchorRect] = useState<DOMRect | null>(null);
+  const [mentionHighlightIndex, setMentionHighlightIndex] = useState(0);
   /** 防止 dragLeave 在子元素之间移动时误触发，通过计数器追踪真正的进出 */
   const dragCounterRef = useRef(0);
   const processingSendRef = useRef(false);
@@ -367,6 +384,10 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const loadingChipIdsRef = useRef<Set<string>>(new Set());
   const [hasLoadingChips, setHasLoadingChips] = useState(false);
   const pendingFileMapRef = useRef<Map<string, File | FileContent>>(new Map());
+  const mentionTriggerRangeRef = useRef<Range | null>(null);
+  const mentionMenuRequestRef = useRef(0);
+  const selectMentionEntryRef = useRef<(entry: MentionMenuEntry) => void | Promise<void>>(() => {});
+  const mentionFileInputRef = useRef<HTMLInputElement>(null);
 
   /** 默认 focus 内容串的整体尺寸，用于把 placeholder 推到内容串后面。 */
   const [defaultFocusContentSize, setDefaultFocusContentSize] = useState<{ width: number; height: number } | null>(null);
@@ -379,13 +400,17 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
    * 内置 fileChipDef 合并到 chipTypes 里，确保 sender 内部能正确渲染文件 chip。
    * 外部传入相同 type 的 def 时，外部优先（放后面 Map 会覆盖）。
    */
-  const allChipTypes = [fileChipDef, ...chipTypes];
+  const allChipTypes = [fileChipDef, ...chipTypes, ...mentionProviders.map((provider) => provider.chip)];
+  const notifyChipRemove = useCallback((chip: ChatChipInstance | undefined) => {
+    if (!chip || !agent?.key) return;
+    triggerChipRemove(agent.key, chip);
+  }, [agent?.key]);
 
   /** chipTypes 的 Map 形式（type → def），方便查找 */
   const chipTypesMapRef = useRef<Map<string, ChatChipDef>>(new Map());
   useEffect(() => {
     chipTypesMapRef.current = new Map(allChipTypes.map(def => [def.type, def]));
-  }, [chipTypes]);
+  }, [chipTypes, mentionProviders]);
 
   /** 根据当前 editor DOM 同步 inputContent 状态 */
   const syncInputContent = useCallback(() => {
@@ -487,6 +512,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
             chipMapRef.current.set(instance.id, instance);
             const def = chipTypesMapRef.current.get(instance.type);
             const onRemove = () => {
+              notifyChipRemove(instance);
               const w = chipWrapperMapRef.current.get(instance.id);
               if (w) {
                 unmountChipContainer(w);
@@ -526,7 +552,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       const animLabel = firstChip?.label ?? (content?.slice(0, 12) ?? '内容');
       triggerReceiveAnimation(animLabel);
     }
-  }, [syncInputContent, triggerReceiveAnimation]);
+  }, [syncInputContent, triggerReceiveAnimation, notifyChipRemove]);
 
   /** 在当前光标位置插入一个 chat chip */
   const insertChip = useCallback((instance: ChatChipInstance, loading = false) => {
@@ -540,6 +566,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
     // 点击删除按钮时：卸载 React、从 DOM 移除、清理 chipMap、同步内容
     const onRemove = () => {
+      notifyChipRemove(instance);
       const wrapper = chipWrapperMapRef.current.get(instance.id);
       if (wrapper) {
         unmountChipContainer(wrapper);
@@ -581,7 +608,167 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     }
 
     syncInputContent();
-  }, [syncInputContent]);
+  }, [syncInputContent, notifyChipRemove]);
+
+  const openRootMentionMenu = useCallback(async (nextMode: "plus" | "trigger") => {
+    if (disabled || uploading) return;
+    const requestId = ++mentionMenuRequestRef.current;
+    if (nextMode === "plus") {
+      mentionTriggerRangeRef.current = null;
+      setMentionAnchorRect(null);
+    }
+    setMentionMenuMode(nextMode);
+    setMentionMenuTitle(nextMode === "plus" ? "添加" : "@");
+    setMentionMenuCanBack(false);
+    setMentionMenuOpen(true);
+    setMentionMenuLoading(true);
+
+    const entries = await buildRootMentionEntries(mentionProviders);
+
+    if (requestId !== mentionMenuRequestRef.current) return;
+    setMentionMenuEntries(entries);
+    setMentionHighlightIndex(0);
+    setMentionMenuLoading(false);
+  }, [disabled, mentionProviders, uploading]);
+
+  const openPlusMentionMenu = useCallback(async () => {
+    await openRootMentionMenu("plus");
+  }, [openRootMentionMenu]);
+
+  const openTriggerMentionMenu = useCallback(async (query: string) => {
+    if (disabled) return;
+    const requestId = ++mentionMenuRequestRef.current;
+    setMentionMenuMode("trigger");
+    setMentionMenuTitle(query ? `@${query}` : "@");
+    setMentionMenuCanBack(false);
+    setMentionMenuOpen(true);
+    setMentionMenuLoading(true);
+
+    const normalizedQuery = query.trim().toLowerCase();
+    const entries: MentionMenuEntry[] = normalizedQuery
+      ? []
+      : await buildRootMentionEntries(mentionProviders);
+
+    if (normalizedQuery) {
+      const fileEntry = createFileMentionEntry();
+      const fileText = [fileEntry.label, ...(fileEntry.keywords ?? [])].join(" ").toLowerCase();
+      if (fileText.includes(normalizedQuery)) {
+        entries.push(fileEntry);
+      }
+
+      for (const provider of mentionProviders) {
+        const items = provider.search
+          ? await provider.search(query)
+          : (await flattenMentionItems(provider)).filter((item) => {
+              const text = [item.label, item.description, ...(item.keywords ?? [])].filter(Boolean).join(" ").toLowerCase();
+              return text.includes(normalizedQuery);
+            });
+        entries.push(...toMentionEntries(provider, items));
+      }
+    }
+
+    if (requestId !== mentionMenuRequestRef.current) return;
+    setMentionMenuEntries(entries);
+    setMentionHighlightIndex(0);
+    setMentionMenuLoading(false);
+  }, [disabled, mentionProviders]);
+
+  const closeMentionMenu = useCallback(() => {
+    mentionMenuRequestRef.current += 1;
+    mentionTriggerRangeRef.current = null;
+    setMentionAnchorRect(null);
+    setMentionMenuOpen(false);
+    setMentionMenuLoading(false);
+    setMentionMenuCanBack(false);
+    setMentionHighlightIndex(0);
+  }, []);
+
+  const measureRangeRect = useCallback((range: Range): DOMRect | null => {
+    const rect = range.getBoundingClientRect();
+    if (rect.width || rect.height) return rect;
+
+    const marker = document.createElement("span");
+    marker.textContent = "\u200b";
+    marker.style.display = "inline-block";
+    marker.style.width = "0";
+    marker.style.height = "1em";
+
+    const clonedRange = range.cloneRange();
+    clonedRange.collapse(false);
+    clonedRange.insertNode(marker);
+    const markerRect = marker.getBoundingClientRect();
+    marker.parentNode?.removeChild(marker);
+    inputEditorRef.current?.normalize();
+    return markerRect.width || markerRect.height ? markerRect : null;
+  }, []);
+
+  const detectMentionTrigger = useCallback(() => {
+    const editor = inputEditorRef.current;
+    if (!editor || mentionProviders.length === 0 || disabled) return;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) {
+      closeMentionMenu();
+      return;
+    }
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) {
+      closeMentionMenu();
+      return;
+    }
+    const node = range.startContainer;
+    if (node.nodeType !== Node.TEXT_NODE) {
+      closeMentionMenu();
+      return;
+    }
+    const text = node.textContent ?? "";
+    const beforeCaret = text.slice(0, range.startOffset);
+    const match = beforeCaret.match(/(^|\s)@([^\s@]*)$/);
+    if (!match) {
+      closeMentionMenu();
+      return;
+    }
+
+    const query = match[2] ?? "";
+    const start = range.startOffset - query.length - 1;
+    const triggerRange = document.createRange();
+    triggerRange.setStart(node, start);
+    triggerRange.setEnd(node, range.startOffset);
+    mentionTriggerRangeRef.current = triggerRange;
+    setMentionAnchorRect(measureRangeRect(triggerRange));
+    void openTriggerMentionMenu(query);
+  }, [closeMentionMenu, disabled, measureRangeRect, mentionProviders.length, openTriggerMentionMenu]);
+
+  const insertMentionChip = useCallback((chip: ChatChipInstance, replaceRange?: Range | null) => {
+    const editor = inputEditorRef.current;
+    if (!editor) return;
+
+    if (replaceRange) {
+      replaceRange.deleteContents();
+      const selection = window.getSelection();
+      replaceRange.collapse(true);
+      selection?.removeAllRanges();
+      selection?.addRange(replaceRange);
+    } else if (document.activeElement !== editor) {
+      focusEditorAtEnd(editor);
+    }
+
+    insertChip(chip);
+    const selection = window.getSelection();
+    if (selection?.rangeCount) {
+      const range = selection.getRangeAt(0);
+      const space = document.createTextNode(" ");
+      range.insertNode(space);
+      range.setStartAfter(space);
+      range.setEndAfter(space);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+    syncInputContent();
+  }, [insertChip, syncInputContent]);
+
+  const backToRootMentionMenu = useCallback(() => {
+    void openRootMentionMenu(mentionMenuMode);
+  }, [mentionMenuMode, openRootMentionMenu]);
 
   const clearEditorContent = useCallback(() => {
     const editor = inputEditorRef.current;
@@ -614,21 +801,16 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         return !!(!disabled && editor?.isConnected && editor.getClientRects().length > 0);
       },
       appendInput,
-      setMentions: (mentions) => {
-        setMentions(mentions)
-        setVibeCoding(mentions[0]?.vibeCoding || false);
-      },
       getInput: () => {
         const editor = inputEditorRef.current;
         if (!editor) {
-          return { message: "", attachments: [...attachments], mentions: [...mentions], chips: [] };
+          return { message: "", attachments: [...attachments], chips: [] };
         }
         updateChipWrapperSpacing(editor);
         const { message, chips } = serializeEditorContent(editor, chipMapRef.current);
         return {
           message,
           attachments: [...attachments],
-          mentions: [...mentions],
           chips,
         };
       },
@@ -640,7 +822,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       replaceFocusContent,
       clearFocusContent: clearEditorContent,
     };
-  }, [appendInput, attachments, mentions, insertChip, disabled, clearEditorContent, replaceFocusContent]);
+  }, [appendInput, attachments, insertChip, disabled, clearEditorContent, replaceFocusContent]);
 
   const resolvePendingFileChips = async (chips: ChatChipInstance[]): Promise<ChatChipInstance[] | null> => {
     const sandbox = agent instanceof CodeAgent ? agent.getSandbox() : undefined;
@@ -700,7 +882,6 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       props.onSend({
         message: serializedMessage,
         attachments,
-        mentions,
         ...(chatMode ? { mode: chatMode } : {}),
         ...(resolvedChips.length > 0 ? { chips: resolvedChips } : {}),
       })
@@ -728,9 +909,94 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
   const onInput = () => {
     syncInputContent();
+    setTimeout(detectMentionTrigger, 0);
   }
 
+  const notifySelectedChipRemove = useCallback((editor: HTMLDivElement, range: Range) => {
+    if (range.collapsed) return false;
+
+    const selectedChipIds: string[] = [];
+    editor.querySelectorAll<HTMLSpanElement>(`[data-chip-id]`).forEach((chipEl) => {
+      if (range.intersectsNode(chipEl)) {
+        const chipId = chipEl.dataset.chipId;
+        if (chipId) selectedChipIds.push(chipId);
+      }
+    });
+
+    if (!selectedChipIds.length) return false;
+
+    selectedChipIds.forEach((chipId) => {
+      notifyChipRemove(chipMapRef.current.get(chipId));
+      pendingFileMapRef.current.delete(chipId);
+      const wrapper = chipWrapperMapRef.current.get(chipId);
+      if (wrapper) unmountChipContainer(wrapper);
+      chipMapRef.current.delete(chipId);
+      chipWrapperMapRef.current.delete(chipId);
+      loadingChipIdsRef.current.delete(chipId);
+    });
+    if (loadingChipIdsRef.current.size === 0) setHasLoadingChips(false);
+    return true;
+  }, [notifyChipRemove]);
+
+  const handleMentionMenuKeyDown = useCallback((event: Pick<KeyboardEvent | React.KeyboardEvent, "key" | "preventDefault">): boolean => {
+    if (!mentionMenuOpen) return false;
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeMentionMenu();
+      return true;
+    }
+
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      if (mentionMenuEntries.length > 0) {
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        setMentionHighlightIndex((prev) => (prev + step + mentionMenuEntries.length) % mentionMenuEntries.length);
+      }
+      return true;
+    }
+
+    if (event.key === "Enter" || event.key === "Tab") {
+      event.preventDefault();
+      const entry = mentionMenuEntries[mentionHighlightIndex];
+      if (entry) void selectMentionEntryRef.current(entry);
+      return true;
+    }
+
+    if (event.key === "ArrowRight") {
+      const entry = mentionMenuEntries[mentionHighlightIndex];
+      if (entry?.children) {
+        event.preventDefault();
+        void selectMentionEntryRef.current(entry);
+      }
+      return true;
+    }
+
+    if ((event.key === "ArrowLeft" || event.key === "Backspace") && mentionMenuCanBack) {
+      event.preventDefault();
+      backToRootMentionMenu();
+      return true;
+    }
+
+    return false;
+  }, [backToRootMentionMenu, closeMentionMenu, mentionHighlightIndex, mentionMenuCanBack, mentionMenuEntries, mentionMenuOpen]);
+
+  useEffect(() => {
+    if (!mentionMenuOpen) return;
+    const onDocumentKeyDown = (event: KeyboardEvent) => {
+      const editor = inputEditorRef.current;
+      if (editor?.contains(event.target as Node)) return;
+      handleMentionMenuKeyDown(event);
+    };
+    document.addEventListener("keydown", onDocumentKeyDown, true);
+    return () => document.removeEventListener("keydown", onDocumentKeyDown, true);
+  }, [handleMentionMenuKeyDown, mentionMenuOpen]);
+
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (handleMentionMenuKeyDown(event)) {
+      return;
+    }
+
     if (event.key === "Enter") {
       if (isComposing) {
         return;
@@ -749,13 +1015,23 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     const selection = window.getSelection();
     if (!selection || !selection.rangeCount) return;
     const range = selection.getRangeAt(0);
+    const editor = inputEditorRef.current;
+
+    if ((event.key === 'Backspace' || event.key === 'Delete') && editor && !range.collapsed) {
+      const hasRemovedChips = notifySelectedChipRemove(editor, range);
+      if (hasRemovedChips) {
+        requestAnimationFrame(() => syncInputContent());
+      }
+      return;
+    }
 
     if (event.key === 'Backspace') {
-      const editor = inputEditorRef.current;
       const chipEl = editor ? getAdjacentChipAtCaret(editor, range, "backward") : null;
       if (editor && chipEl) {
         event.preventDefault();
-        pendingFileMapRef.current.delete(chipEl.dataset.chipId ?? "");
+        const chipId = chipEl.dataset.chipId ?? "";
+        notifyChipRemove(chipMapRef.current.get(chipId));
+        pendingFileMapRef.current.delete(chipId);
         removeChipFromEditor(editor, chipEl, chipMapRef.current);
         syncInputContent();
         return;
@@ -763,11 +1039,12 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     }
 
     if (event.key === 'Delete') {
-      const editor = inputEditorRef.current;
       const chipEl = editor ? getAdjacentChipAtCaret(editor, range, "forward") : null;
       if (editor && chipEl) {
         event.preventDefault();
-        pendingFileMapRef.current.delete(chipEl.dataset.chipId ?? "");
+        const chipId = chipEl.dataset.chipId ?? "";
+        notifyChipRemove(chipMapRef.current.get(chipId));
+        pendingFileMapRef.current.delete(chipId);
         removeChipFromEditor(editor, chipEl, chipMapRef.current);
         syncInputContent();
         return;
@@ -903,6 +1180,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         if (wrapper) {
           const def = chipTypesMapRef.current.get(FILE_CHIP_TYPE);
           const onRemove = () => {
+            notifyChipRemove(chipMapRef.current.get(id));
             const w = chipWrapperMapRef.current.get(id);
             if (w) {
               unmountChipContainer(w);
@@ -935,7 +1213,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         syncInputContent();
       }
     }
-  }, [attachProcessors, insertChip]);
+  }, [attachProcessors, insertChip, notifyChipRemove]);
 
   // ─── 图片 attachment 处理 ─────────────────────────────────────────────────
 
@@ -1068,6 +1346,11 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     if (disabled || uploading) {
       return;
     }
+    if (mentionFileInputRef.current) {
+      mentionFileInputRef.current.value = "";
+      mentionFileInputRef.current.click();
+      return;
+    }
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.accept = SUPPORTED_FILE_ACCEPT;
@@ -1083,6 +1366,53 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
     fileInput.click();
   };
+
+  const handleMentionFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const target = event.target;
+    if (!target.files?.length) return;
+    if (mentionMenuMode === "trigger" && mentionTriggerRangeRef.current) {
+      mentionTriggerRangeRef.current.deleteContents();
+      syncInputContent();
+    }
+    closeMentionMenu();
+    processFiles(Array.from(target.files));
+    target.value = "";
+  };
+
+  const selectMentionEntry = useCallback(async (entry: MentionMenuEntry) => {
+    if (entry.id === "__files__") {
+      if (mentionMenuMode === "trigger" && mentionTriggerRangeRef.current) {
+        mentionTriggerRangeRef.current.deleteContents();
+        syncInputContent();
+      }
+      uploadAttachment();
+      return;
+    }
+
+    const children = entry.children
+      ? typeof entry.children === "function" ? await entry.children() : entry.children
+      : undefined;
+    if (children?.length) {
+      setMentionMenuTitle(entry.label);
+      setMentionMenuCanBack(true);
+      setMentionMenuEntries(toMentionEntries(entry.provider, children));
+      setMentionHighlightIndex(0);
+      return;
+    }
+
+    const chip = entry.toChip
+      ? await entry.toChip(entry)
+      : {
+          id: `${entry.provider.id}_${Math.random().toString(36).slice(2, 9)}`,
+          type: entry.type ?? entry.provider.chip.type,
+          label: entry.label,
+          data: { ...(entry.data ?? {}), label: entry.label },
+        };
+
+    insertMentionChip(chip, mentionMenuMode === "trigger" ? mentionTriggerRangeRef.current : null);
+    closeMentionMenu();
+  }, [closeMentionMenu, insertMentionChip, mentionMenuMode, syncInputContent, toMentionEntries]);
+  selectMentionEntryRef.current = selectMentionEntry;
 
   const onPaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -1163,6 +1493,23 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     }
   };
 
+  const mentionMenuNode = mentionMenuOpen ? (
+    <MentionMenu
+      title={mentionMenuTitle}
+      entries={mentionMenuEntries}
+      loading={mentionMenuLoading}
+      canBack={mentionMenuCanBack}
+      highlightedIndex={mentionHighlightIndex}
+      fileInputRef={mentionFileInputRef}
+      onBack={backToRootMentionMenu}
+      onHighlight={setMentionHighlightIndex}
+      onSelect={(entry) => {
+        void selectMentionEntry(entry);
+      }}
+      onFileInputChange={handleMentionFileInputChange}
+    />
+  ) : null;
+
   return (
     <div className={classNames(css.container, { [css.loose]: variant === 'loose', [css.bubble]: variant === 'bubble' }, className)}>
       {abovePanels && abovePanels.length > 0 ? (
@@ -1178,7 +1525,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         <PendingQueue queue={pendingQueue} onRemove={onRemoveFromQueue} />
       )}
       <div className={classNames(css.editor, {
-        [css.noMentions]: mode === "mention" && !mentions.length,
+        [css.noMentions]: mode === "mention" && !renderFocus,
         [css.dragging]: isDraggingOver,
       })}
         onDragEnter={onDragEnter}
@@ -1246,11 +1593,32 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           <div className={classNames(css.leftArea, {
             [css.disabled]: disabled || uploading
           })}>
-            {!isBubble && (
-              <div data-zone-type="ai-request" className={css.attachmentButton} onClick={uploadAttachment}>
-                <Attachment />
-              </div>
-            )}
+            <Popup
+              open={mentionMenuOpen}
+              onOpenChange={(nextOpen) => {
+                if (!nextOpen) {
+                  closeMentionMenu();
+                  return;
+                }
+                void openPlusMentionMenu();
+              }}
+              placement="top-start"
+              offset={8}
+              disabled={disabled || uploading}
+              anchorRect={mentionMenuMode === "trigger" ? mentionAnchorRect : null}
+              className={classNames(css.mentionPopupTrigger, { [css.bubbleMentionAnchor]: isBubble })}
+              overlayClassName={css.mentionPopup}
+              trigger={(
+                <div
+                  data-zone-type="ai-request"
+                  className={classNames(css.attachmentButton, css.plusButton, { [css.open]: mentionMenuOpen })}
+                >
+                  <Plus />
+                </div>
+              )}
+            >
+              {mentionMenuNode}
+            </Popup>
             {renderAttachmentSuffix?.()}
             {!selectorRenderInTop && chatMode ? <ChatMode disabled={disabled || loading} chatMode={chatMode} onChange={onChatModeChange} /> : null}
           </div>

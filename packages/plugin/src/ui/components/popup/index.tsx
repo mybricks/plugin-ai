@@ -22,6 +22,8 @@ interface PopupProps {
   overlayClassName?: string;
   /** 自定义触发层类名 */
   className?: string;
+  /** 虚拟锚点位置；传入时弹层按该 rect 定位，trigger 仍负责点击和 CSS 变量继承 */
+  anchorRect?: DOMRect | null;
 }
 
 export const Popup = (props: PopupProps) => {
@@ -34,7 +36,8 @@ export const Popup = (props: PopupProps) => {
     offset = 4,
     disabled = false,
     overlayClassName,
-    className
+    className,
+    anchorRect
   } = props;
 
   const triggerRef = useRef<HTMLDivElement>(null);
@@ -64,7 +67,7 @@ export const Popup = (props: PopupProps) => {
   const updatePosition = useCallback(() => {
     if (!triggerRef.current) return;
     syncCssVariables();
-    const rect = triggerRef.current.getBoundingClientRect();
+    const rect = anchorRect ?? triggerRef.current.getBoundingClientRect();
     const vpHeight = window.innerHeight;
     const popupHeight = popupRef.current?.offsetHeight ?? 0;
     
@@ -127,7 +130,7 @@ export const Popup = (props: PopupProps) => {
       flip: isFlippedUp,
       visible: true
     });
-  }, [placement, offset, open, syncCssVariables]);
+  }, [placement, offset, open, syncCssVariables, anchorRect]);
 
   // 使用 useLayoutEffect 确保在渲染到屏幕前计算好位置，避免闪烁
   useLayoutEffect(() => {

@@ -1,5 +1,5 @@
 import React from "react";
-import { Mention } from "../types";
+import type { Mention } from "../types";
 import css from "./index.less";
 
 interface MentionTagProps {
@@ -15,9 +15,18 @@ interface MentionTagProps {
   }
 }
 const MentionTag = (props: MentionTagProps) => {
-  const { mention, focusarea, onClick } = props;
+  const mention = {
+    comId: props.focus.comId,
+    pageId: "",
+    title: props.focus.title,
+    type: "uiCom" as const,
+    focusArea: props.focus.focusArea ? {
+      selector: "",
+      title: props.focus.focusArea.title,
+    } : undefined,
+  } satisfies Mention;
   return (
-    <div className={css.mention} onClick={() => onClick?.(mention)}>
+    <div className={css.mention} onClick={() => props.onClick?.(mention)}>
       {/* <div className={css.text}>{`@${mention.title || mention.name}`}{focusarea && mention.focusArea ? `(${mention.focusArea.title || "区域"})` : ""}</div> */}
 
       {/* <div className={css.text}>@{focusarea && mention.focusArea ? `${mention.focusArea.title || "区域"}` : (mention.title || mention.name)}</div> */}

@@ -43,6 +43,7 @@ export function usePlaygroundAgent(
       ...(testCase.agentOptions?.doomLoopThreshold ? { doomLoopThreshold: testCase.agentOptions.doomLoopThreshold } : {}),
       ...(testCase.disabledModes ? { disabledModes: testCase.disabledModes } : {}),
     });
+    testCase.mentions?.forEach((mention) => newAgent.chipRegistry.register(mention.chip));
 
     agentRef.current = newAgent;
     context.agentMap.set(AGENT_KEY, newAgent as any);
