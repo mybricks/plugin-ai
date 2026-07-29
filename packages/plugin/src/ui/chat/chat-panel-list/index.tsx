@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import classNames from "classnames";
-import { Sender, SenderRef } from "../../components/sender";
 import { context } from "../../../context";
 import { ChatPanel } from "../chat-panel";
 import type { ChatPanelProps, ChatPanelRef } from "../chat-panel";
@@ -22,7 +21,7 @@ export interface ChatPanelListProps {
   onUpload?: (file: File) => Promise<string>;
   /** Header 标题，不传时读 context.name */
   title?: string;
-  /** 面板尺寸，透传给内部 ChatPanel，并作用于无 focus 时的提示与 Sender */
+  /** 面板尺寸，透传给内部 ChatPanel */
   size?: ChatPanelProps["size"];
   /** 自定义根元素类名，用于覆盖 ChatPanel CSS 变量 */
   className?: string;
@@ -55,7 +54,6 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
   const [currentComId, setCurrentComId] = useState<string | undefined>(undefined);
   const [instances, setInstances] = useState<ComInstance[]>([]);
   const [contextDisabled, setContextDisabled] = useState(() => context.disabled);
-  const disabledSenderRef = useRef<SenderRef>(null);
   const panelRefs = useRef(new Map<string, ChatPanelRef | null>());
   const currentComIdRef = useRef<string | undefined>(undefined);
   const appendFocusChipTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -150,15 +148,28 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
     if (context.currentFocus) {
       handleFocus(context.currentFocus);
       appendFocusChipIfNeeded(context.currentFocus);
+    } else {
+      const fallbackComId = context.getFallbackAgentComId();
+      if (fallbackComId) {
+        ensureInstance(fallbackComId, { comId: fallbackComId, title: "页面" });
+      }
     }
 
     const unFocus = context.events.on("focus", (focus: AiServiceFocusParams) => {
       handleFocus(focus);
       appendFocusChipIfNeeded(focus);
     });
+    const unAgentComId = context.events.on("agentComId", (comId: string) => {
+      if (!context.currentFocus && !currentComIdRef.current) {
+        ensureInstance(comId, { comId, title: "页面" });
+      }
+    });
     const unDisplay = context.events.on("aiViewDisplay", () => {
       if (!currentComIdRef.current) {
-        setTimeout(() => disabledSenderRef.current?.focus());
+        const fallbackComId = context.getFallbackAgentComId();
+        if (fallbackComId) {
+          ensureInstance(fallbackComId, { comId: fallbackComId, title: "页面" });
+        }
       }
     });
     const unAppendInput = context.events.on("appendInput", ({ comId, input }: { comId: string; input: Parameters<typeof context.appendInput>[1] }) => {
@@ -190,6 +201,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
 
     return () => {
       unFocus();
+      unAgentComId();
       unDisplay();
       unAppendInput();
       unDisabled();
@@ -202,27 +214,6 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
 
   return (
     <div className={classNames(css["chat-panel-list"], css[`size-${size}`], className)} style={style}>
-      {/* 无 focus 时展示 disabled sender 提示 */}
-      {!currentComId && (
-        <>
-          <div className={css["empty-hint"]}>
-            请先从画布中选择场景或组件，再开始对话
-          </div>
-          <Sender
-            ref={disabledSenderRef}
-            loading={false}
-            placeholder={`您好，我是${context.name}，请先从画布中选择场景或组件，再开始对话`}
-            disabled={true}
-            mode="mention"
-            chatMode={null}
-            onSend={() => {}}
-            onChatModeChange={() => {}}
-            onUpload={onUpload ?? context.pluginParams.onUpload}
-            renderAttachmentSuffix={context.pluginParams.renderAttachmentSuffix}
-          />
-        </>
-      )}
-
       {/* 每个 comId 对应一个独立 ChatPanel 实例 */}
       {instances.map(({ comId, focusSnapshot }) => {
         const agentKey = context.getAgentKey(comId);

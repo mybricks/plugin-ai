@@ -2,10 +2,10 @@ import type { AgentMode, Tool } from "../../../../../../agent/src";
 import type { Sandbox } from "../../../../../../agent/src/code-agent";
 import {
   BrowserToolBridge,
+  type BrowserToolRequest,
   type BrowserToolHandler,
 } from "./browser-tool-bridge";
-import { FileHmr, type BrowserFileChangeEvent } from "./file-hmr";
-import { WorkspaceSocket } from "./workspace-socket";
+import { FileHmr } from "./file-hmr";
 
 type RequestJson = <T = unknown>(
   path: string,
@@ -13,13 +13,12 @@ type RequestJson = <T = unknown>(
 ) => Promise<T>;
 
 export class WorkspaceBridge<TAgent> {
-  private readonly socket: WorkspaceSocket<BrowserFileChangeEvent>;
   private readonly fileHmr: FileHmr;
   private readonly browserTools: BrowserToolBridge<TAgent>;
 
   constructor(options: {
-    origin: string;
     workspaceId: string;
+    userId?: string;
     requestJson: RequestJson;
     agent: TAgent;
     tools?: Tool[];
@@ -27,21 +26,14 @@ export class WorkspaceBridge<TAgent> {
     getMode: () => AgentMode;
     setMode: (mode: AgentMode, reason?: string) => void;
   }) {
-    let fileHmr: FileHmr;
-    this.socket = new WorkspaceSocket({
-      origin: options.origin,
+    this.fileHmr = new FileHmr({
       workspaceId: options.workspaceId,
-      getVersion: () => fileHmr?.getVersion() ?? 0,
-    });
-    fileHmr = new FileHmr({
-      workspaceId: options.workspaceId,
+      userId: options.userId,
       requestJson: options.requestJson,
-      socket: this.socket,
     });
-    this.fileHmr = fileHmr;
     this.browserTools = new BrowserToolBridge({
       workspaceId: options.workspaceId,
-      socket: this.socket,
+      requestJson: options.requestJson,
       agent: options.agent,
       tools: options.tools,
       handler: options.handler,
@@ -65,8 +57,20 @@ export class WorkspaceBridge<TAgent> {
     this.browserTools.setHandler(handler);
   }
 
+  handleBrowserTask(request: BrowserToolRequest): Promise<void> {
+    return this.browserTools.handleRequest(request);
+  }
+
   setEnabled(enabled: boolean): void {
     this.fileHmr.setEnabled(enabled);
+  }
+
+  prepareRun(): Promise<void> {
+    return this.fileHmr.prepareRun();
+  }
+
+  syncFileChanges(targetVersion?: number): Promise<void> {
+    return this.fileHmr.syncChanges(targetVersion);
   }
 
   bindSandbox(sandbox: Sandbox): void {

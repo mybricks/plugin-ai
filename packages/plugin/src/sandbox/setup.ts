@@ -122,9 +122,9 @@ export type AgentRuntimeConfig =
       baseUrl?: string;
       /** 不传时默认使用当前 comId 对应的 agentKey，保证多组件隔离。 */
       workspaceId?: string | ((context: { comId: string; agentKey: string }) => string);
-      /** 显式 Session。未传时使用 workspace 的 default session。 */
+      /** @deprecated 服务端路由不接受 sessionId；请使用 agentId。 */
       sessionId?: string;
-      /** @deprecated 服务端已改为 workspace default session，保留仅用于旧调用方迁移。 */
+      /** 服务端 agentId。未传时使用 workspace 的 default agent。 */
       agentId?: string;
       /** 传给服务端平台接口的用户身份。 */
       userId?: string;
@@ -390,6 +390,7 @@ function connectToAI(
   if (context.agentMap.has(agentKey)) {
     // 已注册：直接从现有 agent 实例上取 history 返回，不重复初始化
     const existingAgent = context.agentMap.get(agentKey)!;
+    context.registerAgentComId(comId);
     return { history: existingAgent.getHistory() };
   }
 
@@ -697,6 +698,7 @@ function connectToAI(
       agent.setBrowserConnectionEnabled(!disabled);
     });
     context.agentMap.set(agentKey, agent);
+    context.registerAgentComId(comId);
     return { history: agent.getHistory() };
   }
 
@@ -743,6 +745,7 @@ function connectToAI(
   agentRef = agent;
 
   context.agentMap.set(agentKey, agent);
+  context.registerAgentComId(comId);
 
   return { history: agent.getHistory() };
 }

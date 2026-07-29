@@ -62,6 +62,19 @@ class Context {
    */
   agentMap = new Map<string, any>();
 
+  /** 已注册过 Agent 的 comId，用于无画布 focus 时兜底打开对话面板。 */
+  private _agentComIds: string[] = [];
+
+  registerAgentComId(comId: string) {
+    if (!comId) return;
+    this._agentComIds = [...this._agentComIds.filter((id) => id !== comId), comId];
+    this.events.emit("agentComId", comId);
+  }
+
+  getFallbackAgentComId(): string | undefined {
+    return this._agentComIds[this._agentComIds.length - 1];
+  }
+
   /** AI 请求队列（防并发 + loading 状态管理） */
   aiQueue = new AgentQueue();
 

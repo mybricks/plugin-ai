@@ -3,7 +3,6 @@ import type {
   Tool,
 } from "../../../../../../agent/src";
 import type { Sandbox } from "../../../../../../agent/src/code-agent";
-import type { WorkspaceSocket } from "./workspace-socket";
 
 export interface BrowserToolRequest {
   requestId: string;
@@ -30,6 +29,11 @@ export type BrowserToolHandler<TAgent> = (
   },
 ) => Promise<BrowserToolResult | unknown> | BrowserToolResult | unknown;
 
+type RequestJson = <T = unknown>(
+  path: string,
+  init?: RequestInit,
+) => Promise<T>;
+
 export class BrowserToolBridge<TAgent> {
   private tools: Tool[];
   private handler?: BrowserToolHandler<TAgent>;
@@ -37,7 +41,7 @@ export class BrowserToolBridge<TAgent> {
   constructor(
     private readonly options: {
       workspaceId: string;
-      socket: WorkspaceSocket<any>;
+      requestJson: RequestJson;
       agent: TAgent;
       tools?: Tool[];
       handler?: BrowserToolHandler<TAgent>;
@@ -48,9 +52,6 @@ export class BrowserToolBridge<TAgent> {
   ) {
     this.tools = options.tools ?? [];
     this.handler = options.handler;
-    options.socket.on<BrowserToolRequest>("browser-tool:request", (request) => {
-      void this.handleRequest(request);
-    });
     this.logRegisteredTools();
   }
 
@@ -67,19 +68,9 @@ export class BrowserToolBridge<TAgent> {
     this.handler = handler;
   }
 
-  private async handleRequest(request: BrowserToolRequest): Promise<void> {
-    if (!request?.requestId || request.workspaceId !== this.options.workspaceId) {
-      return;
-    }
-    const result: BrowserToolResult = {
-      requestId: request.requestId,
-      workspaceId: request.workspaceId,
-      browserId: request.browserId,
-    };
-    console.info("[plugin-ai] browser tool request:", {
-      name: request.name,
-      registeredTools: this.tools.map((tool) => tool.name),
-    });
+  async handleRequest(request: BrowserToolRequest): Promise<void> {
+    if (!request?.requestId || !request.name) return;
+    const result: BrowserToolResult = {};
     try {
       const tool = this.tools.find((item) => item.name === request.name);
       if (tool) {
@@ -104,7 +95,18 @@ export class BrowserToolBridge<TAgent> {
     } catch (error) {
       result.error = error instanceof Error ? error.message : String(error);
     }
-    this.options.socket.emit("browser-tool:result", result);
+
+    await this.options.requestJson(
+      `/workspaces/${encodeURIComponent(this.options.workspaceId)}/browser/tasks/${encodeURIComponent(request.requestId)}`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...(result.output !== undefined ? { output: result.output } : {}),
+          ...(result.metadata ? { metadata: result.metadata } : {}),
+          ...(result.error ? { error: result.error } : {}),
+        }),
+      },
+    );
   }
 
   private createToolContext(request: BrowserToolRequest): any {
@@ -121,15 +123,8 @@ export class BrowserToolBridge<TAgent> {
       mode: this.options.getMode(),
       getMode: this.options.getMode,
       setMode: this.options.setMode,
-      emitProgress: (data: any) => {
-        this.options.socket.emit("browser-tool:progress", {
-          requestId: request.requestId,
-          workspaceId: request.workspaceId,
-          browserId: request.browserId,
-          name: request.name,
-          data,
-        });
-      },
+      // 新协议只定义最终 HTTP 回传；进度由具体工具自行展示。
+      emitProgress: () => {},
     };
   }
 

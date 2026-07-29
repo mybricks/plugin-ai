@@ -15,6 +15,7 @@ import {
 import type { Sandbox } from "../../../../../agent/src/code-agent";
 import type { AgentRuntimeState } from "../../../context/agent-runtime";
 import type {
+  BrowserToolRequest,
   BrowserToolHandler as WorkspaceBrowserToolHandler,
 } from "./workspace-bridge";
 import { WorkspaceBridge } from "./workspace-bridge";
@@ -27,7 +28,11 @@ export type {
 type ApiResponse<T> = T | { code: number; message?: string; data: T };
 
 export interface RemoteAgentEvent {
-  event: keyof AgentEventMap | "session:snapshot" | "session:error";
+  event:
+    | keyof AgentEventMap
+    | "session:error"
+    | "workspace:file-change"
+    | "browser:task";
   data: any;
   createdAt: number;
   turnId?: string;
@@ -44,9 +49,9 @@ export interface HttpAgentOptions {
   baseUrl?: string;
   /** 服务端 workspaceId；当前对应平台 conversation id。 */
   workspaceId: string;
-  /** 显式 Session。未传时使用 workspace 的 default session。 */
+  /** @deprecated 服务端路由不接受 sessionId；请使用 agentId。 */
   sessionId?: string;
-  /** @deprecated 服务端已改为 workspace default session，保留仅用于旧调用方迁移。 */
+  /** 服务端 agentId。未传时使用 workspace 的 default agent。 */
   agentId?: string;
   /** 传给服务端平台接口的用户身份。requestAI 参数中的 userId 优先。 */
   userId?: string;
@@ -54,7 +59,7 @@ export interface HttpAgentOptions {
   headers?: Record<string, string>;
   /** 执行服务端 scene 下发的浏览器端工具请求。 */
   browserToolHandler?: BrowserToolHandler;
-  /** 注册到浏览器端执行的工具。服务端可通过 browser-tool:request 按 name 调用。 */
+  /** 注册到浏览器端执行的工具。服务端可通过 SSE browser:task 按 name 调用。 */
   browserTools?: Tool[];
 }
 
@@ -78,6 +83,7 @@ export type BrowserToolHandler = WorkspaceBrowserToolHandler<HttpAgent>;
 
 const DEFAULT_BASE_URL = "http://localhost:3001/api";
 const DEFAULT_AGENT_ID = "default";
+const DEFAULT_TURNS_PAGE_SIZE = 20;
 
 export class HttpAgent {
   readonly kind = "http";
@@ -85,8 +91,9 @@ export class HttpAgent {
   readonly events = new AgentEvents();
   readonly baseUrl: string;
   readonly workspaceId: string;
+  /** @deprecated 服务端路由不接受 sessionId；保留仅用于旧调用方迁移。 */
   readonly sessionId?: string;
-  /** @deprecated 服务端已改为 workspace default session，保留仅用于旧调用方迁移。 */
+  /** 服务端 agentId；default 使用 workspace 直连路由。 */
   readonly agentId: string;
   readonly userId?: string;
   readonly key: string;
@@ -95,6 +102,11 @@ export class HttpAgent {
   private readonly workspaceBridge: WorkspaceBridge<HttpAgent>;
   private mode: AgentMode = AgentModeEnum.Build;
   private turns: TurnRecord[] = [];
+  private turnsPage: Required<Pick<TurnsPage, "hasMore">> &
+    Pick<TurnsPage, "oldestTurnId"> = {
+    hasMore: false,
+    oldestTurnId: null,
+  };
   private compactRecord: CompactRecord | null = null;
   private sessionState: AgentRuntimeState = { running: false };
   private sessionStateListeners = new Set<
@@ -106,15 +118,15 @@ export class HttpAgent {
     this.baseUrl = trimRight(options.baseUrl ?? DEFAULT_BASE_URL, "/");
     this.workspaceId = options.workspaceId;
     this.sessionId = options.sessionId;
-    this.agentId = options.agentId ?? DEFAULT_AGENT_ID;
+    this.agentId = options.agentId ?? options.sessionId ?? DEFAULT_AGENT_ID;
     this.userId = options.userId;
     this.key =
       options.key ??
-      `http:${this.baseUrl}:${this.workspaceId}:${this.sessionId ?? "default"}`;
+      `http:${this.baseUrl}:${this.workspaceId}:${this.agentId}`;
     this.headers = options.headers;
     this.workspaceBridge = new WorkspaceBridge<HttpAgent>({
-      origin: getSocketOrigin(this.baseUrl),
       workspaceId: this.workspaceId,
+      userId: this.userId,
       requestJson: <T>(path: string, init?: RequestInit) =>
         this.requestJson<T>(path, init),
       agent: this,
@@ -163,6 +175,29 @@ export class HttpAgent {
     return this.turns;
   }
 
+  getTurnsPage(): Required<Pick<TurnsPage, "hasMore">> &
+    Pick<TurnsPage, "oldestTurnId"> {
+    return { ...this.turnsPage };
+  }
+
+  async loadOlderTurns(limit = DEFAULT_TURNS_PAGE_SIZE): Promise<TurnsPage> {
+    await this.historyInitialization;
+    if (!this.turnsPage.hasMore || !this.turnsPage.oldestTurnId) {
+      return { turns: [], hasMore: false, oldestTurnId: null };
+    }
+    const page = await this.session.getTurns({
+      limit,
+      before: this.turnsPage.oldestTurnId,
+    });
+    this.turns = mergeTurnRecords(page.turns ?? [], this.turns);
+    this.turnsPage = {
+      hasMore: Boolean(page.hasMore),
+      oldestTurnId: page.oldestTurnId ?? null,
+    };
+    this.historyManager.markReady();
+    return page;
+  }
+
   getCompactRecord(): CompactRecord | null {
     return this.compactRecord;
   }
@@ -199,32 +234,66 @@ export class HttpAgent {
     // 与本地 Agent.requestAI 保持一致：历史 ready 后才能开始新 turn，
     // 避免迟到的 ready snapshot 覆盖正在流式更新的消息。
     await this.historyInitialization;
-    await this.requestEventStream(
-      this.sessionPath("run"),
-      {
-        method: "POST",
-        body: JSON.stringify({
-          message: params.message,
-          attachments: params.attachments,
-          ...(params.userId ?? this.userId
-            ? { userId: params.userId ?? this.userId }
-            : {}),
-          ...(params.mode ? { mode: params.mode } : {}),
-          ...(params.meta ? { meta: params.meta } : {}),
-          ...(params.extra ? { extra: params.extra } : {}),
-          ...(params.aiRole ? { aiRole: params.aiRole } : {}),
-          ...(params.providerId ? { providerId: params.providerId } : {}),
-          ...(params.modelId ? { modelId: params.modelId } : {}),
-        }),
-      },
-      {
-        signal: params.signal,
-        onEvent: (event) => this.handleRemoteEvent(event),
-        onError: params.onError,
-        onClose: params.onClose,
-      },
-    );
+    await this.workspaceBridge.prepareRun();
+    let terminalSeen = false;
+    try {
+      await this.requestEventStream(
+        this.sessionPath("run"),
+        {
+          method: "POST",
+          body: JSON.stringify({
+            message: params.message,
+            attachments: params.attachments,
+            ...(params.userId ?? this.userId
+              ? { userId: params.userId ?? this.userId }
+              : {}),
+            ...(params.mode ? { mode: params.mode } : {}),
+            ...(params.meta ? { meta: params.meta } : {}),
+            ...(params.extra ? { extra: params.extra } : {}),
+            ...(params.aiRole ? { aiRole: params.aiRole } : {}),
+            ...(params.providerId ? { providerId: params.providerId } : {}),
+            ...(params.modelId ? { modelId: params.modelId } : {}),
+          }),
+        },
+        {
+          signal: params.signal,
+          onEvent: (event) => {
+            terminalSeen ||= isTerminalRemoteEvent(event);
+            this.handleRemoteEvent(event);
+          },
+        },
+      );
+      if (!terminalSeen && !params.signal?.aborted) {
+        throw new SseDisconnectedError(
+          "Run SSE closed before a terminal event",
+        );
+      }
+    } catch (error) {
+      if (
+        (error as Error)?.name === "AbortError" ||
+        error instanceof RemoteSessionError ||
+        error instanceof HttpResponseError
+      ) {
+        params.onError?.(error as Error);
+        throw error;
+      }
+      // /run 连接断开不会取消服务端 Agent，改用 /connect 跨实例重放并续接。
+      try {
+        await this.requestEventStream(
+          this.sessionPath("connect"),
+          { method: "GET" },
+          {
+            signal: params.signal,
+            onEvent: (event) => this.handleRemoteEvent(event),
+          },
+        );
+      } catch (reconnectError) {
+        params.onError?.(reconnectError as Error);
+        throw reconnectError;
+      }
+    }
     await this.reloadHistory();
+    params.onClose?.();
   }
 
   async abort(): Promise<void> {
@@ -255,17 +324,13 @@ export class HttpAgent {
       );
     },
     subscribe: (params: {
-      limit?: number;
       onEvent: (event: RemoteAgentEvent) => void;
       onError?: (error: Event | Error) => void;
       onClose?: () => void;
     }): (() => void) => {
-      const query = new URLSearchParams();
-      if (params.limit !== undefined) query.set("limit", String(params.limit));
-      const suffix = query.toString() ? `?${query.toString()}` : "";
       const controller = new AbortController();
       void this.requestEventStream(
-        `${this.sessionPath("connect")}${suffix}`,
+        this.sessionPath("connect"),
         { method: "GET" },
         {
           signal: controller.signal,
@@ -281,7 +346,14 @@ export class HttpAgent {
   };
 
   private readonly remoteHistoryStore: History = {
-    load: async (): Promise<TurnRecord[]> => this.loadAllTurns(),
+    load: async (): Promise<TurnRecord[]> => {
+      const page = await this.loadLatestTurns();
+      this.turnsPage = {
+        hasMore: Boolean(page.hasMore),
+        oldestTurnId: page.oldestTurnId ?? null,
+      };
+      return page.turns ?? [];
+    },
     append: async (_key, record): Promise<void> => {
       await this.requestJson(this.sessionPath("turns"), {
         method: "POST",
@@ -309,15 +381,24 @@ export class HttpAgent {
       });
     },
     loadCompact: async (): Promise<CompactRecord | null> => {
-      return this.requestJson<CompactRecord | null>(
-        this.sessionPath("compact"),
-      );
+      try {
+        return await this.requestJson<CompactRecord | null>(
+          this.sessionPath("compact"),
+        );
+      } catch (error) {
+        console.warn("[plugin-ai] load compact failed, ignored", error);
+        return null;
+      }
     },
     saveCompact: async (_key, record): Promise<void> => {
-      await this.requestJson(this.sessionPath("compact"), {
-        method: "POST",
-        body: JSON.stringify({ record }),
-      });
+      try {
+        await this.requestJson(this.sessionPath("compact"), {
+          method: "POST",
+          body: JSON.stringify({ record }),
+        });
+      } catch (error) {
+        console.warn("[plugin-ai] save compact failed, ignored", error);
+      }
     },
     listVersions: async (
       _key: string,
@@ -334,9 +415,16 @@ export class HttpAgent {
         query.set("pageNum", String(params.pageNum));
       }
       const suffix = query.toString() ? `?${query.toString()}` : "";
-      return normalizeVersionsPage(
-        await this.requestJson<any>(`${this.sessionPath("versions")}${suffix}`),
-      );
+      try {
+        return normalizeVersionsPage(
+          await this.requestJson<any>(
+            `${this.sessionPath("versions")}${suffix}`,
+          ),
+        );
+      } catch (error) {
+        console.warn("[plugin-ai] list versions failed, ignored", error);
+        return { total: 0, list: [] };
+      }
     },
     addVersion: async (
       _key: string,
@@ -349,21 +437,31 @@ export class HttpAgent {
       });
     },
     getVersionFiles: async (versionId: string): Promise<VersionFile[]> => {
-      const response = await this.requestJson<any>(
-        `${this.sessionPath("versions")}/${encodeURIComponent(versionId)}/files`,
-      );
-      return Array.isArray(response)
-        ? response
-        : Array.isArray(response?.files)
-          ? response.files
-          : [];
+      try {
+        const response = await this.requestJson<any>(
+          `${this.sessionPath("versions")}/${encodeURIComponent(versionId)}/files`,
+        );
+        return Array.isArray(response)
+          ? response
+          : Array.isArray(response?.files)
+            ? response.files
+            : [];
+      } catch (error) {
+        console.warn("[plugin-ai] get version files failed, ignored", error);
+        return [];
+      }
     },
     getVersion: async (versionId: string): Promise<VersionRecord | null> => {
-      const response = await this.requestJson<any>(
-        `${this.sessionPath("versions")}/${encodeURIComponent(versionId)}`,
-      );
-      const record = response?.record ?? response?.version ?? response;
-      return record && Object.keys(record).length ? record : null;
+      try {
+        const response = await this.requestJson<any>(
+          `${this.sessionPath("versions")}/${encodeURIComponent(versionId)}`,
+        );
+        const record = response?.record ?? response?.version ?? response;
+        return record && Object.keys(record).length ? record : null;
+      } catch (error) {
+        console.warn("[plugin-ai] get version failed, ignored", error);
+        return null;
+      }
     },
     updateVersion: async (
       versionId: string,
@@ -405,31 +503,28 @@ export class HttpAgent {
   }
 
   private async reloadHistory(): Promise<void> {
-    const [turns, compactRecord] = await Promise.all([
-      this.loadAllTurns(),
+    const [page, compactRecord] = await Promise.all([
+      this.loadLatestTurns(),
       this.remoteHistoryStore.loadCompact?.(this.key) ?? null,
     ]);
-    this.turns = turns;
+    this.turns = mergeTurnRecords(this.turns, page.turns ?? []);
+    if (!this.turnsPage.oldestTurnId) {
+      this.turnsPage = {
+        hasMore: Boolean(page.hasMore),
+        oldestTurnId: page.oldestTurnId ?? null,
+      };
+    }
     this.compactRecord = compactRecord;
   }
 
-  private async loadAllTurns(): Promise<TurnRecord[]> {
-    const pageSize = 100;
-    let before: string | undefined;
-    const pages: TurnRecord[][] = [];
-    for (let index = 0; index < 100; index += 1) {
-      const page = await this.session.getTurns({ limit: pageSize, before });
-      const turns = page.turns ?? [];
-      pages.unshift(turns);
-      if (!page.hasMore || !page.oldestTurnId || !turns.length) break;
-      before = page.oldestTurnId;
-    }
-    return pages.flat();
+  private async loadLatestTurns(
+    limit = DEFAULT_TURNS_PAGE_SIZE,
+  ): Promise<TurnsPage> {
+    return this.session.getTurns({ limit });
   }
 
   private connectEventReplay(): void {
     this.session.subscribe({
-      limit: 1,
       onEvent: (event) => {
         if (event.event === "session:error") {
           this.setSessionState({
@@ -452,15 +547,29 @@ export class HttpAgent {
   }
 
   private handleRemoteEvent(event: RemoteAgentEvent): void {
-    if (event.event === "session:snapshot") {
-      const mode = event.data?.agent?.mode;
-      if (mode) this.mode = mode;
-      this.setSessionState({
-        running: event.data?.agent?.status === "running",
-        ...(event.data?.agent?.activeTurnId
-          ? { turnId: event.data.agent.activeTurnId }
-          : {}),
-      });
+    if (event.event === "workspace:file-change") {
+      void this.workspaceBridge
+        .syncFileChanges(Number(event.data?.version) || undefined)
+        .catch((error) => {
+          console.error("[plugin-ai] sync workspace file changes failed", error);
+        });
+      return;
+    }
+    if (event.event === "browser:task") {
+      const request = event.data as Omit<
+        BrowserToolRequest,
+        "workspaceId" | "browserId"
+      > &
+        Partial<Pick<BrowserToolRequest, "workspaceId" | "browserId">>;
+      void this.workspaceBridge
+        .handleBrowserTask({
+          ...request,
+          workspaceId: request.workspaceId ?? this.workspaceId,
+          browserId: request.browserId ?? "",
+        })
+        .catch((error) => {
+          console.error("[plugin-ai] browser task response failed", error);
+        });
       return;
     }
     if (event.event === "session:error") {
@@ -468,7 +577,7 @@ export class HttpAgent {
         running: false,
         error: event.data?.message ?? event.data,
       });
-      throw new Error(
+      throw new RemoteSessionError(
         String(event.data?.message ?? "Remote agent session failed"),
       );
     }
@@ -526,8 +635,8 @@ export class HttpAgent {
 
   private sessionPath(action: string): string {
     const workspace = encodeURIComponent(this.workspaceId);
-    if (this.sessionId) {
-      return `/workspaces/${workspace}/sessions/${encodeURIComponent(this.sessionId)}/${action}`;
+    if (this.agentId !== DEFAULT_AGENT_ID) {
+      return `/workspaces/${workspace}/agents/${encodeURIComponent(this.agentId)}/${action}`;
     }
     return `/workspaces/${workspace}/${action}`;
   }
@@ -555,7 +664,15 @@ export class HttpAgent {
         },
       });
       if (!response.ok) {
-        throw new Error(`${response.status} ${response.statusText}`);
+        throw new HttpResponseError(
+          response.status,
+          await readHttpErrorMessage(response),
+        );
+      }
+      if (response.status === 204) {
+        params.onOpen?.();
+        params.onClose?.();
+        return;
       }
       if (!response.body) {
         throw new Error("SSE response body is not available");
@@ -632,6 +749,30 @@ function normalizeVersionsPage(
   };
 }
 
+function mergeTurnRecords(
+  olderTurns: TurnRecord[],
+  newerTurns: TurnRecord[],
+): TurnRecord[] {
+  const merged: TurnRecord[] = [];
+  const seen = new Set<string>();
+  for (const turn of [...olderTurns, ...newerTurns]) {
+    if (!turn?.id) {
+      merged.push(turn);
+      continue;
+    }
+    const index = merged.findIndex((item) => item.id === turn.id);
+    if (index >= 0) {
+      merged[index] = turn;
+      continue;
+    }
+    if (!seen.has(turn.id)) {
+      seen.add(turn.id);
+      merged.push(turn);
+    }
+  }
+  return merged;
+}
+
 function dispatchSseChunk(
   chunk: string,
   onEvent?: (event: RemoteAgentEvent) => void,
@@ -655,14 +796,38 @@ function trimRight(value: string, char: string): string {
   return next;
 }
 
-function getSocketOrigin(baseUrl: string): string {
+class RemoteSessionError extends Error {}
+
+class SseDisconnectedError extends Error {}
+
+class HttpResponseError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(`${status} ${message}`);
+  }
+}
+
+function isTerminalRemoteEvent(event: RemoteAgentEvent): boolean {
+  return (
+    event.event === "turn:complete" ||
+    event.event === "turn:abort" ||
+    event.event === "turn:error" ||
+    event.event === "session:error"
+  );
+}
+
+async function readHttpErrorMessage(response: Response): Promise<string> {
+  const fallback = response.statusText || "Request failed";
   try {
-    const url = new URL(baseUrl);
-    url.pathname = url.pathname.replace(/\/api\/?$/, "");
-    url.search = "";
-    url.hash = "";
-    return trimRight(url.toString(), "/");
+    const text = await response.text();
+    if (!text.trim()) return fallback;
+    const body = JSON.parse(text);
+    const message = body?.message ?? body?.error;
+    if (Array.isArray(message)) return message.join("; ");
+    return typeof message === "string" && message ? message : fallback;
   } catch {
-    return trimRight(baseUrl.replace(/\/api\/?$/, ""), "/");
+    return fallback;
   }
 }

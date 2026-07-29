@@ -1,25 +1,32 @@
 import type { Sandbox } from "../../../../../../agent/src/code-agent";
-import type {
-  WorkspaceJoinResponse,
-  WorkspaceSocket,
-} from "./workspace-socket";
 
-interface FileTreeItem {
+interface FileManifestItem {
   path: string;
-  content?: string;
   hash?: string;
   size?: number;
 }
 
-interface FileTreeResponse {
-  workspaceId: string;
+interface FileManifestResponse {
+  workspaceId?: string;
   version?: number;
-  files?: FileTreeItem[];
+  files?: FileManifestItem[];
 }
 
-export interface BrowserFileChangeEvent {
+type FileOperation =
+  | { type: "write"; path: string; hash: string; size: number }
+  | { type: "delete"; path: string };
+
+interface FileChange {
   version: number;
-  changes: Array<{ path: string; hash: string | null }>;
+  ops: FileOperation[];
+}
+
+interface FileChangesResponse {
+  workspaceId: string;
+  currentVersion: number;
+  fromVersion: number;
+  snapshotRequired: boolean;
+  changes: FileChange[];
 }
 
 type RequestJson = <T = unknown>(
@@ -27,329 +34,247 @@ type RequestJson = <T = unknown>(
   init?: RequestInit,
 ) => Promise<T>;
 
+/**
+ * 按 client-guide.md 维护浏览器沙箱与 workspace 文件：
+ * - 初始化时以本地文件为准，hash diff 后上传；
+ * - 收到 workspace:file-change 后，按 version cursor 拉取一次增量；
+ * - 启动 Agent 前扫描并上传本地 HMR 变化。
+ */
 export class FileHmr {
   private sandbox?: Sandbox;
   private enabled = false;
   private version = 0;
-  private manifestReady = false;
-  private baselineReady = false;
-  private joinReady = false;
-  private applyFailed = false;
-  private pendingChanges: BrowserFileChangeEvent[] = [];
-  private applyPromise: Promise<void> = Promise.resolve();
+  private localHashMap = new Map<string, string>();
+  private initialized = false;
+  private syncPromise: Promise<void> = Promise.resolve();
+  private syncPending = false;
+  private syncRequestedWhilePending = false;
+  private requestedVersion = 0;
 
   constructor(
     private readonly options: {
       workspaceId: string;
+      userId?: string;
       requestJson: RequestJson;
-      socket: WorkspaceSocket<BrowserFileChangeEvent>;
     },
-  ) {
-    options.socket.onJoin((response) => this.handleJoin(response));
-    options.socket.onDisconnect(() => this.handleDisconnect());
-    options.socket.on<BrowserFileChangeEvent>("file:change", (event) => {
-      this.handleFileChange(event);
-    });
-  }
-
-  getVersion(): number {
-    return this.version;
-  }
-
-  isApplyFailed(): boolean {
-    return this.applyFailed;
-  }
+  ) {}
 
   bindSandbox(sandbox: Sandbox): void {
     this.sandbox = sandbox;
     void this.syncSnapshot().catch((error) => {
-      console.error("[plugin-ai] sync remote files snapshot failed", error);
+      console.error("[plugin-ai] initialize remote file sync failed", error);
     });
   }
 
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
-    if (!enabled) {
-      this.options.socket.disconnect();
-      return;
-    }
-    if (this.applyFailed && this.sandbox) {
-      void this.syncSnapshot().catch((error) => {
-        console.error("[plugin-ai] recover remote files snapshot failed", error);
-      });
-      return;
-    }
-    if (this.manifestReady) void this.ensureConnected();
   }
 
   async ensureConnected(): Promise<void> {
     if (!this.enabled || !this.sandbox) return;
-    await this.options.socket.connect();
+    if (!this.initialized) await this.syncSnapshot();
   }
 
-  disconnect(): void {
-    this.options.socket.disconnect();
+  disconnect(): void {}
+
+  async prepareRun(): Promise<void> {
+    if (!this.enabled || !this.sandbox) return;
+    if (!this.initialized) {
+      await this.syncSnapshot();
+      return;
+    }
+    await this.pushLocalChanges(this.sandbox);
+  }
+
+  syncChanges(targetVersion?: number): Promise<void> {
+    const sandbox = this.sandbox;
+    if (!this.enabled || !sandbox || !this.initialized) {
+      return Promise.resolve();
+    }
+    const target = Number(targetVersion) || this.version + 1;
+    this.requestedVersion = Math.max(this.requestedVersion, target);
+    if (this.requestedVersion <= this.version) return Promise.resolve();
+    if (this.syncPending) {
+      this.syncRequestedWhilePending = true;
+      return this.syncPromise;
+    }
+    this.syncPending = true;
+    this.syncRequestedWhilePending = false;
+    this.syncPromise = this.syncPromise
+      .catch(() => {
+        // 前一次同步失败不阻塞后续文件事件触发的同步。
+      })
+      .then(async () => {
+        while (this.requestedVersion > this.version) {
+          const before = this.version;
+          await this.pullRemoteChanges(sandbox);
+          if (this.version <= before) break;
+        }
+      })
+      .finally(() => {
+        this.syncPending = false;
+        if (
+          this.syncRequestedWhilePending &&
+          this.requestedVersion > this.version
+        ) {
+          this.syncRequestedWhilePending = false;
+          void this.syncChanges(this.requestedVersion).catch((error) => {
+            console.error(
+              "[plugin-ai] retry queued workspace file sync failed",
+              error,
+            );
+          });
+        }
+      });
+    return this.syncPromise;
   }
 
   async syncSnapshot(sandbox = this.sandbox): Promise<void> {
     if (!sandbox) return;
-    const tree = await this.options.requestJson<FileTreeResponse>(
-      `/workspaces/${encodeURIComponent(this.options.workspaceId)}/files`,
-    );
-    this.version = Number(tree.version || 0);
-    this.manifestReady = true;
-    this.baselineReady = false;
-    this.applyFailed = false;
-    if (this.enabled) void this.ensureConnected();
+    this.sandbox = sandbox;
 
-    const existing = await this.getSandboxFiles(sandbox);
-    const existingByPath = new Map(
-      existing.map((file) => [file.path, file] as const),
+    const manifestQuery = this.withUserId();
+    const manifest = await this.options.requestJson<FileManifestResponse>(
+      `${this.workspacePath("files")}${manifestQuery}`,
     );
-    const remotePaths = new Set(
-      (tree.files ?? []).map((file) => file.path).filter(Boolean),
-    );
-    const deletePaths = existing
-      .map((file) => file.path)
-      .filter((path) => !remotePaths.has(path));
+    this.version = Number(manifest?.version ?? 0);
 
-    const files = await mapWithConcurrency(tree.files ?? [], 4, async (file) => {
-      if (!file?.path) return null;
-      const local = existingByPath.get(file.path);
-      if (local && file.hash) {
-        const localHash = await sha256(local.content);
-        if (localHash === file.hash) return null;
-      } else if (
-        local &&
-        "content" in file &&
-        local.content === String(file.content ?? "")
-      ) {
-        return null;
-      }
-      return this.resolveRemoteFile(file);
-    });
-    const writableFiles = files.filter(
-      (file): file is { path: string; content: string } => !!file,
+    const localFiles = await sandbox.getFiles();
+    const localEntries = await mapWithConcurrency(localFiles, 4, async (file) => ({
+      path: file.path,
+      content: file.content,
+      hash: await sha256(file.content),
+    }));
+    this.localHashMap = new Map(
+      localEntries.map((file) => [file.path, file.hash]),
     );
-    for (const batch of splitFileBatches(writableFiles)) {
-      this.logUpdateFiles("snapshot", batch);
-      await sandbox.updateFiles(batch);
-    }
-    if (deletePaths.length) await sandbox.deleteFiles(deletePaths);
 
-    this.baselineReady = true;
-    await this.flushPendingChanges();
+    const serverHashes = new Map(
+      (manifest?.files ?? [])
+        .filter((file) => !!file?.path)
+        .map((file) => [file.path, file.hash]),
+    );
+    const uploads = localEntries
+      .filter((file) => serverHashes.get(file.path) !== file.hash)
+      .map(({ path, content }) => ({ path, content }));
+    await this.uploadFiles(uploads);
+
+    this.initialized = true;
   }
 
-  private async handleJoin(
-    response: WorkspaceJoinResponse<BrowserFileChangeEvent>,
-  ): Promise<void> {
-    this.joinReady = true;
-    this.pendingChanges.push(...(response.changes ?? []));
-    if (response.snapshotRequired || this.applyFailed) {
-      await this.syncSnapshot().catch((error) => {
-        console.error("[plugin-ai] resync remote files snapshot failed", error);
-      });
+  private async pullRemoteChanges(sandbox: Sandbox): Promise<void> {
+    const query = new URLSearchParams({
+      sinceVersion: String(this.version),
+    });
+    if (this.options.userId) query.set("userId", this.options.userId);
+    const response = await this.options.requestJson<FileChangesResponse>(
+      `${this.workspacePath("files/changes")}?${query.toString()}`,
+    );
+    if (response.snapshotRequired) {
+      await this.syncSnapshot(sandbox);
       return;
     }
-    await this.flushPendingChanges();
-  }
+    const changes = [...(response.changes ?? [])].sort(
+      (left, right) => left.version - right.version,
+    );
 
-  private handleDisconnect(): void {
-    this.joinReady = false;
-    this.pendingChanges = [];
-  }
-
-  private handleFileChange(event: BrowserFileChangeEvent): void {
-    if (!event || !Number.isFinite(event.version)) return;
-    console.info("[plugin-ai][files] received file:change", {
-      workspaceId: this.options.workspaceId,
-      version: event.version,
-      currentVersion: this.version,
-      changes: event.changes,
-      baselineReady: this.baselineReady,
-      joinReady: this.joinReady,
-      applyFailed: this.applyFailed,
-    });
-    if (!this.baselineReady || !this.joinReady || this.applyFailed) {
-      console.info("[plugin-ai][files] queue pending file:change", {
-        workspaceId: this.options.workspaceId,
-        version: event.version,
-        pendingCount: this.pendingChanges.length + 1,
-      });
-      this.pendingChanges.push(event);
-      return;
-    }
-    this.enqueueChange(event);
-  }
-
-  private enqueueChange(event: BrowserFileChangeEvent): void {
-    const sandbox = this.sandbox;
-    if (!sandbox) {
-      this.pendingChanges.push(event);
-      return;
-    }
-    console.info("[plugin-ai][files] enqueue file:change", {
-      workspaceId: this.options.workspaceId,
-      version: event.version,
-      currentVersion: this.version,
-      changes: event.changes,
-    });
-    this.applyPromise = this.applyPromise
-      .then(async () => {
-        if (event.version < this.version) {
-          console.info("[plugin-ai][files] skip stale file:change", {
-            workspaceId: this.options.workspaceId,
-            eventVersion: event.version,
-            currentVersion: this.version,
-          });
-          return;
+    for (const change of changes) {
+      for (const operation of change.ops ?? []) {
+        if (!operation?.path) continue;
+        if (operation.type === "delete") {
+          await sandbox.deleteFiles([operation.path]);
+          this.localHashMap.delete(operation.path);
+        } else if (this.localHashMap.get(operation.path) !== operation.hash) {
+          const file = await this.readRemoteFile(operation.path);
+          if (file) {
+            await sandbox.updateFiles([file]);
+            this.localHashMap.set(file.path, operation.hash);
+          }
         }
-        await this.applyChange(event, sandbox);
-        this.version = event.version;
-      })
-      .catch((error) => {
-        this.applyFailed = true;
-        this.options.socket.emit("browser:not-ready", {
-          workspaceId: this.options.workspaceId,
-        });
-        console.error("[plugin-ai] apply remote file change failed", error);
-      });
-  }
-
-  private async flushPendingChanges(): Promise<void> {
-    if (!this.baselineReady || !this.joinReady || this.applyFailed) {
-      console.info("[plugin-ai][files] skip flushing pending changes", {
-        workspaceId: this.options.workspaceId,
-        pendingCount: this.pendingChanges.length,
-        baselineReady: this.baselineReady,
-        joinReady: this.joinReady,
-        applyFailed: this.applyFailed,
-      });
-      return;
+      }
+      this.version = Math.max(this.version, Number(change.version) || 0);
     }
-
-    const pending = this.pendingChanges
-      .splice(0)
-      .sort((left, right) => left.version - right.version);
-    console.info("[plugin-ai][files] flush pending file:changes", {
-      workspaceId: this.options.workspaceId,
-      versions: pending.map((event) => event.version),
-    });
-    for (const event of pending) this.enqueueChange(event);
-
-    let applying = this.applyPromise;
-    await applying;
-    while (applying !== this.applyPromise) {
-      applying = this.applyPromise;
-      await applying;
-    }
-
-    if (
-      !this.options.socket.connected ||
-      !this.baselineReady ||
-      !this.joinReady ||
-      this.applyFailed
-    ) {
-      return;
-    }
-    this.options.socket.emit("browser:ready", {
-      workspaceId: this.options.workspaceId,
-      version: this.version,
-    });
-  }
-
-  private async applyChange(
-    event: BrowserFileChangeEvent,
-    sandbox: Sandbox,
-  ): Promise<void> {
-    const latestByPath = new Map<
-      string,
-      { path: string; hash: string | null }
-    >();
-    for (const change of event.changes ?? []) {
-      const path = String(change?.path ?? "");
-      if (path) latestByPath.set(path, { path, hash: change.hash ?? null });
-    }
-    const deletePaths: string[] = [];
-    const writes: Array<{ path: string; hash: string | null }> = [];
-    for (const change of latestByPath.values()) {
-      if (change.hash === null) deletePaths.push(change.path);
-      else writes.push(change);
-    }
-    console.info("[plugin-ai][files] apply file:change", {
-      workspaceId: this.options.workspaceId,
-      version: event.version,
-      writes: writes.map((change) => change.path),
-      deletes: deletePaths,
-    });
-
-    const files = (
-      await mapWithConcurrency(writes, 4, (change) =>
-        this.readRemoteFile(change.path),
-      )
-    ).filter(
-      (file): file is { path: string; content: string } => file !== null,
+    this.version = Math.max(
+      this.version,
+      Number(response.currentVersion) || 0,
     );
-    for (const batch of splitFileBatches(files)) {
-      this.logUpdateFiles("change", batch);
-      await sandbox.updateFiles(batch);
-    }
-    if (deletePaths.length) await sandbox.deleteFiles(deletePaths);
   }
 
-  private logUpdateFiles(
-    source: "snapshot" | "change",
+  private async pushLocalChanges(sandbox: Sandbox): Promise<void> {
+    const files = await sandbox.getFiles();
+    const entries = await mapWithConcurrency(files, 4, async (file) => ({
+      path: file.path,
+      content: file.content,
+      hash: await sha256(file.content),
+    }));
+    const currentPaths = new Set(entries.map((file) => file.path));
+    const changed = entries.filter(
+      (file) => this.localHashMap.get(file.path) !== file.hash,
+    );
+    const deleted = [...this.localHashMap.keys()].filter(
+      (path) => !currentPaths.has(path),
+    );
+
+    await this.uploadFiles(
+      changed.map(({ path, content }) => ({ path, content })),
+    );
+    if (deleted.length) {
+      await this.options.requestJson(this.workspacePath("files/delete"), {
+        method: "POST",
+        body: JSON.stringify({
+          paths: deleted,
+          ...(this.options.userId ? { userId: this.options.userId } : {}),
+        }),
+      });
+    }
+    for (const file of changed) this.localHashMap.set(file.path, file.hash);
+    for (const path of deleted) this.localHashMap.delete(path);
+  }
+
+  private async uploadFiles(
     files: Array<{ path: string; content: string }>,
-  ): void {
-    console.log("[plugin-ai][files] sandbox.updateFiles", {
-      source,
-      workspaceId: this.options.workspaceId,
-      files,
-    });
+  ): Promise<void> {
+    for (const batch of splitFileBatches(files)) {
+      await this.options.requestJson(this.workspacePath("files"), {
+        method: "POST",
+        body: JSON.stringify({
+          files: batch,
+          ...(this.options.userId ? { userId: this.options.userId } : {}),
+        }),
+      });
+    }
   }
 
   private async readRemoteFile(
     path: string,
   ): Promise<{ path: string; content: string } | null> {
-    console.info("[plugin-ai][files] read remote file", {
-      workspaceId: this.options.workspaceId,
-      path,
-    });
     const query = new URLSearchParams({ path });
-    const file = await this.options.requestJson<{
-      path?: string;
-      content?: string;
-    } | null>(
-      `/workspaces/${encodeURIComponent(this.options.workspaceId)}/files/content?${query.toString()}`,
-    );
-    if (!file?.path) return null;
-    return { path: file.path, content: String(file.content ?? "") };
+    if (this.options.userId) query.set("userId", this.options.userId);
+    const response = await this.options.requestJson<
+      string | { path?: string; content?: string } | null
+    >(`${this.workspacePath("files/content")}?${query.toString()}`);
+    if (typeof response === "string") return { path, content: response };
+    if (!response) return null;
+    return {
+      path: response.path || path,
+      content: String(response.content ?? ""),
+    };
   }
 
-  private async resolveRemoteFile(
-    file: FileTreeItem,
-  ): Promise<{ path: string; content: string } | null> {
-    if (!file?.path) return null;
-    if ("content" in file) {
-      return { path: file.path, content: String(file.content ?? "") };
-    }
-    return this.readRemoteFile(file.path);
+  private workspacePath(action: string): string {
+    return `/workspaces/${encodeURIComponent(this.options.workspaceId)}/${action}`;
   }
 
-  private async getSandboxFiles(
-    sandbox: Sandbox,
-  ): Promise<Array<{ path: string; content: string }>> {
-    try {
-      return await sandbox.getFiles();
-    } catch {
-      return [];
-    }
+  private withUserId(): string {
+    if (!this.options.userId) return "";
+    return `?${new URLSearchParams({ userId: this.options.userId }).toString()}`;
   }
 }
 
-async function sha256(content: string): Promise<string | null> {
-  if (!globalThis.crypto?.subtle) return null;
+async function sha256(content: string): Promise<string> {
+  if (!globalThis.crypto?.subtle) {
+    throw new Error("Web Crypto SHA-256 is not available");
+  }
   const digest = await globalThis.crypto.subtle.digest(
     "SHA-256",
     new TextEncoder().encode(content),
