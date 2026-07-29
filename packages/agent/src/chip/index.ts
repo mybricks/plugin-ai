@@ -135,6 +135,32 @@ export const fileChipDef: ChatChipDef = {
   },
 };
 
+// ─── 内置元素移动 chip ──────────────────────────────────────────────────────────
+
+/** 内置元素移动 chip 的类型标识 */
+export const ELEMENT_MOVE_CHIP_TYPE = "element-move";
+
+/**
+ * 元素移动 chip 的数据结构（存入 ChatChipInstance.data）。
+ * 由拖拽操作触发时填充，format 时展开为包含源/目标位置信息的 LLM 可读描述。
+ */
+export interface ElementMoveChipData {
+  /** 被拖拽元素（移动源） */
+  fromEle: Element;
+  /** 参照元素（目标位置） */
+  toEle: Element;
+  /**
+   * 移动方向：
+   * - "before" 表示移动到参照元素之前（上方）
+   * - "after"  表示移动到参照元素之后（下方）
+   */
+  placement: "before" | "after";
+  /** 被拖拽元素的显示名称（用于 UI 呈现） */
+  fromLabel?: string;
+  /** 参照元素的显示名称（用于 UI 呈现） */
+  toLabel?: string;
+}
+
 // ─── ChipRegistry ─────────────────────────────────────────────────────────────
 
 /**

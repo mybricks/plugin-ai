@@ -3,8 +3,8 @@ export type { AgentMode, AgentOptions, AgentHooks, RequestAIOptions, MaskOptions
 export { maskMessages } from "./mask";
 export { computeHandoffTurnIds } from "./handoff";
 
-export { ChipRegistry, fileChipDef, FILE_CHIP_TYPE } from "./chip";
-export type { ChatChipDef, ChatChipFormatContext, ChatChipInstance, FileChipData } from "./chip";
+export { ChipRegistry, fileChipDef, FILE_CHIP_TYPE, ELEMENT_MOVE_CHIP_TYPE } from "./chip";
+export type { ChatChipDef, ChatChipFormatContext, ChatChipInstance, FileChipData, ElementMoveChipData } from "./chip";
 
 export type { AgentEventMap } from "./events";
 export type { Message, History, Tool, TurnRecord, TurnSender, ToolCallRecord, ToolResult, VersionFile, VersionRecord, BoundHistory, Attachment, IterationTrace } from "./types";
