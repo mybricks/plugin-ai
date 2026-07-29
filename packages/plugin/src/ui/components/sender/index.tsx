@@ -737,6 +737,32 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     syncInputContent();
   }
 
+  const notifySelectedChipRemove = useCallback((editor: HTMLDivElement, range: Range) => {
+    if (range.collapsed) return false;
+
+    const selectedChipIds: string[] = [];
+    editor.querySelectorAll<HTMLSpanElement>(`[data-chip-id]`).forEach((chipEl) => {
+      if (range.intersectsNode(chipEl)) {
+        const chipId = chipEl.dataset.chipId;
+        if (chipId) selectedChipIds.push(chipId);
+      }
+    });
+
+    if (!selectedChipIds.length) return false;
+
+    selectedChipIds.forEach((chipId) => {
+      notifyChipRemove(chipMapRef.current.get(chipId));
+      pendingFileMapRef.current.delete(chipId);
+      const wrapper = chipWrapperMapRef.current.get(chipId);
+      if (wrapper) unmountChipContainer(wrapper);
+      chipMapRef.current.delete(chipId);
+      chipWrapperMapRef.current.delete(chipId);
+      loadingChipIdsRef.current.delete(chipId);
+    });
+    if (loadingChipIdsRef.current.size === 0) setHasLoadingChips(false);
+    return true;
+  }, [notifyChipRemove]);
+
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Enter") {
       if (isComposing) {
@@ -756,9 +782,17 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     const selection = window.getSelection();
     if (!selection || !selection.rangeCount) return;
     const range = selection.getRangeAt(0);
+    const editor = inputEditorRef.current;
+
+    if ((event.key === 'Backspace' || event.key === 'Delete') && editor && !range.collapsed) {
+      const hasRemovedChips = notifySelectedChipRemove(editor, range);
+      if (hasRemovedChips) {
+        requestAnimationFrame(() => syncInputContent());
+      }
+      return;
+    }
 
     if (event.key === 'Backspace') {
-      const editor = inputEditorRef.current;
       const chipEl = editor ? getAdjacentChipAtCaret(editor, range, "backward") : null;
       if (editor && chipEl) {
         event.preventDefault();
@@ -772,7 +806,6 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     }
 
     if (event.key === 'Delete') {
-      const editor = inputEditorRef.current;
       const chipEl = editor ? getAdjacentChipAtCaret(editor, range, "forward") : null;
       if (editor && chipEl) {
         event.preventDefault();

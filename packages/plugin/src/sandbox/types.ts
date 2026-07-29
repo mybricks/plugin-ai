@@ -38,7 +38,7 @@ export interface Designer {
 
 }
 
-import type { AgentHooks, ChatChipInstance } from "../../../agent/src";
+import type { AgentHooks, ChatChipDef, ChatChipInstance } from "../../../agent/src";
 
 /** 沙箱 hooks，即 AgentHooks */
 export type Hooks = AgentHooks;
@@ -49,9 +49,25 @@ export type Hooks = AgentHooks;
 export type ChatChipRemoveHandler = (chip: ChatChipInstance) => void;
 
 /**
- * 按 ChatChipInstance.type 注册的 remove 回调集合。
+ * 单个 chip 能力配置。
  */
-export type ChatChipRemoveHandlers = Record<string, ChatChipRemoveHandler>;
+export interface SandboxChipConfig {
+  /** chip 类型标识，对应 ChatChipInstance.type / ChatChipDef.type */
+  type: string;
+  /** chip 定义；传入后会注册到全局 chipRegistry，支持自定义 chip 或覆盖内置 chip 定义 */
+  def?: ChatChipDef;
+  /** 用户手动从 Sender 移除该类型 chip 时触发 */
+  onRemove?: ChatChipRemoveHandler;
+}
+
+export type SandboxChipRecordConfig = Omit<SandboxChipConfig, "type"> & { type?: string };
+
+/**
+ * connectToAI 支持的 chip 能力配置。
+ * - 数组形式：每项必须显式提供 type
+ * - Record 形式：key 作为默认 type，value.type 可覆盖 key
+ */
+export type SandboxChipsConfig = SandboxChipConfig[] | Record<string, SandboxChipRecordConfig>;
 
 /**
  * window._registSandBox_ 的第二个参数。
@@ -60,8 +76,7 @@ export interface RegistSandBoxConfig {
   designer: Designer;
   hooks?: Hooks;
   /**
-   * 按 chip type 注册用户手动移除 chip 时的回调。
-   * 通过 window._sandbox_.connectToAI 注册；重复注册同 type 会覆盖旧回调。
+   * 注册 chip 相关能力，支持自定义 chip 定义和内置/自定义 chip 的 remove 回调。
    */
-  chipRemoveHandlers?: ChatChipRemoveHandlers;
+  chips?: SandboxChipsConfig;
 }

@@ -1,12 +1,20 @@
 import type { ChatChipInstance } from "../../../agent/src";
-import type { ChatChipRemoveHandlers } from "./types";
+import type { ChatChipRemoveHandler, SandboxChipConfig } from "./types";
 
-const chipRemoveHandlerMap = new Map<string, ChatChipRemoveHandlers>();
+const chipRemoveHandlerMap = new Map<string, Record<string, ChatChipRemoveHandler>>();
 
-export function registerChipRemoveHandlers(agentKey: string, handlers?: ChatChipRemoveHandlers): void {
-  if (!handlers) return;
+export function registerChipRemoveHandlers(agentKey: string, chips?: SandboxChipConfig[]): void {
+  if (!chips?.length) return;
   const current = chipRemoveHandlerMap.get(agentKey) ?? {};
-  chipRemoveHandlerMap.set(agentKey, { ...current, ...handlers });
+  const next = { ...current };
+
+  for (const chip of chips) {
+    if (chip.onRemove) {
+      next[chip.type] = chip.onRemove;
+    }
+  }
+
+  chipRemoveHandlerMap.set(agentKey, next);
 }
 
 export function triggerChipRemove(agentKey: string, chip: ChatChipInstance): void {
