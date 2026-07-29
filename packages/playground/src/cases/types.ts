@@ -5,6 +5,7 @@ import type { Tool } from "@agent/types";
 import type { CodeAgent } from "@agent/code-agent";
 import type { SkillFile } from "@agent/code-agent";
 import type { ChatPanelProps } from "@plugin/ui/chat";
+import type { MentionProvider } from "@plugin/index";
 import type { AttachProcessor } from "@plugin/content-limits";
 import type { FsFile } from "../lib/mem-fs";
 import type { RequestSnapshot } from "../lib/use-request-inspector";
@@ -123,4 +124,19 @@ export interface TestCase {
    * 对应 ChatPanelProps.attachProcessors，可在 case 中传入自定义处理器以测试文件上传行为。
    */
   attachProcessors?: AttachProcessor[];
+  /**
+   * 自定义 mention 注册源。
+   * 对应 ChatPanelProps.mentions。
+   */
+  mentions?: MentionProvider[];
+  /**
+   * 在 Sender 附件 / + 按钮之后渲染自定义内容。
+   * 对应 ChatPanelProps.renderAttachmentSuffix。
+   */
+  renderAttachmentSuffix?: ChatPanelProps["renderAttachmentSuffix"];
+  /**
+   * 在 Sender 输入框上方渲染自定义 focus 内容。
+   * 对应 ChatPanelProps.renderFocus。
+   */
+  renderFocus?: ChatPanelProps["renderFocus"];
 }

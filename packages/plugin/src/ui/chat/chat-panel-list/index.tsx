@@ -219,6 +219,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
             onChatModeChange={() => {}}
             onUpload={onUpload ?? context.pluginParams.onUpload}
             renderAttachmentSuffix={context.pluginParams.renderAttachmentSuffix}
+            mentions={context.pluginParams.mentions}
           />
         </>
       )}
@@ -246,6 +247,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
               matchDefaultFocusContent={matchDefaultDomFocusContent}
               defaultFocusPlaceholder="您可以描述对于此区域的需求"
               renderAttachmentSuffix={context.pluginParams.renderAttachmentSuffix}
+              mentions={context.pluginParams.mentions}
             />
           </div>
         );

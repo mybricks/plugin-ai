@@ -120,6 +120,9 @@ import {
   fileUploadProcessorContentCase,
   fileUploadSlowProcessorCase,
 } from "./file-upload";
+import { mentionCustomCase } from "./mention";
+import { renderAttachmentSuffixCase } from "./attachment-suffix";
+import { renderFocusCase } from "./render-focus";
 import {
   bashMvRenameCase,
   bashMvToDirectoryCase,
@@ -252,6 +255,9 @@ export const ALL_CASES: TestCase[] = [
   assistantMessageLinkOpenCase,
   renderEmptyAboveCase,
   selectorRenderInTopCase,
+  renderAttachmentSuffixCase,
+  renderFocusCase,
+  mentionCustomCase,
   // 异常检测—工具后空 content
   toolThenEmptyContentCase,
   // 文件上传

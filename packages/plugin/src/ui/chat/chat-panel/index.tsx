@@ -8,6 +8,7 @@ import type { AgentMode, CodeAgent } from "../../../../../agent/src";
 import { AgentModeEnum } from "../../../../../agent/src";
 import type { ModelSelection } from "../../../../../request/src/providers";
 import type { AttachProcessor } from "../../../content-limits";
+import type { MentionProvider } from "../../components/types";
 import { useSession } from "../use-session";
 import { MessageList } from "../messages";
 import type { ActionBarItem, HistoryCollapseConfig } from "../messages";
@@ -119,6 +120,8 @@ export interface ChatPanelProps {
    * 图片（image/*）始终走 attachment 流程，不受此配置影响。
    */
   attachProcessors?: AttachProcessor[];
+  /** 自定义 mention 注册源，透传给 Sender */
+  mentions?: MentionProvider[];
 }
 
 export interface ChatPanelRef {
@@ -163,6 +166,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   actionBar,
   selectorRenderInTop = false,
   attachProcessors,
+  mentions = (context.pluginParams.mentions ?? []) as MentionProvider[],
 }, ref) => {
   const agentKey = agent?.key ?? "";
 
@@ -172,6 +176,10 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   const availableModes = agent?.getAvailableModes() ?? [AgentModeEnum.Build];
   const showChatMode = availableModes.length > 1;
   const [chatMode, setChatMode] = useState<AgentMode>(() => agent?.getMode() ?? availableModes[0] ?? AgentModeEnum.Build);
+
+  useEffect(() => {
+    mentions.forEach((mention) => chipRegistry.register(mention.chip));
+  }, [mentions]);
 
   // 模型选择器状态跟随当前 Agent，避免多 Agent/多面板串状态。
   const llmProviders = agent?.getLLMProviders();
@@ -214,7 +222,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     appendInput: (params) => {
       senderRef.current?.appendInput(params);
     },
-    getInput: () => senderRef.current?.getInput() ?? { message: "", attachments: [], mentions: [], chips: [] },
+    getInput: () => senderRef.current?.getInput() ?? { message: "", attachments: [], chips: [] },
     replaceFocusContent: (params) => {
       senderRef.current?.replaceFocusContent(params);
     },
@@ -345,6 +353,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       modelSelector={modelSelector}
       selectorRenderInTop={selectorRenderInTop}
       chipTypes={chipRegistry.getAll()}
+      mentions={mentions}
       matchDefaultFocusContent={matchDefaultFocusContent}
       attachProcessors={attachProcessors}
       agent={agent}

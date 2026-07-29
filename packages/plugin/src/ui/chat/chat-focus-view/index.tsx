@@ -200,6 +200,7 @@ const ChatFocusView = ({
       onUpload={onUpload ?? context.pluginParams.onUpload}
       renderActionPrefix={renderActionPrefix}
       chipTypes={chipRegistry.getAll()}
+      mentions={context.pluginParams.mentions}
     />
   );
 };

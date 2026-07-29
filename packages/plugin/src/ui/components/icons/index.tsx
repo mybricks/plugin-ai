@@ -88,6 +88,31 @@ const FileIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>
 )
 
+const Plus = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+  </svg>
+)
+
+const ChevronRight = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="m9 6 6 6-6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+const ChevronLeft = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="m15 6-6 6 6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+const AtSign = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M16 8.5v5a2.5 2.5 0 0 0 5 0V12a9 9 0 1 0-3.4 7.04" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M16 12a4 4 0 1 0-1.17 2.83A4 4 0 0 0 16 12Z" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
 const Skill = () => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <path d="M4.5 5.5c0-.83.67-1.5 1.5-1.5h4c1.1 0 2 .9 2 2v14c0-1.1-.9-2-2-2H6c-.83 0-1.5-.67-1.5-1.5v-11Z" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
@@ -96,4 +121,4 @@ const Skill = () => (
   </svg>
 )
 
-export { ArrowUp, Attachment, Loading, Close, Success, Send, Delete, Export, Chat, Code, Agent, Vibe, Check, Eye, Pencil, FileWrite, ErrorIcon, FileIcon, Skill }
+export { ArrowUp, Attachment, Loading, Close, Success, Send, Delete, Export, Chat, Code, Agent, Vibe, Check, Eye, Pencil, FileWrite, ErrorIcon, FileIcon, Plus, ChevronRight, ChevronLeft, AtSign, Skill }
