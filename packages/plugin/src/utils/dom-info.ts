@@ -386,6 +386,10 @@ function formatRepeatContexts(contexts: RepeatAncestorContext[], indent = " - ")
   return lines;
 }
 
+export function formatElementRepeatContextLines(el: Element, indent = " - "): string[] {
+  return formatRepeatContexts(collectRepeatAncestorContexts(el), indent);
+}
+
 function getDomClassNames(el: Element): string {
   const attrClassNames = el.getAttribute("data-zone-classnames");
   if (attrClassNames?.trim()) return attrClassNames;

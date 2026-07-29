@@ -1,6 +1,6 @@
 import type { ChatChipFormatContext, ChatChipInstance, ElementDeleteChipData } from "../../../agent/src";
 import { ELEMENT_DELETE_CHIP_TYPE } from "../../../agent/src";
-import { extractDomSummary } from "./dom-info";
+import { extractDomSummary, formatElementRepeatContextLines } from "./dom-info";
 
 export { ELEMENT_DELETE_CHIP_TYPE };
 
@@ -104,6 +104,34 @@ export function formatElementDeleteChipMessage({ message, chips }: ChatChipForma
     // 追加详细上下文块
     const codeLocation = ele ? getCodeLocation(ele) : "未知";
     const domSummary = ele ? extractDomSummary(ele) : "无";
+    const repeatContextLines = ele ? formatElementRepeatContextLines(ele, `- `) : [];
+    const hasRepeatContext = repeatContextLines.length > 0;
+    const repeatContextBlock = hasRepeatContext
+      ? [
+          `- 循环/重复上下文：`,
+          ...repeatContextLines.map((line) => `  ${line}`),
+        ].join("\n")
+      : `- 循环/重复上下文：未发现疑似循环 JSX / map 重复项`;
+
+    const changeRequirements = [
+      `1. 从 JSX 中完整移除【被删除元素】节点（含其所有子节点）`,
+      ...(hasRepeatContext
+        ? [
+            `2. 如果【被删除元素】疑似位于循环 JSX / map 渲染中，默认只删除当前元素对应的数据项或条件分支，不要直接删除整个 map/循环表达式或循环模板节点`,
+          ]
+        : []),
+      `${hasRepeatContext ? 3 : 2}. 同时移除该元素相关的 import 语句（如该组件不再被使用）`,
+      `${hasRepeatContext ? 4 : 3}. 同时移除该元素独有的样式类定义（如对应 CSS/Less 中仅被该元素使用的类）`,
+      `${hasRepeatContext ? 5 : 4}. 保持其余元素的顺序、缩进和结构不变`,
+    ];
+    const notes = [
+      ...(hasRepeatContext
+        ? [
+            `如果无法判断用户是要删除当前这一项，还是删除循环 JSX 中的全部同类项，请先向用户确认，不要贸然移除整个 map/循环结构。`,
+          ]
+        : []),
+      `如果你认为此操作不合法（例如删除会导致父容器渲染异常），请用一句话向用户说明原因，不要修改任何代码。`,
+    ];
 
     infoBlocks.push(
       [
@@ -114,6 +142,7 @@ export function formatElementDeleteChipMessage({ message, chips }: ChatChipForma
         `## 被删除元素`,
         `- 名称：${name}`,
         `- 代码位置：${codeLocation}`,
+        repeatContextBlock,
         `- DOM 结构摘要：`,
         domSummary
           .split("\n")
@@ -121,13 +150,10 @@ export function formatElementDeleteChipMessage({ message, chips }: ChatChipForma
           .join("\n"),
         ``,
         `## 修改要求`,
-        `1. 从 JSX 中完整移除【被删除元素】节点（含其所有子节点）`,
-        `2. 同时移除该元素相关的 import 语句（如该组件不再被使用）`,
-        `3. 同时移除该元素独有的样式类定义（如对应 CSS/Less 中仅被该元素使用的类）`,
-        `4. 保持其余元素的顺序、缩进和结构不变`,
+        ...changeRequirements,
         ``,
         `## 注意`,
-        `如果你认为此操作不合法（例如删除会导致父容器渲染异常），请用一句话向用户说明原因，不要修改任何代码。`,
+        ...notes,
         `</element-delete-operation>`,
       ].join("\n")
     );
