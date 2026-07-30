@@ -365,7 +365,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const [uploading, setUploading] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [mentionMenuOpen, setMentionMenuOpen] = useState(false);
-  const [mentionMenuTitle, setMentionMenuTitle] = useState("添加");
+  const [mentionMenuTitle, setMentionMenuTitle] = useState("添加上下文");
   const [mentionMenuEntries, setMentionMenuEntries] = useState<MentionMenuEntry[]>([]);
   const [mentionMenuLoading, setMentionMenuLoading] = useState(false);
   const [mentionMenuCanBack, setMentionMenuCanBack] = useState(false);
@@ -387,6 +387,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const mentionTriggerRangeRef = useRef<Range | null>(null);
   const mentionMenuRequestRef = useRef(0);
   const selectMentionEntryRef = useRef<(entry: MentionMenuEntry) => void | Promise<void>>(() => {});
+  const uploadAttachmentRef = useRef<() => void>(() => {});
   const mentionFileInputRef = useRef<HTMLInputElement>(null);
 
   /** 默认 focus 内容串的整体尺寸，用于把 placeholder 推到内容串后面。 */
@@ -395,6 +396,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const currentPlaceholder = isDefaultFocusContent
     ? (defaultFocusPlaceholder ?? placeholder)
     : placeholder;
+  const hasCustomMentions = mentionProviders.length > 0;
 
   /**
    * 内置 fileChipDef 合并到 chipTypes 里，确保 sender 内部能正确渲染文件 chip。
@@ -618,7 +620,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       setMentionAnchorRect(null);
     }
     setMentionMenuMode(nextMode);
-    setMentionMenuTitle(nextMode === "plus" ? "添加" : "@");
+    setMentionMenuTitle(nextMode === "plus" ? "添加上下文" : "@");
     setMentionMenuCanBack(false);
     setMentionMenuOpen(true);
     setMentionMenuLoading(true);
@@ -632,8 +634,12 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   }, [disabled, mentionProviders, uploading]);
 
   const openPlusMentionMenu = useCallback(async () => {
+    if (!hasCustomMentions) {
+      uploadAttachmentRef.current();
+      return;
+    }
     await openRootMentionMenu("plus");
-  }, [openRootMentionMenu]);
+  }, [hasCustomMentions, openRootMentionMenu]);
 
   const openTriggerMentionMenu = useCallback(async (query: string) => {
     if (disabled) return;
@@ -704,7 +710,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
   const detectMentionTrigger = useCallback(() => {
     const editor = inputEditorRef.current;
-    if (!editor || mentionProviders.length === 0 || disabled) return;
+    if (!editor || !hasCustomMentions || disabled) return;
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) {
       closeMentionMenu();
@@ -736,7 +742,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     mentionTriggerRangeRef.current = triggerRange;
     setMentionAnchorRect(measureRangeRect(triggerRange));
     void openTriggerMentionMenu(query);
-  }, [closeMentionMenu, disabled, measureRangeRect, mentionProviders.length, openTriggerMentionMenu]);
+  }, [closeMentionMenu, disabled, hasCustomMentions, measureRangeRect, openTriggerMentionMenu]);
 
   const insertMentionChip = useCallback((chip: ChatChipInstance, replaceRange?: Range | null) => {
     const editor = inputEditorRef.current;
@@ -1349,23 +1355,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     if (mentionFileInputRef.current) {
       mentionFileInputRef.current.value = "";
       mentionFileInputRef.current.click();
-      return;
     }
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = SUPPORTED_FILE_ACCEPT;
-    fileInput.multiple = true;
-
-    fileInput.addEventListener('change', function (e) {
-      const target = e.target as HTMLInputElement;
-      if (!target?.files?.length) {
-        return;
-      }
-      processFiles(Array.from(target.files));
-    });
-
-    fileInput.click();
   };
+  uploadAttachmentRef.current = uploadAttachment;
 
   const handleMentionFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const target = event.target;
@@ -1383,9 +1375,11 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     if (entry.id === "__files__") {
       if (mentionMenuMode === "trigger" && mentionTriggerRangeRef.current) {
         mentionTriggerRangeRef.current.deleteContents();
+        mentionTriggerRangeRef.current = null;
         syncInputContent();
       }
-      uploadAttachment();
+      closeMentionMenu();
+      uploadAttachmentRef.current();
       return;
     }
 
@@ -1500,13 +1494,11 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       loading={mentionMenuLoading}
       canBack={mentionMenuCanBack}
       highlightedIndex={mentionHighlightIndex}
-      fileInputRef={mentionFileInputRef}
       onBack={backToRootMentionMenu}
       onHighlight={setMentionHighlightIndex}
       onSelect={(entry) => {
         void selectMentionEntry(entry);
       }}
-      onFileInputChange={handleMentionFileInputChange}
     />
   ) : null;
 
@@ -1593,6 +1585,14 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           <div className={classNames(css.leftArea, {
             [css.disabled]: disabled || uploading
           })}>
+            <input
+              ref={mentionFileInputRef}
+              className={css.fileMenuInput}
+              type="file"
+              accept={SUPPORTED_FILE_ACCEPT}
+              multiple
+              onChange={handleMentionFileInputChange}
+            />
             <Popup
               open={mentionMenuOpen}
               onOpenChange={(nextOpen) => {
