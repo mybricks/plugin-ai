@@ -36,9 +36,9 @@ type RequestJson = <T = unknown>(
 
 /**
  * 按 client-guide.md 维护浏览器沙箱与 workspace 文件：
- * - 初始化时以本地文件为准，hash diff 后上传；
+ * - 初始化时以服务端文件为准，hash diff 后拉取内容；
  * - 收到 workspace:file-change 后，按 version cursor 拉取一次增量；
- * - 启动 Agent 前扫描并上传本地 HMR 变化。
+ * - 文件写入/删除都由服务端完成，客户端只同步服务端结果。
  */
 export class FileHmr {
   private sandbox?: Sandbox;
@@ -81,9 +81,7 @@ export class FileHmr {
     if (!this.enabled || !this.sandbox) return;
     if (!this.initialized) {
       await this.syncSnapshot();
-      return;
     }
-    await this.pushLocalChanges(this.sandbox);
   }
 
   syncChanges(targetVersion?: number): Promise<void> {
@@ -149,15 +147,26 @@ export class FileHmr {
       localEntries.map((file) => [file.path, file.hash]),
     );
 
-    const serverHashes = new Map(
-      (manifest?.files ?? [])
-        .filter((file) => !!file?.path)
-        .map((file) => [file.path, file.hash]),
+    const remoteFiles = await mapWithConcurrency(
+      (manifest?.files ?? []).filter((file) => !!file?.path),
+      4,
+      async (file) => {
+        const localHash = this.localHashMap.get(file.path);
+        if (file.hash && localHash === file.hash) return null;
+        return this.readRemoteFile(file.path);
+      },
     );
-    const uploads = localEntries
-      .filter((file) => serverHashes.get(file.path) !== file.hash)
-      .map(({ path, content }) => ({ path, content }));
-    await this.uploadFiles(uploads);
+    const filesToUpdate = remoteFiles.filter(
+      (file): file is { path: string; content: string } => !!file,
+    );
+    if (filesToUpdate.length) {
+      await sandbox.updateFiles(filesToUpdate);
+      const hashes = await mapWithConcurrency(filesToUpdate, 4, async (file) => ({
+        path: file.path,
+        hash: await sha256(file.content),
+      }));
+      for (const file of hashes) this.localHashMap.set(file.path, file.hash);
+    }
 
     this.initialized = true;
   }
@@ -198,51 +207,6 @@ export class FileHmr {
       this.version,
       Number(response.currentVersion) || 0,
     );
-  }
-
-  private async pushLocalChanges(sandbox: Sandbox): Promise<void> {
-    const files = await sandbox.getFiles();
-    const entries = await mapWithConcurrency(files, 4, async (file) => ({
-      path: file.path,
-      content: file.content,
-      hash: await sha256(file.content),
-    }));
-    const currentPaths = new Set(entries.map((file) => file.path));
-    const changed = entries.filter(
-      (file) => this.localHashMap.get(file.path) !== file.hash,
-    );
-    const deleted = [...this.localHashMap.keys()].filter(
-      (path) => !currentPaths.has(path),
-    );
-
-    await this.uploadFiles(
-      changed.map(({ path, content }) => ({ path, content })),
-    );
-    if (deleted.length) {
-      await this.options.requestJson(this.workspacePath("files/delete"), {
-        method: "POST",
-        body: JSON.stringify({
-          paths: deleted,
-          ...(this.options.userId ? { userId: this.options.userId } : {}),
-        }),
-      });
-    }
-    for (const file of changed) this.localHashMap.set(file.path, file.hash);
-    for (const path of deleted) this.localHashMap.delete(path);
-  }
-
-  private async uploadFiles(
-    files: Array<{ path: string; content: string }>,
-  ): Promise<void> {
-    for (const batch of splitFileBatches(files)) {
-      await this.options.requestJson(this.workspacePath("files"), {
-        method: "POST",
-        body: JSON.stringify({
-          files: batch,
-          ...(this.options.userId ? { userId: this.options.userId } : {}),
-        }),
-      });
-    }
   }
 
   private async readRemoteFile(
@@ -302,29 +266,4 @@ async function mapWithConcurrency<T, R>(
   );
   await Promise.all(workers);
   return results;
-}
-
-function splitFileBatches(
-  files: Array<{ path: string; content: string }>,
-  maxFiles = 20,
-  maxBytes = 2 * 1024 * 1024,
-): Array<Array<{ path: string; content: string }>> {
-  const batches: Array<Array<{ path: string; content: string }>> = [];
-  let batch: Array<{ path: string; content: string }> = [];
-  let batchBytes = 0;
-  for (const file of files) {
-    const fileBytes = new TextEncoder().encode(file.content).byteLength;
-    if (
-      batch.length &&
-      (batch.length >= maxFiles || batchBytes + fileBytes > maxBytes)
-    ) {
-      batches.push(batch);
-      batch = [];
-      batchBytes = 0;
-    }
-    batch.push(file);
-    batchBytes += fileBytes;
-  }
-  if (batch.length) batches.push(batch);
-  return batches;
 }

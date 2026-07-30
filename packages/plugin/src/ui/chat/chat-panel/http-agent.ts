@@ -4,13 +4,9 @@ import {
   AgentModeEnum,
   type AgentMode,
   type AgentEventMap,
-  type BoundHistory,
   type CompactRecord,
-  type History,
   type Tool,
   type TurnRecord,
-  type VersionFile,
-  type VersionRecord,
 } from "../../../../../agent/src";
 import type { Sandbox } from "../../../../../agent/src/code-agent";
 import type { AgentRuntimeState } from "../../../context/agent-runtime";
@@ -31,6 +27,8 @@ export interface RemoteAgentEvent {
   event:
     | keyof AgentEventMap
     | "session:error"
+    | "session:preparing"
+    | "session:start"
     | "workspace:file-change"
     | "browser:task";
   data: any;
@@ -135,10 +133,7 @@ export class HttpAgent {
       getMode: () => this.getMode(),
       setMode: (mode, reason) => this.setMode(mode, reason),
     });
-    this.historyManager = new HistoryManager({
-      history: this.remoteHistoryStore,
-      key: this.key,
-    });
+    this.historyManager = new HistoryManager({});
     this.historyInitialization = this.initializeHistory();
     void this.historyInitialization
       .then(() => this.connectEventReplay())
@@ -202,8 +197,8 @@ export class HttpAgent {
     return this.compactRecord;
   }
 
-  getHistory(): BoundHistory | null {
-    return this.historyManager.getBoundHistory();
+  getHistory(): null {
+    return null;
   }
 
   getSessionState(): AgentRuntimeState {
@@ -236,6 +231,7 @@ export class HttpAgent {
     await this.historyInitialization;
     await this.workspaceBridge.prepareRun();
     let terminalSeen = false;
+    let prepareTurnStarted = false;
     try {
       await this.requestEventStream(
         this.sessionPath("run"),
@@ -259,6 +255,24 @@ export class HttpAgent {
           signal: params.signal,
           onEvent: (event) => {
             terminalSeen ||= isTerminalRemoteEvent(event);
+            if (
+              event.event === "session:preparing" &&
+              event.turnId &&
+              !prepareTurnStarted
+            ) {
+              prepareTurnStarted = true;
+              this.handleRemoteEvent({
+                event: "turn:start",
+                turnId: event.turnId,
+                createdAt: event.createdAt,
+                data: {
+                  turnId: event.turnId,
+                  message: params.message,
+                  attachments: params.attachments ?? [],
+                  ...(params.meta ? { meta: params.meta } : {}),
+                },
+              });
+            }
             this.handleRemoteEvent(event);
           },
         },
@@ -306,9 +320,16 @@ export class HttpAgent {
   }
 
   async clearHistory(): Promise<void> {
+    await this.requestJson(this.sessionPath("turns/clear"), {
+      method: "POST",
+    });
     this.turns = [];
     this.compactRecord = null;
-    await this.historyManager.clear();
+    this.turnsPage = {
+      hasMore: false,
+      oldestTurnId: null,
+    };
+    this.historyManager.markReady();
   }
 
   readonly session = {
@@ -345,140 +366,6 @@ export class HttpAgent {
     },
   };
 
-  private readonly remoteHistoryStore: History = {
-    load: async (): Promise<TurnRecord[]> => {
-      const page = await this.loadLatestTurns();
-      this.turnsPage = {
-        hasMore: Boolean(page.hasMore),
-        oldestTurnId: page.oldestTurnId ?? null,
-      };
-      return page.turns ?? [];
-    },
-    append: async (_key, record): Promise<void> => {
-      await this.requestJson(this.sessionPath("turns"), {
-        method: "POST",
-        body: JSON.stringify({ record }),
-      });
-    },
-    update: async (_key, turnId, patch): Promise<void> => {
-      await this.requestJson(
-        `${this.sessionPath("turns")}/${encodeURIComponent(turnId)}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify(patch),
-        },
-      );
-    },
-    clear: async (): Promise<void> => {
-      await this.requestJson(this.sessionPath("turns/clear"), {
-        method: "POST",
-      });
-    },
-    import: async (_key, turns): Promise<void> => {
-      await this.requestJson(this.sessionPath("turns/import"), {
-        method: "POST",
-        body: JSON.stringify({ turns }),
-      });
-    },
-    loadCompact: async (): Promise<CompactRecord | null> => {
-      try {
-        return await this.requestJson<CompactRecord | null>(
-          this.sessionPath("compact"),
-        );
-      } catch (error) {
-        console.warn("[plugin-ai] load compact failed, ignored", error);
-        return null;
-      }
-    },
-    saveCompact: async (_key, record): Promise<void> => {
-      try {
-        await this.requestJson(this.sessionPath("compact"), {
-          method: "POST",
-          body: JSON.stringify({ record }),
-        });
-      } catch (error) {
-        console.warn("[plugin-ai] save compact failed, ignored", error);
-      }
-    },
-    listVersions: async (
-      _key: string,
-      params?: {
-        pageSize?: number;
-        pageNum?: number;
-      },
-    ): Promise<{ total: number; list: VersionRecord[] }> => {
-      const query = new URLSearchParams();
-      if (params?.pageSize !== undefined) {
-        query.set("pageSize", String(params.pageSize));
-      }
-      if (params?.pageNum !== undefined) {
-        query.set("pageNum", String(params.pageNum));
-      }
-      const suffix = query.toString() ? `?${query.toString()}` : "";
-      try {
-        return normalizeVersionsPage(
-          await this.requestJson<any>(
-            `${this.sessionPath("versions")}${suffix}`,
-          ),
-        );
-      } catch (error) {
-        console.warn("[plugin-ai] list versions failed, ignored", error);
-        return { total: 0, list: [] };
-      }
-    },
-    addVersion: async (
-      _key: string,
-      record: VersionRecord,
-      files: VersionFile[],
-    ): Promise<void> => {
-      await this.requestJson(this.sessionPath("versions"), {
-        method: "POST",
-        body: JSON.stringify({ record, files }),
-      });
-    },
-    getVersionFiles: async (versionId: string): Promise<VersionFile[]> => {
-      try {
-        const response = await this.requestJson<any>(
-          `${this.sessionPath("versions")}/${encodeURIComponent(versionId)}/files`,
-        );
-        return Array.isArray(response)
-          ? response
-          : Array.isArray(response?.files)
-            ? response.files
-            : [];
-      } catch (error) {
-        console.warn("[plugin-ai] get version files failed, ignored", error);
-        return [];
-      }
-    },
-    getVersion: async (versionId: string): Promise<VersionRecord | null> => {
-      try {
-        const response = await this.requestJson<any>(
-          `${this.sessionPath("versions")}/${encodeURIComponent(versionId)}`,
-        );
-        const record = response?.record ?? response?.version ?? response;
-        return record && Object.keys(record).length ? record : null;
-      } catch (error) {
-        console.warn("[plugin-ai] get version failed, ignored", error);
-        return null;
-      }
-    },
-    updateVersion: async (
-      versionId: string,
-      patch: Partial<Pick<VersionRecord, "summary">> & {
-        files?: VersionFile[];
-      },
-    ): Promise<void> => {
-      await this.requestJson(
-        `${this.sessionPath("versions")}/${encodeURIComponent(versionId)}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify(patch),
-        },
-      );
-    },
-  };
-
   readonly files = {
     syncSnapshot: async (sandbox: Sandbox): Promise<void> => {
       await this.workspaceBridge.syncSnapshot(sandbox);
@@ -495,17 +382,23 @@ export class HttpAgent {
   };
 
   private async initializeHistory(): Promise<void> {
-    const loaded = await this.historyManager.ensureLoaded();
-    if (!loaded) return;
-    this.turns = loaded.turns;
-    this.compactRecord = loaded.compactRecord;
+    const [page, compactRecord] = await Promise.all([
+      this.loadLatestTurns(),
+      this.loadCompactRecord(),
+    ]);
+    this.turns = page.turns ?? [];
+    this.turnsPage = {
+      hasMore: Boolean(page.hasMore),
+      oldestTurnId: page.oldestTurnId ?? null,
+    };
+    this.compactRecord = compactRecord;
     this.historyManager.markReady();
   }
 
   private async reloadHistory(): Promise<void> {
     const [page, compactRecord] = await Promise.all([
       this.loadLatestTurns(),
-      this.remoteHistoryStore.loadCompact?.(this.key) ?? null,
+      this.loadCompactRecord(),
     ]);
     this.turns = mergeTurnRecords(this.turns, page.turns ?? []);
     if (!this.turnsPage.oldestTurnId) {
@@ -521,6 +414,17 @@ export class HttpAgent {
     limit = DEFAULT_TURNS_PAGE_SIZE,
   ): Promise<TurnsPage> {
     return this.session.getTurns({ limit });
+  }
+
+  private async loadCompactRecord(): Promise<CompactRecord | null> {
+    try {
+      return await this.requestJson<CompactRecord | null>(
+        this.sessionPath("compact"),
+      );
+    } catch (error) {
+      console.warn("[plugin-ai] load compact failed, ignored", error);
+      return null;
+    }
   }
 
   private connectEventReplay(): void {
@@ -580,6 +484,13 @@ export class HttpAgent {
       throw new RemoteSessionError(
         String(event.data?.message ?? "Remote agent session failed"),
       );
+    }
+    if (event.event === "session:preparing" || event.event === "session:start") {
+      this.setSessionState({
+        running: true,
+        turnId: event.turnId ?? this.sessionState.turnId,
+      });
+      return;
     }
     if (event.event === "turn:start" || event.event === "turn:resume") {
       this.setSessionState({
@@ -730,23 +641,6 @@ function unwrapApiResponse<T>(response: ApiResponse<T>): T {
     return wrapped.data;
   }
   return response as T;
-}
-
-function normalizeVersionsPage(
-  response: any,
-): { total: number; list: VersionRecord[] } {
-  const list = Array.isArray(response?.list)
-    ? response.list
-    : Array.isArray(response?.versions)
-      ? response.versions
-      : Array.isArray(response)
-        ? response
-        : [];
-  return {
-    list,
-    total:
-      typeof response?.total === "number" ? response.total : list.length,
-  };
 }
 
 function mergeTurnRecords(
