@@ -38,6 +38,10 @@ function getAccessMode(disabled: boolean): "owner" | "readonly" {
 | `GET /workspaces/:id/files/content?path=...` | 获取文件内容 |
 | `GET /workspaces/:id/files/changes?sinceVersion=N` | 获取文件增量 |
 | `POST /workspaces/:id/browser/tasks/:requestId` | 回传 Browser Tool 结果 |
+| `POST /workspaces/:id/turns/clear` | 清空服务端历史对话 |
+| `GET /workspaces/:id/versions?pageSize=N&pageNum=N` | 查询版本快照元数据列表 |
+| `GET /workspaces/:id/versions/:versionId` | 获取单个版本快照元数据 |
+| `GET /workspaces/:id/versions/:versionId/files` | 获取版本快照文件列表 |
 
 非默认 Agent 使用对应的 `/agents/:agentId/...` 路由。
 
@@ -227,15 +231,19 @@ sequenceDiagram
 
 `/connect` 不处理 Browser Tool。
 
-## 后续接口
+## History 对象接口
 
-服务端后续提供：
+`HttpAgent.getHistory()` 对远程 Agent 不能返回 `null`。它至少要返回一个绑定当前 workspace / agent 的 history 对象，用来适配现有 `BoundHistory` 版本快照能力。
 
-- `POST /turns/clear`
-- `/compact`
-- `/versions`
+| history 方法 | 服务端接口 | 说明 |
+|---|---|---|
+| `listVersions(params?)` | `GET /versions?pageSize=N&pageNum=N` | 查询版本快照元数据列表；这是 history 对象的必备接口 |
+| `addVersion(record, files)` | 暂不调用远程接口 | 仅保留 `BoundHistory` 形状，当前不实现真实保存 |
+| `getVersion(versionId)` | `GET /versions/:versionId` | 获取单个版本元数据，不含 files |
+| `getVersionFiles(versionId)` | `GET /versions/:versionId/files` | 获取版本文件内容，用于查看或回滚 |
+| `updateVersion(versionId, patch)` | 暂不调用远程接口 | 仅保留 `BoundHistory` 形状，当前不实现真实更新 |
 
-这些接口独立于本文的初始化、run、connect、文件变化和 Browser Tool 主流程。
+这些 history 接口独立于本文的初始化、run、connect、文件变化和 Browser Tool 主流程；它们主要供版本面板、手动保存、回滚等外部调用方使用。
 
 ## 修改边界
 

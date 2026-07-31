@@ -320,6 +320,8 @@ export interface ForkOptions {
 // ─── ForkAgent ────────────────────────────────────────────────────────────────
 
 export interface RequestAIOptions {
+  /** 外部预分配的 turnId；不传时由 Agent 内部生成。 */
+  turnId?: string;
   message: string;
   attachments?: any[];
   /** 本次请求前切换到指定模式（可由 sender UI 传入） */

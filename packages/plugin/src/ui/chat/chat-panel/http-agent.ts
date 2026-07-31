@@ -5,8 +5,11 @@ import {
   type AgentMode,
   type AgentEventMap,
   type CompactRecord,
+  type BoundHistory,
   type Tool,
   type TurnRecord,
+  type VersionFile,
+  type VersionRecord,
 } from "../../../../../agent/src";
 import type { Sandbox } from "../../../../../agent/src/code-agent";
 import type { AgentRuntimeState } from "../../../context/agent-runtime";
@@ -22,6 +25,11 @@ export type {
 } from "./workspace-bridge";
 
 type ApiResponse<T> = T | { code: number; message?: string; data: T };
+type VersionsPageResponse =
+  | { total?: number; list?: VersionRecord[]; versions?: VersionRecord[] }
+  | VersionRecord[];
+type VersionRecordResponse = { record?: VersionRecord } | VersionRecord | null;
+type VersionFilesResponse = { files?: VersionFile[] } | VersionFile[];
 
 export interface RemoteAgentEvent {
   event:
@@ -62,6 +70,7 @@ export interface HttpAgentOptions {
 }
 
 export interface HttpAgentRequestAIParams {
+  turnId?: string;
   message: string;
   attachments?: any[];
   mode?: AgentMode;
@@ -110,6 +119,7 @@ export class HttpAgent {
   private sessionStateListeners = new Set<
     (state: AgentRuntimeState) => void
   >();
+  private readonly remoteHistory: BoundHistory;
   private readonly historyInitialization: Promise<void>;
 
   constructor(options: HttpAgentOptions) {
@@ -133,6 +143,7 @@ export class HttpAgent {
       getMode: () => this.getMode(),
       setMode: (mode, reason) => this.setMode(mode, reason),
     });
+    this.remoteHistory = this.createRemoteHistory();
     this.historyManager = new HistoryManager({});
     this.historyInitialization = this.initializeHistory();
     void this.historyInitialization
@@ -197,8 +208,8 @@ export class HttpAgent {
     return this.compactRecord;
   }
 
-  getHistory(): null {
-    return null;
+  getHistory(): BoundHistory {
+    return this.remoteHistory;
   }
 
   getSessionState(): AgentRuntimeState {
@@ -230,14 +241,26 @@ export class HttpAgent {
     // 避免迟到的 ready snapshot 覆盖正在流式更新的消息。
     await this.historyInitialization;
     await this.workspaceBridge.prepareRun();
+    const turnId = params.turnId ?? createTurnId();
     let terminalSeen = false;
-    let prepareTurnStarted = false;
+    this.handleRemoteEvent({
+      event: "turn:start",
+      turnId,
+      createdAt: Date.now(),
+      data: {
+        turnId,
+        message: params.message,
+        attachments: params.attachments ?? [],
+        ...(params.meta ? { meta: params.meta } : {}),
+      },
+    });
     try {
       await this.requestEventStream(
         this.sessionPath("run"),
         {
           method: "POST",
           body: JSON.stringify({
+            turnId,
             message: params.message,
             attachments: params.attachments,
             ...(params.userId ?? this.userId
@@ -256,22 +279,10 @@ export class HttpAgent {
           onEvent: (event) => {
             terminalSeen ||= isTerminalRemoteEvent(event);
             if (
-              event.event === "session:preparing" &&
-              event.turnId &&
-              !prepareTurnStarted
+              event.event === "turn:start" &&
+              ((event.data?.turnId ?? event.turnId) === turnId)
             ) {
-              prepareTurnStarted = true;
-              this.handleRemoteEvent({
-                event: "turn:start",
-                turnId: event.turnId,
-                createdAt: event.createdAt,
-                data: {
-                  turnId: event.turnId,
-                  message: params.message,
-                  attachments: params.attachments ?? [],
-                  ...(params.meta ? { meta: params.meta } : {}),
-                },
-              });
+              return;
             }
             this.handleRemoteEvent(event);
           },
@@ -288,6 +299,14 @@ export class HttpAgent {
         error instanceof RemoteSessionError ||
         error instanceof HttpResponseError
       ) {
+        if (!params.signal?.aborted) {
+          this.handleRemoteEvent({
+            event: "turn:error",
+            turnId,
+            createdAt: Date.now(),
+            data: { error },
+          });
+        }
         params.onError?.(error as Error);
         throw error;
       }
@@ -381,25 +400,60 @@ export class HttpAgent {
     },
   };
 
+  private createRemoteHistory(): BoundHistory {
+    return {
+      listVersions: async (params) => {
+        const query = new URLSearchParams();
+        if (params?.pageSize != null) {
+          query.set("pageSize", String(params.pageSize));
+        }
+        if (params?.pageNum != null) {
+          query.set("pageNum", String(params.pageNum));
+        }
+        const suffix = query.toString() ? `?${query.toString()}` : "";
+        const response = await this.requestJson<VersionsPageResponse>(
+          `${this.sessionPath("versions")}${suffix}`,
+        );
+        return normalizeVersionsPage(response);
+      },
+      addVersion: async (record, files) => {
+        void record;
+        void files;
+      },
+      getVersionFiles: async (versionId) => {
+        const response = await this.requestJson<VersionFilesResponse>(
+          this.sessionPath(
+            `versions/${encodeURIComponent(versionId)}/files`,
+          ),
+        );
+        return normalizeVersionFiles(response);
+      },
+      getVersion: async (versionId) => {
+        const response = await this.requestJson<VersionRecordResponse>(
+          this.sessionPath(`versions/${encodeURIComponent(versionId)}`),
+        );
+        return normalizeVersionRecord(response);
+      },
+      updateVersion: async (versionId, patch) => {
+        void versionId;
+        void patch;
+      },
+    };
+  }
+
   private async initializeHistory(): Promise<void> {
-    const [page, compactRecord] = await Promise.all([
-      this.loadLatestTurns(),
-      this.loadCompactRecord(),
-    ]);
+    const page = await this.loadLatestTurns();
     this.turns = page.turns ?? [];
     this.turnsPage = {
       hasMore: Boolean(page.hasMore),
       oldestTurnId: page.oldestTurnId ?? null,
     };
-    this.compactRecord = compactRecord;
+    this.compactRecord = null;
     this.historyManager.markReady();
   }
 
   private async reloadHistory(): Promise<void> {
-    const [page, compactRecord] = await Promise.all([
-      this.loadLatestTurns(),
-      this.loadCompactRecord(),
-    ]);
+    const page = await this.loadLatestTurns();
     this.turns = mergeTurnRecords(this.turns, page.turns ?? []);
     if (!this.turnsPage.oldestTurnId) {
       this.turnsPage = {
@@ -407,24 +461,13 @@ export class HttpAgent {
         oldestTurnId: page.oldestTurnId ?? null,
       };
     }
-    this.compactRecord = compactRecord;
+    this.compactRecord = null;
   }
 
   private async loadLatestTurns(
     limit = DEFAULT_TURNS_PAGE_SIZE,
   ): Promise<TurnsPage> {
     return this.session.getTurns({ limit });
-  }
-
-  private async loadCompactRecord(): Promise<CompactRecord | null> {
-    try {
-      return await this.requestJson<CompactRecord | null>(
-        this.sessionPath("compact"),
-      );
-    } catch (error) {
-      console.warn("[plugin-ai] load compact failed, ignored", error);
-      return null;
-    }
   }
 
   private connectEventReplay(): void {
@@ -643,6 +686,34 @@ function unwrapApiResponse<T>(response: ApiResponse<T>): T {
   return response as T;
 }
 
+function normalizeVersionsPage(
+  response: VersionsPageResponse | undefined,
+): { total: number; list: VersionRecord[] } {
+  if (Array.isArray(response)) {
+    return { total: response.length, list: response };
+  }
+  const list = response?.list ?? response?.versions ?? [];
+  return {
+    total: Number(response?.total ?? list.length) || 0,
+    list,
+  };
+}
+
+function normalizeVersionRecord(
+  response: VersionRecordResponse | undefined,
+): VersionRecord | null {
+  if (!response) return null;
+  if ("record" in response) return response.record ?? null;
+  return response;
+}
+
+function normalizeVersionFiles(
+  response: VersionFilesResponse | undefined,
+): VersionFile[] {
+  if (Array.isArray(response)) return response;
+  return response?.files ?? [];
+}
+
 function mergeTurnRecords(
   olderTurns: TurnRecord[],
   newerTurns: TurnRecord[],
@@ -688,6 +759,10 @@ function trimRight(value: string, char: string): string {
   let next = value;
   while (next.endsWith(char)) next = next.slice(0, -char.length);
   return next;
+}
+
+function createTurnId(): string {
+  return `turn-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 class RemoteSessionError extends Error {}

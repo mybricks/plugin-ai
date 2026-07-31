@@ -1210,7 +1210,7 @@ export class Agent {
    */
   async requestAI(params: RequestAIOptions): Promise<void> {
     await this.ensureHistoryReady();
-    const { message, attachments, mode = AgentModeEnum.Build, providerId, modelId, ...rest } = params;
+    const { turnId: requestedTurnId, message, attachments, mode = AgentModeEnum.Build, providerId, modelId, ...rest } = params;
     this.setMode(mode, "requestAI");
     if (modelId) {
       this.llmProviders?.setSelected(providerId, modelId);
@@ -1272,7 +1272,7 @@ export class Agent {
     }
 
     // ── 构建本轮 TurnRecord（使用格式化后的 attachments / meta / extra）
-    const turnId = `turn-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const turnId = requestedTurnId ?? createTurnId();
     const formattedMeta = formattedParams.meta;
     const formattedExtra = formattedParams.extra;
     const formattedAttachments = formattedParams.attachments ?? attachments ?? [];
@@ -2017,6 +2017,10 @@ IMPORTANT: 不要调用工具！
 
     return false;
   }
+}
+
+function createTurnId(): string {
+  return `turn-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 /**

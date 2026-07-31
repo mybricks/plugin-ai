@@ -8,8 +8,6 @@ import type { CompactRecord, History, TurnRecord, VersionFile, VersionRecord } f
  *   POST   /turns                                     body: { key, turns: TurnRecord[] }  → 覆盖写
  *   PATCH  /turns?key=<key>&turnId=<id>               body: Partial<TurnRecord>            → 局部更新
  *   DELETE /turns?key=<key>                           → 清空
- *   GET    /compact?key=<key>                         → { record: CompactRecord } | {}
- *   POST   /compact                                   body: { key, record: CompactRecord } → 覆盖写
  *
  *   GET    /versions?key=<key>                        → { versions: VersionRecord[] }      （仅 metadata，不含 files）
  *   POST   /versions                                  body: { key, record: VersionRecord, files: VersionFile[] }
@@ -66,16 +64,10 @@ export class HTTPHistory implements History {
   }
 
   async clear(key: string): Promise<void> {
-    await Promise.all([
-      fetch(`${this.baseUrl}/turns?key=${encodeURIComponent(key)}`, {
-        method: "DELETE",
-        headers: this.defaultHeaders(),
-      }),
-      fetch(`${this.baseUrl}/compact?key=${encodeURIComponent(key)}`, {
-        method: "DELETE",
-        headers: this.defaultHeaders(),
-      }),
-    ]);
+    await fetch(`${this.baseUrl}/turns?key=${encodeURIComponent(key)}`, {
+      method: "DELETE",
+      headers: this.defaultHeaders(),
+    });
   }
 
   async import(key: string, turns: TurnRecord[]): Promise<void> {
@@ -86,21 +78,12 @@ export class HTTPHistory implements History {
     });
   }
 
-  async loadCompact(key: string): Promise<CompactRecord | null> {
-    const res = await fetch(`${this.baseUrl}/compact?key=${encodeURIComponent(key)}`, {
-      headers: this.defaultHeaders(),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.record ?? null;
+  async loadCompact(_key: string): Promise<CompactRecord | null> {
+    return null;
   }
 
-  async saveCompact(key: string, record: CompactRecord): Promise<void> {
-    await fetch(`${this.baseUrl}/compact`, {
-      method: "POST",
-      headers: this.defaultHeaders(),
-      body: JSON.stringify({ key, record }),
-    });
+  async saveCompact(_key: string, _record: CompactRecord): Promise<void> {
+    // HTTPHistory intentionally does not persist compact records.
   }
 
   // ── 版本快照 ──────────────────────────────────────────────────────────────
