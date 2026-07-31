@@ -73,11 +73,13 @@ export interface LowCodeOperatorParams {
   /**
    * UI designer update params.
    * - kind is a page-level intention exposed to the model.
+   * - targetId is the page id or UI component id to operate on.
    * - updatePage actions should be MyBricks object actions: { comId, type, target, params }
    * - legacy tuple actions [comId, target, type, params] are accepted and normalized before execution.
    * - status is managed internally by pluginLowCodeAI.
    */
   kind: "updatePage" | "createPage" | "clearPage";
+  targetId?: string;
   actions?: any[];
 }
 

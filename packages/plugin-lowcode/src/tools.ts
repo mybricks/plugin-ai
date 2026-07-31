@@ -53,16 +53,45 @@ async function executeDeletePage(runtime: LowCodeDesignerRuntime): Promise<any> 
   return clearPageContent(pageId);
 }
 
+function getTarget(runtime: LowCodeDesignerRuntime, params: LowCodeOperatorParams) {
+  const focusTarget = getFocusTarget(runtime.focus);
+  const targetId = params.targetId?.trim();
+  if (!targetId) return focusTarget;
+
+  const targetType = focusTarget?.id === targetId
+    ? focusTarget.type
+    : runtime.focus?.comId === targetId
+      ? "uiCom"
+      : "page";
+
+  return {
+    type: targetType,
+    id: targetId,
+    pageId: targetType === "page" ? targetId : focusTarget?.pageId,
+    title: focusTarget?.id === targetId ? focusTarget.title : undefined,
+  };
+}
+
 async function executeOperator(runtime: LowCodeDesignerRuntime, params: LowCodeOperatorParams): Promise<any> {
   const api = requireApi(runtime);
-  const focusTarget = getFocusTarget(runtime.focus);
-  const designerActions = normalizeDesignerActions(params.actions ?? []);
+  const target = getTarget(runtime, params);
+  const targetPageId = target?.type === "uiCom" ? target.pageId : target?.pageId ?? target?.id;
+  const designerActions = normalizeDesignerActions(params.actions ?? [], { pageId: targetPageId });
 
   if (params.kind === "createPage") {
     return executeCreatePage(runtime);
   }
 
   if (params.kind === "clearPage") {
+    if (target?.id) {
+      const pageId = target.pageId ?? target.id;
+      const clearPageContent = api.page?.api?.clearPageContent;
+      if (!clearPageContent) {
+        throw new Error("Designer api.page.api.clearPageContent is not available.");
+      }
+      printDesignerAction("clearPageContent", [pageId]);
+      return clearPageContent(pageId);
+    }
     return executeDeletePage(runtime);
   }
 
@@ -70,8 +99,8 @@ async function executeOperator(runtime: LowCodeDesignerRuntime, params: LowCodeO
     throw new Error(`Unsupported lowcode operator kind: ${params.kind}`);
   }
 
-  if (focusTarget?.type === "uiCom" && focusTarget.id) {
-    const comId = focusTarget.id;
+  if (target?.type === "uiCom" && target.id) {
+    const comId = target.id;
     printDesignerAction("updateCom", [comId, [], "start"]);
     await api.uiCom?.api?.updateCom?.(comId, [], "start");
     try {
@@ -88,7 +117,7 @@ async function executeOperator(runtime: LowCodeDesignerRuntime, params: LowCodeO
     }
   }
 
-  const pageId = focusTarget?.pageId ?? focusTarget?.id;
+  const pageId = targetPageId;
   if (pageId) {
     printDesignerAction("updatePage", [pageId, [], "start"]);
     await api.page?.api?.updatePage?.(pageId, [], "start");
@@ -106,7 +135,7 @@ async function executeOperator(runtime: LowCodeDesignerRuntime, params: LowCodeO
     }
   }
 
-  throw new Error("lowcode_operator requires focused page or UI component.");
+  throw new Error("lowcode_operator requires targetId or focused page/UI component.");
 }
 
 export function createLowCodeComponentDocTool(runtime: LowCodeDesignerRuntime): Tool {
@@ -172,7 +201,11 @@ export function createLowCodeTools(options: LowCodeToolOptions): Tool[] {
           kind: {
             type: "string",
             enum: ["updatePage", "createPage", "clearPage"],
-            description: "页面操作类型。updatePage 会根据当前 focus 在内部选择 updatePage 或 updateCom。",
+            description: "页面操作类型。updatePage 会根据 targetId/current focus 在内部选择 updatePage 或 updateCom。",
+          },
+          targetId: {
+            type: "string",
+            description: "目标页面 id 或 UI 组件 id。没有可靠 focus 时必填；更新页面根内容时传页面 id。",
           },
           actions: {
             type: "array",

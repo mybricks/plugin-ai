@@ -8,6 +8,15 @@ export interface DesignerObjectAction {
   params?: any;
 }
 
+export interface NormalizeDesignerActionOptions {
+  pageId?: string;
+}
+
+const ROOT_COM_ID = "*root*";
+const ROOT_SLOT_ID = "*rootSlot*";
+const LEGACY_ROOT_COM_ID = "_root_";
+const LEGACY_ROOT_SLOT_ID = "_rootSlot_";
+
 function clone<T>(value: T): T {
   if (value === undefined || value === null) return value;
   try {
@@ -93,8 +102,27 @@ function normalizeConfig(config: any): any {
   return config;
 }
 
-function normalizeObjectAction(action: DesignerObjectAction): DesignerObjectAction {
+function normalizeRootTarget(action: DesignerObjectAction, options: NormalizeDesignerActionOptions = {}): void {
+  if (!action) return;
+
+  const isRootCom = action.comId === LEGACY_ROOT_COM_ID || action.comId === ROOT_COM_ID || action.comId === options.pageId;
+  if (isRootCom) {
+    action.comId = ROOT_COM_ID;
+  }
+
+  const isRootSlot = action.target === LEGACY_ROOT_SLOT_ID || action.target === ROOT_SLOT_ID || action.target === options.pageId;
+  if (isRootSlot) {
+    action.target = ROOT_SLOT_ID;
+  }
+
+  if (action.type === "addChild" && action.comId === ROOT_COM_ID && !action.target) {
+    action.target = ROOT_SLOT_ID;
+  }
+}
+
+function normalizeObjectAction(action: DesignerObjectAction, options: NormalizeDesignerActionOptions = {}): DesignerObjectAction {
   const next = clone(action);
+  normalizeRootTarget(next, options);
 
   if (next.type === "delete" && !next.params) {
     next.params = {};
@@ -151,21 +179,21 @@ function normalizeObjectAction(action: DesignerObjectAction): DesignerObjectActi
   return next;
 }
 
-export function normalizeDesignerAction(action: any): DesignerObjectAction {
+export function normalizeDesignerAction(action: any, options: NormalizeDesignerActionOptions = {}): DesignerObjectAction {
   if (typeof action === "string") {
-    return normalizeDesignerAction(parseActionString(action));
+    return normalizeDesignerAction(parseActionString(action), options);
   }
   if (Array.isArray(action)) {
     const [comId, target, type, params] = action;
-    return normalizeObjectAction({ comId, target, type, params });
+    return normalizeObjectAction({ comId, target, type, params }, options);
   }
-  return normalizeObjectAction(action);
+  return normalizeObjectAction(action, options);
 }
 
-export function normalizeDesignerActions(actions: any[] = []): DesignerObjectAction[] {
+export function normalizeDesignerActions(actions: any[] = [], options: NormalizeDesignerActionOptions = {}): DesignerObjectAction[] {
   if (typeof actions === "string") {
     const parsed = parseActionString(actions);
-    return normalizeDesignerActions(Array.isArray(parsed) && Array.isArray(parsed[0]) ? parsed : [parsed]);
+    return normalizeDesignerActions(Array.isArray(parsed) && Array.isArray(parsed[0]) ? parsed : [parsed], options);
   }
-  return actions.map(normalizeDesignerAction);
+  return actions.map((action) => normalizeDesignerAction(action, options));
 }
