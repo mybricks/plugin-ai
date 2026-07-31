@@ -1,12 +1,12 @@
-import type { PluginAIParams } from "../../index";
 import type { PromptSections } from "../../prompts";
+import type { PluginAIPreset } from "../../types";
 import { fullStackAppPromptSection } from './sections'
 
 /** @deprecated Use the agent-app preset exports instead. */
 export { fullStackAppPromptSection } from './sections'
 
 /** @deprecated Use PluginAIPreset from the agent-app preset instead. */
-export type PluginAIPreset = Partial<PluginAIParams>;
+export type { PluginAIPreset };
 
 /** @deprecated The full-stack-app preset is deprecated. */
 export type FullStackAppDatabaseType = "PostgreSQL" | "MySQL";

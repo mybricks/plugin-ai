@@ -8,7 +8,7 @@ import type { AgentOptions, CodeAgentPlugin, SkillFile, TurnSender } from "../..
 import { createRequestAsStream, createOnUpload } from "../../request/src";
 import type { RequestAsStreamFn, ProviderConfig } from "../../request/src";
 export type { ProviderConfig, RemoteProviderConfig, CustomProviderConfig, ModelConfig, ModelSelection } from "../../request/src";
-import { resolvePromptOptions, type PromptSections } from "./prompts";
+import { resolvePromptOptions, type PromptSections } from "../../kit/src/prompts";
 import { DEFAULT_PLUGIN_SKILLS } from "./skills/default";
 
 import { context } from "./context";
@@ -34,8 +34,16 @@ export type { MentionProvider, MentionMenuItem } from "./ui/components/types";
 // ProviderConfig / ModelConfig 已由 request 包导出，此处仅导出 plugin 专属类型
 export type { SettingValue } from "./ui/setting";
 export { ChatPanel } from "./ui/chat";
-export type { ChatPanelProps, ChatPanelRef } from "./ui/chat";
-export * from "./preset";
+export { HttpAgent } from "./ui/chat";
+export type {
+  BrowserToolHandler,
+  BrowserToolRequest,
+  BrowserToolResult,
+  ChatPanelProps,
+  ChatPanelRef,
+  HttpAgentOptions,
+} from "./ui/chat";
+export * from "../../kit/src/preset";
 
 // ─── PluginAI 实例 API ────────────────────────────────────────────────────────
 

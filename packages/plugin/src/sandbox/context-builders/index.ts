@@ -1,4 +1,4 @@
-import type { PromptSections } from "../../prompts";
+import type { PromptSections } from "../../../../kit/src/prompts";
 import type { Designer } from "../types";
 
 interface DesignerContextBuildRules {

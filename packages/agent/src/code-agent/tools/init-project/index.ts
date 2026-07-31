@@ -1,6 +1,7 @@
-import type { Tool, Sandbox } from "../../../../agent/src";
-import type { Agent } from "../../../../agent/src";
-import type { ToolExecutionContext } from "../../../../agent/src/agent";
+import type { Agent } from "../../../agent";
+import type { ToolExecutionContext } from "../../../agent";
+import type { Tool } from "../../../types";
+import type { Sandbox } from "../../index";
 
 /**
  * init-project 工具名称常量

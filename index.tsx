@@ -5,6 +5,9 @@ export * from "./packages/plugin/src/index";
 // re-export packages/agent
 export * from "./packages/agent/src/index";
 
+// re-export packages/kit
+export * from "./packages/kit/src/index";
+
 // re-export packages/request
 export * from "./packages/request/src/index";
 

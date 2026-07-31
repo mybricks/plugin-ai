@@ -1,10 +1,10 @@
-import type { PluginAIParams } from "../../index";
 import type { PromptSections } from "../../prompts";
+import type { PluginAIPreset } from "../../types";
 
 import { agentAppPromptSection } from './sections'
 export { agentAppPromptSection } from './sections'
 
-export type PluginAIPreset = Partial<PluginAIParams>;
+export type { PluginAIPreset };
 
 /**
  * 
