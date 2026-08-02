@@ -13,9 +13,10 @@ import type {
   LowCodeOperatorParams,
   LowCodeRequestParams,
 } from "./designer";
-import { buildLowCodeStableContext } from "./outline";
+import { buildLowCodeDesignerContext, buildLowCodeStableContext } from "./outline";
 import { getLowCodeSystemPrompt } from "./prompt";
 import { createLowCodeTools } from "./tools";
+import { registerLowCodeMockActions } from "./tools/mock-actions";
 
 export type {
   LowCodeDesignerAPI,
@@ -26,7 +27,9 @@ export type {
 export {
   LOWCODE_GET_PROJECT_CONTEXT_TOOL_NAME,
   LOWCODE_GET_COMPONENT_DOC_TOOL_NAME,
-  LOWCODE_OPERATOR_TOOL_NAME,
+  LOWCODE_UPDATE_PAGE_TOOL_NAME,
+  LOWCODE_CREATE_PAGE_TOOL_NAME,
+  LOWCODE_CLEAR_PAGE_TOOL_NAME,
   createLowCodeTools,
 } from "./tools";
 
@@ -171,14 +174,11 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
     const sandbox: Sandbox = {
       ...emptySandbox,
       getContext: async () => {
-        const sections = [
-          buildLowCodeStableContext(runtime.api, runtime.focus),
-          await getUserContextMessage?.(),
-        ].filter(Boolean);
+        const sections = [buildLowCodeStableContext(runtime.api)].filter(Boolean);
         return sections.length ? sections.join("\n\n") : null;
       },
       getSandboxMetaSection: async () => {
-        return runtime.api ? "<project-info>\n低代码模式：当前不暴露文件系统，只能通过 lowcode_operator 修改设计器。\n</project-info>" : null;
+        return runtime.api ? "<project-info>\n低代码模式：当前不暴露文件系统，只能通过 lowcode_update_page、lowcode_create_page、lowcode_clear_page 修改设计器。\n</project-info>" : null;
       },
     };
 
@@ -191,6 +191,13 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
       builtinTools: false,
       promptOptions: false,
       system: [getLowCodeSystemPrompt(), system].filter(Boolean).join("\n\n"),
+      getAttachmentContextMessages: async () => {
+        const sections = [
+          buildLowCodeDesignerContext(runtime.api, runtime.focus),
+          await getUserContextMessage?.(),
+        ].filter(Boolean) as string[];
+        return sections;
+      },
       tools: createLowCodeTools({ runtime, onOperatorActions }),
       disabledModes,
       ...(sender ? { sender } : {}),
@@ -276,6 +283,7 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
       aiService: {
         init(api: LowCodeDesignerAPI) {
           runtime.api = api;
+          registerLowCodeMockActions(api);
           ensureAgent();
           notifyView();
 

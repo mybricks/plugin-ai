@@ -4,6 +4,16 @@ export class ComponentsManager {
   private static namespaceAbbrevMap = new Map<string, string>();
   private static abbreviationMap = new Map<string, string>();
 
+  private static getNamespaceAbbreviation(namespace: string): string {
+    return namespace
+      .replace("mybricks.normal-pc.antd5.", "pc.")
+      .replace("mybricks.normal-pc-lite.", "pc.")
+      .replace("mybricks.normal-pc.", "pc.")
+      .replace("mybricks.vibe-design.", "vibe.")
+      .replace("mybricks.harmony.", "mb.")
+      .replace("mybricks.taro.", "mb.");
+  }
+
   private static init(): void {
     if (this.isLoaded) return;
 
@@ -28,11 +38,7 @@ export class ComponentsManager {
           all: com,
         });
 
-        const abbreviation = com.namespace
-          .replace("mybricks.normal-pc.antd5.", "pc.")
-          .replace("mybricks.normal-pc.", "pc.")
-          .replace("mybricks.harmony.", "mb.")
-          .replace("mybricks.taro.", "mb.");
+        const abbreviation = this.getNamespaceAbbreviation(com.namespace);
 
         if (abbreviation !== com.namespace) {
           this.namespaceAbbrevMap.set(abbreviation, com.namespace);
@@ -58,7 +64,7 @@ export class ComponentsManager {
 
   static getAbbreviation(namespace: string): string {
     this.init();
-    return this.abbreviationMap.get(namespace) || namespace;
+    return this.abbreviationMap.get(namespace) || this.getNamespaceAbbreviation(namespace);
   }
 
   static getAiComponent(namespace: string): any {
@@ -88,5 +94,30 @@ export class ComponentsManager {
     this.init();
     const ai = this.aiComponentMap.get(this.getFullNamespace(namespace));
     return Array.isArray(ai?.requires) ? [...ai.requires] : [];
+  }
+
+  static getAllAiComponents(): Array<{ namespace: string; abbreviation: string; ai: any; all: any }> {
+    this.init();
+    const result: Array<{ namespace: string; abbreviation: string; ai: any; all: any }> = [];
+    this.aiComponentMap.forEach((ai, namespace) => {
+      result.push({
+        namespace,
+        abbreviation: this.getAbbreviation(namespace),
+        ai,
+        all: ai?.all,
+      });
+    });
+    return result;
+  }
+
+  static replaceKnownNamespaces(value: string): string {
+    if (!value) return value;
+    this.init();
+    let result = value;
+    const namespaces = Array.from(this.abbreviationMap.keys()).sort((a, b) => b.length - a.length);
+    namespaces.forEach((namespace) => {
+      result = result.split(namespace).join(this.getAbbreviation(namespace));
+    });
+    return result;
   }
 }

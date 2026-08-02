@@ -131,7 +131,11 @@ function renderValue(value: any): string {
   }
 }
 
-function renderNode(node: OutlineNode | undefined, level = 0): string {
+interface RenderNodeOptions {
+  maxDepth?: number;
+}
+
+function renderNode(node: OutlineNode | undefined, level = 0, options: RenderNodeOptions = {}, depth = 0): string {
   if (!node) return "无内容";
   const indent = "  ".repeat(level);
   const namespaceValue = node.def?.namespace
@@ -140,17 +144,26 @@ function renderNode(node: OutlineNode | undefined, level = 0): string {
   const namespace = namespaceValue ? ` namespace="${namespaceValue}"` : "";
   const title = node.title ? ` title="${node.title}"` : "";
   const id = node.id ? ` id="${node.id}"` : "";
+  const layout = node.layout ? ` layout=${renderValue(node.layout)}` : "";
   const style = node.style ? ` style=${renderValue(node.style)}` : "";
-  const header = `${indent}<Com${id}${title}${namespace}${style}>`;
+  const header = `${indent}<Com${id}${title}${namespace}${layout}${style}>`;
   const children: string[] = [];
+  const maxDepth = options.maxDepth;
+  const reachedMaxDepth = maxDepth !== undefined && depth >= maxDepth;
+
+  if (reachedMaxDepth) {
+    const childCount = (node.components?.length ?? 0) + (node.slots ?? []).reduce((sum, slot) => sum + (slot.components?.length ?? 0), 0);
+    return `${header}\n${indent}  ${childCount ? `...已省略 ${childCount} 个子节点` : "无内容"}\n${indent}</Com>`;
+  }
 
   for (const slot of node.slots ?? []) {
-    const slotChildren = (slot.components ?? []).map((child) => renderNode(child, level + 2)).join("\n");
-    children.push(`${indent}  <Slot id="${slot.id}"${slot.title ? ` title="${slot.title}"` : ""}>\n${slotChildren || `${indent}    无内容`}\n${indent}  </Slot>`);
+    const slotLayout = slot.layout ? ` layout=${renderValue(slot.layout)}` : "";
+    const slotChildren = (slot.components ?? []).map((child) => renderNode(child, level + 2, options, depth + 1)).join("\n");
+    children.push(`${indent}  <Slot id="${slot.id}"${slot.title ? ` title="${slot.title}"` : ""}${slotLayout}>\n${slotChildren || `${indent}    无内容`}\n${indent}  </Slot>`);
   }
 
   if (!children.length && node.components?.length) {
-    children.push(...node.components.map((child) => renderNode(child, level + 1)));
+    children.push(...node.components.map((child) => renderNode(child, level + 1, options, depth + 1)));
   }
 
   return `${header}\n${children.join("\n") || `${indent}  无内容`}\n${indent}</Com>`;
@@ -225,7 +238,7 @@ function buildComponentEditingDocs(api: LowCodeDesignerAPI | undefined, namespac
     const fullNamespace = ComponentsManager.getFullNamespace(namespace);
     const abbreviation = ComponentsManager.getAbbreviation(fullNamespace);
     const componentInfo = ComponentsManager.getAiComponent(fullNamespace);
-    const doc = getComponentDoc(api, fullNamespace).trim();
+    const doc = ComponentsManager.replaceKnownNamespaces(getComponentDoc(api, fullNamespace).trim());
     const inputs = componentInfo?.all?.inputs?.reduce?.((prev: string, input: any) => {
       let schema = "";
       try {
@@ -241,7 +254,6 @@ function buildComponentEditingDocs(api: LowCodeDesignerAPI | undefined, namespac
     }, "");
     return [
       `### ${abbreviation}`,
-      fullNamespace !== abbreviation ? `完整 namespace：${fullNamespace}` : "",
       doc || "宿主未提供该组件的编辑文档。",
       slots ? `<slots>\n${slots}</slots>` : "",
       inputs ? `<inputs>\n${inputs}</inputs>` : "",
@@ -251,7 +263,50 @@ function buildComponentEditingDocs(api: LowCodeDesignerAPI | undefined, namespac
   return docs.join("\n\n---\n\n");
 }
 
-export function buildLowCodeStableContext(api: LowCodeDesignerAPI | undefined, focus?: LowCodeFocusParams): string {
+function renderComponentSlots(component: any): string {
+  const slots = component?.slots;
+  if (!Array.isArray(slots) || !slots.length) return "";
+  return slots.reduce((prev: string, slot: any) => {
+    const scopeInputs = slot.type === "scope" && Array.isArray(slot.inputs)
+      ? slot.inputs.map((input: any) => `    - ${input.id}（${input.title ?? ""}）${input.desc ? ` - ${input.desc}` : ""}`).join("\n")
+      : "";
+    return `${prev}  - ${slot.id}（${slot.title ?? ""}${slot.description ? ` - ${slot.description}` : ""}）${slot.type === "scope" ? " - 作用域插槽" : ""}\n${scopeInputs ? `${scopeInputs}\n` : ""}`;
+  }, "");
+}
+
+function normalizeComponentDocForPrompt(doc: string): string {
+  const withLayoutTitle = doc.replace(/尺寸：/g, "layout声明：");
+  return withLayoutTitle.replace(
+    /(layout声明：\n(?:- .+(?:\n|$))+)/g,
+    (section) => section.includes("margin：") || section.includes("margin:")
+      ? section
+      : `${section.trimEnd()}\n- margin：可选配置\n`,
+  );
+}
+
+function buildAvailableComponents(api: LowCodeDesignerAPI | undefined): string {
+  const base = ComponentsManager.replaceKnownNamespaces(api?.global?.api?.getAllComDefPrompts?.() ?? "").trim();
+  const components = ComponentsManager.getAllAiComponents();
+  const details = components.map(({ namespace, abbreviation, all }) => {
+    const editorDoc = ComponentsManager.replaceKnownNamespaces(normalizeComponentDocForPrompt(getComponentDoc(api, namespace).trim()));
+    const slots = renderComponentSlots(all);
+
+    return [
+      `### ${abbreviation}`,
+      all?.title ? `title：${all.title}` : "",
+      editorDoc ? `<组件文档>\n${editorDoc}\n</组件文档>` : "",
+      slots ? `<slots>\n${slots}</slots>` : "",
+    ].filter(Boolean).join("\n");
+  }).join("\n\n---\n\n");
+
+  return [
+    base,
+    details ? "## Available Component Details" : "",
+    details,
+  ].filter(Boolean).join("\n\n");
+}
+
+export function buildLowCodeDesignerContext(api: LowCodeDesignerAPI | undefined, focus?: LowCodeFocusParams): string {
   const allPageInfo = api?.global?.api?.getAllPageInfo?.();
   const pages = flattenPages(allPageInfo);
   const focusPageId = focus?.pageId ?? pages[0]?.id;
@@ -261,8 +316,6 @@ export function buildLowCodeStableContext(api: LowCodeDesignerAPI | undefined, f
   const focusNode = focus?.comId ? findNodeById(pageOutline, focus.comId) : pageOutline;
   const targetNode = focusNode ?? pageOutline;
   const namespaces = Array.from(collectNamespaces(targetNode));
-  const components = api?.global?.api?.getAllComDefPrompts?.() ?? "";
-  const layoutComponents = ComponentsManager.getLayoutComponentsAbbreviationNs();
 
   return [
     "# LowCode Designer Context",
@@ -275,20 +328,24 @@ export function buildLowCodeStableContext(api: LowCodeDesignerAPI | undefined, f
     buildFocusSummary(focus),
     "",
     "## Focus DSL",
-    renderNode(targetNode),
+    renderNode(targetNode, 0, { maxDepth: 2 }),
     "",
     "## Namespaces In Focus",
     namespaces.length ? namespaces.map((ns) => `- ${ComponentsManager.getAbbreviation(ns)}`).join("\n") : "无",
-    "",
+  ].join("\n");
+}
+
+export function buildLowCodeStableContext(api: LowCodeDesignerAPI | undefined): string {
+  const components = buildAvailableComponents(api);
+  const layoutComponents = ComponentsManager.getLayoutComponentsAbbreviationNs();
+
+  return [
     "# 开发指南",
     "",
-    "## 组件编辑文档",
-    "以下组件编辑文档来自当前聚焦 DSL 涉及的组件 namespace。生成 doConfig/addChild actions 时，必须优先遵守这些 path、slot、inputs 和配置说明。",
+    "## 布局组件",
     layoutComponents.length
       ? `特别地，${layoutComponents.join("、")} 是基础布局组件；ignore/enhance 等辅助标记仅允许用于这些基础布局组件。`
       : "",
-    "",
-    buildComponentEditingDocs(api, namespaces),
     "",
     "## Available Components",
     components || "宿主未提供 getAllComDefPrompts",
