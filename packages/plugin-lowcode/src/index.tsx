@@ -13,7 +13,7 @@ import type {
   LowCodeOperatorParams,
   LowCodeRequestParams,
 } from "./designer";
-import { buildLowCodeDesignerContext, buildLowCodeStableContext } from "./outline";
+import { buildLowCodeComponentPrompts, buildLowCodeDesignerContext, buildLowCodeStableContext } from "./outline";
 import { getLowCodeSystemPrompt } from "./prompt";
 import { createLowCodeTools } from "./tools";
 import { registerLowCodeMockActions } from "./tools/mock-actions";
@@ -24,6 +24,9 @@ export type {
   LowCodeOperatorParams,
   LowCodeRequestParams,
 } from "./designer";
+export {
+  buildLowCodeComponentPrompts,
+} from "./outline";
 export {
   LOWCODE_GET_PROJECT_CONTEXT_TOOL_NAME,
   LOWCODE_GET_COMPONENT_DOC_TOOL_NAME,

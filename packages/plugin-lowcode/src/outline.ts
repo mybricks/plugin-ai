@@ -284,7 +284,7 @@ function normalizeComponentDocForPrompt(doc: string): string {
   );
 }
 
-function buildAvailableComponents(api: LowCodeDesignerAPI | undefined): string {
+export function buildLowCodeComponentPrompts(api: LowCodeDesignerAPI | undefined): string {
   const base = ComponentsManager.replaceKnownNamespaces(api?.global?.api?.getAllComDefPrompts?.() ?? "").trim();
   const components = ComponentsManager.getAllAiComponents();
   const details = components.map(({ namespace, abbreviation, all }) => {
@@ -336,7 +336,7 @@ export function buildLowCodeDesignerContext(api: LowCodeDesignerAPI | undefined,
 }
 
 export function buildLowCodeStableContext(api: LowCodeDesignerAPI | undefined): string {
-  const components = buildAvailableComponents(api);
+  const components = buildLowCodeComponentPrompts(api);
   const layoutComponents = ComponentsManager.getLayoutComponentsAbbreviationNs();
 
   return [

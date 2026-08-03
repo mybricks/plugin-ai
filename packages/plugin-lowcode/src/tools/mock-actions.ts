@@ -1,5 +1,6 @@
 import type { LowCodeDesignerAPI } from "../designer";
 import { normalizeDesignerActions } from "../action-normalizer";
+import { buildLowCodeComponentPrompts } from "../outline";
 import { parseLineActions } from "./action-parser";
 
 type MockActionsInput = any[] | string;
@@ -72,5 +73,11 @@ export function registerLowCodeMockActions(api: LowCodeDesignerAPI): void {
     };
   };
 
-  console.log("[plugin-lowcode] window.forPageCreate(pageId, actions, delay?) registered");
+  (window as any).getLowCodeComponentPrompts = () => {
+    const prompts = buildLowCodeComponentPrompts(api);
+    console.log("[plugin-lowcode] window.getLowCodeComponentPrompts", prompts);
+    return prompts;
+  };
+
+  console.log("[plugin-lowcode] window.getLowCodeComponentPrompts() registered");
 }
