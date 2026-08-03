@@ -1,7 +1,6 @@
 import type { Tool } from "../../../agent/src";
 import type { ToolExecutionContext } from "../../../agent/src/agent";
-import { getComponentDoc } from "../designer";
-import { buildLowCodeRetrievedContext } from "../outline";
+import { buildLowCodeRetrievedContext, getComponentsDocs } from "../outline";
 import {
   LOWCODE_CLEAR_PAGE_TOOL_NAME,
   LOWCODE_CREATE_PAGE_TOOL_NAME,
@@ -40,7 +39,7 @@ export function createLowCodeComponentDocTool(runtime: LowCodeToolOptions["runti
       required: ["namespace"],
     },
     async execute(params: { namespace: string }) {
-      const doc = getComponentDoc(runtime.api, params.namespace);
+      const doc = getComponentsDocs(runtime, params.namespace);
       return {
         output: doc || `未找到组件 ${params.namespace} 的编辑文档。`,
       };

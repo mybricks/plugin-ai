@@ -1,6 +1,6 @@
 import type { ToolExecutionContext } from "../../../agent/src/agent";
 import type { LowCodeDesignerRuntime } from "../designer";
-import { buildLowCodeDesignerContext } from "../outline";
+import { buildLowCodeDesignerContext, buildLowCodeStableContext } from "../outline";
 import { getTargetById } from "./execution";
 import { extractActionsContent, parseCompleteStreamingLineActions, parseLineActions } from "./action-parser";
 import type { LowCodeUpdatePageParams } from "./types";
@@ -547,6 +547,8 @@ export async function generateActionsWithSubAgent(
       "</目标>",
       "",
       "<低代码上下文>",
+      buildLowCodeStableContext(runtime),
+      "",
       buildLowCodeDesignerContext(runtime.api, runtime.focus),
       "</低代码上下文>",
     ].filter((item) => item !== "").join("\n");

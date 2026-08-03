@@ -67,6 +67,7 @@ export interface LowCodeDesignerAPI {
 export interface LowCodeDesignerRuntime {
   api?: LowCodeDesignerAPI;
   focus?: LowCodeFocusParams;
+  comlibsUsage?: string;
 }
 
 export interface LowCodeOperatorParams {
@@ -91,13 +92,4 @@ export function getFocusTarget(focus?: LowCodeFocusParams): { type: string; id: 
     : focus.comId ?? focus.pageId;
   if (!id) return null;
   return { type, id, pageId: focus.pageId, title: focus.title };
-}
-
-export function getComponentDoc(api: LowCodeDesignerAPI | undefined, namespace: string): string {
-  return (
-    api?.global?.api?.getComEditorPrompts?.(namespace) ??
-    api?.uiCom?.api?.getComEditorPrompts?.(namespace) ??
-    api?.uiCom?.api?.getComPrompts?.(namespace) ??
-    ""
-  );
 }

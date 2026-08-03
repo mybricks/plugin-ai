@@ -1,5 +1,4 @@
-import type { LowCodeDesignerAPI, LowCodeFocusParams } from "./designer";
-import { getComponentDoc } from "./designer";
+import type { LowCodeDesignerAPI, LowCodeDesignerRuntime, LowCodeFocusParams } from "./designer";
 import { ComponentsManager } from "./components-manager";
 
 interface SlotInfo {
@@ -231,36 +230,60 @@ function findPageInfoById(input: any, id: string): any {
   return flattenPages(input).find((page) => page?.id === id);
 }
 
-function buildComponentEditingDocs(api: LowCodeDesignerAPI | undefined, namespaces: string[]): string {
-  if (!namespaces.length) return "当前聚焦范围内没有可用组件编辑文档。";
+function renderComlibsUsage(comlibsUsage?: string): string {
+  const usage = comlibsUsage?.trim();
+  return usage ? `<组件库使用说明>\n${usage}\n</组件库使用说明>` : "";
+}
 
-  const docs = namespaces.map((namespace) => {
-    const fullNamespace = ComponentsManager.getFullNamespace(namespace);
-    const abbreviation = ComponentsManager.getAbbreviation(fullNamespace);
-    const componentInfo = ComponentsManager.getAiComponent(fullNamespace);
-    const doc = ComponentsManager.replaceKnownNamespaces(getComponentDoc(api, fullNamespace).trim());
-    const inputs = componentInfo?.all?.inputs?.reduce?.((prev: string, input: any) => {
+function buildComponentDocs(runtime: LowCodeDesignerRuntime, namespaces?: string[]): string {
+  const shouldBuildComlibsDocs = namespaces === undefined;
+  const targetComponents = shouldBuildComlibsDocs
+    ? ComponentsManager.getAllAiComponents()
+    : namespaces.map((namespace) => {
+        const fullNamespace = ComponentsManager.getFullNamespace(namespace);
+        const componentInfo = ComponentsManager.getAiComponent(fullNamespace);
+        return {
+          namespace: fullNamespace,
+          abbreviation: ComponentsManager.getAbbreviation(fullNamespace),
+          all: componentInfo?.all,
+        };
+      });
+
+  if (!targetComponents.length) return "当前没有可用组件编辑文档。";
+
+  const docs = targetComponents.map(({ namespace, abbreviation, all }) => {
+    const rawDoc = (
+      runtime.api?.global?.api?.getComEditorPrompts?.(namespace) ??
+      runtime.api?.uiCom?.api?.getComEditorPrompts?.(namespace) ??
+      runtime.api?.uiCom?.api?.getComPrompts?.(namespace) ??
+      ""
+    );
+    const doc = ComponentsManager.replaceKnownNamespaces(normalizeComponentDocForPrompt(rawDoc.trim()));
+    const inputs = all?.inputs?.reduce?.((prev: string, input: any) => {
       let schema = "";
       try {
         schema = input.schema ? `    - schema: ${JSON.stringify(input.schema)}\n` : "";
       } catch {}
       return `${prev}  - ${input.title ?? input.id}\n    - inputId: ${input.id}\n${schema}`;
     }, "");
-    const slots = componentInfo?.all?.slots?.reduce?.((prev: string, slot: any) => {
-      const scopeInputs = slot.type === "scope" && Array.isArray(slot.inputs)
-        ? slot.inputs.map((input: any) => `    - ${input.id}（${input.title ?? ""}）${input.desc ? ` - ${input.desc}` : ""}`).join("\n")
-        : "";
-      return `${prev}  - ${slot.id}（${slot.title ?? ""}${slot.description ? ` - ${slot.description}` : ""}）${slot.type === "scope" ? " - 作用域插槽" : ""}\n${scopeInputs ? `${scopeInputs}\n` : ""}`;
-    }, "");
+    const slots = renderComponentSlots(all);
     return [
       `### ${abbreviation}`,
-      doc || "宿主未提供该组件的编辑文档。",
+      all?.title ? `title：${all.title}` : "",
+      doc ? `<组件文档>\n${doc}\n</组件文档>` : "宿主未提供该组件的编辑文档。",
       slots ? `<slots>\n${slots}</slots>` : "",
       inputs ? `<inputs>\n${inputs}</inputs>` : "",
-    ].join("\n");
+    ].filter(Boolean).join("\n");
   });
 
-  return docs.join("\n\n---\n\n");
+  return [
+    renderComlibsUsage(runtime.comlibsUsage),
+    shouldBuildComlibsDocs
+      ? ComponentsManager.replaceKnownNamespaces(runtime.api?.global?.api?.getAllComDefPrompts?.() ?? "").trim()
+      : "",
+    shouldBuildComlibsDocs ? "## Available Component Details" : "",
+    docs.join("\n\n---\n\n"),
+  ].filter(Boolean).join("\n\n");
 }
 
 function renderComponentSlots(component: any): string {
@@ -284,26 +307,12 @@ function normalizeComponentDocForPrompt(doc: string): string {
   );
 }
 
-export function buildLowCodeComponentPrompts(api: LowCodeDesignerAPI | undefined): string {
-  const base = ComponentsManager.replaceKnownNamespaces(api?.global?.api?.getAllComDefPrompts?.() ?? "").trim();
-  const components = ComponentsManager.getAllAiComponents();
-  const details = components.map(({ namespace, abbreviation, all }) => {
-    const editorDoc = ComponentsManager.replaceKnownNamespaces(normalizeComponentDocForPrompt(getComponentDoc(api, namespace).trim()));
-    const slots = renderComponentSlots(all);
+export function getComponentsDocs(runtime: LowCodeDesignerRuntime, namespaces: string | string[]): string {
+  return buildComponentDocs(runtime, Array.isArray(namespaces) ? namespaces : [namespaces]);
+}
 
-    return [
-      `### ${abbreviation}`,
-      all?.title ? `title：${all.title}` : "",
-      editorDoc ? `<组件文档>\n${editorDoc}\n</组件文档>` : "",
-      slots ? `<slots>\n${slots}</slots>` : "",
-    ].filter(Boolean).join("\n");
-  }).join("\n\n---\n\n");
-
-  return [
-    base,
-    details ? "## Available Component Details" : "",
-    details,
-  ].filter(Boolean).join("\n\n");
+export function getComlibsDocs(runtime: LowCodeDesignerRuntime): string {
+  return buildComponentDocs(runtime);
 }
 
 export function buildLowCodeDesignerContext(api: LowCodeDesignerAPI | undefined, focus?: LowCodeFocusParams): string {
@@ -335,8 +344,8 @@ export function buildLowCodeDesignerContext(api: LowCodeDesignerAPI | undefined,
   ].join("\n");
 }
 
-export function buildLowCodeStableContext(api: LowCodeDesignerAPI | undefined): string {
-  const components = buildLowCodeComponentPrompts(api);
+export function buildLowCodeStableContext(runtime: LowCodeDesignerRuntime): string {
+  const components = getComlibsDocs(runtime);
   const layoutComponents = ComponentsManager.getLayoutComponentsAbbreviationNs();
 
   return [

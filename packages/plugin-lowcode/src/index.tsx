@@ -9,11 +9,12 @@ import { context as pluginContext } from "../../plugin/src/context";
 
 import type {
   LowCodeDesignerAPI,
+  LowCodeDesignerRuntime,
   LowCodeFocusParams,
   LowCodeOperatorParams,
   LowCodeRequestParams,
 } from "./designer";
-import { buildLowCodeComponentPrompts, buildLowCodeDesignerContext, buildLowCodeStableContext } from "./outline";
+import { buildLowCodeDesignerContext, buildLowCodeStableContext } from "./outline";
 import { getLowCodeSystemPrompt } from "./prompt";
 import { createLowCodeTools } from "./tools";
 import { registerLowCodeMockActions } from "./tools/mock-actions";
@@ -25,7 +26,8 @@ export type {
   LowCodeRequestParams,
 } from "./designer";
 export {
-  buildLowCodeComponentPrompts,
+  getComlibsDocs,
+  getComponentsDocs,
 } from "./outline";
 export {
   LOWCODE_GET_PROJECT_CONTEXT_TOOL_NAME,
@@ -67,13 +69,9 @@ export interface PluginLowCodeAIParams {
   sender?: TurnSender;
   disabledModes?: AgentOptions["disabledModes"];
   system?: string;
+  comlibsUsage?: string;
   getUserContextMessage?: () => string | null | undefined | Promise<string | null | undefined>;
   onOperatorActions?: (params: LowCodeOperatorParams) => void;
-}
-
-interface LowCodeRuntime {
-  api?: LowCodeDesignerAPI;
-  focus?: LowCodeFocusParams;
 }
 
 const emptySandbox: Sandbox = {
@@ -143,11 +141,14 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
     sender,
     disabledModes,
     system,
+    comlibsUsage,
     getUserContextMessage,
     onOperatorActions,
   } = params;
 
-  const runtime: LowCodeRuntime = {};
+  const runtime: LowCodeDesignerRuntime = {
+    comlibsUsage,
+  };
   const agentKey = `${key}_lowcode`;
   const requestAsStream: RequestAsStreamFn = llm?.providers?.length
     ? createRequestAsStream()
@@ -177,7 +178,7 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
     const sandbox: Sandbox = {
       ...emptySandbox,
       getContext: async () => {
-        const sections = [buildLowCodeStableContext(runtime.api)].filter(Boolean);
+        const sections = [buildLowCodeStableContext(runtime)].filter(Boolean);
         return sections.length ? sections.join("\n\n") : null;
       },
       getSandboxMetaSection: async () => {
@@ -286,7 +287,7 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
       aiService: {
         init(api: LowCodeDesignerAPI) {
           runtime.api = api;
-          registerLowCodeMockActions(api);
+          registerLowCodeMockActions(runtime);
           ensureAgent();
           notifyView();
 
