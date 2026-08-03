@@ -101,6 +101,8 @@ import { skillUseThenContinueCase } from "./skill";
 import {
   initProjectSubAgentErrorCase,
   initProjectSubAgentImmediateErrorCase,
+  initProjectMissingClosingFenceCase,
+  initProjectPartialUpdateFailureCase,
   initProjectThirdCallWarnLargeCase,
 } from "./init-project-error";
 import { chatPanelSkinHistoryCase, chatPanelDefaultSkinCase, chatPanelSkinEmptyCase } from "./chat-panel-skin";
@@ -161,8 +163,9 @@ export const ALL_CASES: TestCase[] = [
   planWriteGeneratedFileCase,
   initProjectSubAgentErrorCase,
   initProjectSubAgentImmediateErrorCase,
+  initProjectMissingClosingFenceCase,
+  initProjectPartialUpdateFailureCase,
   initProjectThirdCallWarnLargeCase,
-  summaryBasicCase,
   suggestionsDisplayCase,
   abortThenNextTurnAwarenessCase,
   customToolRendererErrorBoundaryCase,

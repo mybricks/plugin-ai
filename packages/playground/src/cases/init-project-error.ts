@@ -1,6 +1,6 @@
 import type { TestCase } from "./types";
 import { makeScriptedRequest } from "../lib/scripted-request";
-import { createInitProjectTool } from "@plugin/sandbox/tools/init-project";
+import { createInitProjectTool } from "@agent";
 import { MemFS } from "../lib/mem-fs";
 
 /**
@@ -216,6 +216,148 @@ export const initProjectSubAgentImmediateErrorCase: TestCase = {
  * 验证大批量初始化分段生成时，tool output 在保留已生成文件内容的同时，
  * 提醒外层 Agent 本轮生成内容较多，注意是否继续生成。
  */
+export const initProjectMissingClosingFenceCase: TestCase = {
+  id: "init-project-missing-closing-fence",
+  name: "文件缺少闭合代码块",
+  group: "init-project",
+  priority: "P0",
+  description:
+    "SubAgent 输出多个文件时，最后一个文件缺少代码块闭合符号。验证未闭合文件不会被误判为已写入，并观察外层 Agent 是否继续调用 init-project。",
+  expectedBehavior:
+    "FS Viewer 只出现已闭合的文件；tool output 可能只报告已写入的闭合文件，不一定提示未闭合文件；Request Inspector 可观察外层 Agent 是否再次发起 init-project。",
+  initialTurns: [],
+  initialFiles: [],
+  tools: [createInitProjectTool(new MemFS([]))],
+  agentOptions: {
+    retry: { maxRetries: 0 },
+  },
+  request: (() => {
+    let callIndex = 0;
+
+    return async (params: Parameters<import("@request/types").RequestAsStreamFn>[0]) => {
+      const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+      const idx = callIndex++;
+
+      if (idx === 0) {
+        const argsObj = { filesToGenerate: ["App.jsx", "styles.css"] };
+        const argsStr = JSON.stringify(argsObj);
+        await delay(200);
+        params.emits.onToolCallStream?.({
+          index: 0,
+          id: "call_init_missing_fence",
+          name: INIT_PROJECT_TOOL_NAME,
+          argsChunk: "",
+        });
+        for (let i = 0; i < argsStr.length; i += 8) {
+          params.emits.onToolCallStream?.({ index: 0, argsChunk: argsStr.slice(i, i + 8) });
+        }
+        params.emits.onToolCalls?.([
+          { id: "call_init_missing_fence", name: INIT_PROJECT_TOOL_NAME, args: argsObj },
+        ]);
+        params.emits.onFinishReason?.("tool_calls");
+        params.emits.complete?.("");
+        return;
+      }
+
+      if (idx === 1) {
+        const content =
+          "```App.jsx\nexport default function App() {\n  return <div>App</div>;\n}\n```\n\n" +
+          "```styles.css\n.app {\n  color: red;\n}";
+        await delay(200);
+        for (let i = 0; i < content.length; i += 16) {
+          await delay(20);
+          params.emits.write?.(content.slice(i, i + 16));
+        }
+        params.emits.onFinishReason?.("stop");
+        params.emits.complete?.("");
+        return;
+      }
+
+      await delay(200);
+      params.emits.write?.("未闭合文件未被写入，准备继续处理。");
+      params.emits.onFinishReason?.("stop");
+      params.emits.complete?.("");
+    };
+  })(),
+};
+
+class PartialFailureMemFS extends MemFS {
+  private failed = false;
+
+  async updateFiles(files: Array<{ path: string; content: string }>): Promise<void> {
+    if (!this.failed && files.some((file) => file.path === "broken.js")) {
+      this.failed = true;
+      throw new Error("Permission denied: broken.js");
+    }
+    await super.updateFiles(files);
+  }
+}
+
+export const initProjectPartialUpdateFailureCase: TestCase = {
+  id: "init-project-partial-update-failure",
+  name: "部分文件 update 失败",
+  group: "init-project",
+  priority: "P0",
+  description:
+    "SubAgent 输出多个完整文件时，broken.js 的 sandbox.updateFiles 失败，随后请求中断。验证已成功文件、写入失败文件和后续重试请求的行为。",
+  expectedBehavior:
+    "FS Viewer 出现 healthy.js，不应出现 broken.js；tool output 应准确标记 broken.js 写入失败，并在 Request Inspector 中观察是否再次调用 init-project。",
+  initialTurns: [],
+  initialFiles: [],
+  tools: [createInitProjectTool(new PartialFailureMemFS())],
+  agentOptions: {
+    retry: { maxRetries: 0 },
+  },
+  request: (() => {
+    let callIndex = 0;
+
+    return async (params: Parameters<import("@request/types").RequestAsStreamFn>[0]) => {
+      const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+      const idx = callIndex++;
+
+      if (idx === 0) {
+        const argsObj = { filesToGenerate: ["broken.js", "healthy.js"] };
+        const argsStr = JSON.stringify(argsObj);
+        await delay(200);
+        params.emits.onToolCallStream?.({
+          index: 0,
+          id: "call_init_partial_failure",
+          name: INIT_PROJECT_TOOL_NAME,
+          argsChunk: "",
+        });
+        for (let i = 0; i < argsStr.length; i += 8) {
+          params.emits.onToolCallStream?.({ index: 0, argsChunk: argsStr.slice(i, i + 8) });
+        }
+        params.emits.onToolCalls?.([
+          { id: "call_init_partial_failure", name: INIT_PROJECT_TOOL_NAME, args: argsObj },
+        ]);
+        params.emits.onFinishReason?.("tool_calls");
+        params.emits.complete?.("");
+        return;
+      }
+
+      if (idx === 1) {
+        const content =
+          "```broken.js\nexport const broken = true;\n```\n\n" +
+          "```healthy.js\nexport const healthy = true;\n```";
+        await delay(200);
+        for (let i = 0; i < content.length; i += 16) {
+          await delay(20);
+          params.emits.write?.(content.slice(i, i + 16));
+        }
+        await delay(100);
+        params.emits.error?.(new Error("Stream aborted after partial update failure"));
+        return;
+      }
+
+      await delay(200);
+      params.emits.write?.("已收到部分写入失败，将继续补写失败文件。");
+      params.emits.onFinishReason?.("stop");
+      params.emits.complete?.("");
+    };
+  })(),
+};
+
 export const initProjectThirdCallWarnLargeCase: TestCase = {
   id: "init-project-third-call-warn-large",
   name: "第3次 init-project 提醒内容过大",
