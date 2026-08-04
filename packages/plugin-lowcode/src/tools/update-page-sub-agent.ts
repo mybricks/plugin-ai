@@ -66,10 +66,9 @@ const UPDATE_PAGE_SUB_AGENT_SYSTEM_PROMPT = `你是 MyBricks 低代码页面搭�
        * number - 具体的px值
        * fit-content - 适应内容
        * 100% - 填充，仅允许100%，不允许其他百分比宽度
-       * auto - 自动填充，等同于flex=1
        * 只能是四者其一，明确不允许使用其他属性，比如calc等方法
        */
-      type Size = number | "fit-content" | "100%" | "auto"
+      type Size = number | "fit-content" | "100%"
     
       /** flex中子组件定位，可配置如下layout */
       type setLayout_flex_params = {
@@ -296,7 +295,7 @@ const UPDATE_PAGE_SUB_AGENT_SYSTEM_PROMPT = `你是 MyBricks 低代码页面搭�
           ${fileFormat({
             content: `["u_parent","content","addChild",{"title":"添加一个布局组件","comId":"u_flex1","ns":"vibe.layout","layout":{"width":"100%","height":60},"configs":[{"path":"方向","value":"row"},{"path":"区域列表","value":[{"name":"左侧","slotId":"left","span":1,"slotStyle":{"flexDirection":"row","alignItems":"center","columnGap":8}},{"name":"右侧","slotId":"right","width":24,"slotStyle":{"flexDirection":"row","alignItems":"center","justifyContent":"flex-end"}}]}]}]
           ["u_flex1","left","addChild",{"title":"图标组件","comId":"u_i98js","ns":"vibe.placeholder","layout":{"width":24,"height":24},"configs":[]}]
-          ["u_flex1","left","addChild",{"title":"文本组件","comId":"u_tsdo2","ns":"vibe.text","layout":{"width":"auto","height":"fit-content"},"configs":[]}]
+          ["u_flex1","left","addChild",{"title":"文本组件","comId":"u_tsdo2","ns":"vibe.text","layout":{"width":"fit-cotent","height":"fit-content"},"configs":[]}]
           ["u_flex1","right","addChild",{"title":"箭头图标组件","comId":"u_ar762","ns":"vibe.placeholder","layout":{"width":24,"height":24},"configs":[]}]
           `,
             fileName: 'flex嵌套实现左右布局.json'
@@ -448,10 +447,10 @@ const UPDATE_PAGE_SUB_AGENT_SYSTEM_PROMPT = `你是 MyBricks 低代码页面搭�
         接下来，从上往下开始搭建
           顶部导航，使用横向flex布局，嵌套左侧菜单和右侧头像昵称区域，其中：
             - 将左侧菜单设置自适应宽度width=100%，右侧头像昵称区域设置width=fit-content，保证整体为自适应效果；
-            - 顶部导航自身保持width=100%，只配置marginBottom=24用于和下方内容拉开间距；
-            - 顶部导航内部的左右内容通过子组件marginLeft=24、marginRight=24配置内部留白，避免内容贴边或挤压；
+            - 顶部导航自身保持width=100%，只配置marginBottom=20用于和下方内容拉开间距；
+            - 顶部导航内部的左右内容通过子组件marginLeft=20、marginRight=20配置内部留白，避免内容贴边或挤压；
           文档的详情内容，其中
-            - 详情内容作为正文内容区，配置marginLeft=24、marginRight=24，形成正文左右留白；
+            - 详情内容作为正文内容区，配置marginLeft=20、marginRight=20，形成正文左右留白；
             - 文章头部的高度设置fit-content，保证头部内容能完整展示；
             - 文章内容直接使用flex纵向布局，保证内容增长时容器变高，并通过marginTop配置与文章头部的上下间距；
           
@@ -459,10 +458,10 @@ const UPDATE_PAGE_SUB_AGENT_SYSTEM_PROMPT = `你是 MyBricks 低代码页面搭�
         ["_root_",":root","setLayout",{"width":1440,"height":1600}]
         ["_root_",":root","doConfig",{"path":"root/样式","style":{"background":"#ffffff"}}]
         ["_root_",":root","doConfig",{"path":"root/布局","value":{"display":"flex","flexDirection":"column"}}]
-        ["_root_","_rootSlot_","addChild",{"title":"顶部导航","ns":"vibe.layout","comId":"u_navs","layout":{"width":"100%","height":60,"marginBottom":24},"configs":[{"path":"布局/方向","value":"row"},{"path":"区域列表","value":[{"name":"左侧菜单","slotId":"navLeft","span":1,"slotStyle":{"flexDirection":"row","alignItems":"center"}},{"name":"右侧信息","slotId":"navRight","width":180,"slotStyle":{"flexDirection":"row","alignItems":"center","justifyContent":"flex-end"}}]}]}]
-        ["u_navs","navLeft","addChild",{"title":"左侧菜单","ns":"vibe.nav-list","comId":"u_leftMenu","layout":{"width":"100%","height":"fit-content","marginLeft":24},"configs":[]}]
-        ["u_navs","navRight","addChild",{"title":"右侧头像昵称区域","ns":"vibe.text","comId":"u_rightProfile","layout":{"width":"fit-content","height":"fit-content","marginRight":24},"configs":[]}]
-        ["_root_","_rootSlot_","addChild",{"title":"详情内容","ns":"vibe.layout","comId":"u_detail","layout":{"width":"100%","height":"fit-content","marginLeft":24,"marginRight":24},"configs":[{"path":"区域列表","value":[{"name":"内容","slotId":"detailContent","slotStyle":{"flexDirection":"column","rowGap":20}}]}]}]
+        ["_root_","_rootSlot_","addChild",{"title":"顶部导航","ns":"vibe.layout","comId":"u_navs","layout":{"width":"100%","height":60,"marginBottom":20},"configs":[{"path":"布局/方向","value":"row"},{"path":"区域列表","value":[{"name":"左侧菜单","slotId":"navLeft","span":1,"slotStyle":{"flexDirection":"row","alignItems":"center"}},{"name":"右侧信息","slotId":"navRight","width":180,"slotStyle":{"flexDirection":"row","alignItems":"center","justifyContent":"flex-end"}}]}]}]
+        ["u_navs","navLeft","addChild",{"title":"左侧菜单","ns":"vibe.nav-list","comId":"u_leftMenu","layout":{"width":"100%","height":"fit-content","marginLeft":20},"configs":[]}]
+        ["u_navs","navRight","addChild",{"title":"右侧头像昵称区域","ns":"vibe.text","comId":"u_rightProfile","layout":{"width":"fit-content","height":"fit-content","marginRight":20},"configs":[]}]
+        ["_root_","_rootSlot_","addChild",{"title":"详情内容","ns":"vibe.layout","comId":"u_detail","layout":{"width":"100%","height":"fit-content","marginLeft":20,"marginRight":20},"configs":[{"path":"区域列表","value":[{"name":"内容","slotId":"detailContent","slotStyle":{"flexDirection":"column","rowGap":20}}]}]}]
         ["u_detail","detailContent","addChild",{"title":"文章头部","ns":"vibe.section","comId":"u_header","layout":{"width":"100%","height":"fit-content"},"configs":[]}]
         ["u_detail","detailContent","addChild",{"title":"文章内容","ns":"vibe.section","comId":"u_body","layout":{"width":"100%","height":"fit-content","marginTop":20},"configs":[]}]
         \`\`\`
