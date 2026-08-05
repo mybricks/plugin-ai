@@ -120,7 +120,8 @@ const LARGE_GENERATION_WARNING = '本轮生成内容较多，请注意是否继�
  * SubAgent 的 execute 逻辑
  */
 async function executeSubAgent(
-  subAgent: Agent,
+  parentAgent: Agent,
+  forkOptions: { hasImage: boolean },
   prompt: string,
   ctx: { emitProgress: (data: any) => void; getUserMessage: () => { message: string; attachments?: any[] } },
   sandbox: Sandbox,
@@ -146,6 +147,34 @@ ${prompt}
 
   // 记录已写入的文件路径，避免重复写入
   const writtenFiles = new Set<string>();
+
+  // 创建 SubAgent fork
+  // - retry: false 禁用重试，避免重试时已写文件被跳过导致内容混杂
+  // - hooks.beforeRequest：每次 LLM 请求前告知当前文件写入状态，
+  //   确保 finishReason=length 续写时模型不会重复输出已写文件
+  const subAgent = parentAgent.createFork({
+    tools: [],
+    system: SUB_AGENT_SYSTEM_PROMPT,
+    aiRole: forkOptions.hasImage ? "image" : undefined,
+    retry: false,
+    hooks: {
+      beforeRequest: () => {
+        const written = Array.from(writtenFiles);
+        if (written.length === 0) return;
+        const remaining = expectedFiles.filter((f) => !writtenFiles.has(f));
+        const parts: string[] = ["当前任务完成情况："];
+        parts.push(`已写入文件：\n${written.map((f) => `- ${f}`).join("\n")}`);
+        if (remaining.length > 0) {
+          parts.push(`需要你继续写入的文件：\n${remaining.map((f) => `- ${f}`).join("\n")}`);
+        } else {
+          parts.push("所有文件已写入完毕，请勿再输出任何文件。");
+        }
+        return {
+          additionalMessages: [{ role: "user", content: parts.join("\n\n") }],
+        };
+      },
+    },
+  });
 
   // 节流 emitProgress，800ms 内最多触发一次（leading + trailing）
   let _emitTimer: ReturnType<typeof setTimeout> | null = null;
@@ -424,16 +453,10 @@ export function createInitProjectTool(sandbox: Sandbox): Tool {
       // 重试会导致已写入文件被跳过，出现新旧内容混杂。
       // 改为直接抛错，由 execute 捕获后在 output 中告知已写/未写文件，
       // 让外层 Agent 决定是否继续调用 init-project 补全剩余文件。
-      const subAgent = parentAgent.createFork({
-        tools: [],
-        system: SUB_AGENT_SYSTEM_PROMPT,
-        aiRole: hasImage ? "image" : undefined,
-        retry: false,
-      });
-
       // 执行 SubAgent 逻辑
       return executeSubAgent(
-        subAgent,
+        parentAgent,
+        { hasImage: !!hasImage },
         prompt,
         {
           emitProgress: toolContext.emitProgress,
