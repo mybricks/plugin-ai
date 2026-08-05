@@ -103,6 +103,7 @@ import {
   initProjectSubAgentImmediateErrorCase,
   initProjectMissingClosingFenceCase,
   initProjectPartialUpdateFailureCase,
+  initProjectSubAgentLengthContinueCase,
   initProjectThirdCallWarnLargeCase,
 } from "./init-project-error";
 import { chatPanelSkinHistoryCase, chatPanelDefaultSkinCase, chatPanelSkinEmptyCase } from "./chat-panel-skin";
@@ -165,6 +166,7 @@ export const ALL_CASES: TestCase[] = [
   initProjectSubAgentImmediateErrorCase,
   initProjectMissingClosingFenceCase,
   initProjectPartialUpdateFailureCase,
+  initProjectSubAgentLengthContinueCase,
   initProjectThirdCallWarnLargeCase,
   suggestionsDisplayCase,
   abortThenNextTurnAwarenessCase,
