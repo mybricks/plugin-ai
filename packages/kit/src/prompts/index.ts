@@ -1,7 +1,16 @@
-import type { CodeAgentPromptOptions } from "../../../agent/src";
-import { MYBRICKS_PROMPT_SECTIONS } from './mybricks'
-
 export type { MybricksPromptSections } from "./mybricks";
+export {
+  buildDevelopmentGuideContext,
+  buildExtraProjectInfoSection,
+  buildProjectInfoSection,
+  parseAgentMdFrontmatter,
+  type AgentMdFrontmatter,
+  type BuildDevelopmentGuideContextOptions,
+  type BuildExtraProjectInfoSectionOptions,
+  type DevelopmentGuideLibrary,
+  type ExtraProjectInfo,
+  type ProjectInfoFile,
+} from "./sections";
 
 
 /**
@@ -65,25 +74,4 @@ export interface PromptSections {
   designGuide?: PromptSectionsDesignGuide;
   /** 文档规范提示词 */
   documentGuide?: PromptSectionsDocumentGuide;
-}
-
-/**
- * 将用户传入的 promptSections 与 MYBRICKS_PROMPT_SECTIONS 按 key 深度 assign：
- * 每个子 key 优先使用用户传入值，否则 fallback 到默认值。
- * 返回完整的 PromptSections，未传的字段均有默认值填充。
- */
-export function resolveDefaultPromptSections(input?: PromptSections): Required<PromptSections> {
-  const D = MYBRICKS_PROMPT_SECTIONS;
-  const result: any = {};
-  for (const key of Object.keys(D) as (keyof typeof D)[]) {
-    result[key] = { ...D[key], ...input?.[key as keyof PromptSections] };
-  }
-  return result;
-}
-
-/**
- * 返回供 CodeAgent 使用的 CodeAgentPromptOptions（取合并结果的 agent 部分）。
- */
-export function resolvePromptOptions(input?: PromptSections): PromptSections {
-  return resolveDefaultPromptSections(input);
 }
