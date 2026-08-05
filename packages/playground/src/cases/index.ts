@@ -126,6 +126,7 @@ import {
 import { mentionCustomCase } from "./mention";
 import { renderAttachmentSuffixCase } from "./attachment-suffix";
 import { renderFocusCase } from "./render-focus";
+import { customActionBarCase } from "./action-bar";
 import {
   bashMvRenameCase,
   bashMvToDirectoryCase,
@@ -262,6 +263,7 @@ export const ALL_CASES: TestCase[] = [
   selectorRenderInTopCase,
   renderAttachmentSuffixCase,
   renderFocusCase,
+  customActionBarCase,
   mentionCustomCase,
   // 异常检测—工具后空 content
   toolThenEmptyContentCase,
