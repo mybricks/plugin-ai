@@ -88,8 +88,11 @@ export interface AgentHooks {
   /**
    * 每次 LLM 请求前触发（每个 step 都会调用）。
    * 可用于动态修改请求参数、注入上下文等。
+   * 返回 `additionalMessages` 时，这些消息会在本次 LLM 请求前追加到 tail。
    */
-  beforeRequest?: (params: { meta?: any; extra?: Record<string, any> }) => Promise<void> | void;
+  beforeRequest?: (params: { meta?: any; extra?: Record<string, any> }) => Promise<{
+    additionalMessages?: Message[];
+  } | void> | { additionalMessages?: Message[] } | void;
   /**
    * 每轮 turn 结束后的钩子（无论成功、取消还是错误）。
    * 在 turn:complete / turn:abort / turn:error 事件触发后同步调用。
@@ -315,6 +318,11 @@ export interface ForkOptions {
    * - plan：计划模式，先制定方案，方案通过后再操作
    */
   mode?: AgentMode;
+  /**
+   * 为 fork 显式注入 hooks（不继承父 Agent hooks，避免 afterTurn 等重复执行）。
+   * 目前主要用于 SubAgent 场景，通过 beforeRequest 在每次请求前注入动态上下文。
+   */
+  hooks?: AgentHooks;
 }
 
 // ─── ForkAgent ────────────────────────────────────────────────────────────────
