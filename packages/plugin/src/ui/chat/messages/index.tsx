@@ -324,7 +324,7 @@ const MessageBubble = ({ record, toolRendererMap, actionBar, onRetry, onDelete, 
                       重试 {retryState.attempt}/{retryState.maxRetries}
                     </span>
                   )}
-                  <TextShimmer className={css["iter-header-placeholder"]}>思考中...</TextShimmer>
+                  <TextShimmer className={css["iter-header-placeholder"]}>连接中...</TextShimmer>
                 </div>
               </div>
             )}
@@ -393,7 +393,7 @@ const MessageBubble = ({ record, toolRendererMap, actionBar, onRetry, onDelete, 
                               重试 {retryState.attempt}/{retryState.maxRetries}
                             </span>
                           )}
-                          <TextShimmer className={css["iter-header-placeholder"]}>思考中...</TextShimmer>
+                          <TextShimmer className={css["iter-header-placeholder"]}>连接中...</TextShimmer>
                         </div>
                         {iter.startTime && <ElapsedTime startTime={iter.startTime} endTime={iter.endTime} className={css["planning-elapsed"]} />}
                       </>
