@@ -42,7 +42,7 @@ export interface LowCodeDesignerAPI {
     title?: string;
     api?: {
       createCanvas?: () => Promise<any> | any;
-      createPage?: (id: string, title: string, config?: any) => Promise<any> | any;
+      createPage?: (id: string | null, title: string, config?: any) => Promise<any> | any;
       updatePage?: (pageId: string, actions: any[], status?: LowCodeActionStatus) => Promise<any> | any;
       clearPageContent?: (pageId: string) => Promise<any> | any;
       getOutlineInfo?: (...params: any[]) => any;

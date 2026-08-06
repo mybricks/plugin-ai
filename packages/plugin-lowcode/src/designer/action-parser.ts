@@ -1,3 +1,4 @@
+/** 设计器 mock 与调试场景使用的 action 文本解析器。 */
 import { jsonrepair } from "jsonrepair";
 
 export function extractActionsContent(content: string): string {

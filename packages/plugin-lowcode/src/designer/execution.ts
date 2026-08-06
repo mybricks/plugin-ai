@@ -1,11 +1,11 @@
 import type { LowCodeDesignerRuntime, LowCodeOperatorParams } from "../designer";
 import { getFocusTarget } from "../designer";
-import { normalizeDesignerActions } from "../action-normalizer";
+import { normalizeDesignerActions } from "./action-normalizer";
 import type {
   LowCodeClearPageParams,
   LowCodeCreatePageParams,
   LowCodeOperatorSummary,
-} from "./types";
+} from "../tools/types";
 
 interface UpdatePageActionSession {
   execute(action: any): Promise<any>;
@@ -25,10 +25,6 @@ function printDesignerAction(kind: string, params: any[]): void {
   console.log(`[plugin-lowcode] designer.${kind}`, {
     params,
   });
-}
-
-function createPageId(): string {
-  return `page_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
 async function executeDesignerActions(
@@ -64,10 +60,29 @@ export async function executeCreatePageWithParams(
   params: LowCodeCreatePageParams = {},
 ): Promise<LowCodeOperatorSummary> {
   const api = requireApi(runtime);
-  const pageId = createPageId();
   const title = params.title?.trim() || "未命名页面";
-  printDesignerAction("createPage", [pageId, title, undefined]);
-  await api.page?.api?.createPage?.(pageId, title);
+  const createPage = api.page?.api?.createPage;
+  if (!createPage) {
+    throw new Error("Designer api.page.api.createPage is not available.");
+  }
+  printDesignerAction("createPage", [null, title, undefined]);
+  const page = await createPage(null, title, {
+    type: "normal",
+    title: "页面",
+    inputs: [
+      {
+        id: "open",
+        title: "打开",
+        schema: {
+          type: "any",
+        },
+      },
+    ],
+  });
+  const pageId = typeof page?.id === "string" && page.id ? page.id : undefined;
+  if (!pageId) {
+    throw new Error("Designer api.page.api.createPage must return the created page id.");
+  }
   return {
     ok: true,
     kind: "createPage",
@@ -164,7 +179,7 @@ export async function createUpdatePageActionSession(
   } else {
     const pageId = targetPageId;
     if (!pageId) {
-      throw new Error("lowcode_update_page requires targetId or focused page/UI component.");
+      throw new Error("lowcode_generate_page requires targetId or focused page/UI component when mode is update.");
     }
     const updatePage = api.page?.api?.updatePage;
     if (!updatePage) {

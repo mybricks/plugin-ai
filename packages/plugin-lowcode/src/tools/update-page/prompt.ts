@@ -1,10 +1,10 @@
-import type { ToolExecutionContext } from "../../../agent/src/agent";
-import type { LowCodeDesignerRuntime } from "../designer";
-import { buildLowCodeDesignerContext, buildLowCodeStableContext } from "../outline";
-import { getTargetById } from "./execution";
-import type { LowCodeUpdatePageParams } from "./types";
-import { activeDSL, EXAMPLES } from "../dsl";
-import type { ActionDSL, CanonicalAction } from "../dsl";
+import type { ToolExecutionContext } from "../../../../agent/src/agent";
+import type { LowCodeDesignerRuntime } from "../../designer";
+import { buildLowCodeDesignerContext, buildLowCodeStableContext } from "../../project";
+import { getTargetById } from "../../designer/execution";
+import type { LowCodeGeneratePageTask } from "../types";
+import { activeDSL, EXAMPLES } from "../../dsl";
+import type { ActionDSL, CanonicalAction } from "../../dsl";
 
 const ENABLE_RENDER_OPTIMIZATION = false;
 
@@ -17,14 +17,73 @@ function prepareActionForUpdatePage(action: CanonicalAction): CanonicalAction {
 }
 
 function printGeneratedActionsJson(content: string, actions: CanonicalAction[], parseError?: unknown): void {
-  console.log("[plugin-lowcode] lowcode_update_page raw content", content.trim());
-  console.log("[plugin-lowcode] lowcode_update_page actions total json", JSON.stringify(actions, null, 2));
+  console.log("[plugin-lowcode] lowcode_generate_page raw content", content.trim());
+  console.log("[plugin-lowcode] lowcode_generate_page actions total json", JSON.stringify(actions, null, 2));
   if (parseError) {
-    console.error("[plugin-lowcode] lowcode_update_page actions parse error", parseError);
+    console.error("[plugin-lowcode] lowcode_generate_page actions parse error", parseError);
   }
 }
 
-function buildSystemPrompt(dsl: ActionDSL): string {
+/** 从流式 actions 代码块中提取已完整输出的原始 action 行，并同时完成 DSL 校验。 */
+function extractStreamingActionLines(dsl: ActionDSL, content: string): Array<{ action: CanonicalAction; line: string }> {
+  const fenceMatch = content.match(/```(?:actions\.json|json)?\s*\n/);
+  if (!fenceMatch || fenceMatch.index === undefined) return [];
+
+  const rest = content.slice(fenceMatch.index + fenceMatch[0].length);
+  const closeIndex = rest.indexOf("```");
+  const text = closeIndex >= 0 ? rest.slice(0, closeIndex) : rest;
+  const lines = text.split(/\r?\n/);
+  const completeLines = closeIndex >= 0 ? lines : lines.slice(0, -1);
+
+  return completeLines.flatMap((line) => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) return [];
+    try {
+      const actions = dsl.parseContent(trimmed);
+      return actions.length === 1 ? [{ action: actions[0], line }] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+export interface LowCodeActionFailure {
+  action: CanonicalAction;
+  /** 对应 generated-actions 中从 1 开始的条目序号。 */
+  actionIndex: number;
+  error: string;
+}
+
+export interface LowCodeActionExecutionReport {
+  succeeded: CanonicalAction[];
+  failed: LowCodeActionFailure[];
+  attempts: number;
+}
+
+export function describeAction(action: CanonicalAction): string {
+  if (action.type === "addChild") return `在 ${action.comId} 的 ${action.target} 插槽新增“${action.title}”`;
+  if (action.type === "doConfig") return `配置 ${action.comId} 的 ${action.path}`;
+  if (action.type === "setLayout") return `调整 ${action.comId} 的布局`;
+  return `删除 ${action.comId}`;
+}
+
+export function buildExecutionStatePrompt(failures: LowCodeActionFailure[]): string {
+  return [
+    "当前 actions 执行状态更新：以下 action 执行失败。请继续生成用于修复这些失败项的替代 actions，不要重复已成功的 action。",
+    "",
+    "<失败 actions>",
+    ...failures.map((failure, index) => [
+      `${index + 1}. 意图：${describeAction(failure.action)}`,
+      `   原 action：${JSON.stringify(failure.action)}`,
+      `   错误：${failure.error}`,
+    ].join("\n")),
+    "</失败 actions>",
+    "",
+    "请结合上述错误调整目标、slot、path 或参数，只输出 actions.json 代码块。",
+  ].join("\n");
+}
+
+export function buildPageActionSystemPrompt(dsl: ActionDSL): string {
   const { fileTag } = dsl;
   const ex = (actions: CanonicalAction[]) => dsl.exampleBlock(actions);
 
@@ -32,6 +91,12 @@ function buildSystemPrompt(dsl: ActionDSL): string {
 
 注意：不要调用任何工具，只输出文件代码块。
 注意：我们处于快速原型模式，只需要黑白的线框原型图，不要配置背景等样式，页面背景色为白色。
+
+<上下文读取约束>
+- workspace-info 只列出页面标题、id 与总逻辑行数；focus-info 是当前焦点的页内行号片段，不是完整页面 DSL。
+- 上层 Agent 会在需要时通过 lowcode_grep 和 lowcode_read 定位并读取额外片段；你不能调用这些工具，也不能假设未提供的组件、插槽、配置或行内容存在。
+- focus-info 中的 “... lines omitted ...” 表示该范围未完整提供。若 action 依赖被省略的结构，只能基于已确认的 target 和上下文生成安全操作，不能编造 slotId 或组件结构。
+</上下文读取约束>
 
 <输出规则>
 只输出一个 ${fileTag} 代码块。代码块中每一行是一个完整 JSON action，不允许输出解释、Markdown 正文、注释、省略号、占位符或非法 JSON。
@@ -360,7 +425,7 @@ ${ex(EXAMPLES.outputFormat)}
 
 <生成要求>
 - 必须一次性规划并生成完整 actions，不要分批、不要只输出局部片段。
-- 严格根据 Focus DSL、Available Components 和组件文档选择组件、slot、path、value、style。
+      - 严格根据已提供的带行号 DSL 片段、Available Components 和组件文档选择组件、slot、path、value、style；不得补全未读取的结构。
 - 返回 actions 时必须注意操作顺序：先创建父容器，再向父容器插槽添加子组件，再配置依赖父组件存在的内容。
 - UI 搭建优先使用 flex 布局，组件通过 width、height、margin 与父插槽关系定位；避免重叠和溢出。
 - 界面要完整、美观、层级清晰，文本、图片、图标、按钮等基础组件优先使用。
@@ -369,79 +434,124 @@ ${ex(EXAMPLES.outputFormat)}
 
 export async function generateActionsWithSubAgent(
   runtime: LowCodeDesignerRuntime,
-  params: LowCodeUpdatePageParams,
+  params: LowCodeGeneratePageTask,
   toolContext: ToolExecutionContext,
   onAction?: (action: CanonicalAction) => Promise<any>,
-): Promise<{ actions: CanonicalAction[]; content: string }> {
+  onProgress?: (progress: { content: string; thinkingContent: string; actionCount: number; succeeded: number; failed: number; attempts: number }) => void,
+): Promise<{
+  /** 实际执行成功的 actions。 */
+  actions: CanonicalAction[];
+  /** 子 Agent 原样生成的全部 actions，包含失败后的修复尝试。 */
+  generatedActions: CanonicalAction[];
+  /** 与 generatedActions 一一对应的模型原始输出行。 */
+  generatedActionLines: string[];
+  content: string;
+  report: LowCodeActionExecutionReport;
+}> {
   const dsl = activeDSL;
   const parentAgent = toolContext.getAgent();
-  const { message, attachments } = toolContext.getUserMessage();
+  const { attachments } = toolContext.getUserMessage();
   const hasImage = attachments?.some((attachment: any) => attachment.type === "image" || attachment.mime?.startsWith?.("image/"));
-  const subAgent = parentAgent.createFork({
-    tools: [],
-    system: buildSystemPrompt(dsl),
-    aiRole: hasImage ? "image" : undefined,
-    retry: false,
-  });
-
   let lastContent = "";
   let lastThinkingContent = "";
   const emittedActionKeys = new Set<string>();
   const streamedActions: CanonicalAction[] = [];
+  const streamedActionLines: string[] = [];
   const updatePageActions: CanonicalAction[] = [];
+  const failures: LowCodeActionFailure[] = [];
+  let requestRound = 0;
+  let injectedFailureCount = 0;
   let actionQueue = Promise.resolve();
-  const enqueueAction = (action: CanonicalAction) => {
+  const emitExecutionProgress = () => {
+    const progress = {
+      content: lastContent,
+      thinkingContent: lastThinkingContent,
+      actionCount: streamedActions.length,
+      succeeded: updatePageActions.length,
+      failed: failures.length,
+      attempts: requestRound,
+    };
+    if (onProgress) {
+      onProgress(progress);
+    } else {
+      toolContext.emitProgress(progress);
+    }
+  };
+  const subAgent = parentAgent.createFork({
+    tools: [],
+    system: buildPageActionSystemPrompt(dsl),
+    aiRole: hasImage ? "image" : undefined,
+    retry: false,
+    hooks: {
+      beforeRequest: () => {
+        requestRound += 1;
+        if (failures.length <= injectedFailureCount) return;
+        injectedFailureCount = failures.length;
+        return {
+          additionalMessages: [{ role: "user", content: buildExecutionStatePrompt(failures) }],
+        };
+      },
+    },
+  });
+  const enqueueAction = (action: CanonicalAction, actionIndex: number) => {
     if (!onAction) return;
     actionQueue = actionQueue.then(async () => {
       try {
         const updatePageAction = await onAction(prepareActionForUpdatePage(action));
         if (updatePageAction !== undefined) updatePageActions.push(updatePageAction);
       } catch (error) {
-        console.error("[plugin-lowcode] lowcode_update_page action execution error", { action, error });
+        failures.push({
+          action,
+          actionIndex,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        console.error("[plugin-lowcode] lowcode_generate_page action execution error", { action, error });
       }
+      emitExecutionProgress();
     });
   };
   const unsubscribe = subAgent.events.on("llm:content", ({ content, thinkingContent }) => {
     lastContent = content || "";
     if (thinkingContent !== undefined) lastThinkingContent = thinkingContent || "";
-    const parsedActions = dsl.parseStreamingContent(lastContent);
-    parsedActions.forEach((action) => {
-      const key = JSON.stringify(action);
+    const parsedActions = extractStreamingActionLines(dsl, lastContent);
+    parsedActions.forEach(({ action, line }) => {
+      // 同一轮流式内容会反复包含已有 action；下一次 LLM 请求允许重试相同 action。
+      const key = `${requestRound}:${JSON.stringify(action)}`;
       if (emittedActionKeys.has(key)) return;
       emittedActionKeys.add(key);
       streamedActions.push(action);
-      enqueueAction(action);
+      streamedActionLines.push(line);
+      enqueueAction(action, streamedActions.length);
     });
-    toolContext.emitProgress({
-      content: lastContent,
-      thinkingContent: lastThinkingContent,
-      actionCount: streamedActions.length,
-    });
+    emitExecutionProgress();
   });
 
   let requestError: unknown;
   try {
     const target = getTargetById(runtime, params.targetId);
+    const targetFocus = params.mode === "create" && params.targetId
+      ? { ...runtime.focus, type: "page", pageId: params.targetId, comId: undefined }
+      : runtime.focus;
     const fullPrompt = [
-      "根据以下用户需求和低代码上下文生成完整 actions。",
+      "根据以下用户需求生成完整 actions。",
       "",
       "<用户需求>",
-      message,
+      params.prompt,
       "</用户需求>",
       "",
       "<目标>",
+      `mode: ${params.mode}`,
       `targetId: ${params.targetId ?? target?.id ?? ""}`,
       target?.type ? `targetType: ${target.type}` : "",
       target?.pageId ? `pageId: ${target.pageId}` : "",
       "</目标>",
       "",
       "<低代码上下文>",
-      buildLowCodeStableContext(runtime),
-      "",
-      buildLowCodeDesignerContext(runtime.api, runtime.focus),
+      buildLowCodeDesignerContext(runtime.api, targetFocus),
       "</低代码上下文>",
     ].filter((item) => item !== "").join("\n");
     await subAgent.requestAI({ message: fullPrompt });
+    await actionQueue;
   } catch (error) {
     requestError = error;
   } finally {
@@ -452,10 +562,14 @@ export async function generateActionsWithSubAgent(
   const lastTurn = turns[turns.length - 1];
   const lastLLMIter = lastTurn?.iterations?.slice().reverse().find((iter: any) => !("type" in iter));
   const content = (lastLLMIter as any)?.content || lastContent;
-  let actions: CanonicalAction[] = [];
+  let generatedActions: CanonicalAction[] = [];
+  let generatedActionLines: string[] = [];
   let parseError: unknown;
   try {
-    actions = streamedActions.length ? streamedActions : dsl.parseContent(content);
+    generatedActions = streamedActions.length ? streamedActions : dsl.parseContent(content);
+    generatedActionLines = streamedActions.length
+      ? streamedActionLines
+      : extractStreamingActionLines(dsl, content).map(({ line }) => line);
   } catch (error) {
     parseError = error;
   }
@@ -466,13 +580,26 @@ export async function generateActionsWithSubAgent(
     throw parseError;
   }
   if (onAction && !streamedActions.length) {
-    actions.forEach(enqueueAction);
+    generatedActions.forEach((action, index) => enqueueAction(action, index + 1));
   }
   await actionQueue;
-  if (!actions.length) {
-    throw new Error("lowcode_update_page subAgent did not generate any actions.");
+  if (!generatedActions.length) {
+    throw new Error("lowcode_generate_page subAgent did not generate any actions.");
   }
-  if (onAction) actions = updatePageActions;
-  printGeneratedActionsJson(content, actions, parseError);
-  return { actions, content };
+  if (generatedActionLines.length !== generatedActions.length) {
+    throw new Error("lowcode_generate_page could not preserve the generated action lines.");
+  }
+  const actions = onAction ? updatePageActions : generatedActions;
+  printGeneratedActionsJson(content, generatedActions, parseError);
+  return {
+    actions,
+    generatedActions,
+    generatedActionLines,
+    content,
+    report: {
+      succeeded: updatePageActions,
+      failed: failures,
+      attempts: requestRound,
+    },
+  };
 }

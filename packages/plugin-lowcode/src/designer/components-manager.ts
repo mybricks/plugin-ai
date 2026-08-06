@@ -1,3 +1,4 @@
+/** 设计器组件库的 AI 元数据与 namespace 映射。 */
 export class ComponentsManager {
   private static isLoaded = false;
   private static aiComponentMap = new Map<string, any>();

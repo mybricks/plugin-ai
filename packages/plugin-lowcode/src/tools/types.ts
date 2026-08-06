@@ -16,10 +16,27 @@ export interface LowCodeOperatorSummary {
   title?: string;
 }
 
-export interface LowCodeUpdatePageParams {
+/** A self-contained page generation or update task. */
+export interface LowCodeGeneratePageTask {
+  /** Optional caller-provided identifier used to correlate the result. */
+  id?: string;
+  /** Optional human-readable task name shown in the task result. */
+  name?: string;
+  mode: "create" | "update";
+  /** Complete task requirement; never inferred from the parent conversation. */
+  prompt: string;
+  /** Required for update when there is no reliable designer focus. */
   targetId?: string;
+  /** Page title used when mode is create. */
+  title?: string;
 }
 
+/** A batch of independent page tasks executed in parallel. */
+export interface LowCodeGeneratePageParams {
+  tasks: LowCodeGeneratePageTask[];
+}
+
+/** Internal params for the designer create-page API. */
 export interface LowCodeCreatePageParams {
   title?: string;
 }

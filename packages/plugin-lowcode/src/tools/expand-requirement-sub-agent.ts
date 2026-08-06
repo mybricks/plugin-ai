@@ -1,5 +1,5 @@
 import type { ToolExecutionContext } from "../../../agent/src/agent";
-import { buildLowCodeStableContext } from "../outline";
+import { buildLowCodeStableContext } from "../project";
 import type { LowCodeDesignerRuntime } from "../designer";
 
 const SYSTEM_PROMPT = `你是一名专业的低代码页面产品经理。你的任务是将用户的一句话需求扩写成详细的页面搭建需求文档。

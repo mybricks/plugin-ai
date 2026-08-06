@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 
 import { CodeAgent, IDBHistory, AgentModeEnum } from "../../agent/src";
-import type { AgentOptions, History, Sandbox, TurnSender } from "../../agent/src";
+import type { AgentOptions, History, Sandbox, SkillFile, Tool, TurnSender } from "../../agent/src";
 import { createRequestAsStream, createOnUpload } from "../../request/src";
 import type { ProviderConfig, RequestAsStreamFn } from "../../request/src";
 import { ChatPanel } from "../../plugin/src/ui/chat";
@@ -14,10 +14,10 @@ import type {
   LowCodeOperatorParams,
   LowCodeRequestParams,
 } from "./designer";
-import { buildLowCodeDesignerContext, buildLowCodeStableContext } from "./outline";
-import { getLowCodeSystemPrompt } from "./prompt";
+import { buildLowCodeDesignerContext, buildLowCodeStableContext } from "./project";
+import { lowCodePromptOptions } from "./prompt-options";
 import { createLowCodeTools } from "./tools";
-import { registerLowCodeMockActions } from "./tools/mock-actions";
+import { registerLowCodeMockActions } from "./designer/mock-actions";
 
 export type {
   LowCodeDesignerAPI,
@@ -28,12 +28,12 @@ export type {
 export {
   getComlibsDocs,
   getComponentsDocs,
-} from "./outline";
+} from "./project";
 export {
-  LOWCODE_GET_PROJECT_CONTEXT_TOOL_NAME,
+  LOWCODE_GREP_TOOL_NAME,
+  LOWCODE_READ_TOOL_NAME,
   LOWCODE_GET_COMPONENT_DOC_TOOL_NAME,
-  LOWCODE_UPDATE_PAGE_TOOL_NAME,
-  LOWCODE_CREATE_PAGE_TOOL_NAME,
+  LOWCODE_GENERATE_PAGE_TOOL_NAME,
   LOWCODE_CLEAR_PAGE_TOOL_NAME,
   createLowCodeTools,
 } from "./tools";
@@ -69,6 +69,10 @@ export interface PluginLowCodeAIParams {
   sender?: TurnSender;
   disabledModes?: AgentOptions["disabledModes"];
   system?: string;
+  /** 追加到低代码 Agent 的业务工具；内置低代码工具始终保留。 */
+  tools?: Tool[];
+  /** 按需加载的技能文件；CodeAgent 会自动提供 use_skill 工具。 */
+  skills?: SkillFile[];
   getUserContextMessage?: () => string | null | undefined | Promise<string | null | undefined>;
   onOperatorActions?: (params: LowCodeOperatorParams) => void;
   /** 是否允许 updatePage action 向设计器传递 ignore/enhance 渲染优化标记，默认关闭。 */
@@ -142,6 +146,8 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
     sender,
     disabledModes,
     system,
+    tools,
+    skills,
     getUserContextMessage,
     onOperatorActions,
     enableRenderingOptimization = false,
@@ -181,7 +187,7 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
         return sections.length ? sections.join("\n\n") : null;
       },
       getSandboxMetaSection: async () => {
-        return runtime.api ? "<canvas-info>\n当前在设计器画布中，只能通过 lowcode_update_page、lowcode_create_page、lowcode_clear_page 修改设计器画布中的内容。\n </canvas-info>" : null;
+        return runtime.api ? "<canvas-info>\n当前在设计器画布中，只能通过 lowcode_generate_page、lowcode_clear_page 修改设计器画布中的内容。\n </canvas-info>" : null;
       },
     };
 
@@ -192,8 +198,8 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
       llm,
       sandbox,
       builtinTools: false,
-      promptOptions: false,
-      system: [getLowCodeSystemPrompt(), system].filter(Boolean).join("\n\n"),
+      promptOptions: lowCodePromptOptions,
+      system,
       getAttachmentContextMessages: async () => {
         const sections = [
           buildLowCodeDesignerContext(runtime.api, runtime.focus),
@@ -201,7 +207,8 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
         ].filter(Boolean) as string[];
         return sections;
       },
-      tools: createLowCodeTools({ runtime, onOperatorActions, enableRenderingOptimization }),
+      tools: [...createLowCodeTools({ runtime, onOperatorActions, enableRenderingOptimization }), ...(tools ?? [])],
+      ...(skills?.length ? { skills } : {}),
       disabledModes,
       ...(sender ? { sender } : {}),
       summary: { enabled: false },

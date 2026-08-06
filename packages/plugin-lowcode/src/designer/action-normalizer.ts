@@ -1,6 +1,7 @@
+/** 将 Agent action 规范化为设计器可执行 action。 */
 import { jsonrepair } from "jsonrepair";
 import { ComponentsManager } from "./components-manager";
-import { flatConfigsToArray } from "./dsl/style-detect";
+import { flatConfigsToArray } from "../dsl/style-detect";
 
 export interface DesignerObjectAction {
   comId: string;

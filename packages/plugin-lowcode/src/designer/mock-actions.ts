@@ -1,6 +1,6 @@
 import type { LowCodeDesignerAPI, LowCodeDesignerRuntime } from "../designer";
-import { normalizeDesignerActions } from "../action-normalizer";
-import { getComlibsDocs } from "../outline";
+import { normalizeDesignerActions } from "./action-normalizer";
+import { getComlibsDocs } from "../project";
 import { activeDSL, canonicalToExecutionAction } from "../dsl";
 
 type MockActionsInput = any[] | string;
