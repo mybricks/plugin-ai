@@ -230,11 +230,6 @@ function findPageInfoById(input: any, id: string): any {
   return flattenPages(input).find((page) => page?.id === id);
 }
 
-function renderComlibsUsage(comlibsUsage?: string): string {
-  const usage = comlibsUsage?.trim();
-  return usage ? `<组件库使用说明>\n${usage}\n</组件库使用说明>` : "";
-}
-
 function buildComponentDocs(runtime: LowCodeDesignerRuntime, namespaces?: string[]): string {
   const shouldBuildComlibsDocs = namespaces === undefined;
   const targetComponents = shouldBuildComlibsDocs
@@ -277,7 +272,6 @@ function buildComponentDocs(runtime: LowCodeDesignerRuntime, namespaces?: string
   });
 
   return [
-    renderComlibsUsage(runtime.comlibsUsage),
     shouldBuildComlibsDocs
       ? ComponentsManager.replaceKnownNamespaces(runtime.api?.global?.api?.getAllComDefPrompts?.() ?? "").trim()
       : "",
@@ -349,8 +343,8 @@ export function buildLowCodeStableContext(runtime: LowCodeDesignerRuntime): stri
   const layoutComponents = ComponentsManager.getLayoutComponentsAbbreviationNs();
 
   return [
-    "# 开发指南",
-    "",
+    "# 组件使用指南",
+    "优先使用基础组件（布局、文本、图片/图标）+ 业务组件开发，如果无法实现的内容，如果有无法使用组件搭建的内容，仅在完全无法实现的部分，使用占位组件占据一个区域，比如地图。",
     "## 布局组件",
     layoutComponents.length
       ? `特别地，${layoutComponents.join("、")} 是基础布局组件；ignore/enhance 等辅助标记仅允许用于这些基础布局组件。`

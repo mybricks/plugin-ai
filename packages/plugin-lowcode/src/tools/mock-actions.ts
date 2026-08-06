@@ -1,7 +1,7 @@
 import type { LowCodeDesignerAPI, LowCodeDesignerRuntime } from "../designer";
 import { normalizeDesignerActions } from "../action-normalizer";
 import { getComlibsDocs } from "../outline";
-import { parseLineActions } from "./action-parser";
+import { activeDSL, canonicalToExecutionAction } from "../dsl";
 
 type MockActionsInput = any[] | string;
 
@@ -16,7 +16,7 @@ function parseMockActions(actions: MockActionsInput): any[] {
     if (!Array.isArray(parsed)) return [parsed];
     return Array.isArray(parsed[0]) || typeof parsed[0] === "object" ? parsed : [parsed];
   } catch {
-    return parseLineActions(raw);
+    return activeDSL.parseContent(raw).map(canonicalToExecutionAction);
   }
 }
 

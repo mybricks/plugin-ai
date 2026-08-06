@@ -69,9 +69,10 @@ export interface PluginLowCodeAIParams {
   sender?: TurnSender;
   disabledModes?: AgentOptions["disabledModes"];
   system?: string;
-  comlibsUsage?: string;
   getUserContextMessage?: () => string | null | undefined | Promise<string | null | undefined>;
   onOperatorActions?: (params: LowCodeOperatorParams) => void;
+  /** 是否允许 updatePage action 向设计器传递 ignore/enhance 渲染优化标记，默认关闭。 */
+  enableRenderingOptimization?: boolean;
 }
 
 const emptySandbox: Sandbox = {
@@ -141,14 +142,12 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
     sender,
     disabledModes,
     system,
-    comlibsUsage,
     getUserContextMessage,
     onOperatorActions,
+    enableRenderingOptimization = false,
   } = params;
 
-  const runtime: LowCodeDesignerRuntime = {
-    comlibsUsage,
-  };
+  const runtime: LowCodeDesignerRuntime = {};
   const agentKey = `${key}_lowcode`;
   const requestAsStream: RequestAsStreamFn = llm?.providers?.length
     ? createRequestAsStream()
@@ -182,7 +181,7 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
         return sections.length ? sections.join("\n\n") : null;
       },
       getSandboxMetaSection: async () => {
-        return runtime.api ? "<project-info>\n低代码模式：当前不暴露文件系统，只能通过 lowcode_update_page、lowcode_create_page、lowcode_clear_page 修改设计器。\n</project-info>" : null;
+        return runtime.api ? "<canvas-info>\n当前在设计器画布中，只能通过 lowcode_update_page、lowcode_create_page、lowcode_clear_page 修改设计器画布中的内容。\n </canvas-info>" : null;
       },
     };
 
@@ -202,7 +201,7 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
         ].filter(Boolean) as string[];
         return sections;
       },
-      tools: createLowCodeTools({ runtime, onOperatorActions }),
+      tools: createLowCodeTools({ runtime, onOperatorActions, enableRenderingOptimization }),
       disabledModes,
       ...(sender ? { sender } : {}),
       summary: { enabled: false },

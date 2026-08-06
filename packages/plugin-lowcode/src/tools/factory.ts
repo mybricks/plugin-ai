@@ -4,6 +4,7 @@ import { buildLowCodeRetrievedContext, getComponentsDocs } from "../outline";
 import {
   LOWCODE_CLEAR_PAGE_TOOL_NAME,
   LOWCODE_CREATE_PAGE_TOOL_NAME,
+  LOWCODE_EXPAND_REQUIREMENT_TOOL_NAME,
   LOWCODE_GET_COMPONENT_DOC_TOOL_NAME,
   LOWCODE_GET_PROJECT_CONTEXT_TOOL_NAME,
   LOWCODE_UPDATE_PAGE_TOOL_NAME,
@@ -16,6 +17,8 @@ import {
   summarizeToolResult,
 } from "./execution";
 import { generateActionsWithSubAgent } from "./update-page-sub-agent";
+import { expandRequirementWithSubAgent } from "./expand-requirement-sub-agent";
+import { canonicalToExecutionAction } from "../dsl";
 import type {
   LowCodeClearPageParams,
   LowCodeCreatePageParams,
@@ -48,12 +51,31 @@ export function createLowCodeComponentDocTool(runtime: LowCodeToolOptions["runti
 }
 
 export function createLowCodeTools(options: LowCodeToolOptions): Tool[] {
-  const { runtime, onOperatorActions } = options;
+  const { runtime, onOperatorActions, enableRenderingOptimization = false } = options;
 
   return [
+    // {
+    //   name: LOWCODE_EXPAND_REQUIREMENT_TOOL_NAME,
+    //   title: "扩写需求",
+    //   description: "将用户的一句话需求扩写成详细的页面搭建需求文档，包含布局、区块、组件、内容细节。在正式搭建页面前调用，帮助明确搭建目标。",
+    //   parameters: {
+    //     type: "object",
+    //     properties: {},
+    //   },
+    //   async execute(_params: Record<string, never>, toolContext: ToolExecutionContext) {
+    //     console.log("[plugin-lowcode] lowcode_expand_requirement");
+    //     try {
+    //       const { expanded } = await expandRequirementWithSubAgent(runtime, toolContext);
+    //       return { output: expanded };
+    //     } catch (error) {
+    //       console.error("[plugin-lowcode] lowcode_expand_requirement error", error);
+    //       return summarizeToolError("expandRequirement", undefined, error);
+    //     }
+    //   },
+    // },
     {
       name: LOWCODE_GET_PROJECT_CONTEXT_TOOL_NAME,
-      title: "检索低代码上下文",
+      title: "检索上下文",
       description: "按页面 id 或 UI 组件 id 检索相关低代码上下文片段。全局页面摘要、可用组件和组件编辑文档已注入稳定上下文，不通过该工具返回。",
       parameters: {
         type: "object",
@@ -78,7 +100,7 @@ export function createLowCodeTools(options: LowCodeToolOptions): Tool[] {
     },
     {
       name: LOWCODE_UPDATE_PAGE_TOOL_NAME,
-      title: "生成并更新页面",
+      title: "更新页面",
       limits: { maxToken: false },
       description: "根据当前用户需求生成完整 MyBricks 页面更新 actions 并执行。该工具内部使用专用 subAgent 一次性生成完整 actions，调用时只需传目标，不要手写 actions。",
       parameters: {
@@ -94,8 +116,8 @@ export function createLowCodeTools(options: LowCodeToolOptions): Tool[] {
         console.log("[plugin-lowcode] lowcode_update_page", params);
         let session: Awaited<ReturnType<typeof createUpdatePageActionSession>> | undefined;
         try {
-          session = await createUpdatePageActionSession(runtime, params.targetId);
-          const { actions } = await generateActionsWithSubAgent(runtime, params, toolContext, (action) => session.execute(action));
+          session = await createUpdatePageActionSession(runtime, params.targetId, enableRenderingOptimization);
+          const { actions } = await generateActionsWithSubAgent(runtime, params, toolContext, (action) => session!.execute(canonicalToExecutionAction(action)));
           onOperatorActions?.({ kind: "updatePage", targetId: params.targetId, actions });
           const summary = await session.complete();
           return summarizeToolResult(summary);

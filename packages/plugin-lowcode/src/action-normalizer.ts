@@ -1,5 +1,6 @@
 import { jsonrepair } from "jsonrepair";
 import { ComponentsManager } from "./components-manager";
+import { flatConfigsToArray } from "./dsl/style-detect";
 
 export interface DesignerObjectAction {
   comId: string;
@@ -11,6 +12,7 @@ export interface DesignerObjectAction {
 export interface NormalizeDesignerActionOptions {
   pageId?: string;
   componentParamsMap?: Map<string, any>;
+  enableRenderingOptimization?: boolean;
 }
 
 const ROOT_COM_ID = "_root_";
@@ -285,6 +287,12 @@ function hasPaddingStyle(configs: any[]): boolean {
 function normalizeActionTags(action: DesignerObjectAction, options: NormalizeDesignerActionOptions): void {
   if (action.type !== "addChild" || !action.params) return;
 
+  if (!options.enableRenderingOptimization) {
+    delete action.params.ignore;
+    delete action.params.enhance;
+    return;
+  }
+
   if (action.params.ignore && Array.isArray(action.params.configs) && hasPaddingStyle(action.params.configs)) {
     action.params.enhance = true;
     delete action.params.ignore;
@@ -390,6 +398,8 @@ function normalizeObjectAction(action: DesignerObjectAction, options: NormalizeD
     }
     if (Array.isArray(next.params?.configs)) {
       next.params.configs = next.params.configs.map(normalizeConfig);
+    } else if (next.params?.configs && typeof next.params.configs === "object") {
+      next.params.configs = flatConfigsToArray(next.params.configs).map(normalizeConfig);
     }
     normalizeActionTags(next, options);
     if (next.params?.layout) {

@@ -8,7 +8,7 @@ import type {
 } from "./types";
 
 interface UpdatePageActionSession {
-  execute(action: any): Promise<void>;
+  execute(action: any): Promise<any>;
   complete(): Promise<LowCodeOperatorSummary>;
   error(): Promise<void>;
   readonly actionCount: number;
@@ -142,6 +142,7 @@ export async function executeUpdatePageActions(
 export async function createUpdatePageActionSession(
   runtime: LowCodeDesignerRuntime,
   targetId: string | undefined,
+  enableRenderingOptimization = false,
 ): Promise<UpdatePageActionSession> {
   const api = requireApi(runtime);
   const target = getTargetById(runtime, targetId);
@@ -187,10 +188,15 @@ export async function createUpdatePageActionSession(
     },
     async execute(action: any) {
       if (closed) return;
-      const [designerAction] = normalizeDesignerActions([action], { pageId: targetPageId, componentParamsMap });
+      const [designerAction] = normalizeDesignerActions([action], {
+        pageId: targetPageId,
+        componentParamsMap,
+        enableRenderingOptimization,
+      });
       printDesignerAction(kind, [resolvedTargetId, [designerAction], "ing"]);
       await update([designerAction], "ing");
       actionCount += 1;
+      return designerAction;
     },
     async complete() {
       if (!closed) {

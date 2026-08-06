@@ -67,7 +67,6 @@ export interface LowCodeDesignerAPI {
 export interface LowCodeDesignerRuntime {
   api?: LowCodeDesignerAPI;
   focus?: LowCodeFocusParams;
-  comlibsUsage?: string;
 }
 
 export interface LowCodeOperatorParams {
