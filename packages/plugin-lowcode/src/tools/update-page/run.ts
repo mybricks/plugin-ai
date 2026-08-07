@@ -9,17 +9,8 @@ import {
   buildExecutionStatePrompt,
   buildPageActionSystemPrompt,
   type LowCodeActionExecutionReport,
-  type LowCodeActionFailure,
 } from "./prompt";
-
-const ENABLE_RENDER_OPTIMIZATION = false;
-
-function prepareActionForUpdatePage(action: CanonicalAction): CanonicalAction {
-  if (ENABLE_RENDER_OPTIMIZATION || action.type !== "addChild") return action;
-  if (!("ignore" in action) && !("enhance" in action)) return action;
-  const { ignore: _ignore, enhance: _enhance, ...rest } = action as any;
-  return rest as CanonicalAction;
-}
+import { UpdatePageRun, type UpdatePageActionExecutor } from "./action-pipeline";
 
 function extractStreamingActionLines(dsl: ActionDSL, content: string): Array<{ action: CanonicalAction; line: string }> {
   const fenceMatch = content.match(/```(?:actions\.json|json)?\s*\n/);
@@ -40,7 +31,7 @@ function extractStreamingActionLines(dsl: ActionDSL, content: string): Array<{ a
   });
 }
 
-export interface PageTaskProgress {
+export interface PageRequestProgress {
   content: string;
   thinkingContent: string;
   actionCount: number;
@@ -49,12 +40,14 @@ export interface PageTaskProgress {
   attempts: number;
 }
 
-export async function generateActionsWithSubAgent(
+/** Executes one LowCodeGeneratePageTask; all mutable state lives in UpdatePageRun. */
+export async function runUpdatePageTask(
   runtime: LowCodeDesignerRuntime,
   params: LowCodeGeneratePageTask,
   toolContext: ToolExecutionContext,
-  onAction?: (action: CanonicalAction) => Promise<any>,
-  onProgress?: (progress: PageTaskProgress) => void,
+  executor?: UpdatePageActionExecutor,
+  onProgress?: (progress: PageRequestProgress) => void,
+  enableRenderingOptimization = false,
 ) {
   const dsl = activeDSL;
   const parentAgent = toolContext.getAgent();
@@ -63,45 +56,38 @@ export async function generateActionsWithSubAgent(
   let lastContent = "";
   let lastThinkingContent = "";
   const emittedActionKeys = new Set<string>();
-  const streamedActions: CanonicalAction[] = [];
-  const streamedActionLines: string[] = [];
-  const executedActions: CanonicalAction[] = [];
-  const failures: LowCodeActionFailure[] = [];
+  const run = executor ? new UpdatePageRun({ request: params, dsl, executor, enableRenderingOptimization }) : undefined;
   let requestRound = 0;
   let injectedFailureCount = 0;
+  let receivedActionCount = 0;
   let actionQueue = Promise.resolve();
-  const emit = () => onProgress?.({ content: lastContent, thinkingContent: lastThinkingContent, actionCount: streamedActions.length, succeeded: executedActions.length, failed: failures.length, attempts: requestRound });
+  const emit = () => onProgress?.({ content: lastContent, thinkingContent: lastThinkingContent, actionCount: run?.sourceActions.length ?? 0, succeeded: run?.executedActions.length ?? 0, failed: run?.failures.length ?? 0, attempts: requestRound });
   const subAgent = parentAgent.createFork({
     tools: [], system: buildPageActionSystemPrompt(dsl), aiRole: hasImage ? "image" : undefined, retry: false,
     hooks: { beforeRequest: () => {
       requestRound += 1;
+      const failures = run?.failures ?? [];
       if (failures.length <= injectedFailureCount) return;
       injectedFailureCount = failures.length;
       return { additionalMessages: [{ role: "user", content: buildExecutionStatePrompt(failures) }] };
     } },
   });
   const enqueue = (action: CanonicalAction, actionIndex: number) => {
-    if (!onAction) return;
-    actionQueue = actionQueue.then(async () => {
-      try {
-        const result = await onAction(prepareActionForUpdatePage(action));
-        if (result !== undefined) executedActions.push(result);
-      } catch (error) {
-        failures.push({ action, actionIndex, error: error instanceof Error ? error.message : String(error) });
-      }
-      emit();
-    });
+    if (!run) return;
+    run.push(action, actionIndex);
+    actionQueue = actionQueue.then(async () => { await run.drain(); emit(); });
   };
   const unsubscribe = subAgent.events.on("llm:content", ({ content, thinkingContent }) => {
     lastContent = content || "";
     if (thinkingContent !== undefined) lastThinkingContent = thinkingContent || "";
-    extractStreamingActionLines(dsl, lastContent).forEach(({ action, line }) => {
+    extractStreamingActionLines(dsl, lastContent).forEach(({ action }) => {
       const key = `${requestRound}:${JSON.stringify(action)}`;
       if (emittedActionKeys.has(key)) return;
       emittedActionKeys.add(key);
-      streamedActions.push(action);
-      streamedActionLines.push(line);
-      enqueue(action, streamedActions.length);
+      if (run) {
+        receivedActionCount += 1;
+        enqueue(action, receivedActionCount);
+      }
     });
     emit();
   });
@@ -122,11 +108,18 @@ export async function generateActionsWithSubAgent(
   const lastLLMIter = lastTurn?.iterations?.slice().reverse().find((iter: any) => !("type" in iter));
   const content = (lastLLMIter as any)?.content || lastContent;
   if (requestError) throw requestError;
-  const generatedActions = streamedActions.length ? streamedActions : dsl.parseContent(content);
-  const generatedActionLines = streamedActions.length ? streamedActionLines : extractStreamingActionLines(dsl, content).map(({ line }) => line);
-  if (onAction && !streamedActions.length) generatedActions.forEach((action, index) => enqueue(action, index + 1));
+  const parsedActions = run?.sourceActions.length ? undefined : dsl.parseContent(content);
+  if (run && parsedActions) parsedActions.forEach((action, index) => enqueue(action, index + 1));
   await actionQueue;
+  const generatedActions = run?.resolvedActions ?? parsedActions ?? [];
+  const generatedActionLines = run?.resolvedActionLines ?? generatedActions.map((action) => dsl.serializeAction(action));
   if (!generatedActions.length) throw new Error("lowcode_generate_page subAgent did not generate any actions.");
   if (generatedActionLines.length !== generatedActions.length) throw new Error("lowcode_generate_page could not preserve the generated action lines.");
-  return { actions: onAction ? executedActions : generatedActions, generatedActions, generatedActionLines, content, report: { succeeded: executedActions, failed: failures, attempts: requestRound } as LowCodeActionExecutionReport };
+  return {
+    actions: run?.executedActions ?? generatedActions,
+    generatedActions,
+    generatedActionLines,
+    content,
+    report: { succeeded: run?.executedActions ?? [], failed: run?.failures ?? [], attempts: requestRound } as LowCodeActionExecutionReport,
+  };
 }

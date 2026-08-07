@@ -1,19 +1,18 @@
 import React from "react";
 import type { ToolExecutionContext } from "../../../../agent/src/agent";
 import type { Tool } from "../../../../agent/src";
-import { canonicalToExecutionAction } from "../../dsl";
 import { createUpdatePageActionSession, executeCreatePageWithParams } from "../../designer/execution";
 import { LOWCODE_GENERATE_PAGE_TOOL_NAME } from "../constants";
 import type { LowCodeGeneratePageParams, LowCodeGeneratePageTask, LowCodeToolOptions } from "../types";
 import { UpdatePageRenderer } from "./render";
-import { generateActionsWithSubAgent } from "./task";
+import { runUpdatePageTask } from "./run";
 
-type GenerateActionsResult = Awaited<ReturnType<typeof generateActionsWithSubAgent>>;
+type GenerateActionsResult = Awaited<ReturnType<typeof runUpdatePageTask>>;
 
-/** Change this constant to switch all task orchestration between parallel and serial. */
-const TASK_ORCHESTRATION_MODE: "parallel" | "serial" = "serial";
+/** Change this constant to switch independent page-request orchestration. */
+const PAGE_REQUEST_ORCHESTRATION_MODE: "parallel" | "serial" = "serial";
 
-interface TaskResult {
+interface PageRequestResult {
   taskIndex: number;
   taskId?: string;
   taskName?: string;
@@ -29,7 +28,7 @@ interface TaskResult {
   error?: string;
 }
 
-interface TaskProgress {
+interface PageRequestProgress {
   taskIndex: number;
   taskId?: string;
   mode: LowCodeGeneratePageTask["mode"];
@@ -40,14 +39,14 @@ interface TaskProgress {
   failed: number;
 }
 
-function summarizeTaskResult(
+function summarizePageRequestResult(
   taskIndex: number,
   task: LowCodeGeneratePageTask,
   summary: { targetId?: string; actionCount?: number },
   generatedActionLines: GenerateActionsResult["generatedActionLines"],
   report: GenerateActionsResult["report"],
   createResult?: { pageId?: string; title?: string },
-): TaskResult {
+): PageRequestResult {
   const succeeded = report.succeeded.length;
   const failed = report.failed.length;
   const lines = [
@@ -85,7 +84,7 @@ export function createLowCodeGeneratePageTool(options: LowCodeToolOptions): Tool
   const { runtime, onOperatorActions, enableRenderingOptimization = false } = options;
   return {
     name: LOWCODE_GENERATE_PAGE_TOOL_NAME,
-    title: "生成或修改页面",
+    title: "操作页面",
     render: (tool) => React.createElement(UpdatePageRenderer, { tool }),
     limits: { maxToken: false },
     description: "执行多个页面生成或修改任务。每个 tasks 项都会启动独立 subAgent，并按任务分别返回 actions 与执行结果。create 会先创建页面再生成内容；update 会修改已有页面或 UI 组件。",
@@ -127,7 +126,7 @@ export function createLowCodeGeneratePageTool(options: LowCodeToolOptions): Tool
     },
     async execute(params: LowCodeGeneratePageParams, toolContext: ToolExecutionContext) {
       console.log("[plugin-lowcode] lowcode_generate_page", params);
-      const progress: TaskProgress[] = params.tasks.map((task, taskIndex) => ({ taskIndex, taskId: task.id, mode: task.mode, status: "pending", actionCount: 0, succeeded: 0, failed: 0 }));
+      const progress: PageRequestProgress[] = params.tasks.map((task, taskIndex) => ({ taskIndex, taskId: task.id, mode: task.mode, status: "pending", actionCount: 0, succeeded: 0, failed: 0 }));
       const emitProgress = () => toolContext.emitProgress({
         taskCount: progress.length,
         completedTaskCount: progress.filter((item) => item.status !== "pending").length,
@@ -136,7 +135,7 @@ export function createLowCodeGeneratePageTool(options: LowCodeToolOptions): Tool
         failed: progress.reduce((total, item) => total + item.failed, 0),
         tasks: progress,
       });
-      const runTask = async (task: LowCodeGeneratePageTask, taskIndex: number): Promise<TaskResult> => {
+      const runPageRequest = async (task: LowCodeGeneratePageTask, taskIndex: number): Promise<PageRequestResult> => {
         let session: Awaited<ReturnType<typeof createUpdatePageActionSession>> | undefined;
         let createResult: Awaited<ReturnType<typeof executeCreatePageWithParams>> | undefined;
         const taskProgress = progress[taskIndex];
@@ -145,12 +144,12 @@ export function createLowCodeGeneratePageTool(options: LowCodeToolOptions): Tool
           const targetId = createResult?.pageId ?? task.targetId;
           taskProgress.targetId = targetId;
           session = await createUpdatePageActionSession(runtime, targetId, enableRenderingOptimization);
-          const generated = await generateActionsWithSubAgent(runtime, { ...task, targetId }, toolContext, (action) => session!.execute(canonicalToExecutionAction(action)), (nextProgress) => {
+          const generated = await runUpdatePageTask(runtime, { ...task, targetId }, toolContext, session!, (nextProgress) => {
             Object.assign(taskProgress, nextProgress);
             emitProgress();
-          });
+          }, enableRenderingOptimization);
           onOperatorActions?.({ kind: "updatePage", targetId, actions: generated.actions });
-          const result = summarizeTaskResult(taskIndex, task, await session.complete(), generated.generatedActionLines, generated.report, createResult);
+          const result = summarizePageRequestResult(taskIndex, task, await session.complete(), generated.generatedActionLines, generated.report, createResult);
           Object.assign(taskProgress, { status: "complete", targetId: result.targetId, actionCount: result.actionCount, succeeded: result.succeeded, failed: result.failed });
           emitProgress();
           return result;
@@ -162,7 +161,7 @@ export function createLowCodeGeneratePageTool(options: LowCodeToolOptions): Tool
             console.error("[plugin-lowcode] lowcode_generate_page task cleanup error", { taskIndex, taskId: task.id, error: sessionError });
           }
           const message = error instanceof Error ? error.message : String(error);
-          const result: TaskResult = {
+          const result: PageRequestResult = {
             taskIndex: taskIndex + 1, taskId: task.id, taskName: task.name, mode: task.mode, targetId: taskProgress.targetId ?? task.targetId, pageId: createResult?.pageId, title: createResult?.title,
             ok: false, actionCount: taskProgress.actionCount, succeeded: taskProgress.succeeded, failed: Math.max(1, taskProgress.failed),
             output: [`<task index="${taskIndex + 1}"${task.id ? ` id="${task.id}"` : ""}${task.name ? ` name="${task.name}"` : ""}>`, `<error>${message}</error>`, "</task>"].join("\n"), error: message,
@@ -174,18 +173,18 @@ export function createLowCodeGeneratePageTool(options: LowCodeToolOptions): Tool
       };
 
       emitProgress();
-      const results = TASK_ORCHESTRATION_MODE === "serial"
-        ? await params.tasks.reduce<Promise<TaskResult[]>>(async (previous, task, taskIndex) => {
+      const results = PAGE_REQUEST_ORCHESTRATION_MODE === "serial"
+        ? await params.tasks.reduce<Promise<PageRequestResult[]>>(async (previous, task, taskIndex) => {
           const completed = await previous;
-          completed.push(await runTask(task, taskIndex));
+          completed.push(await runPageRequest(task, taskIndex));
           return completed;
         }, Promise.resolve([]))
-        : await Promise.all(params.tasks.map(runTask));
+        : await Promise.all(params.tasks.map(runPageRequest));
       const succeeded = results.reduce((total, result) => total + result.succeeded, 0);
       const failed = results.reduce((total, result) => total + result.failed, 0);
       return {
         output: results.map((result) => result.output).join("\n\n"),
-        metadata: { ok: results.every((result) => result.ok), orchestrationMode: TASK_ORCHESTRATION_MODE, taskCount: results.length, actionCount: results.reduce((total, result) => total + result.actionCount, 0), succeeded, failed, tasks: results },
+        metadata: { ok: results.every((result) => result.ok), orchestrationMode: PAGE_REQUEST_ORCHESTRATION_MODE, taskCount: results.length, actionCount: results.reduce((total, result) => total + result.actionCount, 0), succeeded, failed, tasks: results },
       };
     },
   };

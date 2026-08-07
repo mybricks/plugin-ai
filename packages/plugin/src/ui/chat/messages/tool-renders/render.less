@@ -559,6 +559,100 @@
   flex-shrink: 0;
 }
 
+// ── 页面生成卡片（lowcode_generate_page）─────────────────────────────────────
+
+.update-page-card {
+  border-radius: 6px;
+  border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  background: var(--mybricks-bg-color-secondary, #F5F5F5);
+  margin: 3px 0;
+  overflow: hidden;
+  font-size: var(--chat-font-size, 12px);
+  color: var(--mybricks-text-color-main, #333);
+}
+
+.update-page-header,
+.update-page-request-header,
+.update-page-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--chat-block-gap, 6px);
+}
+
+.update-page-header {
+  min-height: var(--chat-card-min-height, 28px);
+  padding: var(--chat-card-option-padding, 5px 10px);
+}
+
+.update-page-header-icon {
+  display: inline-flex;
+  align-items: center;
+  svg { width: var(--chat-icon-size, 12px); height: var(--chat-icon-size, 12px); }
+}
+
+.update-page-header-title { flex: 1; }
+
+.update-page-header-meta,
+.update-page-request-meta,
+.update-page-target {
+  color: var(--mybricks-text-color-main, #333);
+  opacity: .5;
+  font-size: var(--chat-font-size-sm, 12px);
+}
+
+.update-page-progress,
+.update-page-target {
+  padding: 5px 10px;
+}
+
+.update-page-request {
+  border-top: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+}
+
+.update-page-request-header {
+  padding: 6px 10px 3px;
+}
+
+.update-page-request-title { flex: 1; font-weight: 600; }
+
+.update-page-request-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--chat-block-gap, 6px);
+  min-height: 28px;
+  padding: 3px 10px 5px;
+}
+
+.update-page-copy {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  opacity: .7;
+  cursor: pointer;
+
+  &:hover { opacity: 1; background: rgba(0, 0, 0, .05); border-radius: 3px; }
+  svg { width: 13px; height: 13px; }
+}
+
+.update-page-fallback,
+.update-page-error {
+  margin: 0;
+  padding: 7px 10px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  background: rgba(0, 0, 0, .025);
+}
+
+.update-page-error { color: var(--mybricks-color-error, #d4380d); }
+
 // 输出面板
 .init-project-output {
   background: transparent;
