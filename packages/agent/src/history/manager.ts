@@ -134,7 +134,7 @@ export class HistoryManager {
 
     try {
       const turns = await history.load(key);
-      let compactRecord = null;
+      let compactRecord: CompactRecord | string | null = null;
       if (history?.loadCompact) {
         compactRecord = await history.loadCompact(key);
         if (compactRecord && typeof compactRecord === "string") {

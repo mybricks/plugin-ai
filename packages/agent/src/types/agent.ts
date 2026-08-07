@@ -1,5 +1,5 @@
-import type { RequestAsStreamFn } from "../../../request/src";
-import type { ProviderConfig } from "../../../request/src/providers";
+import type { RequestAsStreamFn } from "@mybricks/request";
+import type { ProviderConfig } from "@mybricks/request";
 import type { Agent } from "../agent";
 import type { HandoffOptions } from "../handoff";
 import type { MaskOptions } from "../mask";

@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "declarationMap": true,
+    "noImplicitAny": false,
+    "outDir": "./dist/types",
+    "rootDir": "./src",
+    "paths": {
+      "@mybricks/request": ["./packages/agent/src/request-types.d.ts"]
+    }
+  },
+  "include": ["src/**/*"]
+}
