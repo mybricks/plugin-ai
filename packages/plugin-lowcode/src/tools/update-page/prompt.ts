@@ -1,7 +1,5 @@
 import type { ToolExecutionContext } from "../../../../agent/src/agent";
 import type { LowCodeDesignerRuntime } from "../../designer";
-import { buildLowCodeDesignerContext, buildLowCodeStableContext } from "../../project";
-import { getTargetById } from "../../designer/execution";
 import type { LowCodeGeneratePageTask } from "../types";
 import { activeDSL, EXAMPLES } from "../../dsl";
 import type { ActionDSL, CanonicalAction } from "../../dsl";
@@ -528,10 +526,6 @@ export async function generateActionsWithSubAgent(
 
   let requestError: unknown;
   try {
-    const target = getTargetById(runtime, params.targetId);
-    const targetFocus = params.mode === "create" && params.targetId
-      ? { ...runtime.focus, type: "page", pageId: params.targetId, comId: undefined }
-      : runtime.focus;
     const fullPrompt = [
       "根据以下用户需求生成完整 actions。",
       "",
@@ -541,14 +535,8 @@ export async function generateActionsWithSubAgent(
       "",
       "<目标>",
       `mode: ${params.mode}`,
-      `targetId: ${params.targetId ?? target?.id ?? ""}`,
-      target?.type ? `targetType: ${target.type}` : "",
-      target?.pageId ? `pageId: ${target.pageId}` : "",
+      `targetId: ${params.targetId ?? ""}`,
       "</目标>",
-      "",
-      "<低代码上下文>",
-      buildLowCodeDesignerContext(runtime.api, targetFocus),
-      "</低代码上下文>",
     ].filter((item) => item !== "").join("\n");
     await subAgent.requestAI({ message: fullPrompt });
     await actionQueue;

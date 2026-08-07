@@ -123,7 +123,7 @@ export const UpdatePageRenderer = ({ tool }: { tool: ToolRecord }) => {
       </div>
 
       {isRunning ? (
-        <div className={css["update-page-progress"]}>正在接收并执行 actions…</div>
+        <div className={css["update-page-progress"]}>正在处理需求…</div>
       ) : null}
 
       {pageRequests.map((request) => (

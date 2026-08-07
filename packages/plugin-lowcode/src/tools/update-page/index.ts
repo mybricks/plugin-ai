@@ -101,7 +101,7 @@ export function createLowCodeGeneratePageTool(options: LowCodeToolOptions): Tool
               name: { type: "string", description: "可选任务名称，用于在输出中识别该任务，不用于页面命名。" },
               mode: { type: "string", enum: ["create", "update"], description: "create：新建页面并生成内容；update：修改已有页面或 UI 组件。" },
               title: { type: "string", description: "新页面名称，仅 mode=create 时使用。" },
-              prompt: { type: "string", description: "该任务完整、独立的需求描述，不依赖对话中的其他任务。" },
+              prompt: { type: "string", description: "该任务完整、独立的需求描述，不依赖对话中的其他任务。不能包含组件使用、布局和样式指导，只需要描述需求的功能内容和区域即可。" },
               targetId: { type: "string", description: "修改目标的页面 id 或 UI 组件 id。mode=update 且没有可靠 focus 时必填；mode=create 时忽略。" },
             },
             required: ["mode", "prompt"],

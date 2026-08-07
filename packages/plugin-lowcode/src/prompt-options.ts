@@ -30,7 +30,7 @@ export const lowCodePromptOptions: CodeAgentPromptOptions = {
 3. 生成或修改：使用 \`${LOWCODE_GENERATE_PAGE_TOOL_NAME}\` 的 \`tasks\` 数组，不要自行编写或拆分 actions。
    - 每个 tasks 项都是一个页面任务；\`name\` 仅用于识别任务结果。新页面使用 \`mode=create\`，可传 \`title\` 作为页面名称；工具会创建页面并生成内容。
    - 已有页面或 UI 组件使用 \`mode=update\`；没有可靠 focus 时必须传 targetId。页面根内容传页面 id，组件传组件 id。
-   - 每个 tasks 项都必须提供完整、独立的 prompt，说明该任务的目标、内容和约束；不能只写“按上面需求生成”。
+   - 每个 tasks 项都必须提供完整、独立的 prompt，说明该任务的目标、内容和约束；不能只写“按上面需求生成”，prompt不能包含组件使用、布局和样式指导，只需要描述需求的功能内容和区域即可。
    - prompt 在必要情况下可以进行润色，比如用户提供的需求过于模糊和简单，"开发一个商城首页"，可以润色城包含多个区块内容的详细需求。
 4. 清空内容：仅在用户要求清空页面内容时使用 \`${LOWCODE_CLEAR_PAGE_TOOL_NAME}\`。它不会删除页面记录。
 5. 上下文失效：页面 create、update 或 clear 后，之前 grep/read 得到的行号可能失效；继续定位时重新搜索和读取。
