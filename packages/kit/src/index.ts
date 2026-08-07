@@ -1,3 +1,6 @@
 export * from "./prompts";
 export * from "./preset";
-export { promptSectionsAdaptToPromptOption } from "./internal/resolve";
+export {
+  resolveDefaultPromptSections,
+  promptSectionsAdaptToPromptOption,
+} from "./internal/resolve";
