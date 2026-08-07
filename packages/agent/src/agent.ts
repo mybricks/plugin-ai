@@ -1,6 +1,6 @@
 import { randomUUID } from "./uuid";
-import { createRequestAsStream, LLMProviders } from "../../request/src";
-import type { ModelSelection, ToolDescriptor } from "../../request/src";
+import { createRequestAsStream, LLMProviders } from "@mybricks/request";
+import type { ModelSelection, ToolDescriptor } from "@mybricks/request";
 import { AgentEvents } from "./events";
 import { HistoryManager } from "./history/manager";
 import type {

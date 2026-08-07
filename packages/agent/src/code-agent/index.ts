@@ -564,7 +564,7 @@ export class CodeAgent extends Agent {
 
     const builtinSystem = options.promptOptions === false
       ? ""
-      : getCodeAgentSystemPrompt(agentOptions.promptOptions);
+      : getCodeAgentSystemPrompt(agentOptions.promptOptions || undefined);
     const finalSystem = system ? `${builtinSystem}
 
 ${system}` : builtinSystem;
