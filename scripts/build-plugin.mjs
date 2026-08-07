@@ -22,6 +22,7 @@ rmSync(path.resolve(root, 'packages/plugin/dist'), { recursive: true, force: tru
 const aliasPlugin = alias({
   entries: [
     { find: '@plugin-ai/agent', replacement: path.resolve(root, 'packages/agent/src/index.ts') },
+    { find: '@mybricks/agent', replacement: path.resolve(root, 'packages/agent/src/index.ts') },
     { find: '@plugin-ai/request', replacement: path.resolve(root, 'packages/request/src/index.ts') },
   ],
 });

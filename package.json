@@ -4,7 +4,8 @@
   "main": "dist/index.js",
   "module": "dist/index.js",
   "scripts": {
-    "build": "node scripts/build-request.mjs && node scripts/build-plugin.mjs",
+    "build": "node scripts/build-request.mjs && node scripts/build-kit.mjs && node scripts/build-plugin.mjs",
+    "build:kit": "node scripts/build-kit.mjs",
     "build:request": "node scripts/build-request.mjs",
     "build:plugin": "node scripts/build-plugin.mjs",
     "build:cdzd": "node scripts/build-cdzd.mjs",
