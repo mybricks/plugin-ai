@@ -1,5 +1,4 @@
-import { READ_TOOL_NAME, BASH_TOOL_NAME, EDIT_TOOL_NAME, WRITE_TOOL_NAME, DELETE_TOOL_NAME, MULTI_EDIT_TOOL_NAME, INIT_PROJECT_TOOL_NAME } from "../../../agent/src";
-import { GREP_TOOL_NAME } from "../../../agent/src/code-agent/tools/grep";
+import { READ_TOOL_NAME, BASH_TOOL_NAME, EDIT_TOOL_NAME, WRITE_TOOL_NAME, DELETE_TOOL_NAME, MULTI_EDIT_TOOL_NAME, INIT_PROJECT_TOOL_NAME, GREP_TOOL_NAME } from "@mybricks/agent";
 
 export const MYBRICKS_PROMPT_SECTIONS = {
   agent: {
