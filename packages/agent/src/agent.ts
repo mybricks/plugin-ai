@@ -858,12 +858,15 @@ export class Agent {
 
         this.events.emit("llm:start", { step, startTime: stepLLMStartTime });
 
-        // 执行 beforeRequest hook
+        // 执行 beforeRequest hook，支持注入额外消息到 tail
         try {
-          await this.options.hooks?.beforeRequest?.({
+          const hookResult = await this.options.hooks?.beforeRequest?.({
             meta: userParams.meta,
             extra: userParams.extra,
           });
+          if (hookResult?.additionalMessages?.length) {
+            tail.push(...hookResult.additionalMessages);
+          }
         } catch (e) {
           console.warn("[Agent] hooks.beforeRequest failed:", e);
         }
@@ -1338,7 +1341,7 @@ export class Agent {
    *   真正的 subAgent 机制应该 fork 出一个完整的 CodeAgent 实例，需要重新设计。
    */
   createFork(forkOptions?: ForkAgentOptions): ForkAgent {
-    const { turnsSlice, tools, aiRole, mask, handoff, retry, mode } = forkOptions ?? {};
+    const { turnsSlice, tools, aiRole, mask, handoff, retry, mode, hooks } = forkOptions ?? {};
 
     // turns + compactRecord 联动截取：
     // turnsSlice 截取后，compactRecord 游标若仍在截取范围内则保留，否则置 null
@@ -1381,6 +1384,9 @@ export class Agent {
       ...(handoff !== undefined ? { handoff } : {}),
       // retry：不传=继承父；传了则覆盖（false 或具体配置）
       ...(retry !== undefined ? { retry: retry === false ? { maxRetries: 0 } : retry } : {}),
+      // hooks：不继承父 Agent hooks（避免 afterTurn 等重复执行）；
+      // 通过 forkOptions.hooks 可显式注入新 hooks（如 SubAgent 的 beforeRequest）
+      hooks: "hooks" in (forkOptions ?? {}) ? hooks : undefined,
       // fork 是 worker agent，不需要计划模式
       disabledModes: [AgentModeEnum.Plan],
       // fork 不注入随消息携带的动态上下文（模式说明、skills 等），getAttachmentContextMessages 是 CodeAgent 的箭头函数，this 永远指向父实例，无法感知 fork 的 disabledModes
@@ -1388,8 +1394,6 @@ export class Agent {
       // fork 强制关闭 summary/compact，防止 summary fork / compact fork 再递归创建 fork。
       summary: { enabled: false },
       compact: { enabled: false },
-      // fork 不继承 hooks，避免父级 beforeTurn / afterTurn 在快照任务中重复执行。
-      hooks: undefined,
     };
 
     // 使用 ForkAgent 构造，传入 aiRole

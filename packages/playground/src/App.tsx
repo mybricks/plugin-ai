@@ -539,7 +539,7 @@ export default function App() {
             {/* ChatPanel 列 */}
             <div className="pg-chat-col" style={{ width: panelWidth }}>
               {agent ? (
-                <ChatPanel agent={agent as any} title="playground" header={true} disabled={chatDisabled} renderEmpty={activeCase?.renderEmpty} renderFocus={activeCase?.renderFocus} historyCollapse={activeCase?.historyCollapse} selectorRenderInTop={activeCase?.selectorRenderInTop} attachProcessors={activeCase?.attachProcessors} mentions={activeCase?.mentions} renderAttachmentSuffix={activeCase?.renderAttachmentSuffix} />
+                <ChatPanel agent={agent as any} title="playground" header={true} disabled={chatDisabled} renderEmpty={activeCase?.renderEmpty} renderFocus={activeCase?.renderFocus} historyCollapse={activeCase?.historyCollapse} selectorRenderInTop={activeCase?.selectorRenderInTop} attachProcessors={activeCase?.attachProcessors} mentions={activeCase?.mentions} renderAttachmentSuffix={activeCase?.renderAttachmentSuffix} actionBar={activeCase?.actionBar} />
               ) : (
                 <div className="pg-loading">加载中…</div>
               )}

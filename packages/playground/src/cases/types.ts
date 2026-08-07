@@ -139,4 +139,9 @@ export interface TestCase {
    * 对应 ChatPanelProps.renderFocus。
    */
   renderFocus?: ChatPanelProps["renderFocus"];
+  /**
+   * 消息操作栏按钮配置。
+   * 对应 ChatPanelProps.actionBar。
+   */
+  actionBar?: ChatPanelProps["actionBar"];
 }

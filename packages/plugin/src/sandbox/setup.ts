@@ -2,14 +2,13 @@ import React from "react";
 import { AGENT_INTERNAL_FILE_EXCLUDE, CodeAgent, IDBHistory, isFileExcluded } from "../../../agent/src";
 import { ChipRegistry } from "../../../agent/src";
 import { splitFrontmatter, getFrontmatterString, getFrontmatterStringArray } from "../../../agent/src/utils/frontmatter";
-import { GLOB_TOOL_NAME  } from "../../../agent/src/code-agent/tools";
-import type { Tool, Sandbox, CodeAgentPlugin, CodeAgentPromptOptions, History, BoundHistory, TurnSender, AdditionalDirectory, AgentsMdConfig, SkillFile, UnifiedFile, AgentOptions, AgentMode, ChatChipInstance } from "../../../agent/src";
-import type { PromptSections } from "../prompts";
+import { GLOB_TOOL_NAME, createInitProjectTool } from "../../../agent/src/code-agent/tools";
+import type { Tool, Sandbox, CodeAgentPlugin, History, BoundHistory, TurnSender, AdditionalDirectory, AgentsMdConfig, SkillFile, UnifiedFile, AgentOptions, AgentMode, ChatChipInstance } from "../../../agent/src";
+import type { PromptSections } from "../../../kit/src";
+import { buildDevelopmentGuideContext, buildExtraProjectInfoSection, buildProjectInfoSection, promptSectionsAdaptToPromptOption } from "../../../kit/src";
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { Designer, RegistSandBoxConfig, SandboxChipConfig, SandboxChipsConfig } from "./types";
-import { buildGuideUserContext } from "./context-builders";
 import { createCheckStatusTool } from "./tools/check-status";
-import { createInitProjectTool } from "./tools/init-project";
 import { LoadingView, type ComChatStartViewProps, type LoadingViewProps } from "../ui/chat";
 import { HttpAgent } from "../ui/chat/chat-panel/http-agent";
 import type { HttpAgentOptions } from "../ui/chat/chat-panel/http-agent";
@@ -166,7 +165,7 @@ export interface VirtualFilesRuntimeContext {
  */
 export interface ConnectToAIResult {
   /**
-   * 该 comId 对应的 History 绑定视图。
+   * 该 comId 对应的、已绑定 agentKey 的 History 视图。
    * 总是从 agent 实例上取，保证与 Agent 内部共享同一个引用。
    * 若 Agent 未配置 history 则为 null（正常情况下不会出现）。
    */
@@ -260,7 +259,7 @@ export function setupSandbox(params: SetupSandboxParams): void {
   window._sandbox_ = {
     // ── sandbox → Plugin ──────────────────────────────────────────────────────
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
-      return connectToAI(comId, config, { requestAsStream, llm, virtualFiles, skills, plugins, promptOptions: promptSections?.agent, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, sender });
+      return connectToAI(comId, config, { requestAsStream, llm, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, sender });
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
@@ -325,7 +324,6 @@ interface PluginParams {
   virtualFiles?: (context: VirtualFilesRuntimeContext) => Promise<UnifiedFile[]>;
   skills?: SkillFile[];
   plugins?: CodeAgentPlugin[];
-  promptOptions?: CodeAgentPromptOptions;
   promptSections?: PromptSections;
   tools?: Tool[];
   codeRules?: string;
@@ -402,11 +400,16 @@ function formatLibraryDocs(libraries: Array<{ name: string; version?: string; us
 function connectToAI(
   comId: string,
   { designer, hooks, chips }: RegistSandBoxConfig,
-  { requestAsStream, llm, virtualFiles, skills, plugins, promptOptions, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, sender }: PluginParams
+  { requestAsStream, llm, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, sender }: PluginParams
 ): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
   registerChips(agentKey, chips);
-  const runtimeContext: SkillRuntimeContext = { designer, codeRules, designRules };
+  const promptOptions = promptSectionsAdaptToPromptOption(promptSections);
+  const runtimeContext: SkillRuntimeContext = {
+    designer,
+    codeRules,
+    designRules,
+  };
   const runtimeSkills = skills?.map((skill) => injectSkillRuntimeContext(skill, runtimeContext));
   const runtimePlugins = plugins?.map((plugin) => injectPluginRuntimeContext(plugin, runtimeContext));
   const effectivePlugins = context.applyPluginEnabledOverrides(runtimePlugins);
@@ -419,20 +422,6 @@ function connectToAI(
   }
 
   let agentRef: CodeAgent | undefined;
-
-  /** 解析 .agent/agent.md，提取 title / description / permissions / body */
-  const parseAgentMdFrontmatter = (content: string): {
-    title?: string;
-    description?: string;
-    permissions?: string[];
-    body: string;
-  } => {
-    const { fmText, body } = splitFrontmatter(content);
-    const title = getFrontmatterString(fmText, 'title') ?? undefined;
-    const description = getFrontmatterString(fmText, 'description') ?? undefined;
-    const permissions = getFrontmatterStringArray(fmText, 'permissions') ?? undefined;
-    return { title, description, permissions, body };
-  };
 
   const getEnabledAdditionalDirectories = async (): Promise<AdditionalDirectory[]> => {
     const enabledPlugins = agentRef?.getEnabledPlugins()
@@ -590,28 +579,23 @@ function connectToAI(
       await Promise.all(tasks);
     },
 
-    getContext: async () => buildGuideUserContext(designerRef.current, promptSections, { codeRules, designRules }),
+    getContext: async () => {
+      const designer = designerRef.current;
+      if (!designer) return null;
 
-    // ── getSandboxMetaSection：主项目空间 + 扩展目录文件列表 ──────────────────────
+      const libraries = await designer.getEffectiveLibraries();
+      return buildDevelopmentGuideContext({
+        promptSections,
+        codeRules,
+        designRules,
+        libraries,
+      });
+    },
+
+    // ── getSandboxMetaSection：主项目空间与扩展工程分别产出独立标签 ────────────────
     getSandboxMetaSection: async () => {
       const additionalDirectories = await getEnabledAdditionalDirectories();
-      const summarizeFiles = (files: UnifiedFile[]) => {
-        const suffixMap: Record<string, number> = {};
-        for (const f of files) {
-          const dotIdx = f.path.lastIndexOf('.');
-          const ext = dotIdx !== -1 ? f.path.slice(dotIdx) : '(无后缀)';
-          suffixMap[ext] = (suffixMap[ext] ?? 0) + 1;
-        }
-        return Object.entries(suffixMap)
-          .map(([ext, count]) => `${count} 个 ${ext}`)
-          .join('、');
-      };
-      const normalizeMainPath = (path: string) => path.replace(/^\/+/, '');
-      const normalizeDirectoryPath = (path: string) => path.replace(/^\/+/, '');
-      const ensureTrailingSlash = (path: string) => path.endsWith('/') ? path : `${path}/`;
-      const examplePath = (dirPath: string) => `${ensureTrailingSlash(normalizeDirectoryPath(dirPath))}src/index.ts`;
-
-      // 获取全量文件（含只读文件），用于查找 agent.md；同时过滤 .agent/ 以获取展示用文件列表
+      // 获取全量文件（含只读文件），用于扩展工程的 agent.md；过滤 .agent/ 后用于展示。
       const [allFiles, displayFiles, extraDirectoryInfos] = await Promise.all([
         sandbox.getFiles(),
         sandbox.getFiles({ exclude: AGENT_INTERNAL_FILE_EXCLUDE }),
@@ -621,72 +605,18 @@ function connectToAI(
         }))),
       ]);
 
-      // 展示给用户的主工程文件列表（过滤 .agent/ 目录）
+      // project-info 默认只描述主工程；扩展工程另行生成 extra-project-info。
       const mainFiles = displayFiles.filter(f => {
         const p = f.path.replace(/^\/+/, '');
         return !additionalDirectories.some(d => p.startsWith(d.path));
       });
-
-      const projectCount = 1 + additionalDirectories.length;
-      const sections: string[] = [
-        `这是发送这条消息时的项目空间快照，并不会实时更新。\n\n# 项目空间\n当前项目一共有${projectCount}个工程`,
-      ];
-
-      if (mainFiles.length === 0) {
-        sections.push([
-          '## 项目工程',
-          '权限：读取、写入',
-          '当前没有任何代码文件。可以使用类似 `index.tsx` 的路径来操作文件。建议使用初始化来同时生成多份文件。',
-        ].join('\n'));
-      } else {
-        const suffixSummary = summarizeFiles(mainFiles);
-        const fileList = mainFiles.map((f) => {
-          const lineCount = f.content.split('\n').length;
-          return `- ${normalizeMainPath(f.path)} (${lineCount} lines)`;
-        }).join('\n');
-        sections.push([
-          '## 项目工程',
-          '权限：读取、写入',
-          `总计：${mainFiles.length} 个文件（${suffixSummary}）`,
-          '文件：',
-          fileList,
-        ].join('\n'));
-      }
-
-      if (extraDirectoryInfos.length) {
-        const extraSections = extraDirectoryInfos.map(({ dir, files }, index) => {
-          const suffixSummary = summarizeFiles(files);
-          const countDesc = files.length === 0
-            ? '当前没有任何代码文件。'
-            : `总计：${files.length} 个文件（${suffixSummary}）。当前不展开文件列表，可使用 ${GLOB_TOOL_NAME} 工具（如 \`${dir.path}**/*\`）查询文件列表，再按需读取具体文件。`;
-
-          // 从 sandbox.getFiles() 中找该目录下的 .agent/agent.md，解析 frontmatter
-          // 根工程：.agent/agent.md；扩展工程：<dir.path>.agent/agent.md
-          const dirAgentMdPath = `${dir.path.replace(/\/$/, '')}/.agent/agent.md`;
-          const dirAgentMd = allFiles.find((vf) => {
-            const normalizedPath = vf.path.replace(/^\/+/, '');
-            return normalizedPath === dirAgentMdPath;
-          });
-          const agentMeta = dirAgentMd ? parseAgentMdFrontmatter(dirAgentMd.content) : null;
-
-          const displayTitle = agentMeta?.title ?? dir.path;
-          const displayDesc = agentMeta?.description;
-          const perms = agentMeta?.permissions;
-          const permLabelMap: Record<string, string> = { read: '读取', write: '写入', bash: '执行 bash 命令' };
-          const permParts = perms?.map((p) => permLabelMap[p] ?? p) ?? [];
-
-          return [
-            `工程${index + 1}「${displayTitle}」，虚拟目录为\`${normalizeDirectoryPath(dir.path)}\``,
-            displayDesc ? `说明：${displayDesc}` : undefined,
-            permParts.length ? `权限：${permParts.join('、')}` : undefined,
-            countDesc,
-            `可以使用类似 \`${examplePath(dir.path)}\` 的完整路径来读取或修改文件。`,
-          ].filter(Boolean).join('\n');
-        }).join('\n\n');
-        sections.push(`## 扩展工程（${extraDirectoryInfos.length}个）\n${extraSections}`);
-      }
-
-      return `<project-info>\n${sections.join('\n\n')}\n</project-info>`;
+      const projectInfo = buildProjectInfoSection(mainFiles);
+      const extraProjectInfo = buildExtraProjectInfoSection({
+        directories: extraDirectoryInfos.map(({ dir, files }) => ({ path: dir.path, files })),
+        files: allFiles,
+        globToolName: GLOB_TOOL_NAME,
+      });
+      return [projectInfo, extraProjectInfo].filter(Boolean).join("\n\n");
     },
   };
 

@@ -1,9 +1,8 @@
 import React from "react";
 import classNames from "classnames";
-import { AtSign, Attachment, ChevronLeft, ChevronRight, Plus } from "../icons";
+import { AtSign, Attachment, ChevronLeft, ChevronRight } from "../icons";
 import type { MentionMenuItem, MentionProvider } from "../types";
 import { fileChipDef } from "./chip";
-import { SUPPORTED_FILE_ACCEPT } from "./upload";
 import css from "./index.less";
 
 export type MentionMenuEntry = MentionMenuItem & {
@@ -86,11 +85,9 @@ export interface MentionMenuProps {
   loading: boolean;
   canBack: boolean;
   highlightedIndex: number;
-  fileInputRef: React.RefObject<HTMLInputElement>;
   onBack: () => void;
   onHighlight: (index: number) => void;
   onSelect: (entry: MentionMenuEntry) => void;
-  onFileInputChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
 export const MentionMenu = ({
@@ -99,11 +96,9 @@ export const MentionMenu = ({
   loading,
   canBack,
   highlightedIndex,
-  fileInputRef,
   onBack,
   onHighlight,
   onSelect,
-  onFileInputChange,
 }: MentionMenuProps) => {
   return (
     <div
@@ -126,11 +121,7 @@ export const MentionMenu = ({
           >
             <ChevronLeft />
           </button>
-        ) : (
-          <span className={css.mentionMenuHeaderIcon}>
-            <Plus />
-          </span>
-        )}
+        ) : null}
         <span className={css.mentionMenuTitle}>{title}</span>
       </div>
       <div className={css.mentionMenuList}>
@@ -142,19 +133,17 @@ export const MentionMenu = ({
             const highlighted = index === highlightedIndex;
             if (entry.id === "__files__") {
               return (
-                <label
+                <button
                   key={`${entry.provider.id}:${entry.id}`}
+                  type="button"
                   className={classNames(css.mentionMenuItem, css.fileMenuLabel, { [css.highlighted]: highlighted })}
                   onMouseMove={() => onHighlight(index)}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onSelect(entry);
+                  }}
                 >
-                  <input
-                    ref={fileInputRef}
-                    className={css.fileMenuInput}
-                    type="file"
-                    accept={SUPPORTED_FILE_ACCEPT}
-                    multiple
-                    onChange={onFileInputChange}
-                  />
                   <span className={css.mentionMenuIcon}>
                     <Attachment />
                   </span>
@@ -162,7 +151,7 @@ export const MentionMenu = ({
                     <span className={css.mentionMenuLabel}>{entry.label}</span>
                     {entry.description ? <span className={css.mentionMenuDesc}>{entry.description}</span> : null}
                   </span>
-                </label>
+                </button>
               );
             }
 

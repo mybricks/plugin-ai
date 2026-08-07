@@ -44,7 +44,15 @@ export interface HistoryCollapseConfig {
 }
 
 /** ActionBar 白名单项。不传时无默认按钮（空数组）。 */
-export type ActionBarItem = "copy" | "delete" | "retry";
+export type ActionBarBuiltinItem = "copy" | "delete" | "retry";
+
+export interface ActionBarCustomItem {
+  key: string;
+  title?: string;
+  render: (ctx: { id: string }) => React.ReactNode;
+}
+
+export type ActionBarItem = ActionBarBuiltinItem | ActionBarCustomItem;
 
 export interface MessageListProps {
   messages: MessageRecord[];
@@ -184,6 +192,7 @@ const MessageBubble = ({ record, toolRendererMap, actionBar, onRetry, onDelete, 
   record: MessageRecord;
   toolRendererMap: Map<string, ToolRenderer>;
   actionBar: ActionBarItem[];
+
   onRetry?: (turnId: string) => void;
   onDelete?: (turnId: string) => void;
   isLast?: boolean;
@@ -314,7 +323,7 @@ const MessageBubble = ({ record, toolRendererMap, actionBar, onRetry, onDelete, 
                       重试 {retryState.attempt}/{retryState.maxRetries}
                     </span>
                   )}
-                  <TextShimmer className={css["iter-header-placeholder"]}>思考中...</TextShimmer>
+                  <TextShimmer className={css["iter-header-placeholder"]}>连接中...</TextShimmer>
                 </div>
               </div>
             )}
@@ -383,7 +392,7 @@ const MessageBubble = ({ record, toolRendererMap, actionBar, onRetry, onDelete, 
                               重试 {retryState.attempt}/{retryState.maxRetries}
                             </span>
                           )}
-                          <TextShimmer className={css["iter-header-placeholder"]}>思考中...</TextShimmer>
+                          <TextShimmer className={css["iter-header-placeholder"]}>连接中...</TextShimmer>
                         </div>
                         {iter.startTime && <ElapsedTime startTime={iter.startTime} endTime={iter.endTime} className={css["planning-elapsed"]} />}
                       </>
@@ -453,15 +462,21 @@ const MessageBubble = ({ record, toolRendererMap, actionBar, onRetry, onDelete, 
             endTime={record.endTime ? formatTime(record.endTime) : undefined}
             hideUntilHover={!isLast}
           >
-            {actionBar.includes("copy") && (
-              <ActionBar.Copy text={getTurnText(record)} />
-            )}
-            {actionBar.includes("delete") && (onDelete || agent) && (
-              <ActionBar.Delete onDelete={handleDeleteTurn} />
-            )}
-            {actionBar.includes("retry") && isLast && (onRetry || agent) && record.status !== "abort" && (
-              <ActionBar.Retry onRetry={handleRetryTurn} />
-            )}
+            {actionBar.map((item) => {
+              if (typeof item === "string") {
+                if (item === "copy") {
+                  return <ActionBar.Copy key="copy" text={getTurnText(record)} />;
+                }
+                if (item === "delete" && (onDelete || agent)) {
+                  return <ActionBar.Delete key="delete" onDelete={handleDeleteTurn} />;
+                }
+                if (item === "retry" && isLast && (onRetry || agent) && record.status !== "abort") {
+                  return <ActionBar.Retry key="retry" onRetry={handleRetryTurn} />;
+                }
+                return null;
+              }
+              return <React.Fragment key={item.key}>{item.render({ id: record.id })}</React.Fragment>;
+            })}
           </ActionBar>
         )}
       </div>

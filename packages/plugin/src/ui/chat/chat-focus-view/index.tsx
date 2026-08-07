@@ -5,9 +5,6 @@ import { chipRegistry } from "../../../sandbox/setup";
 import type { ChatChipDef } from "../../../../../agent/src";
 import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
 import { createDomChip, DOM_CHIP_TYPE, formatDomChipMessage, matchDefaultDomFocusContent } from "../../../utils/dom-info";
-import { ELEMENT_MOVE_CHIP_TYPE, formatElementMoveChipMessage } from "../../../utils/element-move-chip";
-import { ELEMENT_TEXT_UPDATE_CHIP_TYPE, formatElementTextUpdateChipMessage } from "../../../utils/element-text-update-chip";
-import { ELEMENT_DELETE_CHIP_TYPE, formatElementDeleteChipMessage } from "../../../utils/element-delete-chip";
 import css from "./index.less";
 
 export interface ChatFocusViewProps {
@@ -34,54 +31,6 @@ const domChipDef: ChatChipDef = {
 
 // 模块加载时一次性注册（chipRegistry 是单例，重复 register 同 type 会覆盖，幂等安全）
 chipRegistry.register(domChipDef);
-
-// ─── element-move chip 类型定义 ───────────────────────────────────────────────
-
-/**
- * element-move chip：代表一次元素拖拽移动操作。
- * - 无自定义 render：使用默认 chip 样式（label 文字，即 "将「A」移到「B」前面"）。
- * - format：将占位符替换为操作简述，并在消息末尾追加含源/目标元素的详细上下文块。
- *
- * chip 实例的 data 字段格式：ElementMoveChipData
- */
-const elementMoveChipDef: ChatChipDef = {
-  type: ELEMENT_MOVE_CHIP_TYPE,
-  format: formatElementMoveChipMessage,
-};
-
-chipRegistry.register(elementMoveChipDef);
-
-// ─── element-text-update chip 类型定义 ────────────────────────────────────────
-
-/**
- * element-text-update chip：代表一次文本元素文案修改操作。
- * - 无自定义 render：使用默认 chip 样式（label 文字，即 "修改「A」文案"）。
- * - format：将占位符替换为操作简述，并在消息末尾追加含目标元素和新文案的详细上下文块。
- *
- * chip 实例的 data 字段格式：ElementTextUpdateChipData
- */
-const elementTextUpdateChipDef: ChatChipDef = {
-  type: ELEMENT_TEXT_UPDATE_CHIP_TYPE,
-  format: formatElementTextUpdateChipMessage,
-};
-
-chipRegistry.register(elementTextUpdateChipDef);
-
-// ─── element-delete chip 类型定义 ─────────────────────────────────────────────
-
-/**
- * element-delete chip：代表一次元素删除操作。
- * - 无自定义 render：使用默认 chip 样式（label 文字，即 "删除「A」"）。
- * - format：将占位符替换为操作简述，并在消息末尾追加含被删除元素详细上下文块。
- *
- * chip 实例的 data 字段格式：ElementDeleteChipData
- */
-const elementDeleteChipDef: ChatChipDef = {
-  type: ELEMENT_DELETE_CHIP_TYPE,
-  format: formatElementDeleteChipMessage,
-};
-
-chipRegistry.register(elementDeleteChipDef);
 
 /**
  *

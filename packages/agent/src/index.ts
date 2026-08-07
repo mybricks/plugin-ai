@@ -3,8 +3,8 @@ export type { AgentMode, AgentOptions, AgentHooks, RequestAIOptions, MaskOptions
 export { maskMessages } from "./mask";
 export { computeHandoffTurnIds } from "./handoff";
 
-export { ChipRegistry, fileChipDef, FILE_CHIP_TYPE, ELEMENT_MOVE_CHIP_TYPE, ELEMENT_TEXT_UPDATE_CHIP_TYPE, ELEMENT_DELETE_CHIP_TYPE } from "./chip";
-export type { ChatChipDef, ChatChipFormatContext, ChatChipInstance, FileChipData, ElementMoveChipData, ElementTextUpdateChipData, ElementDeleteChipData } from "./chip";
+export { ChipRegistry, fileChipDef, FILE_CHIP_TYPE } from "./chip";
+export type { ChatChipDef, ChatChipFormatContext, ChatChipInstance, FileChipData } from "./chip";
 
 export type { AgentEventMap } from "./events";
 export type { Message, History, Tool, TurnRecord, TurnSender, ToolCallRecord, ToolResult, VersionFile, VersionRecord, BoundHistory, Attachment, IterationTrace } from "./types";
@@ -14,7 +14,7 @@ export { AGENT_INTERNAL_FILE_EXCLUDE, CodeAgent, isFileExcluded } from "./code-a
 export type { AdditionalDirectory, CodeAgentBuiltinToolName, CodeAgentOptions, CodeAgentPlugin, CodeAgentPromptOptions, FileExclude, GetFilesOptions, Sandbox, SkillActivation, SkillFile, SkillMeta, UnifiedFile } from "./code-agent";
 export { IDBSandbox } from "./code-agent/idb-sandbox";
 export type { IDBSandboxFileRecord, IDBSandboxOptions, IDBSandboxState } from "./code-agent/idb-sandbox";
-export { READ_TOOL_NAME, WRITE_TOOL_NAME, MULTI_WRITE_TOOL_NAME, EDIT_TOOL_NAME, MULTI_EDIT_TOOL_NAME, DELETE_TOOL_NAME, GREP_TOOL_NAME, GLOB_TOOL_NAME, USE_SKILL_TOOL_NAME, BASH_TOOL_NAME } from "./code-agent/tools";
+export { READ_TOOL_NAME, WRITE_TOOL_NAME, MULTI_WRITE_TOOL_NAME, EDIT_TOOL_NAME, MULTI_EDIT_TOOL_NAME, DELETE_TOOL_NAME, GREP_TOOL_NAME, GLOB_TOOL_NAME, USE_SKILL_TOOL_NAME, BASH_TOOL_NAME, INIT_PROJECT_TOOL_NAME, createInitProjectTool } from "./code-agent/tools";
 export { SWITCH_MODE_TOOL_NAME, getAvailableAgentModes, AgentModeEnum } from "./mode-manager";
 export { kv } from "./kv";
 

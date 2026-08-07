@@ -17,7 +17,7 @@ import {
   BASH_TOOL_NAME,
 } from "../../../../../../agent/src";
 import { CHECK_STATUS_TOOL_NAME } from "../../../../sandbox/tools/check-status";
-import { INIT_PROJECT_TOOL_NAME } from "../../../../sandbox/tools/init-project";
+import { INIT_PROJECT_TOOL_NAME } from "../../../../../../agent/src/code-agent/tools";
 import { ReadFileRenderer } from "./built-ins/read-file";
 import { WriteFileRenderer } from "./built-ins/write-file";
 import { MultiWriteRenderer } from "./built-ins/multi-write";

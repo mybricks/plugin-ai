@@ -8,7 +8,7 @@ import type { AgentOptions, CodeAgentPlugin, SkillFile, TurnSender } from "../..
 import { createRequestAsStream, createOnUpload } from "../../request/src";
 import type { RequestAsStreamFn, ProviderConfig } from "../../request/src";
 export type { ProviderConfig, RemoteProviderConfig, CustomProviderConfig, ModelConfig, ModelSelection } from "../../request/src";
-import { resolvePromptOptions, type PromptSections } from "./prompts";
+import { type PromptSections } from "../../kit/src";
 import { DEFAULT_PLUGIN_SKILLS } from "./skills/default";
 
 import { context } from "./context";
@@ -43,7 +43,9 @@ export type {
   ChatPanelRef,
   HttpAgentOptions,
 } from "./ui/chat";
-export * from "./preset";
+export * from "../../kit/src/preset";
+export { default as pluginLowCodeAI } from "../../plugin-lowcode/src";
+export * from "../../plugin-lowcode/src";
 
 // ─── PluginAI 实例 API ────────────────────────────────────────────────────────
 
@@ -232,7 +234,6 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     mentions,
   } = params;
 
-  const mergedPromptSections = resolvePromptOptions(promptSections);
   const mergedSkills = [...DEFAULT_PLUGIN_SKILLS, ...(skills ?? [])];
 
   const effectiveRequest: RequestAsStreamFn = llm?.providers?.length
@@ -310,7 +311,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     virtualFiles,
     skills: mergedSkills,
     plugins,
-    promptSections: mergedPromptSections,
+    promptSections,
     tools,
     getUserContextMessage,
     formatUserMessage,
