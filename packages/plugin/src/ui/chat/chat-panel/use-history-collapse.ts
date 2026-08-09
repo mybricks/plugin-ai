@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { MessageRecord } from "../use-session";
 
 // ─── 折叠边界计算 ─────────────────────────────────────────────────────────────
@@ -98,47 +98,43 @@ export function useHistoryCollapse(
     }
   }, [messages.length, maxIters]);
 
-  try {
-    if (!Array.isArray(messages) || !isValidMaxIters(maxIters)) {
-      return {
-        collapseCursor: FALLBACK_CURSOR,
-        onExpandHistory: () => {},
-      };
-    }
+  const isValid = Array.isArray(messages) && isValidMaxIters(maxIters);
+  const { foldBoundary, historyIterCount } = metrics;
+  let visibleStartIndex: number;
+  if (!isValid) {
+    visibleStartIndex = 0;
+  } else if (cursor != null && cursor.atHistoryIterCount === historyIterCount) {
+    visibleStartIndex = Math.min(cursor.visibleStartIndex, foldBoundary);
+  } else {
+    visibleStartIndex = foldBoundary;
+  }
 
-    const { foldBoundary, historyIterCount } = metrics;
-    const visibleStartIndex =
-      cursor != null && cursor.atHistoryIterCount === historyIterCount
-        ? Math.min(cursor.visibleStartIndex, foldBoundary)
-        : foldBoundary;
-
-    const collapsedCount = visibleStartIndex;
-    const collapseCursor = { visibleStartIndex, collapsedCount };
-
-    const onExpandHistory = (type: "one" | "all") => {
-      try {
-        if (type === "all") {
-          if (messages.length <= 0) return;
-          setCursor({ visibleStartIndex: 0, atHistoryIterCount: historyIterCount });
-          return;
-        }
-
-        const targetIndex = visibleStartIndex - 1;
-        if (targetIndex < 0) return;
-        setCursor({ visibleStartIndex: targetIndex, atHistoryIterCount: historyIterCount });
-      } catch {
-        // 折叠交互失败时保持当前渲染，不影响聊天主体。
+  const onExpandHistory = useCallback((type: "one" | "all") => {
+    if (!isValid) return;
+    try {
+      if (type === "all") {
+        if (messages.length <= 0) return;
+        setCursor({ visibleStartIndex: 0, atHistoryIterCount: historyIterCount });
+        return;
       }
-    };
 
-    return {
-      collapseCursor,
-      onExpandHistory,
-    };
-  } catch {
+      const targetIndex = visibleStartIndex - 1;
+      if (targetIndex < 0) return;
+      setCursor({ visibleStartIndex: targetIndex, atHistoryIterCount: historyIterCount });
+    } catch {
+      // 折叠交互失败时保持当前渲染，不影响聊天主体。
+    }
+  }, [historyIterCount, isValid, messages.length, visibleStartIndex]);
+
+  if (!isValid) {
     return {
       collapseCursor: FALLBACK_CURSOR,
       onExpandHistory: () => {},
     };
   }
+
+  return {
+    collapseCursor: { visibleStartIndex, collapsedCount: visibleStartIndex },
+    onExpandHistory,
+  };
 }

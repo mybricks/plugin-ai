@@ -1,4 +1,4 @@
-import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import classNames from "classnames";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
@@ -312,7 +312,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   const isDisabled = !agent || !!disabled || historyLoading || historyFailed;
   const canExecutePlan = Boolean(agent && !isDisabled && availableModes.includes(AgentModeEnum.Build));
 
-  const onExecutePlan = (title: string) => {
+  const onExecutePlan = useCallback((title: string) => {
     if (!agent || !canExecutePlan) return;
     const message = `执行「${title}」方案`;
     context.aiQueue.send(
@@ -323,7 +323,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       },
       { message }
     );
-  };
+  }, [agent, agentKey, canExecutePlan]);
 
   const headerNode = typeof header === "function"
     ? header()
@@ -366,9 +366,13 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       <div className={css["sender-footer"]}>{senderFooterNode}</div>
     </div>
   ) : senderNode;
+  const chatPanelContextValue = useMemo(
+    () => ({ user, copilot, disabled: isDisabled, renderUserMessage, markdownSkin, markdownit, messagesRenderVariant }),
+    [copilot, isDisabled, markdownSkin, markdownit, messagesRenderVariant, renderUserMessage, user]
+  );
 
   return (
-    <ChatPanelProvider value={{ user, copilot, disabled: isDisabled, renderUserMessage, markdownSkin, markdownit, messagesRenderVariant }}>
+    <ChatPanelProvider value={chatPanelContextValue}>
       <div
         className={classNames(css["chat-panel"], css[`size-${size}`], className)}
         style={style}

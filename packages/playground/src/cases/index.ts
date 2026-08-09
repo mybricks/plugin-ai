@@ -128,6 +128,7 @@ import { longChipCase } from "./long-chip";
 import { renderAttachmentSuffixCase } from "./attachment-suffix";
 import { renderFocusCase } from "./render-focus";
 import { customActionBarCase } from "./action-bar";
+import { streamingRenderPerformanceCase } from "./render-performance";
 import {
   bashMvRenameCase,
   bashMvToDirectoryCase,
@@ -247,6 +248,7 @@ export const ALL_CASES: TestCase[] = [
   webFetchValidationCase,
   webFetchHttpErrorCase,
   // UI 渲染
+  streamingRenderPerformanceCase,
   // 用户消息折叠
   userMessageShortCase,
   userMessageLongCase,
