@@ -185,11 +185,13 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
     enableRenderingOptimization = false,
   } = params;
 
+  // 先设置 KV 命名空间，再恢复模型选择，避免读取到上一个 plugin 实例的状态。
+  pluginContext.setPluginKey(key);
   const runtime: LowCodeDesignerRuntime = {};
   const agentKey = `${key}_lowcode`;
-  const requestAsStream: RequestAsStreamFn = llm?.providers?.length
-    ? createRequestAsStream()
-    : (onRequest ?? createRequestAsStream());
+  pluginContext.configureLLMProvider(key, llm?.providers);
+  const requestAsStream: RequestAsStreamFn =
+    pluginContext.createLLMRequest(key, agentKey) ?? onRequest ?? createRequestAsStream();
   const upload = onUpload ?? createOnUpload();
   const download = onDownload ?? defaultDownload;
   const copilot = { name };
@@ -200,7 +202,6 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
   const notifyView = () => viewListeners.forEach((listener) => listener());
 
   pluginContext.name = name;
-  pluginContext.setPluginKey(key);
   pluginContext.pluginParams = {
     ...(pluginContext.pluginParams ?? {}),
     name,
@@ -227,7 +228,6 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
       key: agentKey,
       history: history ?? new IDBHistory({ dbName: "@plugin-ai/plugin-lowcode/messages" }),
       request: requestAsStream,
-      llm,
       sandbox,
       builtinTools: false,
       promptOptions: lowCodePromptOptions,

@@ -22,15 +22,20 @@ export function usePlaygroundAgent(
   ) => {
     agentRef.current?.abort();
     context.agentMap.delete(AGENT_KEY);
+    context.setPluginKey("playground");
 
     const fs = new MemFS(testCase.initialFiles);
     const mockHistory = new MockHistory(testCase.initialTurns, (testCase as any)._mockCompact ?? null, testCase.historyOptions);
+    // playground 复用 plugin 层的模型服务，但模型选择按 Agent 隔离。
+    context.configureLLMProvider("playground", testCase.llm?.providers);
+    const request = context.createLLMRequest("playground", AGENT_KEY)
+      ?? reqFn
+      ?? testCase.request;
 
     const newAgent = new CodeAgent({
       key: AGENT_KEY,
       history: mockHistory,
-      llm: testCase.llm,
-      request: reqFn ?? testCase.request,
+      request,
       sandbox: fs,
       tools: testCase.tools ?? [],
       skills: testCase.skills,

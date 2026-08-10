@@ -150,7 +150,7 @@ export interface Message {
   /**
    * 工具调用结果携带的附件（仅 role === "tool" 时有意义）。
    * 由 assembleMessages 从 ToolCallRecord.attachments 透传而来。
-   * 在 LLMProviders.request 中按 model capabilities 预处理（内嵌或提取为合成 user 消息），
+   * 在请求层按 model capabilities 预处理（内嵌或提取为合成 user 消息），
    * sanitizeMessages 发送前会将此字段移除（不裸发到 API）。
    */
   attachments?: Attachment[];
@@ -227,7 +227,7 @@ export interface ToolCallRecord {
    * 工具执行产出的附件（图片、PDF 等）。
    * Agent 层只做数据透传，不做任何能力判断。
    * assembleMessages 时携带到 Message.attachments，
-   * 由 LLMProviders.request 按 model capabilities 做分流处理。
+   * 由请求层按 model capabilities 做分流处理。
    */
   attachments?: Attachment[];
 }
@@ -740,7 +740,7 @@ export function turnsToMessages(
               tool_call_id: tc.callId,
               ...(tc.status !== "pending" ? { status: tc.status } : {}),
               ...(tc.errorType ? { errorType: tc.errorType } : {}),
-              // 透传附件，由 LLMProviders.request 按 capabilities 预处理
+              // 透传附件，由请求层按 capabilities 预处理
               ...(tc.attachments?.length ? { attachments: tc.attachments } : {}),
             });
           }

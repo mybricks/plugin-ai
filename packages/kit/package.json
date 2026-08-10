@@ -19,8 +19,5 @@
     }
   },
   "files": ["dist"],
-  "peerDependencies": {
-    "@mybricks/agent": ">=0.0.1"
-  },
   "sideEffects": false
 }

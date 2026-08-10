@@ -4,6 +4,10 @@ export * from "./packages/plugin/src/index";
 
 // re-export packages/agent
 export * from "./packages/agent/src/index";
+// 顶层 plugin 包保持旧版 CodeAgent 的 llm.providers 兼容路由；
+// 覆盖 agent 包的同名原始导出。
+export { CodeAgent } from "./packages/plugin/src/compat-code-agent";
+export type { CompatibleCodeAgentOptions } from "./packages/plugin/src/compat-code-agent";
 
 // re-export packages/kit
 export * from "./packages/kit/src/index";

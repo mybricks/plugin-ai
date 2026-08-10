@@ -181,30 +181,29 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     mentions.forEach((mention) => chipRegistry.register(mention.chip));
   }, [mentions]);
 
-  // 模型选择器状态跟随当前 Agent，避免多 Agent/多面板串状态。
-  const llmProviders = agent?.getLLMProviders();
-  const hasLLMProviders = !!(llmProviders && llmProviders.isValid());
+  // 模型选择状态由 plugin 层持有，避免 Agent 关心模型切换与持久化。
+  const modelSelection = context.getModelSelection(agent?.key);
+  const hasModelSelection = !!(modelSelection && modelSelection.isValid());
   const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(
-    () => llmProviders?.getSelected() ?? null
+    () => modelSelection?.getSelected() ?? null
   );
 
   useEffect(() => {
-    const lp = llmProviders;
-    if (!lp) return;
-    setSelectedModel(lp.getSelected());
-    return lp.onSelectionChange((sel) => setSelectedModel(sel));
-  }, [llmProviders]);
+    if (!modelSelection) return;
+    setSelectedModel(modelSelection.getSelected());
+    return modelSelection.onSelectionChange((selection) => setSelectedModel(selection));
+  }, [modelSelection]);
 
   const modelSelector = useMemo(() => {
-    if (!hasLLMProviders || !llmProviders) return undefined;
+    if (!hasModelSelection || !modelSelection) return undefined;
     return {
-      models: llmProviders.getValidModels(),
+      models: modelSelection.getValidModels(),
       selected: selectedModel,
       onSelect: (selection: ModelSelection) => {
-        llmProviders.setSelected(selection.providerId, selection.modelId);
+        modelSelection.setSelected(selection.providerId, selection.modelId);
       },
     };
-  }, [hasLLMProviders, llmProviders, selectedModel]);
+  }, [hasModelSelection, modelSelection, selectedModel]);
 
   const { messages, historyStatus, historyError, hasMore, isLoadingMore, subscribeSession, clearSession, loadMoreHistory } = useSession(agent);
   const messageListRef = useRef<{ scrollToBottom: () => void }>(null);

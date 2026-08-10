@@ -7,10 +7,7 @@
     "declarationMap": true,
     "noImplicitAny": false,
     "outDir": "./dist/types",
-    "rootDir": "./src",
-    "paths": {
-      "@mybricks/request": ["./packages/agent/src/request-types.d.ts"]
-    }
+    "rootDir": "./src"
   },
   "include": ["src/**/*"]
 }
