@@ -20,6 +20,9 @@ export interface ChatPanelAgentState {
   messages: ReturnType<typeof useSession>["messages"];
   historyStatus: HistoryStatus;
   historyError: unknown;
+  hasMore: boolean;
+  isLoadingMore: boolean;
+  loadMoreHistory: (count?: number) => Promise<void>;
   loading: boolean;
   pendingQueue: QueueItem[];
   availableModes: AgentMode[];
@@ -68,7 +71,16 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd }: { 
     () => modelSelection?.getSelected() ?? null
   );
 
-  const { messages, historyStatus, historyError, subscribeSession, clearSession } = useSession(agent);
+  const {
+    messages,
+    historyStatus,
+    historyError,
+    hasMore,
+    isLoadingMore,
+    subscribeSession,
+    clearSession,
+    loadMoreHistory: loadMoreHistoryBase,
+  } = useSession(agent);
 
   useEffect(() => {
     if (!agent) {
@@ -141,6 +153,11 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd }: { 
     clearSession();
   }, [agent, clearSession, isDisabled]);
 
+  const loadMoreHistory = useCallback(async (count = 1) => {
+    if (!agent) return;
+    await loadMoreHistoryBase(agent, count);
+  }, [agent, loadMoreHistoryBase]);
+
   const exportHistory = useCallback(async () => {
     if (!agent) return;
     try {
@@ -179,6 +196,9 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd }: { 
     messages,
     historyStatus,
     historyError,
+    hasMore,
+    isLoadingMore,
+    loadMoreHistory,
     loading,
     pendingQueue,
     availableModes,

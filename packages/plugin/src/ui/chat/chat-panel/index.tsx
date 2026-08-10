@@ -188,6 +188,8 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     messages,
     historyStatus,
     historyError,
+    hasMore,
+    isLoadingMore,
     loading,
     pendingQueue,
     showChatMode,
@@ -200,8 +202,21 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   const maxHistoryIters = historyCollapse?.maxIters ?? 50;
   const {
     collapseCursor,
-    onExpandHistory,
+    onExpandHistory: onExpandHistoryBase,
   } = useHistoryCollapse(messages, maxHistoryIters);
+
+  const onExpandHistory = useCallback(async (type: "one" | "ten") => {
+    if (isLoadingMore) return;
+    const collapsedCount = collapseCursor?.visibleStartIndex ?? 0;
+
+    // 当前页还有折叠内容时，只在本地展开；展开完后才向历史源请求更早记录。
+    if (collapsedCount > 0) {
+      onExpandHistoryBase(type === "one" ? "one" : "all");
+      return;
+    }
+
+    if (hasMore) await chatAgent.loadMoreHistory(type === "one" ? 1 : 10);
+  }, [chatAgent, collapseCursor?.visibleStartIndex, hasMore, isLoadingMore, onExpandHistoryBase]);
 
   useImperativeHandle(ref, () => ({
     focus: () => {
@@ -303,7 +318,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
             canExecutePlan={canExecutePlan}
             renderEmpty={historyStatus === "ready" ? renderEmpty : undefined}
             renderFooter={scrollWithSender ? () => senderBlockNode : undefined}
-            collapseCursor={collapseCursor}
+            collapseCursor={collapseCursor ? { ...collapseCursor, hasMore, isLoadingMore } : (hasMore ? { visibleStartIndex: 0, collapsedCount: 0, hasMore, isLoadingMore } : undefined)}
             onExpandHistory={onExpandHistory}
           />
         </div>

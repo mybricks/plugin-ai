@@ -200,7 +200,7 @@ export class HttpAgent {
       hasMore: Boolean(page.hasMore),
       oldestTurnId: page.oldestTurnId ?? null,
     };
-    this.historyManager.markReady();
+    this.historyManager.markReady({ hasMore: this.turnsPage.hasMore });
     return page;
   }
 
@@ -348,7 +348,7 @@ export class HttpAgent {
       hasMore: false,
       oldestTurnId: null,
     };
-    this.historyManager.markReady();
+    this.historyManager.markReady({ hasMore: this.turnsPage.hasMore });
   }
 
   readonly session = {
@@ -449,7 +449,7 @@ export class HttpAgent {
       oldestTurnId: page.oldestTurnId ?? null,
     };
     this.compactRecord = null;
-    this.historyManager.markReady();
+    this.historyManager.markReady({ hasMore: this.turnsPage.hasMore });
   }
 
   private async reloadHistory(): Promise<void> {
