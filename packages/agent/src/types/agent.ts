@@ -1,5 +1,4 @@
-import type { RequestAsStreamFn } from "@mybricks/request";
-import type { ProviderConfig } from "@mybricks/request";
+import type { RequestAsStreamFn } from "./request";
 import type { Agent } from "../agent";
 import type { HandoffOptions } from "../handoff";
 import type { MaskOptions } from "../mask";
@@ -161,15 +160,8 @@ export interface AgentOptions {
   tools?: Tool[];
   /** 历史记录实现 */
   history?: History;
-  /** 流式请求函数；传入 llm.providers 时可省略 */
+  /** 流式请求函数 */
   request?: RequestAsStreamFn;
-  /**
-   * LLM 配置。传入 llm.providers 时，Agent 内部会创建 LLMProviders 并使用其 request；
-   * 对外保持与 pluginAI 一致的配置形状，不暴露内部 LLMProviders 实例。
-   */
-  llm?: {
-    providers?: ProviderConfig[];
-  };
   /** Agent key（用于历史记录隔离，通常取 comId） */
   key?: string;
   /**
@@ -336,9 +328,9 @@ export interface RequestAIOptions {
   mode?: AgentMode;
   /** 指定本次请求使用的模型角色，会透传到请求层用于智能路由。 */
   aiRole?: string;
-  /** 指定本次请求使用的 provider。与 modelId 搭配时会切换当前选中模型。 */
+  /** 指定本次请求使用的 provider，透传给 request 函数用于路由。 */
   providerId?: string;
-  /** 指定本次请求使用的模型。providerId 可选，未传时会从已配置 providers 中匹配。 */
+  /** 指定本次请求使用的模型，透传给 request 函数用于路由。 */
   modelId?: string;
   /** UI 附加元数据，存入 TurnRecord.meta，不参与 LLM 上下文构建 */
   meta?: Record<string, any>;

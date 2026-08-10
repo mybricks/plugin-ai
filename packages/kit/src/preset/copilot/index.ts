@@ -6,7 +6,7 @@ import {
   type CodeAgentOptions,
   type CodeAgentPromptOptions,
   type Tool,
-} from "@mybricks/agent";
+} from "../../../../agent/src";
 
 export interface CopilotAppPromptBuilderOptions {
   name: string;

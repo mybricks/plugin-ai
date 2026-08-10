@@ -114,7 +114,7 @@ import {
   userMessageVeryLongCase,
   userMessageMixedCase,
 } from "./ui-user-message-collapse";
-import { historySlowLoadCase, historyLoadErrorCase } from "./history-load";
+import { historySlowLoadCase, historyLoadErrorCase, historyLazyLoadCase, historyLazyLoadFallbackCase, historyLazyLoadSlowCase } from "./history-load";
 import {
   fileUploadInlineCase,
   fileUploadMhtmlCase,
@@ -128,6 +128,7 @@ import { longChipCase } from "./long-chip";
 import { renderAttachmentSuffixCase } from "./attachment-suffix";
 import { renderFocusCase } from "./render-focus";
 import { customActionBarCase } from "./action-bar";
+import { streamingRenderPerformanceCase } from "./render-performance";
 import {
   bashMvRenameCase,
   bashMvToDirectoryCase,
@@ -177,6 +178,9 @@ export const ALL_CASES: TestCase[] = [
   historyCollapseGrowingCase,
   historySlowLoadCase,
   historyLoadErrorCase,
+  historyLazyLoadCase,
+  historyLazyLoadFallbackCase,
+  historyLazyLoadSlowCase,
   toolDeletePartialPermissionCase,
   // ─── 网络中断 ───────────────────────────────────
   requestBusinessErrorMessageCase,
@@ -247,6 +251,7 @@ export const ALL_CASES: TestCase[] = [
   webFetchValidationCase,
   webFetchHttpErrorCase,
   // UI 渲染
+  streamingRenderPerformanceCase,
   // 用户消息折叠
   userMessageShortCase,
   userMessageLongCase,

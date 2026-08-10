@@ -10,16 +10,22 @@ export class MockHistory implements History {
   private compact: CompactRecord | null;
   private loadDelayMs: number;
   private loadError: boolean;
+  private pageDelayMs: number;
+  loadTurns?: History["loadTurns"];
 
   constructor(
     initialTurns: TurnRecord[] = [],
     compact: CompactRecord | null = null,
-    opts?: { loadDelayMs?: number; loadError?: boolean }
+    opts?: { loadDelayMs?: number; loadError?: boolean; pageDelayMs?: number; supportsPagination?: boolean }
   ) {
     this.turns = [...initialTurns];
     this.compact = compact;
     this.loadDelayMs = opts?.loadDelayMs ?? 0;
     this.loadError = opts?.loadError ?? false;
+    this.pageDelayMs = opts?.pageDelayMs ?? 0;
+    if (opts?.supportsPagination !== false) {
+      this.loadTurns = this.loadTurnsImpl.bind(this);
+    }
   }
 
   async load(_key: string): Promise<TurnRecord[]> {
@@ -30,6 +36,34 @@ export class MockHistory implements History {
       throw new Error("MockHistory: 模拟历史记录加载失败");
     }
     return [...this.turns];
+  }
+
+  private async loadTurnsImpl(_key: string, options: { after?: string; before?: string; limit?: number }): Promise<{ turns: TurnRecord[]; hasMore: boolean }> {
+    const { after, before, limit } = options;
+    let result = [...this.turns];
+
+    if (after !== undefined) {
+      const idx = result.findIndex((t) => t.id === after);
+      const beforeCount = idx >= 0 ? idx + 1 : 0;
+      result = idx >= 0 ? result.slice(idx + 1) : result;
+      return { turns: result, hasMore: beforeCount > 0 };
+    }
+
+    if (before !== undefined) {
+      const idx = result.findIndex((t) => t.id === before);
+      result = idx >= 0 ? result.slice(0, idx) : result;
+    }
+
+    if (before !== undefined && limit !== undefined) {
+      if (this.pageDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, this.pageDelayMs));
+      }
+      const hasMore = result.length > limit;
+      result = result.slice(-limit);
+      return { turns: result, hasMore };
+    }
+
+    return { turns: result, hasMore: false };
   }
 
   async append(_key: string, record: TurnRecord): Promise<void> {

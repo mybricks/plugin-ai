@@ -1,29 +1,44 @@
-import type { RequestAsStreamFn, RequestAsStreamParams, ToolDescriptor } from "./types";
+import type { RequestAsStreamParams, ToolDescriptor } from "./types";
 import { readSSEStream } from "./sse-parser";
 import { sanitizeMessages, preprocessMessagesForModel } from "./base";
 
-// ─── ModelCapabilities ────────────────────────────────────────────────────────
+// ─── Provider types ──────────────────────────────────────────────────────────
 
-/**
- * 模型的多模态能力声明（per-model 粒度）。
- * 可选，不传时视为全支持（兜底宽松策略，报错由上游处理）。
- */
 export interface ModelCapabilities {
-  input?: {
-    /** 是否支持用户消息中的图片附件 */
-    image?: boolean;
-    /** 是否支持用户消息中的 PDF 附件 */
-    pdf?: boolean;
-  };
-  /**
-   * 是否支持在 tool result 中内嵌媒体内容。
-   * - true：附件直接内嵌到 tool result content block 中发送
-   * - false：媒体附件提取为紧随 assistant 消息之后的合成 user 消息
-   *
-   * 注意：该字段与 input.image 相互独立——有些模型支持用户消息放图片，
-   * 但不支持 tool result 内嵌媒体（如 gemini-2.x）。
-   */
+  input?: { image?: boolean; pdf?: boolean };
   toolResultMedia?: boolean;
+}
+
+export interface ModelConfig {
+  id: string;
+  name: string;
+  description?: string;
+  capabilities?: ModelCapabilities;
+}
+
+export interface RemoteProviderConfig {
+  providerId: string;
+  format: "openai" | "anthropic";
+  baseUrl: string;
+  apiKey: string;
+  models: ModelConfig[];
+}
+
+export interface CustomProviderConfig {
+  providerId: string;
+  models: ModelConfig[];
+  request: import("./types").RequestAsStreamFn;
+}
+
+export type ProviderConfig = RemoteProviderConfig | CustomProviderConfig;
+
+export interface ModelSelection {
+  providerId: string;
+  modelId: string;
+}
+
+export interface LLMProviderOptions {
+  providers: ProviderConfig[];
 }
 
 // ─── ToolAttachment ───────────────────────────────────────────────────────────
@@ -45,73 +60,6 @@ export interface ToolAttachment {
   mediaType?: string;
 }
 
-// ─── ModelConfig ──────────────────────────────────────────────────────────────
-
-export interface ModelConfig {
-  id: string;
-  name: string;
-  /** 模型简介，展示在下拉选择器中模型名后方（可选） */
-  description?: string;
-  /**
-   * 模型多模态能力声明（可选）。
-   * 不传时视为全支持（兜底宽松，API 报错由上游处理）。
-   */
-  capabilities?: ModelCapabilities;
-}
-
-// ─── ProviderConfig ───────────────────────────────────────────────────────────
-
-/**
- * 直连供应商配置（OpenAI / Anthropic 等标准 API 格式）。
- *
- * LLMProviders 内置多模态附件预处理：发送前自动按 ModelConfig.capabilities 做分流——
- * - role=user 消息里的图片/PDF：不支持时替换为 ERROR 文本提示
- * - role=tool 消息里的 attachments：支持内嵌时追加到 content，不支持时提取为合成 user 消息
- *
- * capabilities 不传时视为全支持（兼底宽松策略，API 报错由上游处理）。
- */
-export interface RemoteProviderConfig {
-  providerId: string;
-  format: "openai" | "anthropic";
-  baseUrl: string;
-  apiKey: string;
-  models: ModelConfig[];
-}
-
-/**
- * 自定义请求 provider —— 不直连供应商，而是把请求 delegate 给外部 request 函数。
- * 调用方完全控制请求逻辑，LLMProviders 不做任何预处理。
- * 典型用途：配置一个 providerId 为 "auto" 的条目，走接入方自己的智能路由。
- *
- * 多模态附件处理需调用方在 request 函数内自行处理。
- * 可利用 preprocessMessagesForModel + sanitizeMessages 工具函数（导出自 base.ts）。
- */
-export interface CustomProviderConfig {
-  providerId: string;
-  models: ModelConfig[];
-  request: RequestAsStreamFn;
-}
-
-/**
- * ProviderConfig = 直连供应商 | 自定义请求，二者通过 union 统一。
- */
-export type ProviderConfig = RemoteProviderConfig | CustomProviderConfig;
-
-// ─── ModelSelection ───────────────────────────────────────────────────────────
-
-export interface ModelSelection {
-  providerId: string;
-  modelId: string;
-}
-
-// ─── LLMProvidersOptions ──────────────────────────────────────────────────────
-
-export interface LLMProvidersOptions {
-  providers: ProviderConfig[];
-}
-
-/** selectionChange 事件回调类型 */
-export type SelectionChangeHandler = (selection: ModelSelection | null) => void;
 
 // ─── 内部工具函数 ─────────────────────────────────────────────────────────────
 
@@ -195,27 +143,23 @@ function formatRequestBody(
   };
 }
 
-// ─── LLMProviders ─────────────────────────────────────────────────────────────
+// ─── LLMProvider ──────────────────────────────────────────────────────────────
 
 /**
- * LLMProviders：统一管理多供应商配置，提供请求执行、配置校验、模型切换能力。
+ * LLMProvider：根据给定模型选择执行对应 provider 的请求。
  *
  * 支持两种 ProviderConfig：
  * - RemoteProviderConfig：直连供应商（baseUrl + apiKey），走内置 fetch 逻辑，
  *   发送前按当前 ModelConfig.capabilities 做多模态预处理。
  * - CustomProviderConfig：自定义请求，把请求 delegate 给外部 request 函数；
- *   调用方完全控制适配逻辑，LLMProviders 不做额外预处理。
+ *   调用方完全控制适配逻辑，LLMProvider 不做额外预处理。
  *
- * 设计原则：
- * - 纯内存状态，不做任何 localStorage 持久化；持久化由上层（Agent）负责。
- * - 与 history 模式对称：通过 AgentOptions.llm.providers 注入 Agent。
+ * 不保存默认模型、当前选择或 KV；这些状态由 plugin 层的 ModelSelectionController 管理。
  */
-export class LLMProviders {
+export class LLMProvider {
   private providers: Map<string, ProviderConfig>;
-  private selection: ModelSelection | null;
-  private selectionChangeHandlers: SelectionChangeHandler[] = [];
 
-  constructor(options: LLMProvidersOptions) {
+  constructor(options: LLMProviderOptions) {
     this.providers = new Map();
 
     for (const provider of options.providers) {
@@ -225,118 +169,32 @@ export class LLMProviders {
       }
     }
 
-    // 初始化时默认选中第一个 provider 的第一个 model
-    this.selection = null;
-    if (this.providers.size > 0) {
-      const firstProvider = this.providers.values().next().value!;
-      if (firstProvider.models.length > 0) {
-        this.selection = {
-          providerId: firstProvider.providerId,
-          modelId: firstProvider.models[0].id,
-        };
-      }
-    }
-  }
-
-  private isValidSelection(selection: ModelSelection): boolean {
-    const provider = this.providers.get(selection.providerId);
-    if (!provider) return false;
-    return provider.models.some((m) => m.id === selection.modelId);
   }
 
   /**
-   * 解析模型选择参数。
-   * - providerId + modelId：按指定 provider/model 解析
-   * - 仅 modelId：优先在当前 provider 中匹配，找不到再从所有 providers 中匹配第一个
-   */
-  private resolveSelection(selection: Partial<ModelSelection>): ModelSelection | null {
-    if (!selection.modelId) return null;
-
-    if (selection.providerId) {
-      const next = { providerId: selection.providerId, modelId: selection.modelId };
-      return this.isValidSelection(next) ? next : null;
-    }
-
-    const currentProvider = this.selection
-      ? this.providers.get(this.selection.providerId)
-      : undefined;
-
-    if (currentProvider?.models.some((model) => model.id === selection.modelId)) {
-      return { providerId: currentProvider.providerId, modelId: selection.modelId };
-    }
-
-    for (const provider of this.providers.values()) {
-      if (provider.models.some((model) => model.id === selection.modelId)) {
-        return { providerId: provider.providerId, modelId: selection.modelId };
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * 订阅 selection 变化事件。返回取消订阅函数。
-   */
-  onSelectionChange(handler: SelectionChangeHandler): () => void {
-    this.selectionChangeHandlers.push(handler);
-    return () => {
-      this.selectionChangeHandlers = this.selectionChangeHandlers.filter((h) => h !== handler);
-    };
-  }
-
-  private emitSelectionChange(): void {
-    for (const handler of this.selectionChangeHandlers) {
-      try {
-        handler(this.selection);
-      } catch {
-        // ignore
-      }
-    }
-  }
-
-  /**
-   * 获取当前选中 model 的 capabilities。
-   * 可供 UI 层在模型切换时检查是否兼容当前附件，也在 request 内部用于预处理。
-   * 未声明时返回 undefined（视为全支持）。
-   */
-  getCurrentModelCapabilities(): ModelCapabilities | undefined {
-    if (!this.selection) return undefined;
-    const provider = this.providers.get(this.selection.providerId);
-    if (!provider) return undefined;
-    const model = provider.models.find((m) => m.id === this.selection!.modelId);
-    return model?.capabilities;
-  }
-
-  /**
-   * 核心请求方法，签名与 RequestAsStreamFn 兼容。
+   * 核心请求方法。
    *
    * - RemoteProviderConfig：发送前自动按 ModelConfig.capabilities 做多模态预处理，再走内置 fetch。
    * - CustomProviderConfig：直接 delegate 给外部 request 函数，不做任何预处理。
    */
-  request: RequestAsStreamFn = async (params: RequestAsStreamParams) => {
+  async request(params: RequestAsStreamParams, selection: ModelSelection): Promise<void> {
     const { messages, emits, tools } = params;
     const { cancel, write, complete, error, onUsage, onThinking, onToolCalls, onToolCallStream, onFinishReason } = emits;
 
-    if (!this.selection) {
-      const err = new Error("no valid provider/model selected");
-      error(err);
-      throw err;
-    }
-
-    const provider = this.providers.get(this.selection.providerId);
+    const provider = this.providers.get(selection.providerId);
     if (!provider) {
-      const err = new Error(`provider not found: ${this.selection.providerId}`);
+      const err = new Error(`provider not found: ${selection.providerId}`);
       error(err);
       throw err;
     }
 
     // CustomProviderConfig：直接 delegate，调用方自行处理多模态适配
     if (isCustomProvider(provider)) {
-      return provider.request({ ...params, model: this.selection });
+      return provider.request({ ...params, model: selection });
     }
 
     // RemoteProviderConfig：发送前做多模态预处理
-    const model = this.selection.modelId;
+    const model = selection.modelId;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       const err = new Error("messages cannot be empty");
@@ -353,7 +211,8 @@ export class LLMProviders {
       const isKimi = provider.providerId === 'kimi';
       const extraParams = isKimi ? { thinking: { type: 'disabled' } } : undefined;
       // 多模态预处理：按当前 model capabilities 做附件分流，再 sanitize
-      const capabilities = this.getCurrentModelCapabilities();
+      const capabilitiesModel = provider.models.find((m) => m.id === selection.modelId);
+      const capabilities = capabilitiesModel?.capabilities;
       const processedMessages = preprocessMessagesForModel(messages, capabilities);
       const requestBody = formatRequestBody(provider.format, sanitizeMessages(processedMessages), model, tools, extraParams);
       const response = await fetch(normalizeProviderRequestUrl(provider.format, provider.baseUrl), {
@@ -386,7 +245,7 @@ export class LLMProviders {
         // ignore
       }
     }
-  };
+  }
 
   /**
    * 配置有效性检查
@@ -403,73 +262,9 @@ export class LLMProviders {
   }
 
   /**
-   * 获取可选模型列表（含 CustomProviderConfig 中的模型）
-   */
-  getValidModels(): Array<ModelSelection & { modelName: string; description?: string }> {
-    const result: Array<ModelSelection & { modelName: string; description?: string }> = [];
-    this.providers.forEach((provider) => {
-      provider.models.forEach((model) => {
-        result.push({
-          providerId: provider.providerId,
-          modelId: model.id,
-          modelName: model.name,
-          description: model.description,
-        });
-      });
-    });
-    return result;
-  }
-
-  /**
-   * 设置当前选中的模型，并触发 selectionChange 事件。
-   * 注意：不做持久化，持久化由上层（Agent）负责。
-   */
-  setSelected(providerId: string | undefined, modelId: string): boolean {
-    const requestedSelection = { providerId, modelId };
-    const selection = this.resolveSelection(requestedSelection);
-
-    if (!selection) {
-      const label = requestedSelection.providerId
-        ? `${requestedSelection.providerId}/${requestedSelection.modelId ?? "(none)"}`
-        : requestedSelection.modelId ?? "(none)";
-      console.warn(`[LLMProviders] model selection not found: ${label}`);
-      return false;
-    }
-
-    this.selection = selection;
-    this.emitSelectionChange();
-    return true;
-  }
-
-  /**
-   * 获取当前选中的模型
-   */
-  getSelected(): ModelSelection | null {
-    return this.selection;
-  }
-
-  /**
-   * 外部恢复持久化 selection（如 Agent 启动时从 storage 读取后调用）。
-   * 如果传入的 selection 不合法，静默忽略。
-   */
-  restoreSelection(selection: ModelSelection): void {
-    if (this.isValidSelection(selection)) {
-      this.selection = selection;
-      // 不触发 selectionChange，这是静默恢复
-    }
-  }
-
-  /**
-   * 获取所有供应商配置
+   * 返回已通过基础配置校验的 provider，供 plugin 层建立可选模型列表。
    */
   getProviders(): ProviderConfig[] {
     return Array.from(this.providers.values());
-  }
-
-  /**
-   * 获取当前供应商ID
-   */
-  getProviderId(): string | null {
-    return this.selection?.providerId ?? null;
   }
 }

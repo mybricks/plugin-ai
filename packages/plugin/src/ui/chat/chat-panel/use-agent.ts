@@ -62,10 +62,10 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd }: { 
   const showChatMode = availableModes.length > 1;
   const [chatMode, setChatModeState] = useState<AgentMode>(() => agent?.getMode() ?? availableModes[0] ?? AgentModeEnum.Build);
 
-  const llmProviders = agent?.getLLMProviders();
-  const hasLLMProviders = !!(llmProviders && llmProviders.isValid());
+  const modelSelection = context.getModelSelection(agent?.key);
+  const hasModelSelection = !!(modelSelection && modelSelection.isValid());
   const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(
-    () => llmProviders?.getSelected() ?? null
+    () => modelSelection?.getSelected() ?? null
   );
 
   const { messages, historyStatus, historyError, subscribeSession, clearSession } = useSession(agent);
@@ -79,25 +79,24 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd }: { 
   }, [agent]);
 
   useEffect(() => {
-    const lp = llmProviders;
-    if (!lp) {
+    if (!modelSelection) {
       setSelectedModel(null);
       return;
     }
-    setSelectedModel(lp.getSelected());
-    return lp.onSelectionChange((selection) => setSelectedModel(selection));
-  }, [llmProviders]);
+    setSelectedModel(modelSelection.getSelected());
+    return modelSelection.onSelectionChange((selection) => setSelectedModel(selection));
+  }, [modelSelection]);
 
   const modelSelector = useMemo<SenderProps["modelSelector"]>(() => {
-    if (!hasLLMProviders || !llmProviders) return undefined;
+    if (!hasModelSelection || !modelSelection) return undefined;
     return {
-      models: llmProviders.getValidModels(),
+      models: modelSelection.getValidModels(),
       selected: selectedModel,
       onSelect: (selection: ModelSelection) => {
-        llmProviders.setSelected(selection.providerId, selection.modelId);
+        modelSelection.setSelected(selection.providerId, selection.modelId);
       },
     };
-  }, [hasLLMProviders, llmProviders, selectedModel]);
+  }, [hasModelSelection, modelSelection, selectedModel]);
 
   useEffect(() => {
     if (!agent) return;

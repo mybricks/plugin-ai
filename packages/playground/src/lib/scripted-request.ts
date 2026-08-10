@@ -20,6 +20,10 @@ export type MockStep =
       calls: ToolCallSpec[];
       /** 返回前的延迟（ms） */
       delayMs?: number;
+      /** 单次工具参数流的字符数，默认 4；设为 1 可模拟逐字/逐字符输出。 */
+      streamChunkSize?: number;
+      /** 工具参数流每个 chunk 的间隔（ms），默认 20。 */
+      streamChunkDelayMs?: number;
     }
   | {
       type: "error";
@@ -119,14 +123,16 @@ export function makeScriptedRequest(
 
     if (step.type === "tool_calls") {
       await delay(step.delayMs ?? 0);
+      const streamChunkSize = step.streamChunkSize ?? 4;
+      const streamChunkDelayMs = step.streamChunkDelayMs ?? 20;
 
       // 模拟流式 tool_call 输出（逐字符展示参数）
       for (const call of step.calls) {
         const argsStr = JSON.stringify(call.args);
         params.emits.onToolCallStream?.({ index: 0, id: call.id, name: call.name, argsChunk: "" });
-        for (let i = 0; i < argsStr.length; i += 4) {
-          await delay(20);
-          params.emits.onToolCallStream?.({ index: 0, argsChunk: argsStr.slice(i, i + 4) });
+        for (let i = 0; i < argsStr.length; i += streamChunkSize) {
+          await delay(streamChunkDelayMs);
+          params.emits.onToolCallStream?.({ index: 0, argsChunk: argsStr.slice(i, i + streamChunkSize) });
         }
       }
 

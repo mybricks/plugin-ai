@@ -208,8 +208,7 @@ declare global {
 
 export interface SetupSandboxParams {
   requestAsStream: RequestAsStreamFn;
-  /** 与 AgentOptions 保持一致的 LLM 配置。 */
-  llm?: AgentOptions["llm"];
+  llmPluginKey?: string;
   /**
    * 注入到根工程虚拟 FS 的文件（每个 turn 调用一次）。
    * 典型用途：在根工程放 `.agent/agent.md` 提供项目规范。
@@ -254,12 +253,12 @@ export interface SetupSandboxParams {
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
 export function setupSandbox(params: SetupSandboxParams): void {
-  const { requestAsStream, llm, virtualFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, sender } = params;
+  const { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, sender } = params;
 
   window._sandbox_ = {
     // ── sandbox → Plugin ──────────────────────────────────────────────────────
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
-      return connectToAI(comId, config, { requestAsStream, llm, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, sender });
+      return connectToAI(comId, config, { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, sender });
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
@@ -319,7 +318,7 @@ export function setupSandbox(params: SetupSandboxParams): void {
 
 interface PluginParams {
   requestAsStream: RequestAsStreamFn;
-  llm?: AgentOptions["llm"];
+  llmPluginKey?: string;
   /** 注入到根工程虚拟 FS 的文件（每个 turn 调用一次） */
   virtualFiles?: (context: VirtualFilesRuntimeContext) => Promise<UnifiedFile[]>;
   skills?: SkillFile[];
@@ -400,7 +399,7 @@ function formatLibraryDocs(libraries: Array<{ name: string; version?: string; us
 function connectToAI(
   comId: string,
   { designer, hooks, chips }: RegistSandBoxConfig,
-  { requestAsStream, llm, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, sender }: PluginParams
+  { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, sender }: PluginParams
 ): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
   registerChips(agentKey, chips);
@@ -659,8 +658,7 @@ function connectToAI(
   const agent = new CodeAgent({
     key: agentKey,
     history: history ?? new IDBHistory({ dbName: "@plugin-ai/plugin/messages" }),
-    llm,
-    request: requestAsStream,
+    request: (llmPluginKey ? context.createLLMRequest(llmPluginKey, agentKey) : undefined) ?? requestAsStream,
     sandbox,
     tools: [checkStatusTool, initProjectTool, ...(tools ?? [])],
     promptOptions,

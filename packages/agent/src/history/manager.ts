@@ -6,6 +6,7 @@ export type HistoryStatus = "idle" | "loading" | "ready" | "error";
 export interface HistoryManagerSnapshot {
   status: HistoryStatus;
   error: unknown;
+  hasMore: boolean;
 }
 
 export type HistoryManagerListener = (snapshot: HistoryManagerSnapshot) => void;
@@ -26,6 +27,7 @@ export class HistoryManager {
   private error: unknown = null;
   private loadPromise: Promise<HistoryLoadResult | null> | null = null;
   private listeners = new Set<HistoryManagerListener>();
+  private hasMore: boolean = false;
 
   constructor(private readonly options: { history?: History | null; key?: string }) {
     this.status = options.history && options.key ? "idle" : "ready";
@@ -39,6 +41,7 @@ export class HistoryManager {
     return {
       status: this.status,
       error: this.error,
+      hasMore: this.hasMore,
     };
   }
 
@@ -86,10 +89,17 @@ export class HistoryManager {
    * Agent 在将 turns 写入内存后调用，将状态切为 ready 并通知订阅者。
    * 此时订阅者调用 agent.getTurns() 能拿到完整数据。
    */
-  markReady(): void {
+  markReady(opts?: { hasMore?: boolean }): void {
     this.status = "ready";
     this.error = null;
+    if (opts?.hasMore !== undefined) this.hasMore = opts.hasMore;
     this.emit();
+  }
+
+  async loadTurns(options: { after?: string; before?: string; limit?: number }): Promise<{ turns: TurnRecord[]; hasMore: boolean } | null> {
+    const { history, key } = this.options;
+    if (!history || !key || !history.loadTurns) return null;
+    return history.loadTurns(key, options);
   }
 
   async append(record: TurnRecord): Promise<void> {
@@ -133,7 +143,6 @@ export class HistoryManager {
     }
 
     try {
-      const turns = await history.load(key);
       let compactRecord: CompactRecord | string | null = null;
       if (history?.loadCompact) {
         compactRecord = await history.loadCompact(key);
@@ -146,6 +155,15 @@ export class HistoryManager {
           }
         }
       }
+
+      // 支持分页且已有 compact 边界时，首屏只需要 compact 之后的 turns。
+      // 不要先调用 load()，否则远端 History 仍会发生一次全量拉取。
+      if (compactRecord && history.loadTurns) {
+        return { turns: [], compactRecord: compactRecord as CompactRecord };
+      }
+
+      // 不支持分页（或没有 compact 边界）时保持原有全量加载兼容行为。
+      const turns = await history.load(key);
       // 注意：不在这里 emit ready，由 Agent.ensureHistoryReady 在写好 turns 后调 markReady()
       return { turns, compactRecord: compactRecord as CompactRecord | null };
     } catch (error) {

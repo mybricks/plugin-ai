@@ -1,8 +1,10 @@
 import type { SendToAgentParams } from "../sandbox";
 import { AgentQueue } from "./queue";
-import type { ProviderConfig } from "../../../request/src";
+import { LLMProvider } from "../../../request/src";
+import type { ProviderConfig, RequestAsStreamFn } from "../../../request/src";
 import type { SenderRef } from "../ui/components/sender";
 import { PluginAIKVStore } from "./kv";
+import { ModelSelectionController } from "../model-selection";
 
 type SenderInputValue = ReturnType<SenderRef["getInput"]>;
 
@@ -80,6 +82,51 @@ class Context {
 
   /** LLM 配置值 */
   settingValue?: SettingValue;
+
+  private llmRuntimes = new Map<string, {
+    provider: LLMProvider;
+    storage: PluginAIKVStore;
+    modelSelections: Map<string, ModelSelectionController>;
+  }>();
+  private agentLLMRuntimeKeys = new Map<string, string>();
+
+  configureLLMProvider(pluginKey: string, providers?: ProviderConfig[]): void {
+    if (!providers?.length) {
+      this.llmRuntimes.delete(pluginKey);
+      return;
+    }
+    const storage = new PluginAIKVStore();
+    storage.setNamespace(pluginKey);
+    this.llmRuntimes.set(pluginKey, {
+      provider: new LLMProvider({ providers }),
+      storage,
+      modelSelections: new Map(),
+    });
+  }
+
+  getModelSelection(agentKey?: string): ModelSelectionController | undefined {
+    if (!agentKey) return undefined;
+    const runtimeKey = this.agentLLMRuntimeKeys.get(agentKey);
+    const runtime = runtimeKey ? this.llmRuntimes.get(runtimeKey) : undefined;
+    if (!runtime) return undefined;
+    const existing = runtime.modelSelections.get(agentKey);
+    if (existing) return existing;
+    const selection = new ModelSelectionController({
+      providers: runtime.provider.getProviders(),
+      storage: runtime.storage,
+      storageKey: `llm-model-selection:${agentKey}`,
+    });
+    runtime.modelSelections.set(agentKey, selection);
+    return selection;
+  }
+
+  createLLMRequest(pluginKey: string, agentKey: string): RequestAsStreamFn | undefined {
+    this.agentLLMRuntimeKeys.set(agentKey, pluginKey);
+    const selection = this.getModelSelection(agentKey);
+    const runtime = this.llmRuntimes.get(pluginKey);
+    if (!selection || !runtime) return undefined;
+    return (params) => selection.request(runtime.provider, params);
+  }
 
   /** 全局禁用输入框发送 */
   disabled: boolean = false;

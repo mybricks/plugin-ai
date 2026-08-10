@@ -1,4 +1,4 @@
-import type { UnifiedFile } from "@mybricks/agent";
+import type { UnifiedFile } from "../../agent/src";
 import type { PromptSections } from "./prompts";
 
 export interface PluginAIPresetVirtualFilesContext {

@@ -300,7 +300,7 @@ ${prompt}
   }
 
   // 处理输出
-  const turns = subAgent.getTurns();
+  const turns = await subAgent.getTurns();
   const lastTurn = turns[turns.length - 1];
   const lastLLMIter = lastTurn?.iterations?.slice().reverse().find(iter => !("type" in iter));
   const content = (lastLLMIter as any)?.content ?? "";

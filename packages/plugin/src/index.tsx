@@ -3,7 +3,7 @@ import React from "react";
 import pkg from "../../../package.json";
 console.log(`%c ${pkg.name} %c@${pkg.version}`, `color:#FFF;background:#fa6400`, ``, ``);
 
-import { CodeAgent, IDBHistory } from "../../agent/src";
+import { IDBHistory } from "../../agent/src";
 import type { AgentOptions, CodeAgentPlugin, SkillFile, TurnSender } from "../../agent/src";
 import { createRequestAsStream, createOnUpload } from "../../request/src";
 import type { RequestAsStreamFn, ProviderConfig } from "../../request/src";
@@ -23,7 +23,9 @@ import type { MentionProvider } from "./ui/components/types";
 
 // ─── 工具类型重导出 ────────────────────────────────────────────────────────────
 
-export { Agent, CodeAgent, IDBHistory, IDBSandbox } from "../../agent/src";
+export { Agent, IDBHistory, IDBSandbox } from "../../agent/src";
+export { CodeAgent } from "./compat-code-agent";
+export type { CompatibleCodeAgentOptions } from "./compat-code-agent";
 export type { AdditionalDirectory, AgentEventMap, AgentsMdConfig, CodeAgentPlugin, SkillFile, UnifiedFile } from "../../agent/src";
 export { createRequestAsStream, createOnUpload } from "../../request/src";
 export type { RequestAsStreamFn } from "../../request/src";
@@ -234,11 +236,12 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     mentions,
   } = params;
 
+  // 先设置 KV 命名空间，再恢复模型选择，避免读取到上一个 plugin 实例的状态。
+  context.setPluginKey(pluginKey);
   const mergedSkills = [...DEFAULT_PLUGIN_SKILLS, ...(skills ?? [])];
 
-  const effectiveRequest: RequestAsStreamFn = llm?.providers?.length
-    ? createRequestAsStream()
-    : (onRequest ?? createRequestAsStream());
+  context.configureLLMProvider(pluginKey, llm?.providers);
+  const effectiveRequest: RequestAsStreamFn = onRequest ?? createRequestAsStream();
 
   const requestAsStream: RequestAsStreamFn = effectiveRequest;
   const upload = onUpload ?? createOnUpload();
@@ -255,7 +258,6 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
   });
 
   context.name = name;
-  context.setPluginKey(pluginKey);
   (mentions ?? []).forEach((mention) => chipRegistry.register(mention.chip));
   context.pluginParams = { name, user, onUpload: upload, onDownload: download, renderAttachmentSuffix, mentions };
 
@@ -307,7 +309,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
 
   setupSandbox({
     requestAsStream,
-    llm,
+    llmPluginKey: pluginKey,
     virtualFiles,
     skills: mergedSkills,
     plugins,
