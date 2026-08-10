@@ -24,7 +24,7 @@ export function usePlaygroundAgent(
     context.agentMap.delete(AGENT_KEY);
 
     const fs = new MemFS(testCase.initialFiles);
-    const mockHistory = new MockHistory(testCase.initialTurns, null, testCase.historyOptions);
+    const mockHistory = new MockHistory(testCase.initialTurns, (testCase as any)._mockCompact ?? null, testCase.historyOptions);
 
     const newAgent = new CodeAgent({
       key: AGENT_KEY,

@@ -72,6 +72,7 @@ function useHistoryLoader(
     () => agent?.historyManager.getSnapshot().status ?? "ready"
   );
   const [historyError, setHistoryError] = useState<unknown>(null);
+  const [hasMore, setHasMore] = useState(false);
 
   useEffect(() => {
     if (!agent) {
@@ -80,17 +81,19 @@ function useHistoryLoader(
       commit();
       setHistoryStatus("ready");
       setHistoryError(null);
+      setHasMore(false);
       return;
     }
 
     let cancelled = false;
 
-    const unsubscribe = agent.historyManager.subscribe((snapshot) => {
+    const unsubscribe = agent.historyManager.subscribe(async (snapshot) => {
       if (cancelled) return;
       setHistoryStatus(snapshot.status);
       setHistoryError(snapshot.error);
+      setHasMore(snapshot.hasMore);
       if (snapshot.status === "ready") {
-        const records = turnsToMessageRecords(agent.getTurns());
+        const records = turnsToMessageRecords(await agent.getTurns());
         const streaming = records.find((r) => r.status === "pending") ?? null;
         historyRef.current = streaming ? records.filter((r) => r !== streaming) : records;
         streamingRef.current = streaming
@@ -106,7 +109,7 @@ function useHistoryLoader(
     };
   }, [agent]);
 
-  return { historyStatus, historyError };
+  return { historyStatus, historyError, hasMore };
 }
 
 // ─── useAgentEvents ───────────────────────────────────────────────────────────
@@ -147,8 +150,8 @@ function useAgentEvents(
       }
     };
 
-    const syncFromSnapshot = () => {
-      const records = turnsToMessageRecords(a.getTurns());
+    const syncFromSnapshot = async () => {
+      const records = turnsToMessageRecords(await a.getTurns());
       const streaming = records.find((r) => r.status === "pending") ?? null;
       historyRef.current = streaming ? records.filter((r) => r !== streaming) : records;
       streamingRef.current = streaming
@@ -183,9 +186,9 @@ function useAgentEvents(
         opts?.onTurnStart?.();
       }),
 
-      a.events.on("turn:resume", ({ turnId }) => {
+      a.events.on("turn:resume", async ({ turnId }) => {
         flushCommit();
-        const fromAgent = turnsToMessageRecords(a.getTurns()).find((r) => r.id === turnId);
+        const fromAgent = turnsToMessageRecords(await a.getTurns()).find((r) => r.id === turnId);
         const fromHistory = historyRef.current.find((r) => r.id === turnId);
         const restored = fromAgent ?? fromHistory;
         if (!restored) return;
@@ -453,7 +456,19 @@ function useAgentEvents(
     commit();
   }, [commit]);
 
-  return { subscribeSession, clearSession };
+  const loadMoreHistory = useCallback(async (agent: Agent, limit: number) => {
+    const oldest = historyRef.current[0];
+    if (!oldest) return;
+    await agent.getTurns({ before: oldest.id, limit });
+    const records = turnsToMessageRecords(await agent.getTurns());
+    const streaming = streamingRef.current;
+    historyRef.current = streaming
+      ? records.filter((r) => r.id !== streaming.id)
+      : records;
+    commit();
+  }, [commit]);
+
+  return { subscribeSession, clearSession, loadMoreHistory };
 }
 
 // ─── useSession ───────────────────────────────────────────────────────────────
@@ -461,7 +476,9 @@ function useAgentEvents(
 export function useSession(agent: Agent | undefined) {
   const historyRef = useRef<MessageRecord[]>([]);
   const streamingRef = useRef<MessageRecord | null>(null);
+  const loadingMoreRef = useRef(false);
   const [messages, setMessages] = useState<MessageRecord[]>([]);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   // commit 只做一件事：把 ref 的当前值快照到 React state。
   // streaming turn 的最后一个 iter 每次都浅拷贝，让 MessageIteration.memo 感知到变化；
@@ -484,8 +501,19 @@ export function useSession(agent: Agent | undefined) {
     }
   }, []);
 
-  const { historyStatus, historyError } = useHistoryLoader(agent, historyRef, streamingRef, commit);
-  const { subscribeSession, clearSession } = useAgentEvents(historyRef, streamingRef, commit);
+  const { historyStatus, historyError, hasMore } = useHistoryLoader(agent, historyRef, streamingRef, commit);
+  const { subscribeSession, clearSession, loadMoreHistory: loadMoreHistoryBase } = useAgentEvents(historyRef, streamingRef, commit);
+  const loadMoreHistory = useCallback(async (targetAgent: Agent, limit: number) => {
+    if (loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    setIsLoadingMore(true);
+    try {
+      await loadMoreHistoryBase(targetAgent, limit);
+    } finally {
+      loadingMoreRef.current = false;
+      setIsLoadingMore(false);
+    }
+  }, [loadMoreHistoryBase]);
 
-  return { messages, historyStatus, historyError, subscribeSession, clearSession };
+  return { messages, historyStatus, historyError, hasMore, isLoadingMore, subscribeSession, clearSession, loadMoreHistory };
 }

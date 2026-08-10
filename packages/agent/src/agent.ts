@@ -603,18 +603,40 @@ export class Agent {
 
   private async ensureHistoryReady(): Promise<void> {
     const result = await this.historyManager.ensureLoaded();
-    if (result === null) return; // 无 storage 或已 ready，无需处理
-    // 合并：保留面板已产生但尚未持久化的 turn（仅在 loadHistory 之前发起的请求才可能出现）
+    if (result === null) return;
+
+    this.compactRecord = result.compactRecord;
+
+    // 有 compactRecord 且 storage 支持 loadTurns：只加载 compact 边界之后的 turns
+    if (result.compactRecord && this.historyManager.loadTurns) {
+      const pageResult = await this.historyManager.loadTurns({ after: result.compactRecord.upToTurnId });
+      if (pageResult) {
+        const loadedIds = new Set(pageResult.turns.map((t) => t.id));
+        const localTurns = this.turns.filter((t) => !loadedIds.has(t.id));
+        this.turns = [...pageResult.turns, ...localTurns];
+        this.historyManager.markReady({ hasMore: pageResult.hasMore });
+        return;
+      }
+    }
+
+    // 降级：全量加载
     const loadedIds = new Set(result.turns.map((turn) => turn.id));
     const localTurns = this.turns.filter((turn) => !loadedIds.has(turn.id));
     this.turns = [...result.turns, ...localTurns];
-    this.compactRecord = result.compactRecord;
-    // turns 已写好，再通知订阅者，保证 UI 调 getTurns() 时数据已就绪
-    this.historyManager.markReady();
+    this.historyManager.markReady({ hasMore: false });
   }
 
-  /** 获取历史调用记录（供 UI 直接使用） */
-  getTurns(): TurnRecord[] {
+  /** 获取历史调用记录，支持往前翻页加载更早的 turns。 */
+  async getTurns(options?: { before?: string; limit?: number }): Promise<TurnRecord[]> {
+    if (options?.before) {
+      const pageResult = await this.historyManager.loadTurns({ before: options.before, limit: options.limit });
+      if (pageResult) {
+        const loadedIds = new Set(this.turns.map((t) => t.id));
+        const newTurns = pageResult.turns.filter((t) => !loadedIds.has(t.id));
+        this.turns = [...newTurns, ...this.turns];
+        this.historyManager.markReady({ hasMore: pageResult.hasMore });
+      }
+    }
     return this.turns;
   }
 

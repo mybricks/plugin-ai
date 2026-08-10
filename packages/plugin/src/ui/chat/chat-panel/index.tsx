@@ -206,13 +206,27 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     };
   }, [hasLLMProviders, llmProviders, selectedModel]);
 
-  const { messages, historyStatus, historyError, subscribeSession, clearSession } = useSession(agent);
+  const { messages, historyStatus, historyError, hasMore, isLoadingMore, subscribeSession, clearSession, loadMoreHistory } = useSession(agent);
   const messageListRef = useRef<{ scrollToBottom: () => void }>(null);
   const maxHistoryIters = historyCollapse?.maxIters ?? 50;
   const {
     collapseCursor,
-    onExpandHistory,
+    onExpandHistory: onExpandHistoryBase,
   } = useHistoryCollapse(messages, maxHistoryIters);
+
+  const onExpandHistory = useCallback(async (type: "one" | "ten") => {
+    if (isLoadingMore) return;
+    const collapsedCount = collapseCursor?.visibleStartIndex ?? 0;
+
+    // 第一阶段：当前已加载的历史仅操作本地折叠状态。
+    if (collapsedCount > 0) {
+      onExpandHistoryBase(type === "one" ? "one" : "all");
+      return;
+    }
+
+    // 第二阶段：已加载历史已全部展开，按页请求尚未加载的更早记录。
+    if (hasMore && agent) await loadMoreHistory(agent, type === "one" ? 1 : 10);
+  }, [onExpandHistoryBase, collapseCursor?.visibleStartIndex, hasMore, agent, isLoadingMore, loadMoreHistory]);
 
   useImperativeHandle(ref, () => ({
     focus: () => {
@@ -282,7 +296,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       const content = {
         agentKey: agent.key,
         exportedAt: new Date().toISOString(),
-        turns: agent.getTurns(),
+        turns: await agent.getTurns(),
         compactRecord: agent.getCompactRecord?.() ?? null,
       };
       const name = `rxai-${Date.now()}.json`;
@@ -397,7 +411,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
             canExecutePlan={canExecutePlan}
             renderEmpty={historyStatus === "ready" ? renderEmpty : undefined}
             renderFooter={scrollWithSender ? () => senderBlockNode : undefined}
-            collapseCursor={collapseCursor}
+            collapseCursor={collapseCursor ? { ...collapseCursor, hasMore, isLoadingMore } : (hasMore ? { visibleStartIndex: 0, collapsedCount: 0, hasMore, isLoadingMore } : undefined)}
             onExpandHistory={onExpandHistory}
           />
         </div>

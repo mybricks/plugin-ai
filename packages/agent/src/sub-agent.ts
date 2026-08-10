@@ -221,7 +221,7 @@ export function createSubAgentTool(
       await subAgent.requestAI({ message: prompt });
 
       // 提取最后一轮 LLM 输出作为结果
-      const turns = subAgent.getTurns();
+      const turns = await subAgent.getTurns();
       const lastTurn = turns[turns.length - 1];
       const lastLLMIter = lastTurn?.iterations?.slice().reverse().find(
         (iter) => !("type" in iter)

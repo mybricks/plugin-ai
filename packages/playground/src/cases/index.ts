@@ -114,7 +114,7 @@ import {
   userMessageVeryLongCase,
   userMessageMixedCase,
 } from "./ui-user-message-collapse";
-import { historySlowLoadCase, historyLoadErrorCase } from "./history-load";
+import { historySlowLoadCase, historyLoadErrorCase, historyLazyLoadCase, historyLazyLoadFallbackCase, historyLazyLoadSlowCase } from "./history-load";
 import {
   fileUploadInlineCase,
   fileUploadMhtmlCase,
@@ -178,6 +178,9 @@ export const ALL_CASES: TestCase[] = [
   historyCollapseGrowingCase,
   historySlowLoadCase,
   historyLoadErrorCase,
+  historyLazyLoadCase,
+  historyLazyLoadFallbackCase,
+  historyLazyLoadSlowCase,
   toolDeletePartialPermissionCase,
   // ─── 网络中断 ───────────────────────────────────
   requestBusinessErrorMessageCase,

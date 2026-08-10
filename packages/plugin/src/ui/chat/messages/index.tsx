@@ -77,9 +77,11 @@ export interface MessageListProps {
   collapseCursor?: {
     visibleStartIndex: number;
     collapsedCount: number;
+    hasMore?: boolean;
+    isLoadingMore?: boolean;
   };
   /** 历史展开回调 */
-  onExpandHistory?: (type: "one" | "all") => void;
+  onExpandHistory?: (type: "one" | "all" | "ten") => void | Promise<void>;
 }
 
 type MessageListRef = { scrollToBottom: () => void };
@@ -88,20 +90,28 @@ type MessageListRef = { scrollToBottom: () => void };
 
 const CollapseBar = ({
   collapsedCount,
+  isLoadingMore,
   onExpandOne,
-  onExpandAll,
+  onExpandSecondary,
 }: {
   collapsedCount: number;
-  onExpandOne: () => void;
-  onExpandAll: () => void;
+  isLoadingMore: boolean;
+  onExpandOne: () => void | Promise<void>;
+  onExpandSecondary: () => void | Promise<void>;
 }) => (
   <div className={css["collapse-bar"]}>
     <div className={css["collapse-bar-line"]} />
-    <span className={css["collapse-bar-text"]}>已折叠 {collapsedCount} 轮历史对话</span>
-    <div className={css["collapse-bar-actions"]}>
-      <button className={css["collapse-bar-btn"]} onClick={onExpandOne}>展开上一轮</button>
-      <button className={css["collapse-bar-btn"]} onClick={onExpandAll}>展开全部</button>
-    </div>
+    <span className={css["collapse-bar-text"]}>
+      {isLoadingMore ? "加载中..." : (collapsedCount > 0 ? `已折叠 ${collapsedCount} 轮历史对话` : "更多历史对话记录")}
+    </span>
+    {!isLoadingMore && (
+      <div className={css["collapse-bar-actions"]}>
+        <button className={css["collapse-bar-btn"]} onClick={() => { void onExpandOne(); }}>展开一条</button>
+        <button className={css["collapse-bar-btn"]} onClick={() => { void onExpandSecondary(); }}>
+          {collapsedCount > 0 ? "展开全部" : "展开 10 条"}
+        </button>
+      </div>
+    )}
     <div className={css["collapse-bar-line"]} />
   </div>
 );
@@ -118,6 +128,8 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
   const { activePlan } = usePlanState(agent);
   const visibleStartIndex = collapseCursor?.visibleStartIndex ?? 0;
   const collapsedCount = collapseCursor?.collapsedCount ?? 0;
+  const collapseHasMore = collapseCursor?.hasMore ?? false;
+  const isLoadingMore = collapseCursor?.isLoadingMore ?? false;
   const toolRendererMap = useMemo(() => {
     const map = new Map<string, ToolRenderer>();
 
@@ -151,11 +163,12 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
           <div className={css["empty-state"]}>{renderEmpty()}</div>
         ) : (
           <>
-            {collapsedCount > 0 && (
+            {(collapsedCount > 0 || collapseHasMore) && (
               <CollapseBar
                 collapsedCount={collapsedCount}
+                isLoadingMore={isLoadingMore}
                 onExpandOne={() => onExpandHistory?.("one")}
-                onExpandAll={() => onExpandHistory?.("all")}
+                onExpandSecondary={() => onExpandHistory?.(collapsedCount > 0 ? "all" : "ten")}
               />
             )}
             {messages.map((record, index) => {

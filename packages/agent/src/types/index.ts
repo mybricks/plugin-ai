@@ -421,6 +421,17 @@ export interface History {
 
   /** 加载历史调用记录列表 */
   load(key: string): Promise<TurnRecord[]>;
+  /**
+   * 分页加载历史记录（可选实现）。不实现时 Agent 降级到 load() 全量加载。
+   * - after：只返回该 turnId 之后的记录（不含，用于初始加载跳过 compact 边界前的内容）
+   * - before：只返回该 turnId 之前的记录（不含，用于往前翻页）
+   * - limit：每批条数上限（before 场景必传；after 场景不传则取全部）
+   */
+  loadTurns?(key: string, options: {
+    after?: string;
+    before?: string;
+    limit?: number;
+  }): Promise<{ turns: TurnRecord[]; hasMore: boolean }>;
   /** 追加一轮记录（完成后调用，避免每帧存储） */
   append(key: string, record: TurnRecord): Promise<void>;
   /**

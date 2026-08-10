@@ -28,16 +28,6 @@ function calcFoldBoundary(messages: MessageRecord[], maxIters: number): number {
   return 0;
 }
 
-/** 已完成历史的总 iter 数，用作手动展开游标的版本。 */
-function calcHistoryIterCount(messages: MessageRecord[]): number {
-  let iterCount = 0;
-  for (const record of messages) {
-    if (record.status === "pending") continue;
-    iterCount += getIterLength(record);
-  }
-  return iterCount;
-}
-
 function isValidMaxIters(maxIters: number): boolean {
   return Number.isFinite(maxIters) && maxIters > 0;
 }
@@ -54,12 +44,10 @@ export interface HistoryCollapseResult {
 
 interface HistoryCollapseMetrics {
   foldBoundary: number;
-  historyIterCount: number;
 }
 
 const FALLBACK_METRICS: HistoryCollapseMetrics = {
   foldBoundary: 0,
-  historyIterCount: 0,
 };
 
 const FALLBACK_CURSOR = {
@@ -70,17 +58,18 @@ const FALLBACK_CURSOR = {
 /**
  * 管理超长历史折叠的全部状态与派生值。
  *
- * 核心模型：**总 iter 数版本 + 展开游标 + iter 上限**
+ * 核心模型：**最新 turn 版本 + 展开游标 + iter 上限**
  *
  * - 自动折叠：用 maxIters 从尾部反推自动边界 foldBoundary
  * - 手动展开：记录本次展开后的 visibleStartIndex
- * - 新 turn 完成：historyIterCount 变化，展开游标失效，回到自动折叠
+ * - 新 turn 追加：最新 turn 改变，展开游标失效，回到自动折叠
+ * - 向前分页：只会 prepend 更早 turn，最新 turn 不变，保留用户的展开状态
  */
 export function useHistoryCollapse(
   messages: MessageRecord[],
   maxIters: number
 ): HistoryCollapseResult {
-  const [cursor, setCursor] = useState<{ visibleStartIndex: number; atHistoryIterCount: number } | null>(null);
+  const [cursor, setCursor] = useState<{ visibleStartIndex: number; atLatestTurnId?: string } | null>(null);
   const [metrics, setMetrics] = useState<HistoryCollapseMetrics>(FALLBACK_METRICS);
 
   useEffect(() => {
@@ -91,7 +80,6 @@ export function useHistoryCollapse(
       }
       setMetrics({
         foldBoundary: calcFoldBoundary(messages, maxIters),
-        historyIterCount: calcHistoryIterCount(messages),
       });
     } catch {
       setMetrics(FALLBACK_METRICS);
@@ -99,11 +87,12 @@ export function useHistoryCollapse(
   }, [messages.length, maxIters]);
 
   const isValid = Array.isArray(messages) && isValidMaxIters(maxIters);
-  const { foldBoundary, historyIterCount } = metrics;
+  const { foldBoundary } = metrics;
+  const latestTurnId = messages[messages.length - 1]?.id;
   let visibleStartIndex: number;
   if (!isValid) {
     visibleStartIndex = 0;
-  } else if (cursor != null && cursor.atHistoryIterCount === historyIterCount) {
+  } else if (cursor != null && cursor.atLatestTurnId === latestTurnId) {
     visibleStartIndex = Math.min(cursor.visibleStartIndex, foldBoundary);
   } else {
     visibleStartIndex = foldBoundary;
@@ -114,17 +103,17 @@ export function useHistoryCollapse(
     try {
       if (type === "all") {
         if (messages.length <= 0) return;
-        setCursor({ visibleStartIndex: 0, atHistoryIterCount: historyIterCount });
+        setCursor({ visibleStartIndex: 0, atLatestTurnId: latestTurnId });
         return;
       }
 
       const targetIndex = visibleStartIndex - 1;
       if (targetIndex < 0) return;
-      setCursor({ visibleStartIndex: targetIndex, atHistoryIterCount: historyIterCount });
+      setCursor({ visibleStartIndex: targetIndex, atLatestTurnId: latestTurnId });
     } catch {
       // 折叠交互失败时保持当前渲染，不影响聊天主体。
     }
-  }, [historyIterCount, isValid, messages.length, visibleStartIndex]);
+  }, [isValid, latestTurnId, messages.length, visibleStartIndex]);
 
   if (!isValid) {
     return {
