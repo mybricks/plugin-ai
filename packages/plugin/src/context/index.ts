@@ -1,9 +1,11 @@
 import type { CodeAgent } from "../../../agent/src";
 import type { SendToAgentParams } from "../sandbox";
 import { AIRequestQueue } from "./queue";
-import type { ProviderConfig } from "../../../request/src";
+import { LLMProvider } from "../../../request/src";
+import type { ProviderConfig, RequestAsStreamFn } from "../../../request/src";
 import type { SenderRef } from "../ui/components/sender";
 import { PluginAIKVStore } from "./kv";
+import { ModelSelectionController } from "../model-selection";
 
 type SenderInputValue = ReturnType<SenderRef["getInput"]>;
 
@@ -68,6 +70,57 @@ class Context {
 
   /** LLM 配置值 */
   settingValue?: SettingValue;
+
+  /** 每个 plugin 实例独立持有 provider 路由、KV 命名空间和 Agent 模型选择状态。 */
+  private llmRuntimes = new Map<string, {
+    provider: LLMProvider;
+    storage: PluginAIKVStore;
+    modelSelections: Map<string, ModelSelectionController>;
+  }>();
+  private agentLLMRuntimeKeys = new Map<string, string>();
+
+  /**
+   * 配置 request 层的模型路由。默认模型、KV 与选择状态会在每个 Agent 首次使用时创建。
+   */
+  configureLLMProvider(pluginKey: string, providers?: ProviderConfig[]): void {
+    if (!providers?.length) {
+      this.llmRuntimes.delete(pluginKey);
+      return;
+    }
+    const storage = new PluginAIKVStore();
+    storage.setNamespace(pluginKey);
+    this.llmRuntimes.set(pluginKey, {
+      provider: new LLMProvider({ providers }),
+      storage,
+      modelSelections: new Map(),
+    });
+  }
+
+  /** 获取指定 Agent 的模型选择状态；KV key 按 agent key 隔离。 */
+  getModelSelection(agentKey?: string): ModelSelectionController | undefined {
+    if (!agentKey) return undefined;
+    const runtimeKey = this.agentLLMRuntimeKeys.get(agentKey);
+    const runtime = runtimeKey ? this.llmRuntimes.get(runtimeKey) : undefined;
+    if (!runtime) return undefined;
+    const existing = runtime.modelSelections.get(agentKey);
+    if (existing) return existing;
+    const modelSelection = new ModelSelectionController({
+      providers: runtime.provider.getProviders(),
+      storage: runtime.storage,
+      storageKey: `llm-model-selection:${agentKey}`,
+    });
+    runtime.modelSelections.set(agentKey, modelSelection);
+    return modelSelection;
+  }
+
+  /** 为指定 Agent 创建绑定其模型选择状态的 request 函数。 */
+  createLLMRequest(pluginKey: string, agentKey: string): RequestAsStreamFn | undefined {
+    this.agentLLMRuntimeKeys.set(agentKey, pluginKey);
+    const modelSelection = this.getModelSelection(agentKey);
+    const runtime = this.llmRuntimes.get(pluginKey);
+    if (!modelSelection || !runtime) return undefined;
+    return (params) => modelSelection.request(runtime.provider, params);
+  }
 
   /** 全局禁用输入框发送 */
   disabled: boolean = false;

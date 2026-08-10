@@ -1,6 +1,5 @@
 import { randomUUID } from "./uuid";
-import { createRequestAsStream, LLMProviders } from "@mybricks/request";
-import type { ModelSelection, ToolDescriptor } from "@mybricks/request";
+import type { ToolDescriptor } from "./types/request";
 import { AgentEvents } from "./events";
 import { HistoryManager } from "./history/manager";
 import type {
@@ -94,7 +93,6 @@ type InternalAgentOptions = AgentOptions & { request: NonNullable<AgentOptions["
 
 interface AgentTemporaryState {
   mode?: AgentMode;
-  modelSelection?: ModelSelection;
 }
 
 const AGENT_TEMPORARY_STATE_KEY_PREFIX = "plugin-ai:agent-temporary:";
@@ -494,7 +492,6 @@ export class Agent {
    * 否则父 Agent 的 retry wrapper 会和 fork 自己的 retry 配置叠套。
    */
   protected readonly rawRequest: NonNullable<AgentOptions["request"]>;
-  private readonly llmProviders?: LLMProviders;
   private readonly temporaryStorageKey?: string;
   /** 历史调用记录（SSE 事件粒度），从 History 加载，每轮 complete/abort/error 后 append */
   protected turns: TurnRecord[] = [];
@@ -527,22 +524,7 @@ export class Agent {
     const temporaryState = this.temporaryStorageKey
       ? kv.get<AgentTemporaryState>(this.temporaryStorageKey) ?? {}
       : {};
-    if (options.llm?.providers?.length) {
-      this.llmProviders = new LLMProviders({ providers: options.llm.providers });
-      if (temporaryState.modelSelection) {
-        this.llmProviders.restoreSelection(temporaryState.modelSelection);
-      }
-      this.llmProviders.onSelectionChange((selection) => {
-        if (!this.temporaryStorageKey) return;
-        const state = kv.get<AgentTemporaryState>(this.temporaryStorageKey) ?? {};
-        kv.set<AgentTemporaryState>(this.temporaryStorageKey, {
-          ...state,
-          modelSelection: selection ?? undefined,
-        });
-      });
-    }
-    // llm.providers 存在时优先使用内部 LLMProviders.request，否则沿用传入的 request（向后兼容）
-    const effectiveRequest = this.llmProviders ? this.llmProviders.request : (options.request ?? createRequestAsStream());
+    const effectiveRequest = options.request!;
     this.rawRequest = effectiveRequest;
     const initialMode = temporaryState.mode ?? options.mode;
 
@@ -567,11 +549,6 @@ export class Agent {
   /** 获取当前运行模式。 */
   getMode(): AgentMode {
     return this._mode;
-  }
-
-  /** 获取 Agent 内部根据 llm.providers 创建的运行时模型服务。 */
-  getLLMProviders(): LLMProviders | undefined {
-    return this.llmProviders;
   }
 
   /** 获取当前可用的运行模式列表（基于 disabledModes 配置）。 */
@@ -603,18 +580,40 @@ export class Agent {
 
   private async ensureHistoryReady(): Promise<void> {
     const result = await this.historyManager.ensureLoaded();
-    if (result === null) return; // 无 storage 或已 ready，无需处理
-    // 合并：保留面板已产生但尚未持久化的 turn（仅在 loadHistory 之前发起的请求才可能出现）
+    if (result === null) return;
+
+    this.compactRecord = result.compactRecord;
+
+    // 有 compactRecord 且 storage 支持 loadTurns：只加载 compact 边界之后的 turns
+    if (result.compactRecord && this.historyManager.loadTurns) {
+      const pageResult = await this.historyManager.loadTurns({ after: result.compactRecord.upToTurnId });
+      if (pageResult) {
+        const loadedIds = new Set(pageResult.turns.map((t) => t.id));
+        const localTurns = this.turns.filter((t) => !loadedIds.has(t.id));
+        this.turns = [...pageResult.turns, ...localTurns];
+        this.historyManager.markReady({ hasMore: pageResult.hasMore });
+        return;
+      }
+    }
+
+    // 降级：全量加载
     const loadedIds = new Set(result.turns.map((turn) => turn.id));
     const localTurns = this.turns.filter((turn) => !loadedIds.has(turn.id));
     this.turns = [...result.turns, ...localTurns];
-    this.compactRecord = result.compactRecord;
-    // turns 已写好，再通知订阅者，保证 UI 调 getTurns() 时数据已就绪
-    this.historyManager.markReady();
+    this.historyManager.markReady({ hasMore: false });
   }
 
-  /** 获取历史调用记录（供 UI 直接使用） */
-  getTurns(): TurnRecord[] {
+  /** 获取历史调用记录，支持往前翻页加载更早的 turns。 */
+  async getTurns(options?: { before?: string; limit?: number }): Promise<TurnRecord[]> {
+    if (options?.before) {
+      const pageResult = await this.historyManager.loadTurns({ before: options.before, limit: options.limit });
+      if (pageResult) {
+        const loadedIds = new Set(this.turns.map((t) => t.id));
+        const newTurns = pageResult.turns.filter((t) => !loadedIds.has(t.id));
+        this.turns = [...newTurns, ...this.turns];
+        this.historyManager.markReady({ hasMore: pageResult.hasMore });
+      }
+    }
     return this.turns;
   }
 
@@ -1213,11 +1212,8 @@ export class Agent {
    */
   async requestAI(params: RequestAIOptions): Promise<void> {
     await this.ensureHistoryReady();
-    const { message, attachments, mode = AgentModeEnum.Build, providerId, modelId, ...rest } = params;
+    const { message, attachments, mode = AgentModeEnum.Build, ...rest } = params;
     this.setMode(mode, "requestAI");
-    if (modelId) {
-      this.llmProviders?.setSelected(providerId, modelId);
-    }
     const effectiveRequestMode = this.getMode();
     // 有图片附件时，自动将 aiRole 覆盖为 "image"，使请求层路由到支持视觉的模型。
     // 扩展：当前是 build 模式且无图片，但连续前置 plan 轮中携带过图片时，
@@ -1369,7 +1365,6 @@ export class Agent {
       ...this.options,
       // 使用原始 request，让 fork 的 retry 覆盖真正生效，避免继承父 Agent 已包装的 retry。
       request: this.rawRequest,
-      llm: undefined,
       key: randomUUID(),     // 随机隔离 key
       history: undefined,    // fork 不写历史
       // tools：不传=继承父；传了（含 []）则覆盖

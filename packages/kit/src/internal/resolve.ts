@@ -1,5 +1,5 @@
 import { MYBRICKS_PROMPT_SECTIONS } from "../prompts/mybricks";
-import type { CodeAgentPromptOptions } from "@mybricks/agent";
+import type { CodeAgentPromptOptions } from "../../../agent/src";
 import type { PromptSections } from "../prompts";
 
 /** 将外部 promptSections 与 kit 内置默认值按 section 深度合并。 */

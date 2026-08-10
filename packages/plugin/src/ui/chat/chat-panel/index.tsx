@@ -1,4 +1,4 @@
-import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import classNames from "classnames";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
@@ -181,38 +181,51 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     mentions.forEach((mention) => chipRegistry.register(mention.chip));
   }, [mentions]);
 
-  // 模型选择器状态跟随当前 Agent，避免多 Agent/多面板串状态。
-  const llmProviders = agent?.getLLMProviders();
-  const hasLLMProviders = !!(llmProviders && llmProviders.isValid());
+  // 模型选择状态由 plugin 层持有，避免 Agent 关心模型切换与持久化。
+  const modelSelection = context.getModelSelection(agent?.key);
+  const hasModelSelection = !!(modelSelection && modelSelection.isValid());
   const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(
-    () => llmProviders?.getSelected() ?? null
+    () => modelSelection?.getSelected() ?? null
   );
 
   useEffect(() => {
-    const lp = llmProviders;
-    if (!lp) return;
-    setSelectedModel(lp.getSelected());
-    return lp.onSelectionChange((sel) => setSelectedModel(sel));
-  }, [llmProviders]);
+    if (!modelSelection) return;
+    setSelectedModel(modelSelection.getSelected());
+    return modelSelection.onSelectionChange((selection) => setSelectedModel(selection));
+  }, [modelSelection]);
 
   const modelSelector = useMemo(() => {
-    if (!hasLLMProviders || !llmProviders) return undefined;
+    if (!hasModelSelection || !modelSelection) return undefined;
     return {
-      models: llmProviders.getValidModels(),
+      models: modelSelection.getValidModels(),
       selected: selectedModel,
       onSelect: (selection: ModelSelection) => {
-        llmProviders.setSelected(selection.providerId, selection.modelId);
+        modelSelection.setSelected(selection.providerId, selection.modelId);
       },
     };
-  }, [hasLLMProviders, llmProviders, selectedModel]);
+  }, [hasModelSelection, modelSelection, selectedModel]);
 
-  const { messages, historyStatus, historyError, subscribeSession, clearSession } = useSession(agent);
+  const { messages, historyStatus, historyError, hasMore, isLoadingMore, subscribeSession, clearSession, loadMoreHistory } = useSession(agent);
   const messageListRef = useRef<{ scrollToBottom: () => void }>(null);
   const maxHistoryIters = historyCollapse?.maxIters ?? 50;
   const {
     collapseCursor,
-    onExpandHistory,
+    onExpandHistory: onExpandHistoryBase,
   } = useHistoryCollapse(messages, maxHistoryIters);
+
+  const onExpandHistory = useCallback(async (type: "one" | "ten") => {
+    if (isLoadingMore) return;
+    const collapsedCount = collapseCursor?.visibleStartIndex ?? 0;
+
+    // 第一阶段：当前已加载的历史仅操作本地折叠状态。
+    if (collapsedCount > 0) {
+      onExpandHistoryBase(type === "one" ? "one" : "all");
+      return;
+    }
+
+    // 第二阶段：已加载历史已全部展开，按页请求尚未加载的更早记录。
+    if (hasMore && agent) await loadMoreHistory(agent, type === "one" ? 1 : 10);
+  }, [onExpandHistoryBase, collapseCursor?.visibleStartIndex, hasMore, agent, isLoadingMore, loadMoreHistory]);
 
   useImperativeHandle(ref, () => ({
     focus: () => {
@@ -282,7 +295,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       const content = {
         agentKey: agent.key,
         exportedAt: new Date().toISOString(),
-        turns: agent.getTurns(),
+        turns: await agent.getTurns(),
         compactRecord: agent.getCompactRecord?.() ?? null,
       };
       const name = `rxai-${Date.now()}.json`;
@@ -312,7 +325,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   const isDisabled = !agent || !!disabled || historyLoading || historyFailed;
   const canExecutePlan = Boolean(agent && !isDisabled && availableModes.includes(AgentModeEnum.Build));
 
-  const onExecutePlan = (title: string) => {
+  const onExecutePlan = useCallback((title: string) => {
     if (!agent || !canExecutePlan) return;
     const message = `执行「${title}」方案`;
     context.aiQueue.send(
@@ -323,7 +336,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       },
       { message }
     );
-  };
+  }, [agent, agentKey, canExecutePlan]);
 
   const headerNode = typeof header === "function"
     ? header()
@@ -366,9 +379,13 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       <div className={css["sender-footer"]}>{senderFooterNode}</div>
     </div>
   ) : senderNode;
+  const chatPanelContextValue = useMemo(
+    () => ({ user, copilot, disabled: isDisabled, renderUserMessage, markdownSkin, markdownit, messagesRenderVariant }),
+    [copilot, isDisabled, markdownSkin, markdownit, messagesRenderVariant, renderUserMessage, user]
+  );
 
   return (
-    <ChatPanelProvider value={{ user, copilot, disabled: isDisabled, renderUserMessage, markdownSkin, markdownit, messagesRenderVariant }}>
+    <ChatPanelProvider value={chatPanelContextValue}>
       <div
         className={classNames(css["chat-panel"], css[`size-${size}`], className)}
         style={style}
@@ -393,7 +410,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
             canExecutePlan={canExecutePlan}
             renderEmpty={historyStatus === "ready" ? renderEmpty : undefined}
             renderFooter={scrollWithSender ? () => senderBlockNode : undefined}
-            collapseCursor={collapseCursor}
+            collapseCursor={collapseCursor ? { ...collapseCursor, hasMore, isLoadingMore } : (hasMore ? { visibleStartIndex: 0, collapsedCount: 0, hasMore, isLoadingMore } : undefined)}
             onExpandHistory={onExpandHistory}
           />
         </div>

@@ -1,4 +1,4 @@
-import type { RequestAsStreamFn, RequestAsStreamParams } from "@mybricks/request";
+import type { RequestAsStreamFn, RequestAsStreamParams } from "./types/request";
 import type { AgentEvents } from "./events";
 import { AbortError, isAbortError } from "./errors";
 

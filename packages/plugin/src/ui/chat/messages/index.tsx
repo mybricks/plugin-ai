@@ -77,9 +77,11 @@ export interface MessageListProps {
   collapseCursor?: {
     visibleStartIndex: number;
     collapsedCount: number;
+    hasMore?: boolean;
+    isLoadingMore?: boolean;
   };
   /** 历史展开回调 */
-  onExpandHistory?: (type: "one" | "all") => void;
+  onExpandHistory?: (type: "one" | "all" | "ten") => void | Promise<void>;
 }
 
 type MessageListRef = { scrollToBottom: () => void };
@@ -88,20 +90,28 @@ type MessageListRef = { scrollToBottom: () => void };
 
 const CollapseBar = ({
   collapsedCount,
+  isLoadingMore,
   onExpandOne,
-  onExpandAll,
+  onExpandSecondary,
 }: {
   collapsedCount: number;
-  onExpandOne: () => void;
-  onExpandAll: () => void;
+  isLoadingMore: boolean;
+  onExpandOne: () => void | Promise<void>;
+  onExpandSecondary: () => void | Promise<void>;
 }) => (
   <div className={css["collapse-bar"]}>
     <div className={css["collapse-bar-line"]} />
-    <span className={css["collapse-bar-text"]}>已折叠 {collapsedCount} 轮历史对话</span>
-    <div className={css["collapse-bar-actions"]}>
-      <button className={css["collapse-bar-btn"]} onClick={onExpandOne}>展开上一轮</button>
-      <button className={css["collapse-bar-btn"]} onClick={onExpandAll}>展开全部</button>
-    </div>
+    <span className={css["collapse-bar-text"]}>
+      {isLoadingMore ? "加载中..." : (collapsedCount > 0 ? `已折叠 ${collapsedCount} 轮历史对话` : "更多历史对话记录")}
+    </span>
+    {!isLoadingMore && (
+      <div className={css["collapse-bar-actions"]}>
+        <button className={css["collapse-bar-btn"]} onClick={() => { void onExpandOne(); }}>展开一条</button>
+        <button className={css["collapse-bar-btn"]} onClick={() => { void onExpandSecondary(); }}>
+          {collapsedCount > 0 ? "展开全部" : "展开 10 条"}
+        </button>
+      </div>
+    )}
     <div className={css["collapse-bar-line"]} />
   </div>
 );
@@ -118,6 +128,8 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
   const { activePlan } = usePlanState(agent);
   const visibleStartIndex = collapseCursor?.visibleStartIndex ?? 0;
   const collapsedCount = collapseCursor?.collapsedCount ?? 0;
+  const collapseHasMore = collapseCursor?.hasMore ?? false;
+  const isLoadingMore = collapseCursor?.isLoadingMore ?? false;
   const toolRendererMap = useMemo(() => {
     const map = new Map<string, ToolRenderer>();
 
@@ -151,24 +163,26 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
           <div className={css["empty-state"]}>{renderEmpty()}</div>
         ) : (
           <>
-            {collapsedCount > 0 && (
+            {(collapsedCount > 0 || collapseHasMore) && (
               <CollapseBar
                 collapsedCount={collapsedCount}
+                isLoadingMore={isLoadingMore}
                 onExpandOne={() => onExpandHistory?.("one")}
-                onExpandAll={() => onExpandHistory?.("all")}
+                onExpandSecondary={() => onExpandHistory?.(collapsedCount > 0 ? "all" : "ten")}
               />
             )}
             {messages.map((record, index) => {
               if (index < visibleStartIndex) return null;
+              const isLast = index === messages.length - 1;
               return (
                 <MessageBubble
                   key={record.id}
                   record={record}
                   toolRendererMap={toolRendererMap}
                   actionBar={resolvedActionBar}
-                  onRetry={index === messages.length - 1 ? onRetry : undefined}
+                  onRetry={isLast && record.status !== "pending" ? onRetry : undefined}
                   onDelete={onDelete}
-                  isLast={index === messages.length - 1}
+                  isLast={isLast}
                   agent={agent}
                   onExecutePlan={onExecutePlan}
                   canExecutePlan={canExecutePlan}
@@ -188,7 +202,7 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
 
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
-const MessageBubble = ({ record, toolRendererMap, actionBar, onRetry, onDelete, isLast, agent, onExecutePlan, canExecutePlan = true, activePlan }: {
+const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMap, actionBar, onRetry, onDelete, isLast, agent, onExecutePlan, canExecutePlan = true, activePlan }: {
   record: MessageRecord;
   toolRendererMap: Map<string, ToolRenderer>;
   actionBar: ActionBarItem[];
@@ -200,7 +214,7 @@ const MessageBubble = ({ record, toolRendererMap, actionBar, onRetry, onDelete, 
   onExecutePlan?: (title: string) => void;
   canExecutePlan?: boolean;
   activePlan: ActivePlanFile | null;
-}) => {
+}) {
   const { user, renderUserMessage } = useChatPanel();
   const userName = record.sender?.name ?? user?.name;
   const userAvatar = record.sender?.avatar ?? user?.avatar;
@@ -329,90 +343,17 @@ const MessageBubble = ({ record, toolRendererMap, actionBar, onRetry, onDelete, 
               </div>
             )}
 
-            {/* 按 iteration 渲染 */}
-            {record.iterations.map((iter, iterIdx) => {
-              // warmup 特殊 iter：只在 loading/success 时展示，error 态由底部错误块承担
-              if (iter.type === "warmup") {
-                const warmupIter = iter as WarmupIter;
-                if (warmupIter.status === "error") return null;
-                const isLoading = warmupIter.status === "loading";
-                return (
-                  <div key={iterIdx} className={css["iter-header"]}>
-                    <div className={css["iter-header-content"]}>
-                      {isLoading ? (
-                        <TextShimmer className={css["iter-header-placeholder"]}>{warmupIter.content}</TextShimmer>
-                      ) : (
-                        <span>{warmupIter.content}</span>
-                      )}
-                    </div>
-                    <ElapsedTime startTime={warmupIter.startTime} endTime={warmupIter.endTime} className={css["planning-elapsed"]} />
-                  </div>
-                );
-              }
-
-              // 普通 LLM iter
-              const isLastIter = iterIdx === record.iterations.length - 1;
-              const isPending = record.status === "pending";
-              const hasTools = iter.toolCalls.length > 0;
-              // 当前 iteration 的 LLM 是否已完成
-              const llmDone = iter.endTime !== undefined;
-              // 是否是最后一个 iteration 且 LLM 还在响应中
-              const llmStreaming = isLastIter && isPending && !llmDone;
-              // 是否在等待下一轮 LLM（当前 iter 工具全完成，还没下一个 iter）
-              const waitingNextStep = isLastIter && isPending && llmDone && !hasTools;
-
-              return (
-                <React.Fragment key={iterIdx}>
-                  {/* 思考内容 */}
-                  {iter.thinkingContent && (
-                    <ThinkingCard
-                      thinkingContent={iter.thinkingContent}
-                      llmStreaming={llmStreaming}
-                    />
-                  )}
-
-                  {/* iter 头部 */}
-                  <div className={css["iter-header"]}>
-                    {iter.content ? (
-                      <>
-                        <div className={css["iter-header-content"]}>
-                          {retryState && isLastIter && isPending && (
-                            <span className={css["retry-info"]}>
-                              重试 {retryState.attempt}/{retryState.maxRetries}
-                            </span>
-                          )}
-                          <MarkdownMessage message={iter.content} />
-                        </div>
-                        {iter.startTime && <ElapsedTime startTime={iter.startTime} endTime={iter.endTime} className={css["planning-elapsed"]} />}
-                      </>
-                    ) : iter.toolCalls.length === 0 && isPending ? (
-                      <>
-                        <div className={css["iter-header-content"]}>
-                          {retryState && isLastIter && (
-                            <span className={css["retry-info"]}>
-                              重试 {retryState.attempt}/{retryState.maxRetries}
-                            </span>
-                          )}
-                          <TextShimmer className={css["iter-header-placeholder"]}>连接中...</TextShimmer>
-                        </div>
-                        {iter.startTime && <ElapsedTime startTime={iter.startTime} endTime={iter.endTime} className={css["planning-elapsed"]} />}
-                      </>
-                    ) : null}
-                  </div>
-
-                  {/* 工具列表 */}
-                  {iter.toolCalls.map((tool) => {
-                    const toolStatus = tool.status === "success" || tool.execEndTime ? tool.status : "pending" as const;
-                    const uiTool = { ...tool, status: toolStatus as "pending" | "success" | "error" };
-                    return (
-                      <React.Fragment key={tool.callId}>
-                        <ToolBubble tool={uiTool} toolRendererMap={toolRendererMap} />
-                      </React.Fragment>
-                    );
-                  })}
-                </React.Fragment>
-              );
-            })}
+            {/* completed iter 与流式 iter 都以独立 memo 单元渲染。 */}
+            {record.iterations.map((iter, iterIdx) => (
+              <MessageIteration
+                key={iter.iterId}
+                iter={iter}
+                isLastItem={iterIdx === record.iterations.length - 1}
+                isPending={record.status === "pending"}
+                retryState={retryState}
+                toolRendererMap={toolRendererMap}
+              />
+            ))}
 
             {/* 已取消 */}
             {record.status === "abort" && (
@@ -483,7 +424,83 @@ const MessageBubble = ({ record, toolRendererMap, actionBar, onRetry, onDelete, 
       </div>
     </div>
   )
-};
+});
+
+/** 单个 iter 是流式更新的最小 React 边界；completed iter 会因引用稳定而直接 memo bailout。 */
+const MessageIteration = React.memo(function MessageIteration({
+  iter,
+  isLastItem,
+  isPending,
+  retryState,
+  toolRendererMap,
+}: {
+  iter: MessageRecord["iterations"][number];
+  isLastItem: boolean;
+  isPending: boolean;
+  retryState: { attempt: number; maxRetries: number } | null;
+  toolRendererMap: Map<string, ToolRenderer>;
+}) {
+  if (iter.type === "warmup") {
+    const warmupIter = iter as WarmupIter;
+    if (warmupIter.status === "error") return null;
+    const isLoading = warmupIter.status === "loading";
+    return (
+      <div className={css["iter-header"]}>
+        <div className={css["iter-header-content"]}>
+          {isLoading ? (
+            <TextShimmer className={css["iter-header-placeholder"]}>{warmupIter.content}</TextShimmer>
+          ) : (
+            <span>{warmupIter.content}</span>
+          )}
+        </div>
+        <ElapsedTime startTime={warmupIter.startTime} endTime={warmupIter.endTime} className={css["planning-elapsed"]} />
+      </div>
+    );
+  }
+
+  const llmDone = iter.endTime !== undefined;
+  const llmStreaming = isLastItem && isPending && !llmDone;
+
+  return (
+    <>
+      {iter.thinkingContent && (
+        <ThinkingCard thinkingContent={iter.thinkingContent} llmStreaming={llmStreaming} />
+      )}
+
+      <div className={css["iter-header"]}>
+        {iter.content ? (
+          <>
+            <div className={css["iter-header-content"]}>
+              {retryState && isLastItem && isPending && (
+                <span className={css["retry-info"]}>
+                  重试 {retryState.attempt}/{retryState.maxRetries}
+                </span>
+              )}
+              <MarkdownMessage message={iter.content} />
+            </div>
+            {iter.startTime && <ElapsedTime startTime={iter.startTime} endTime={iter.endTime} className={css["planning-elapsed"]} />}
+          </>
+        ) : iter.toolCalls.length === 0 && isPending ? (
+          <>
+            <div className={css["iter-header-content"]}>
+              {retryState && isLastItem && (
+                <span className={css["retry-info"]}>
+                  重试 {retryState.attempt}/{retryState.maxRetries}
+                </span>
+              )}
+              <TextShimmer className={css["iter-header-placeholder"]}>连接中...</TextShimmer>
+            </div>
+            {iter.startTime && <ElapsedTime startTime={iter.startTime} endTime={iter.endTime} className={css["planning-elapsed"]} />}
+          </>
+        ) : null}
+      </div>
+
+      {iter.toolCalls.map((tool) => (
+        <ToolBubble key={tool.callId} tool={tool} toolRendererMap={toolRendererMap} />
+      ))}
+    </>
+  );
+});
 
 /** 字符数超过此值时折叠，避免长文本首次渲染开销 */
 const COLLAPSE_CHAR_THRESHOLD = 300;
@@ -585,22 +602,36 @@ function getPlanPathsFromTool(tool: ToolCallRecord): string[] {
 
 type UIToolRecord = Omit<ToolCallRecord, "status"> & { status: "pending" | "success" | "error" };
 
-const ToolBubble = ({ tool, toolRendererMap }: { tool: UIToolRecord; toolRendererMap: Map<string, ToolRenderer> }) => {
+/**
+ * ToolCallRecord 的 status 在 agent 层允许缺省；渲染层统一收敛为三种展示状态。
+ * memo 让同一 iter 内未改变的工具卡片跳过本次流式更新。
+ */
+const ToolBubble = React.memo(function ToolBubble({
+  tool,
+  toolRendererMap,
+}: {
+  tool: ToolCallRecord;
+  toolRendererMap: Map<string, ToolRenderer>;
+}) {
+  const uiTool: UIToolRecord = {
+    ...tool,
+    status: tool.status === "success" || tool.status === "error" ? tool.status : "pending",
+  };
   // 优先从 agent 的工具列表中查找自定义渲染函数（已缓存）
-  const customRenderer = toolRendererMap.get(tool.name);
+  const customRenderer = toolRendererMap.get(uiTool.name);
   if (customRenderer) {
-    return renderToolWithErrorBoundary(customRenderer, tool, "custom");
+    return renderToolWithErrorBoundary(customRenderer, uiTool, "custom");
   }
 
   // 降级到全局 registry（用于内置工具）
-  const globalRenderer = getToolRenderer(tool.name);
+  const globalRenderer = getToolRenderer(uiTool.name);
   if (globalRenderer) {
-    return renderToolWithErrorBoundary(globalRenderer, tool, "registry");
+    return renderToolWithErrorBoundary(globalRenderer, uiTool, "registry");
   }
 
   // 最终降级到默认渲染器
-  return <DefaultToolRenderer tool={tool as any} />;
-};
+  return <DefaultToolRenderer tool={uiTool as any} />;
+});
 
 function renderToolWithErrorBoundary(renderer: ToolRenderer, tool: UIToolRecord, source: "custom" | "registry") {
   return React.createElement(

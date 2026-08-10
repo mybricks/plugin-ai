@@ -109,10 +109,14 @@ export interface TestCase {
    * MockHistory 行为控制（测试历史加载状态）
    * - loadDelayMs： load() 延迟毫秒数，模拟慢加载
    * - loadError：若为 true， load() 直接抛异常，模拟加载失败
+   * - pageDelayMs：loadTurns()（翻页）延迟毫秒数，模拟按需加载慢响应
+   * - supportsPagination：是否实现 loadTurns()，默认 true
    */
   historyOptions?: {
     loadDelayMs?: number;
     loadError?: boolean;
+    pageDelayMs?: number;
+    supportsPagination?: boolean;
   };
   /**
    * 是否将模式 / 模型选择器渲染在输入框上方。

@@ -75,6 +75,9 @@ export default defineConfig({
       "@agent": path.resolve(__dirname, "../agent/src"),
       "@request": path.resolve(__dirname, "../request/src"),
       "@plugin": path.resolve(__dirname, "../plugin/src"),
+      // agent 源码内部使用 package 名导入 request；playground 直接运行源码时也需要映射。
+      "@mybricks/request": path.resolve(__dirname, "../request/src"),
+      "@mybricks/agent": path.resolve(__dirname, "../agent/src"),
     },
   },
   css: {
