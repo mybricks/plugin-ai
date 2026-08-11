@@ -14,7 +14,7 @@ import { WRITE_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/write
 import { EDIT_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/edit";
 import { MULTI_WRITE_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/multi-write";
 import { MULTI_EDIT_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/multi-edit";
-import { getToolRenderer } from "./tool-renders/index";
+import { createToolRendererContext, getToolRenderer } from "./tool-renders/index";
 import type { ToolRenderer } from "./tool-renders/index";
 import { DefaultToolRenderer } from "./tool-renders/renders";
 import { DefaultUserMessage } from "../chat-panel/user-message";
@@ -352,6 +352,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
                 isPending={record.status === "pending"}
                 retryState={retryState}
                 toolRendererMap={toolRendererMap}
+                agent={agent}
               />
             ))}
 
@@ -433,12 +434,14 @@ const MessageIteration = React.memo(function MessageIteration({
   isPending,
   retryState,
   toolRendererMap,
+  agent,
 }: {
   iter: MessageRecord["iterations"][number];
   isLastItem: boolean;
   isPending: boolean;
   retryState: { attempt: number; maxRetries: number } | null;
   toolRendererMap: Map<string, ToolRenderer>;
+  agent?: CodeAgent;
 }) {
   if (iter.type === "warmup") {
     const warmupIter = iter as WarmupIter;
@@ -496,7 +499,7 @@ const MessageIteration = React.memo(function MessageIteration({
       </div>
 
       {iter.toolCalls.map((tool) => (
-        <ToolBubble key={tool.callId} tool={tool} toolRendererMap={toolRendererMap} />
+        <ToolBubble key={tool.callId} tool={tool} toolRendererMap={toolRendererMap} agent={agent} />
       ))}
     </>
   );
@@ -609,9 +612,11 @@ type UIToolRecord = Omit<ToolCallRecord, "status"> & { status: "pending" | "succ
 const ToolBubble = React.memo(function ToolBubble({
   tool,
   toolRendererMap,
+  agent,
 }: {
   tool: ToolCallRecord;
   toolRendererMap: Map<string, ToolRenderer>;
+  agent?: CodeAgent;
 }) {
   const uiTool: UIToolRecord = {
     ...tool,
@@ -620,29 +625,29 @@ const ToolBubble = React.memo(function ToolBubble({
   // 优先从 agent 的工具列表中查找自定义渲染函数（已缓存）
   const customRenderer = toolRendererMap.get(uiTool.name);
   if (customRenderer) {
-    return renderToolWithErrorBoundary(customRenderer, uiTool, "custom");
+    return renderToolWithErrorBoundary(customRenderer, uiTool, "custom", agent);
   }
 
   // 降级到全局 registry（用于内置工具）
   const globalRenderer = getToolRenderer(uiTool.name);
   if (globalRenderer) {
-    return renderToolWithErrorBoundary(globalRenderer, uiTool, "registry");
+    return renderToolWithErrorBoundary(globalRenderer, uiTool, "registry", agent);
   }
 
   // 最终降级到默认渲染器
   return <DefaultToolRenderer tool={uiTool as any} />;
 });
 
-function renderToolWithErrorBoundary(renderer: ToolRenderer, tool: UIToolRecord, source: "custom" | "registry") {
+function renderToolWithErrorBoundary(renderer: ToolRenderer, tool: UIToolRecord, source: "custom" | "registry", agent?: CodeAgent) {
   return React.createElement(
     ToolRendererErrorBoundary as any,
     { tool, source, resetKey: getToolRendererResetKey(tool) },
-    <ToolRendererInvoker renderer={renderer} tool={tool as any} />
+    <ToolRendererInvoker renderer={renderer} tool={tool as any} agent={agent} />
   );
 }
 
-const ToolRendererInvoker = ({ renderer, tool }: { renderer: ToolRenderer; tool: ToolCallRecord }) => {
-  return renderer(tool as any);
+const ToolRendererInvoker = ({ renderer, tool, agent }: { renderer: ToolRenderer; tool: ToolCallRecord; agent?: CodeAgent }) => {
+  return renderer(tool as any, createToolRendererContext(tool.callId, agent?.getToolUI()));
 };
 
 class ToolRendererErrorBoundary extends React.Component<

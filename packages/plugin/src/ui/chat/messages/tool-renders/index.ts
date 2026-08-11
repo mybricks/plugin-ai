@@ -1,4 +1,5 @@
 import type { ToolCallRecord } from "../../../../../../agent/src";
+import type { ToolUIChannel } from "../../../../../../agent/src";
 
 /**
  * UI 层工具调用视图，在持久化快照（ToolCallRecord）基础上叠加流式临时状态。
@@ -20,7 +21,25 @@ export interface ToolCallView extends ToolCallRecord {
 
 export type ToolRecord = ToolCallView;
 
-export type ToolRenderer = (tool: ToolRecord) => React.ReactElement;
+/**
+ * 第二参数是对当前 tool.callId 绑定好的通用 UI 回传能力。
+ * renderer 无需引用 ToolUIChannel，也无需自行处理工具调用 ID。
+ */
+export interface ToolRendererContext {
+  toolCallId: string;
+  submit: (value: unknown) => boolean;
+  cancel: () => boolean;
+}
+
+export type ToolRenderer = (tool: ToolRecord, ctx: ToolRendererContext) => React.ReactElement;
+
+export function createToolRendererContext(toolCallId: string, toolUI?: ToolUIChannel): ToolRendererContext {
+  return {
+    toolCallId,
+    submit: (value) => toolUI?.respond(toolCallId, value) ?? false,
+    cancel: () => toolUI?.cancel(toolCallId) ?? false,
+  };
+}
 
 const registry = new Map<string, ToolRenderer>();
 
@@ -37,7 +56,7 @@ export function getToolRenderer(toolName: string): ToolRenderer | undefined {
  * 适用于外部向 Agent 注册自定义工具时，同时传入 render 函数的场景。
  * 只注册携带 render 字段的工具，内置工具不受影响（可被覆盖）。
  */
-export function registerToolRenderersFromTools(tools: Array<{ name: string; render?: (tool: ToolRecord) => React.ReactElement }>) {
+export function registerToolRenderersFromTools(tools: Array<{ name: string; render?: ToolRenderer }>) {
   for (const tool of tools) {
     if (tool.render) {
       registry.set(tool.name, tool.render);

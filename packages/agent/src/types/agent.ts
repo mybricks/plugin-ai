@@ -66,6 +66,10 @@ export interface ToolExecutionContext {
    * @param data 自定义进度数据，由工具定义结构（如 SubAgent 可传递子 agent 的流式输出）
    */
   emitProgress: (data: any) => void;
+  /**
+   * 等待当前工具卡片通过 Agent 持有的运行期通道回传数据。
+   */
+  waitUIRender?: <T>() => Promise<T | null>;
 }
 
 // ─── AgentHooks ──────────────────────────────────────────────────────────────

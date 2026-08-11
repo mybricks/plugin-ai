@@ -24,6 +24,7 @@ import type {
   TurnRecord,
   WarmupIter,
 } from "./types";
+import { createToolUIChannel, type ToolUIChannel } from "./tool-ui";
 import { turnsToMessages, getLLMIterations, hasNoToolCalls, serializeToolCallArgumentsFromIter, serializeToolCallArgumentsFromLLMResult, attachmentToMessagePart } from "./types";
 import { computeHandoffTurnIds } from "./handoff";
 import { maskMessages, buildProtectedAttachmentTurnIds, type MaskOptions } from "./mask";
@@ -500,6 +501,8 @@ export class Agent {
    * 每个 iter 构建 messages 时传给 turnsToMessages，用于游标分割历史。
    */
   protected compactRecord: CompactRecord | null = null;
+  /** Agent 自己持有的、仅运行期有效的工具卡片通信通道。 */
+  private readonly toolUI: ToolUIChannel = createToolUIChannel();
   private _abortController: AbortController | null = null;
   /** 确保 _abortController 存在且可用；如已失效或不存在则新建 */
   private _ensureAbortController(): AbortController {
@@ -661,6 +664,11 @@ export class Agent {
    */
   getTools(): Tool[] {
     return this.options.tools ?? [];
+  }
+
+  /** 获取当前 Agent 持有的工具卡片交互通道，供 UI 渲染入口构造回传参数。 */
+  getToolUI(): ToolUIChannel {
+    return this.toolUI;
   }
 
   /** 主动取消当前请求，触发 turn:abort */
@@ -1046,6 +1054,7 @@ export class Agent {
             emitProgress: (data: any) => {
               this.events.emit("tool:progress", { callId: tc.id, name: tc.name, data, step });
             },
+            waitUIRender: <T>() => this.toolUI.wait<T>(tc.id, { signal }),
           };
 
           try {

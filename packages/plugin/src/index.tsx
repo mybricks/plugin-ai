@@ -23,7 +23,7 @@ import type { MentionProvider } from "./ui/components/types";
 
 // ─── 工具类型重导出 ────────────────────────────────────────────────────────────
 
-export { Agent, IDBHistory, IDBSandbox } from "../../agent/src";
+export { Agent, IDBHistory, IDBSandbox, Tools } from "../../agent/src";
 export { CodeAgent } from "./compat-code-agent";
 export type { CompatibleCodeAgentOptions } from "./compat-code-agent";
 export type { AdditionalDirectory, AgentEventMap, AgentsMdConfig, CodeAgentPlugin, SkillFile, UnifiedFile } from "../../agent/src";

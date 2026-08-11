@@ -35,6 +35,7 @@ import {
   customToolRendererErrorBoundaryCase,
   customToolValidationErrorThenSlowStreamCase,
 } from "./custom-tool";
+import { askQuestionsCase } from "./ask-questions";
 import {
   handoffDisabledCase,
   handoffWithMaskCase,
@@ -174,6 +175,7 @@ export const ALL_CASES: TestCase[] = [
   suggestionsDisplayCase,
   abortThenNextTurnAwarenessCase,
   customToolRendererErrorBoundaryCase,
+  askQuestionsCase,
   historyCollapseRestoreCase,
   historyCollapseGrowingCase,
   historySlowLoadCase,
