@@ -44,7 +44,6 @@ const builds = [
 for (const { output, targets } of builds) {
   const bundle = await rollup({
     input: entry,
-    external: ["@mybricks/agent"],
     plugins: createPlugins(targets),
   });
   await bundle.write(output);

@@ -51,7 +51,7 @@ export interface TurnsPage {
 }
 
 export interface HttpAgentOptions {
-  /** 方舟测试环境默认值：http://localhost:3001/api */
+  /** 方舟测试环境默认值：http://localhost:3001/agents/api */
   baseUrl?: string;
   /** 服务端 workspaceId；当前对应平台 conversation id。 */
   workspaceId: string;
@@ -88,7 +88,8 @@ export interface HttpAgentRequestAIParams {
 
 export type BrowserToolHandler = WorkspaceBrowserToolHandler<HttpAgent>;
 
-const DEFAULT_BASE_URL = "http://localhost:3001/api";
+// aicode-agents 通过 Nest 的全局路由前缀暴露 API。
+const DEFAULT_BASE_URL = "http://localhost:3001/agents/api";
 const DEFAULT_AGENT_ID = "default";
 const DEFAULT_TURNS_PAGE_SIZE = 20;
 

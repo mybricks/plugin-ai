@@ -140,7 +140,7 @@ export type AgentRuntimeConfig =
   | { type?: "local" }
   | ({
       type: "http" | "server";
-      /** 方舟测试环境默认值：http://localhost:3001/api */
+      /** 方舟测试环境默认值：http://localhost:3001/agents/api */
       baseUrl?: string;
       /** 不传时默认使用当前 comId 对应的 agentKey，保证多组件隔离。 */
       workspaceId?: string | ((context: { comId: string; agentKey: string }) => string);

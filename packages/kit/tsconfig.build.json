@@ -5,8 +5,10 @@
     "declaration": true,
     "emitDeclarationOnly": true,
     "declarationMap": true,
+    "declarationDir": "./dist/types",
+    "noEmitOnError": true,
     "outDir": "./dist/types",
-    "rootDir": "./src"
+    "rootDir": ".."
   },
   "include": ["src/**/*"]
 }

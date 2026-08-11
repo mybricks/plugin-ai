@@ -5,6 +5,8 @@
     "declaration": true,
     "emitDeclarationOnly": true,
     "declarationMap": true,
+    "declarationDir": "./dist/types",
+    "noEmitOnError": true,
     "noImplicitAny": false,
     "outDir": "./dist/types",
     "rootDir": "./src"
