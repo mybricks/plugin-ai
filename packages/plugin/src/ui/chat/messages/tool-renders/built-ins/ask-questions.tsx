@@ -1,22 +1,22 @@
 import React, { useMemo, useState } from "react";
-import type { AskUserQuestion, AskUserQuestionAnswers } from "../../../../../../../agent/src";
+import type { AskQuestionsQuestion, AskQuestionsAnswers } from "../../../../../../../agent/src";
 import type { ToolRecord, ToolRendererContext } from "../index";
 import { TextShimmer } from "../../../../components/text-shimmer";
 import css from "../render.less";
 
 type DraftAnswer = { selected: string[]; other: boolean; otherText: string };
 
-function getAnswers(tool: ToolRecord): AskUserQuestionAnswers | null {
+function getAnswers(tool: ToolRecord): AskQuestionsAnswers | null {
   const answers = tool.result?.metadata?.answers;
-  return answers && typeof answers === "object" ? answers as AskUserQuestionAnswers : null;
+  return answers && typeof answers === "object" ? answers as AskQuestionsAnswers : null;
 }
 
 function formatAnswer(answer: string | string[]): string {
   return Array.isArray(answer) ? answer.join("、") : answer;
 }
 
-export function AskUserQuestionRenderer(tool: ToolRecord, { submit, cancel }: ToolRendererContext) {
-  const questions: AskUserQuestion[] = Array.isArray(tool.args?.questions) ? tool.args.questions : [];
+export function AskQuestionsRenderer(tool: ToolRecord, { submit, cancel }: ToolRendererContext) {
+  const questions: AskQuestionsQuestion[] = Array.isArray(tool.args?.questions) ? tool.args.questions : [];
   const [drafts, setDrafts] = useState<Record<number, DraftAnswer>>({});
   const answers = useMemo(() => getAnswers(tool), [tool.result?.metadata]);
   const pending = tool.status === "pending";
@@ -28,7 +28,7 @@ export function AskUserQuestionRenderer(tool: ToolRecord, { submit, cancel }: To
     setDrafts((current) => ({ ...current, [index]: updater(current[index] ?? { selected: [], other: false, otherText: "" }) }));
   };
 
-  const toggleOption = (question: AskUserQuestion, questionIndex: number, label: string) => {
+  const toggleOption = (question: AskQuestionsQuestion, questionIndex: number, label: string) => {
     updateDraft(questionIndex, (current) => {
       if (!question.multiSelect) return { ...current, selected: [label], other: false };
       const selected = current.selected.includes(label)
@@ -38,7 +38,7 @@ export function AskUserQuestionRenderer(tool: ToolRecord, { submit, cancel }: To
     });
   };
 
-  const toggleOther = (question: AskUserQuestion, questionIndex: number) => {
+  const toggleOther = (question: AskQuestionsQuestion, questionIndex: number) => {
     updateDraft(questionIndex, (current) => ({
       ...current,
       selected: question.multiSelect ? current.selected : [],
@@ -53,7 +53,7 @@ export function AskUserQuestionRenderer(tool: ToolRecord, { submit, cancel }: To
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    const result: AskUserQuestionAnswers = {};
+    const result: AskQuestionsAnswers = {};
     questions.forEach((question, index) => {
       const draft = getDraft(index);
       const values = [...draft.selected, ...(draft.other ? [draft.otherText.trim()] : [])];

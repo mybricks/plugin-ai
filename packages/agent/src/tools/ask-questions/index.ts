@@ -3,26 +3,26 @@ import { ToolValidationError } from "../../types";
 
 export const ASK_QUESTIONS_TOOL_NAME = "ask_questions";
 
-export interface AskUserQuestionOption {
+export interface AskQuestionsOption {
   label: string;
   description: string;
   preview?: string;
 }
 
-export interface AskUserQuestion {
+export interface AskQuestionsQuestion {
   question: string;
   header: string;
-  options: AskUserQuestionOption[];
+  options: AskQuestionsOption[];
   multiSelect?: boolean;
 }
 
-export interface AskUserQuestionParams {
-  questions: AskUserQuestion[];
+export interface AskQuestionsParams {
+  questions: AskQuestionsQuestion[];
 }
 
-export type AskUserQuestionAnswers = Record<string, string | string[]>;
+export type AskQuestionsAnswers = Record<string, string | string[]>;
 
-function formatAnswers(answers: AskUserQuestionAnswers): string {
+function formatAnswers(answers: AskQuestionsAnswers): string {
   return Object.entries(answers)
     .map(([question, answer]) => `- ${question}：${Array.isArray(answer) ? answer.join("、") : answer}`)
     .join("\n");
@@ -40,7 +40,7 @@ const DESCRIPTION = `在执行过程中向用户提出 1 至 4 个多选题，�
 - preview 为可选的纯文本预览内容，仅允许用于单选题。
 - plan 模式下仅用于澄清需求或方案取舍，不能用于请求确认计划。`;
 
-function validateParams(params: AskUserQuestionParams): void {
+function validateParams(params: AskQuestionsParams): void {
   if (!Array.isArray(params?.questions) || params.questions.length < 1 || params.questions.length > 4) {
     throw new ToolValidationError("questions 必须包含 1 至 4 个问题");
   }
@@ -73,10 +73,10 @@ function validateParams(params: AskUserQuestionParams): void {
 }
 
 /**
- * 创建可选的 AskUserQuestion 工具。调用方需为该工具注册 renderer；
+ * 创建可选的 AskQuestions 工具。内置聊天界面会自动渲染该工具；
  * 该工厂不会将工具加入任何默认列表。
  */
-export function createAskUserQuestionTool(): Tool {
+export function createAskQuestionsTool(): Tool {
   return {
     name: ASK_QUESTIONS_TOOL_NAME,
     title: "询问用户",
@@ -120,12 +120,12 @@ export function createAskUserQuestionTool(): Tool {
       },
     },
     validate: validateParams,
-    async execute(params: AskUserQuestionParams, ctx?: ToolExecutionContext): Promise<ToolResult> {
+    async execute(params: AskQuestionsParams, ctx?: ToolExecutionContext): Promise<ToolResult> {
       if (!ctx?.waitUIRender) {
         return { output: "错误：当前工具上下文不支持等待 UI 回传。" };
       }
 
-      const answers = await ctx.waitUIRender<AskUserQuestionAnswers>();
+      const answers = await ctx.waitUIRender<AskQuestionsAnswers>();
       if (answers === null) {
         ctx.getAgent().abort();
         return { output: "用户未回答问题，当前对话已取消。" };

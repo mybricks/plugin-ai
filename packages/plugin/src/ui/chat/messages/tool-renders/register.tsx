@@ -31,7 +31,7 @@ import { GrepSearchRenderer } from "./built-ins/grep-search";
 import { SkillRenderer } from "./built-ins/skill";
 import { InitProjectRenderer } from "./built-ins/init-project";
 import { BashRenderer } from "./built-ins/bash";
-import { AskUserQuestionRenderer } from "./built-ins/ask-questions";
+import { AskQuestionsRenderer } from "./built-ins/ask-questions";
 
 registerToolRenderer(READ_TOOL_NAME, (tool) => <ReadFileRenderer tool={tool} />);
 registerToolRenderer(WRITE_TOOL_NAME, (tool) => <WriteFileRenderer tool={tool} />);
@@ -45,4 +45,4 @@ registerToolRenderer(INIT_PROJECT_TOOL_NAME, (tool) => <InitProjectRenderer tool
 registerToolRenderer(GREP_TOOL_NAME, (tool) => <GrepSearchRenderer tool={tool} />);
 registerToolRenderer(USE_SKILL_TOOL_NAME, (tool) => <SkillRenderer tool={tool} />);
 registerToolRenderer(BASH_TOOL_NAME, (tool) => <BashRenderer tool={tool} />);
-registerToolRenderer(ASK_QUESTIONS_TOOL_NAME, AskUserQuestionRenderer);
+registerToolRenderer(ASK_QUESTIONS_TOOL_NAME, AskQuestionsRenderer);

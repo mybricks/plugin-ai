@@ -44,10 +44,10 @@ export type { ToolUIChannel } from "./tool-ui";
 //   });
 //
 import { createWebFetchTool } from "./tools/web-fetch";
-import { createAskUserQuestionTool } from "./tools/ask-questions";
+import { createAskQuestionsTool } from "./tools/ask-questions";
 export type { WebFetchConfig } from "./tools/web-fetch";
 export { WEB_FETCH_TOOL_NAME } from "./tools/web-fetch";
-export type { AskUserQuestionParams, AskUserQuestion, AskUserQuestionOption, AskUserQuestionAnswers } from "./tools/ask-questions";
+export type { AskQuestionsParams, AskQuestionsQuestion, AskQuestionsOption, AskQuestionsAnswers } from "./tools/ask-questions";
 export { ASK_QUESTIONS_TOOL_NAME } from "./tools/ask-questions";
 
 export const Tools = {
@@ -72,5 +72,5 @@ export const Tools = {
    * 创建一个等待工具卡片 UI 回答的问答工具。
    * Agent 会自动维护运行期通信通道；调用方只需自行提供 renderer。
    */
-  createAskUserQuestion: createAskUserQuestionTool,
+  createAskQuestions: createAskQuestionsTool,
 } as const;

@@ -10,7 +10,7 @@ export const askQuestionsCase: TestCase = {
   description: "调用 ask_questions，验证工具卡片收集选项后将答案作为同一 turn 的 tool result 返回给模型。",
   expectedBehavior: "先显示两道可交互问题；选择后点击提交，卡片显示答案，随后模型继续输出确认文案。点击取消会中止当前 turn。",
   initialTurns: [],
-  tools: [Tools.createAskUserQuestion()],
+  tools: [Tools.createAskQuestions()],
   request: makeScriptedRequest([
     {
       type: "tool_calls",
