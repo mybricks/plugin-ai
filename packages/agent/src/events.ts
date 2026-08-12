@@ -121,6 +121,8 @@ export type AgentEventMap = {
   "llm:start": {
     step: number;
     startTime: number;
+    /** 本次 LLM iter 的唯一 ID，与 llm:content / llm:complete / tool:* 事件一致 */
+    iterId: string;
   };
 
   /**
@@ -139,6 +141,8 @@ export type AgentEventMap = {
     done: boolean;
     /** LLM 结束响应的时间戳（Unix ms） */
     endTime: number;
+    /** 与 llm:start 对应的 iter 唯一 ID */
+    iterId: string;
   };
 
   /**
@@ -156,6 +160,8 @@ export type AgentEventMap = {
     thinkingDelta?: string;
     thinkingContent?: string;
     step: number;
+    /** 与 llm:start 对应的 iter 唯一 ID */
+    iterId: string;
   };
 
   /**
@@ -193,6 +199,8 @@ export type AgentEventMap = {
     delta: string;
     content: string;
     step: number;
+    /** 所属 LLM iter 的唯一 ID，与 llm:start 对应 */
+    iterId: string;
   };
 
   /**
@@ -209,6 +217,8 @@ export type AgentEventMap = {
     args: any;
     step: number;
     startTime: number;
+    /** 所属 LLM iter 的唯一 ID，与 llm:start 对应 */
+    iterId: string;
   };
 
   /**
@@ -225,6 +235,8 @@ export type AgentEventMap = {
     result: any;
     step: number;
     endTime: number;
+    /** 所属 LLM iter 的唯一 ID，与 llm:start 对应 */
+    iterId: string;
   };
 
   /**
@@ -243,6 +255,8 @@ export type AgentEventMap = {
     errorType?: "invalid_args" | "normal";
     step: number;
     endTime: number;
+    /** 所属 LLM iter 的唯一 ID，与 llm:start 对应 */
+    iterId: string;
   };
 
   /**
@@ -262,6 +276,8 @@ export type AgentEventMap = {
     name: string;
     data: any;
     step: number;
+    /** 所属 LLM iter 的唯一 ID，与 llm:start 对应 */
+    iterId: string;
   };
 
   // ── Warmup iter 事件（对齐 llm:start / llm:content / llm:complete，前缀改为 warmup）──
@@ -278,6 +294,8 @@ export type AgentEventMap = {
   "warmup:start": {
     startTime: number;
     content: string;
+    /** 本次 warmup iter 的唯一 ID，与 warmup:complete 对应 */
+    iterId: string;
   };
 
   /**
@@ -298,6 +316,8 @@ export type AgentEventMap = {
     status: "success" | "error";
     content: string;
     endTime: number;
+    /** 与 warmup:start 对应的 iter 唯一 ID */
+    iterId: string;
   };
 };
 

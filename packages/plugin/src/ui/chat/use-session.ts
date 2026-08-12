@@ -31,6 +31,22 @@ function nextIterId(): string {
   return `iter-${++_iterSeq}`;
 }
 
+function findLLMIterById(turn: MessageRecord, iterId: string): LLMMessageIteration | null {
+  for (let i = turn.iterations.length - 1; i >= 0; i--) {
+    const iter = turn.iterations[i];
+    if (!isWarmupIteration(iter) && iter.iterId === iterId) return iter as LLMMessageIteration;
+  }
+  return null;
+}
+
+function findWarmupIterById(turn: MessageRecord, iterId: string): UIWarmupIter | null {
+  for (let i = turn.iterations.length - 1; i >= 0; i--) {
+    const iter = turn.iterations[i];
+    if (isWarmupIteration(iter) && iter.iterId === iterId) return iter;
+  }
+  return null;
+}
+
 // 高频流式事件（llm:content / tool:args / tool:progress）先 mutate ref，
 // 攒到一个 frame 再统一 commit，把渲染上限稳定在约 30fps。
 const STREAM_COMMIT_INTERVAL_MS = 33;
@@ -51,13 +67,6 @@ function turnsToMessageRecords(turns: TurnRecord[]): MessageRecord[] {
 
 function isWarmupIteration(iter: MessageIteration): iter is UIWarmupIter {
   return "type" in iter && iter.type === "warmup";
-}
-
-function getLastLLMIter(turn: MessageRecord): LLMMessageIteration | null {
-  for (let i = turn.iterations.length - 1; i >= 0; i--) {
-    if (!isWarmupIteration(turn.iterations[i])) return turn.iterations[i] as LLMMessageIteration;
-  }
-  return null;
 }
 
 // ─── useHistoryLoader ─────────────────────────────────────────────────────────
@@ -197,20 +206,19 @@ function useAgentEvents(
         commit();
       }),
 
-      a.events.on("llm:start", ({ step, startTime }) => {
+      a.events.on("llm:start", ({ iterId, startTime }) => {
         flushCommit();
         const turn = streamingRef.current;
         if (!turn) return;
-        const llmCount = turn.iterations.filter((i) => !isWarmupIteration(i)).length;
-        if (llmCount >= step) return;
-        turn.iterations.push({ iterId: nextIterId(), content: "", toolCalls: [], startTime });
+        if (turn.iterations.some((i) => i.iterId === iterId)) return;
+        turn.iterations.push({ iterId, content: "", toolCalls: [], startTime });
         commit();
       }),
 
-      a.events.on("llm:content", ({ content, thinkingContent }) => {
+      a.events.on("llm:content", ({ iterId, content, thinkingContent }) => {
         const turn = streamingRef.current;
         if (!turn) return;
-        const iter = getLastLLMIter(turn);
+        const iter = findLLMIterById(turn, iterId);
         if (!iter) return;
         iter.content = content;
         iter.responseTime = iter.responseTime ?? Date.now();
@@ -218,7 +226,7 @@ function useAgentEvents(
         scheduleCommit();
       }),
 
-      a.events.on("llm:complete", ({ done, endTime }) => {
+      a.events.on("llm:complete", ({ iterId, done, endTime }) => {
         if (done) {
           cancelCommit();
           syncFromSnapshot();
@@ -227,7 +235,7 @@ function useAgentEvents(
           flushCommit();
           const turn = streamingRef.current;
           if (!turn) return;
-          const iter = getLastLLMIter(turn);
+          const iter = findLLMIterById(turn, iterId);
           if (iter && endTime !== undefined) iter.endTime = endTime;
           commit();
         }
@@ -290,10 +298,10 @@ function useAgentEvents(
         opts?.onTurnEnd?.();
       }),
 
-      a.events.on("tool:args", ({ callId, name, content }) => {
+      a.events.on("tool:args", ({ iterId, callId, name, content }) => {
         const turn = streamingRef.current;
         if (!turn) return;
-        const iter = getLastLLMIter(turn);
+        const iter = findLLMIterById(turn, iterId);
         if (!iter) return;
         const toolTitle = a.getTools().find((t) => t.name === name)?.title;
         const existing = iter.toolCalls.find((t) => t.callId === callId);
@@ -313,11 +321,11 @@ function useAgentEvents(
         scheduleCommit();
       }),
 
-      a.events.on("tool:call", ({ callId, name, args, startTime }) => {
+      a.events.on("tool:call", ({ iterId, callId, name, args, startTime }) => {
         flushCommit();
         const turn = streamingRef.current;
         if (!turn) return;
-        const iter = getLastLLMIter(turn);
+        const iter = findLLMIterById(turn, iterId);
         if (!iter) return;
         const toolTitle = a.getTools().find((t) => t.name === name)?.title;
         const argsRaw = args && typeof args === "object" && "_argsRaw" in args
@@ -353,11 +361,11 @@ function useAgentEvents(
         commit();
       }),
 
-      a.events.on("tool:result", ({ callId, result, endTime }) => {
+      a.events.on("tool:result", ({ iterId, callId, result, endTime }) => {
         flushCommit();
         const turn = streamingRef.current;
         if (!turn) return;
-        const iter = getLastLLMIter(turn);
+        const iter = findLLMIterById(turn, iterId);
         if (!iter) return;
         iter.toolCalls = iter.toolCalls.map((tool) =>
           tool.callId === callId ? { ...tool, status: "success" as const, execEndTime: endTime, result } : tool
@@ -365,11 +373,11 @@ function useAgentEvents(
         commit();
       }),
 
-      a.events.on("tool:error", ({ callId, error, errorType, endTime }) => {
+      a.events.on("tool:error", ({ iterId, callId, error, errorType, endTime }) => {
         flushCommit();
         const turn = streamingRef.current;
         if (!turn) return;
-        const iter = getLastLLMIter(turn);
+        const iter = findLLMIterById(turn, iterId);
         if (!iter) return;
         iter.toolCalls = iter.toolCalls.map((tool) =>
           tool.callId === callId
@@ -379,10 +387,10 @@ function useAgentEvents(
         commit();
       }),
 
-      a.events.on("tool:progress", ({ callId, data }) => {
+      a.events.on("tool:progress", ({ iterId, callId, data }) => {
         const turn = streamingRef.current;
         if (!turn) return;
-        const iter = getLastLLMIter(turn);
+        const iter = findLLMIterById(turn, iterId);
         if (!iter) return;
         iter.toolCalls = iter.toolCalls.map((tool) =>
           tool.callId === callId ? { ...tool, progress: data } : tool
@@ -390,11 +398,11 @@ function useAgentEvents(
         scheduleCommit();
       }),
 
-      a.events.on("warmup:start", ({ startTime, content }) => {
+      a.events.on("warmup:start", ({ iterId, startTime, content }) => {
         flushCommit();
         const turn = streamingRef.current;
         if (!turn) return;
-        turn.iterations.push({ iterId: nextIterId(), type: "warmup", status: "loading", content, startTime, toolCalls: [] });
+        turn.iterations.push({ iterId, type: "warmup", status: "loading", content, startTime, toolCalls: [] });
         commit();
       }),
 
@@ -407,15 +415,15 @@ function useAgentEvents(
         scheduleCommit();
       }),
 
-      a.events.on("warmup:complete", ({ status, content, endTime }) => {
+      a.events.on("warmup:complete", ({ iterId, status, content, endTime }) => {
         flushCommit();
         const turn = streamingRef.current;
         if (!turn) return;
-        const last = turn.iterations[turn.iterations.length - 1];
-        if (!last || !isWarmupIteration(last)) return;
-        last.status = status;
-        last.content = content;
-        last.endTime = endTime;
+        const iter = findWarmupIterById(turn, iterId);
+        if (!iter) return;
+        iter.status = status;
+        iter.content = content;
+        iter.endTime = endTime;
         commit();
       }),
 

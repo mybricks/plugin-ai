@@ -166,6 +166,8 @@ export interface Message {
 export interface WarmupIter {
   /** 固定为 "warmup"，用于区分普通 LLM iter */
   type: "warmup";
+  /** 本次 warmup iter 的唯一 ID，与 warmup:start 事件中的 iterId 对应 */
+  iterId?: string;
   /** 当前状态 */
   status: "loading" | "success" | "error";
   /** 展示给用户的描述文本（streaming 更新，与 LLM iter.content 对齐） */
@@ -284,6 +286,8 @@ export interface TurnRecord {
   iterations: Array<
     | WarmupIter
     | {
+        /** 本次迭代的唯一 ID（由 agent 生成，与 llm:start 等事件中的 iterId 对应） */
+        iterId?: string;
         /** 本次迭代 LLM 输出的纯文本 */
         content: string;
         /** 本次迭代的工具调用（若有） */
