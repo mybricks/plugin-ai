@@ -4,6 +4,7 @@ import {
   AgentModeEnum,
   type AgentMode,
   type AgentEventMap,
+  type AgentHooks,
   type CompactRecord,
   type BoundHistory,
   type Tool,
@@ -67,6 +68,11 @@ export interface HttpAgentOptions {
   browserToolHandler?: BrowserToolHandler;
   /** 注册到浏览器端执行的工具。服务端可通过 SSE browser:task 按 name 调用。 */
   browserTools?: Tool[];
+  /**
+   * 浏览器侧生命周期 hooks。远程 Agent 的实际推理在服务端执行，但 sandbox
+   * 仍需要这些 hooks 来维护 loading、锁和 undo/redo 等本地 UI 状态。
+   */
+  hooks?: AgentHooks;
 }
 
 export interface HttpAgentRequestAIParams {
@@ -107,6 +113,7 @@ export class HttpAgent {
   readonly key: string;
   readonly headers?: Record<string, string>;
   readonly historyManager: HistoryManager;
+  private readonly hooks?: AgentHooks;
   private readonly workspaceBridge: WorkspaceBridge<HttpAgent>;
   private mode: AgentMode = AgentModeEnum.Build;
   private turns: TurnRecord[] = [];
@@ -122,6 +129,7 @@ export class HttpAgent {
   >();
   private readonly remoteHistory: BoundHistory;
   private readonly historyInitialization: Promise<void>;
+  private readonly completedHookTurns = new Set<string>();
 
   constructor(options: HttpAgentOptions) {
     this.baseUrl = trimRight(options.baseUrl ?? DEFAULT_BASE_URL, "/");
@@ -133,6 +141,7 @@ export class HttpAgent {
       options.key ??
       `http:${this.baseUrl}:${this.workspaceId}:${this.agentId}`;
     this.headers = options.headers;
+    this.hooks = options.hooks;
     this.workspaceBridge = new WorkspaceBridge<HttpAgent>({
       workspaceId: this.workspaceId,
       userId: this.userId,
@@ -242,6 +251,17 @@ export class HttpAgent {
     // 避免迟到的 ready snapshot 覆盖正在流式更新的消息。
     await this.historyInitialization;
     await this.workspaceBridge.prepareRun();
+    await this.hooks?.beforeTurn?.({
+      message: params.message,
+      formattedMessage: params.message,
+      attachments: params.attachments ?? [],
+      ...(params.meta ? { meta: params.meta } : {}),
+      ...(params.extra ? { extra: params.extra } : {}),
+    });
+    await this.hooks?.beforeRequest?.({
+      ...(params.meta ? { meta: params.meta } : {}),
+      ...(params.extra ? { extra: params.extra } : {}),
+    });
     const turnId = params.turnId ?? createTurnId();
     let terminalSeen = false;
     this.handleRemoteEvent({
@@ -413,17 +433,19 @@ export class HttpAgent {
         }
         const suffix = query.toString() ? `?${query.toString()}` : "";
         const response = await this.requestJson<VersionsPageResponse>(
-          `${this.sessionPath("versions")}${suffix}`,
+          `${this.workspacePath("versions")}${suffix}`,
         );
         return normalizeVersionsPage(response);
       },
       addVersion: async (record, files) => {
-        void record;
-        void files;
+        await this.requestJson(this.workspacePath("versions"), {
+          method: "POST",
+          body: JSON.stringify({ record, files }),
+        });
       },
       getVersionFiles: async (versionId) => {
         const response = await this.requestJson<VersionFilesResponse>(
-          this.sessionPath(
+          this.workspacePath(
             `versions/${encodeURIComponent(versionId)}/files`,
           ),
         );
@@ -431,13 +453,18 @@ export class HttpAgent {
       },
       getVersion: async (versionId) => {
         const response = await this.requestJson<VersionRecordResponse>(
-          this.sessionPath(`versions/${encodeURIComponent(versionId)}`),
+          this.workspacePath(`versions/${encodeURIComponent(versionId)}`),
         );
         return normalizeVersionRecord(response);
       },
       updateVersion: async (versionId, patch) => {
-        void versionId;
-        void patch;
+        await this.requestJson(
+          this.workspacePath(`versions/${encodeURIComponent(versionId)}`),
+          {
+            method: "PATCH",
+            body: JSON.stringify(patch),
+          },
+        );
       },
     };
   }
@@ -546,11 +573,13 @@ export class HttpAgent {
       event.event === "turn:abort"
     ) {
       this.setSessionState({ running: false });
+      this.triggerAfterTurn(event);
     } else if (event.event === "turn:error") {
       this.setSessionState({
         running: false,
         error: event.data?.error,
       });
+      this.triggerAfterTurn(event);
     }
     if (event.event === "mode:change" && event.data?.mode) {
       this.mode = event.data.mode;
@@ -568,6 +597,30 @@ export class HttpAgent {
     }
     this.sessionState = state;
     for (const listener of this.sessionStateListeners) listener(state);
+  }
+
+  /** 同一 turn 可能经 SSE 重放，afterTurn 必须只执行一次。 */
+  private triggerAfterTurn(event: RemoteAgentEvent): void {
+    const turnId = event.data?.turnId ?? event.turnId;
+    if (typeof turnId !== "string" || !turnId || this.completedHookTurns.has(turnId)) {
+      return;
+    }
+    this.completedHookTurns.add(turnId);
+    const status =
+      event.event === "turn:complete"
+        ? "success"
+        : event.event === "turn:abort"
+          ? "abort"
+          : "error";
+    void Promise.resolve(
+      this.hooks?.afterTurn?.({
+        id: turnId,
+        status,
+        ...(event.event === "turn:error" ? { error: event.data?.error } : {}),
+      } as TurnRecord),
+    ).catch((error) => {
+      console.warn("[HttpAgent] hooks.afterTurn failed:", error);
+    });
   }
 
   async requestJson<T = unknown>(path: string, init?: RequestInit): Promise<T> {
@@ -594,6 +647,10 @@ export class HttpAgent {
       return `/workspaces/${workspace}/agents/${encodeURIComponent(this.agentId)}/${action}`;
     }
     return `/workspaces/${workspace}/${action}`;
+  }
+
+  private workspacePath(action: string): string {
+    return `/workspaces/${encodeURIComponent(this.workspaceId)}/${action}`;
   }
 
   private async requestEventStream(

@@ -237,21 +237,20 @@ sequenceDiagram
 
 | history 方法 | 服务端接口 | 说明 |
 |---|---|---|
-| `listVersions(params?)` | `GET /versions?pageSize=N&pageNum=N` | 查询版本快照元数据列表；这是 history 对象的必备接口 |
-| `addVersion(record, files)` | 暂不调用远程接口 | 仅保留 `BoundHistory` 形状，当前不实现真实保存 |
-| `getVersion(versionId)` | `GET /versions/:versionId` | 获取单个版本元数据，不含 files |
-| `getVersionFiles(versionId)` | `GET /versions/:versionId/files` | 获取版本文件内容，用于查看或回滚 |
-| `updateVersion(versionId, patch)` | 暂不调用远程接口 | 仅保留 `BoundHistory` 形状，当前不实现真实更新 |
+| `listVersions(params?)` | `GET /workspaces/:id/versions?pageSize=N&pageNum=N` | 查询版本快照元数据列表；这是 history 对象的必备接口 |
+| `addVersion(record, files)` | `POST /workspaces/:id/versions` | 浏览器端手动保存、初始化和回滚版本经 workspace 转交服务端 History |
+| `getVersion(versionId)` | `GET /workspaces/:id/versions/:versionId` | 获取单个版本元数据，不含 files |
+| `getVersionFiles(versionId)` | `GET /workspaces/:id/versions/:versionId/files` | 获取版本文件内容，用于查看或回滚 |
+| `updateVersion(versionId, patch)` | `PATCH /workspaces/:id/versions/:versionId` | 更新版本摘要或文件补丁 |
 
-这些 history 接口独立于本文的初始化、run、connect、文件变化和 Browser Tool 主流程；它们主要供版本面板、手动保存、回滚等外部调用方使用。
+这些 history 接口独立于本文的初始化、run、connect、文件变化和 Browser Tool 主流程；它们主要供版本面板、手动保存、回滚等外部调用方使用。remote Agent 的 AI 轮次版本由服务端 hooks 创建和更新，组件库的 `afterTurn` / `afterTurnSummary` 不会重复写入。
 
 ## 修改边界
 
-本次实现只修改 `packages/plugin`。
+本次实现涉及 `packages/plugin` 的 HTTP history 适配，以及服务端 workspace 的版本路由。
 
 严格禁止修改：
 
-- `packages/agent/**`
-- 特别是 `packages/agent/src/agent.ts`
+- `packages/agent/src/agent.ts`
 
 `HttpAgent` 通过 Plugin 层适配现有 `AgentEvents`、`HistoryManager` 和 `TurnRecord`，不能为了远程协议改变本地 Agent。

@@ -196,6 +196,8 @@ export interface ConnectToAIResult {
    * 若 Agent 未配置 history 则为 null（正常情况下不会出现）。
    */
   history: BoundHistory | null;
+  /** 当前 History 是否由 remote Agent 的 workspace API 提供。 */
+  isRemoteAgent: boolean;
 }
 
 export interface SandboxAPI {
@@ -474,7 +476,7 @@ function connectToAI(
   if (context.agentMap.has(agentKey)) {
     // 已注册：直接从现有 agent 实例上取 history 返回，不重复初始化
     const existingAgent = context.agentMap.get(agentKey)!;
-    return { history: existingAgent.getHistory() };
+    return { history: existingAgent.getHistory(), isRemoteAgent: !!remoteAgent };
   }
 
   let agentRef: CodeAgent | undefined;
@@ -703,6 +705,7 @@ function connectToAI(
       headers: remoteAgent.headers,
       browserToolHandler: remoteAgent.browserToolHandler,
       browserTools,
+      hooks,
     });
     agent.files.bindSandbox(sandbox);
     agent.setBrowserConnectionEnabled(!context.disabled);
@@ -711,7 +714,7 @@ function connectToAI(
     });
     context.agentMap.set(agentKey, agent);
     context.registerAgentComId(comId);
-    return { history: agent.getHistory() };
+    return { history: agent.getHistory(), isRemoteAgent: true };
   }
 
   const agent = new CodeAgent({
@@ -778,5 +781,5 @@ function connectToAI(
   context.agentMap.set(agentKey, agent);
   context.registerAgentComId(comId);
 
-  return { history: agent.getHistory() };
+  return { history: agent.getHistory(), isRemoteAgent: false };
 }
