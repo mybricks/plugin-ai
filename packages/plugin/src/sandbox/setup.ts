@@ -3,6 +3,7 @@ import { AGENT_INTERNAL_FILE_EXCLUDE, CodeAgent, IDBHistory, isFileExcluded } fr
 import { ChipRegistry } from "../../../agent/src";
 import { splitFrontmatter, getFrontmatterString, getFrontmatterStringArray } from "../../../agent/src/utils/frontmatter";
 import { GLOB_TOOL_NAME, createInitProjectTool } from "../../../agent/src/code-agent/tools";
+import { getCodeAgentSystemPrompt } from "../../../agent/src/code-agent/prompt";
 import type { Tool, Sandbox, CodeAgentPlugin, History, BoundHistory, TurnSender, AdditionalDirectory, AgentsMdConfig, SkillFile, UnifiedFile, AgentOptions, AgentMode, ChatChipInstance } from "../../../agent/src";
 import type { PromptSections } from "../../../kit/src";
 import { buildDevelopmentGuideContext, buildExtraProjectInfoSection, buildProjectInfoSection, promptSectionsAdaptToPromptOption } from "../../../kit/src";
@@ -136,32 +137,62 @@ type MaybePromise<T> = T | Promise<T>;
 
 export type PluginGetUserContextMessage = () => MaybePromise<string | null | undefined>;
 
-export type AgentRuntimeConfig =
-  | { type?: "local" }
-  | ({
-      type: "http" | "server";
-      /** 方舟测试环境默认值：http://localhost:3001/agents/api */
-      baseUrl?: string;
-      /** 不传时默认使用当前 comId 对应的 agentKey，保证多组件隔离。 */
-      workspaceId?: string | ((context: { comId: string; agentKey: string }) => string);
-      /** @deprecated 服务端路由不接受 sessionId；请使用 agentId。 */
-      sessionId?: string;
-      /** 服务端 agentId。未传时使用 workspace 的 default agent。 */
-      agentId?: string;
-      /** 传给服务端平台接口的用户身份。 */
-      userId?: string;
-      key?: string | ((context: { comId: string; agentKey: string; workspaceId: string }) => string);
-      headers?: HttpAgentOptions["headers"];
-      browserToolHandler?: HttpAgentOptions["browserToolHandler"];
-    });
-
 export interface VirtualFilesRuntimeContext {
   getEffectiveLibrariesSection: (options?: { path?: string; moduleKey?: string }) => Promise<string>;
 }
 
 /**
+ * ⚠️ 试验性 API。
+ *
+ * 为当前聚焦的 CodeAgent 覆盖运行配置。配置会更新到当前 CodeAgent 实例，
+ * agentKey 和 history 保持不变；建议在 Agent 空闲时调用。
+ * @experimental
+ */
+export interface AgentRuntimeConfig {
+  /** 保持与旧版 local 配置兼容；本地运行时配置无需显式指定。 */
+  type?: "local";
+  promptSections?: PromptSections;
+  tools?: Tool[];
+  skills?: SkillFile[];
+  virtualFiles?: (context: VirtualFilesRuntimeContext) => Promise<UnifiedFile[]>;
+  componentRuntime?: any;
+}
+
+/** 服务端 Agent 的初始化配置。传给 pluginAI 的 agentRuntime 为此类型时，保留 HTTP Agent 工作流。 */
+export interface HttpAgentRuntimeConfig {
+  type: "http" | "server";
+  /** 方舟测试环境默认值：http://localhost:3001/agents/api */
+  baseUrl?: string;
+  /** 不传时默认使用当前 comId 对应的 agentKey，保证多组件隔离。 */
+  workspaceId?: string | ((context: { comId: string; agentKey: string }) => string);
+  /** @deprecated 服务端路由不接受 sessionId；请使用 agentId。 */
+  sessionId?: string;
+  /** 服务端 agentId。未传时使用 workspace 的 default agent。 */
+  agentId?: string;
+  /** 传给服务端平台接口的用户身份。 */
+  userId?: string;
+  key?: string | ((context: { comId: string; agentKey: string; workspaceId: string }) => string);
+  headers?: HttpAgentOptions["headers"];
+  browserToolHandler?: HttpAgentOptions["browserToolHandler"];
+}
+
+/** pluginAI 初始化时可使用本地运行时覆盖或服务端 Agent 配置。 */
+export type InitialAgentRuntimeConfig = AgentRuntimeConfig | HttpAgentRuntimeConfig;
+
+/** @internal 由 pluginAI controller 使用的运行配置管理器。 */
+export interface AgentRuntimeController {
+  setAgentRuntime: (config: AgentRuntimeConfig) => void;
+  clearAgentRuntime: () => void;
+}
+
+interface AgentRuntimeRef {
+  current: AgentRuntimeConfig | undefined;
+  apply?: (config: AgentRuntimeConfig | undefined) => void;
+}
+
+/**
  * connectToAI 的返回值。
- * sandbox 可通过此对象访问该 comId 对应的 History 绑定视图，用于版本管理。
+ * sandbox 可通过此对象访问该 comId 对应的 History 实例，用于版本管理。
  */
 export interface ConnectToAIResult {
   /**
@@ -208,6 +239,7 @@ declare global {
 
 export interface SetupSandboxParams {
   requestAsStream: RequestAsStreamFn;
+  /** 该 plugin 实例的模型路由命名空间；模型选择按 agentKey 在其内部隔离。 */
   llmPluginKey?: string;
   /**
    * 注入到根工程虚拟 FS 的文件（每个 turn 调用一次）。
@@ -240,8 +272,8 @@ export interface SetupSandboxParams {
   disabledModes?: AgentOptions["disabledModes"];
   /** 透传给 CodeAgent 的历史记录实现，不传时使用内置 IDBHistory */
   history?: History;
-  /** Agent 运行模式。默认 local；server/http 模式会对接远程 CodeAgent 服务。 */
-  agentRuntime?: AgentRuntimeConfig;
+  /** 初始 Agent 配置；HTTP/server 类型会创建服务端 Agent，其余配置覆盖本地 CodeAgent 资源。 */
+  agentRuntime?: InitialAgentRuntimeConfig;
   /** 消息发送者信息，注入到每条用户消息中，UI 展示时优先使用 */
   sender?: TurnSender;
 }
@@ -252,13 +284,14 @@ export interface SetupSandboxParams {
  * 在 pluginAI() 初始化时调用一次。
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
-export function setupSandbox(params: SetupSandboxParams): void {
+export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController {
   const { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, sender } = params;
+  const agentRuntimeRefs = new Map<string, AgentRuntimeRef>();
+  const initialRuntime = isHttpAgentRuntimeConfig(agentRuntime) ? undefined : agentRuntime;
 
   window._sandbox_ = {
-    // ── sandbox → Plugin ──────────────────────────────────────────────────────
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
-      return connectToAI(comId, config, { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, sender });
+      return connectToAI(comId, config, { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, initialRuntime, sender, agentRuntimeRefs });
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
@@ -270,10 +303,11 @@ export function setupSandbox(params: SetupSandboxParams): void {
         if (!agent) return;
         ensureAIPanelOpen(comId).then(() => {
           context.aiQueue.send(
-            agent,
+            agentKey,
             async () => {
               await ensureFocusComId(comId);
               const requestParams = withMentionFocus(params);
+              context.aiQueue.registerAbort(agentKey, () => agent.abort());
               await agent.requestAI({
                 message: requestParams.message,
                 attachments: requestParams.attachments ?? [],
@@ -312,6 +346,25 @@ export function setupSandbox(params: SetupSandboxParams): void {
       disallowedDebugEnvs: disallowedDebugEnvs ?? [],
     },
   };
+
+  return {
+    setAgentRuntime(config) {
+      const agentKey = context.getAgentKey();
+      const runtimeRef = agentRuntimeRefs.get(agentKey) ?? { current: undefined };
+      runtimeRef.current = config;
+      agentRuntimeRefs.set(agentKey, runtimeRef);
+      runtimeRef.apply?.(config);
+      window._sandbox_.config.componentRuntime = config.componentRuntime ?? componentRuntime;
+    },
+    clearAgentRuntime() {
+      const agentKey = context.getAgentKey();
+      const runtimeRef = agentRuntimeRefs.get(agentKey);
+      if (!runtimeRef) return;
+      runtimeRef.current = undefined;
+      runtimeRef.apply?.(undefined);
+      window._sandbox_.config.componentRuntime = componentRuntime;
+    },
+  };
 }
 
 // ─── 内部：注册单个 sandbox ───────────────────────────────────────────────────
@@ -331,8 +384,10 @@ interface PluginParams {
   formatUserMessage?: AgentOptions["formatUserMessage"];
   disabledModes?: AgentOptions["disabledModes"];
   history?: History;
-  agentRuntime?: AgentRuntimeConfig;
+  agentRuntime?: InitialAgentRuntimeConfig;
+  initialRuntime?: AgentRuntimeConfig;
   sender?: TurnSender;
+  agentRuntimeRefs: Map<string, AgentRuntimeRef>;
 }
 
 interface SkillRuntimeContext {
@@ -370,6 +425,10 @@ function injectPluginRuntimeContext(
   };
 }
 
+function isHttpAgentRuntimeConfig(config?: InitialAgentRuntimeConfig): config is HttpAgentRuntimeConfig {
+  return config?.type === "http" || config?.type === "server";
+}
+
 function prefixPluginBrowserToolName(pluginName: string, tool: Tool): Tool {
   return {
     ...tool,
@@ -399,24 +458,33 @@ function formatLibraryDocs(libraries: Array<{ name: string; version?: string; us
 function connectToAI(
   comId: string,
   { designer, hooks, chips }: RegistSandBoxConfig,
-  { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, sender }: PluginParams
+  { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, initialRuntime, sender, agentRuntimeRefs }: PluginParams
 ): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
   registerChips(agentKey, chips);
-  const promptOptions = promptSectionsAdaptToPromptOption(promptSections);
+  const runtimeRef = agentRuntimeRefs.get(agentKey) ?? { current: initialRuntime };
+  agentRuntimeRefs.set(agentKey, runtimeRef);
+  const runtime = runtimeRef.current;
+  const getRuntimePromptSections = (config = runtimeRef.current) => config?.promptSections ?? promptSections;
+  const getRuntimeTools = (config = runtimeRef.current) => config?.tools ?? tools;
+  const activePromptSections = getRuntimePromptSections(runtime);
+  const activeTools = getRuntimeTools(runtime);
+  const promptOptions = promptSectionsAdaptToPromptOption(activePromptSections);
   const runtimeContext: SkillRuntimeContext = {
     designer,
     codeRules,
     designRules,
   };
-  const runtimeSkills = skills?.map((skill) => injectSkillRuntimeContext(skill, runtimeContext));
+  const getRuntimeSkills = (config = runtimeRef.current) =>
+    (config?.skills ?? skills)?.map((skill) => injectSkillRuntimeContext(skill, runtimeContext));
+  const getRuntimeVirtualFiles = () => runtimeRef.current?.virtualFiles ?? virtualFiles;
+  const runtimeSkills = getRuntimeSkills(runtime);
   const runtimePlugins = plugins?.map((plugin) => injectPluginRuntimeContext(plugin, runtimeContext));
   const effectivePlugins = context.applyPluginEnabledOverrides(runtimePlugins);
 
   if (context.agentMap.has(agentKey)) {
     // 已注册：直接从现有 agent 实例上取 history 返回，不重复初始化
     const existingAgent = context.agentMap.get(agentKey)!;
-    context.registerAgentComId(comId);
     return { history: existingAgent.getHistory() };
   }
 
@@ -487,7 +555,7 @@ function connectToAI(
       )).flat();
 
       // 3. 顶层只读文件（如 .agent/agent.md 项目规范）
-      const promptVirtualFiles = (await virtualFiles?.({
+      const promptVirtualFiles = (await getRuntimeVirtualFiles()?.({
         getEffectiveLibrariesSection: async (_options) => {
           const libraries = await designerRef.current?.getEffectiveLibraries() ?? [];
           return formatLibraryDocs(libraries);
@@ -584,7 +652,9 @@ function connectToAI(
 
       const libraries = await designer.getEffectiveLibraries();
       return buildDevelopmentGuideContext({
-        promptSections,
+        // promptSections 的开发/设计/文档规范通过稳定上下文注入。
+        // 这里必须按每个 turn 读取当前 runtime，才能与 agent system、tools、skills 一起切换。
+        promptSections: getRuntimePromptSections(),
         codeRules,
         designRules,
         libraries,
@@ -623,11 +693,11 @@ function connectToAI(
   const checkStatusTool = createCheckStatusTool(designerRef);
   const initProjectTool = createInitProjectTool(sandbox);
   const browserTools = collectBrowserTools({
-    baseTools: [checkStatusTool, initProjectTool, ...(tools ?? [])],
+    baseTools: [checkStatusTool, initProjectTool, ...(activeTools ?? [])],
     plugins: effectivePlugins,
   });
 
-  if (agentRuntime?.type === "http" || agentRuntime?.type === "server") {
+  if (isHttpAgentRuntimeConfig(agentRuntime)) {
     const workspaceId = typeof agentRuntime.workspaceId === "function"
       ? agentRuntime.workspaceId({ comId, agentKey })
       : agentRuntime.workspaceId ?? agentKey;
@@ -660,7 +730,7 @@ function connectToAI(
     history: history ?? new IDBHistory({ dbName: "@plugin-ai/plugin/messages" }),
     request: (llmPluginKey ? context.createLLMRequest(llmPluginKey, agentKey) : undefined) ?? requestAsStream,
     sandbox,
-    tools: [checkStatusTool, initProjectTool, ...(tools ?? [])],
+    tools: [checkStatusTool, initProjectTool, ...(activeTools ?? [])],
     promptOptions,
     hooks,
     agentsMdConfig: buildAgentsMdConfig,
@@ -695,6 +765,26 @@ function connectToAI(
   });
   agent.chipRegistry = chipRegistry;
   agentRef = agent;
+
+  // MVP：复用同一个 CodeAgent 实例，仅替换其运行时资源。
+  // _base / _rebuildDynamicTools 是当前 CodeAgent 的私有实现细节，因此本能力标记为试验性。
+  const baseTools = (agent as any)._base.tools as Tool[];
+  const builtinTools = baseTools.slice(0, baseTools.length - 2 - (activeTools?.length ?? 0));
+  runtimeRef.apply = (config) => {
+    const nextTools = getRuntimeTools(config) ?? [];
+    const nextSkills = getRuntimeSkills(config) ?? [];
+    (agent as any)._base.skills = nextSkills;
+    (agent as any)._base.tools = [
+      ...builtinTools,
+      checkStatusTool,
+      initProjectTool,
+      ...nextTools,
+    ];
+    (agent as any)._rebuildDynamicTools();
+    agent.options.system = getCodeAgentSystemPrompt(
+      promptSectionsAdaptToPromptOption(getRuntimePromptSections(config))
+    );
+  };
 
   context.agentMap.set(agentKey, agent);
   context.registerAgentComId(comId);

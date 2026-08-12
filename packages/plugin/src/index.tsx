@@ -12,9 +12,9 @@ import { type PromptSections } from "../../kit/src";
 import { DEFAULT_PLUGIN_SKILLS } from "./skills/default";
 
 import { context } from "./context";
-import { setupSandbox, type AgentRuntimeConfig } from "./sandbox";
+import { setupSandbox } from "./sandbox";
 import { chipRegistry } from "./sandbox/setup";
-import type { Designer, Hooks, RegistSandBoxConfig, PluginGetUserContextMessage, SendToAgentParams } from "./sandbox";
+import type { AgentRuntimeConfig, InitialAgentRuntimeConfig, Designer, Hooks, RegistSandBoxConfig, PluginGetUserContextMessage, SendToAgentParams } from "./sandbox";
 import { ChatPanelList } from "./ui/chat/chat-panel-list";
 import { ComChatFocusView } from "./ui/chat/chat-focus-view";
 import { ensureAIPanelOpen, ensureFocusComId } from "./utils/ensure-ai-panel-open";
@@ -31,7 +31,7 @@ export { createRequestAsStream, createOnUpload } from "../../request/src";
 export type { RequestAsStreamFn } from "../../request/src";
 export { openSetting, closeSetting, SettingModal } from "./ui/setting";
 export type { SettingModalProps } from "./ui/setting";
-export type { Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams, PluginGetUserContextMessage, VirtualFilesRuntimeContext, ChatChipRemoveHandler, SandboxChipConfig, SandboxChipRecordConfig, SandboxChipsConfig } from "./sandbox";
+export type { AgentRuntimeConfig, HttpAgentRuntimeConfig, InitialAgentRuntimeConfig, Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams, PluginGetUserContextMessage, VirtualFilesRuntimeContext, ChatChipRemoveHandler, SandboxChipConfig, SandboxChipRecordConfig, SandboxChipsConfig } from "./sandbox";
 export type { MentionProvider, MentionMenuItem } from "./ui/components/types";
 // ProviderConfig / ModelConfig 已由 request 包导出，此处仅导出 plugin 专属类型
 export type { SettingValue } from "./ui/setting";
@@ -71,6 +71,17 @@ export interface PluginAIController {
   disablePlugin(name: string): void;
   /** 向指定 comId 的 Agent 发送消息，复用 sandbox helpers.sendToAgent 的队列/聚焦逻辑。 */
   requestAI(comId: string, params: SendToAgentParams): void;
+  /**
+   * ⚠️ 试验性 API：设置当前聚焦 Agent 的运行配置。
+   * 直接更新当前 CodeAgent 实例。建议在 Agent 空闲时调用；执行中更新会在后续 LLM step 生效。
+   * @experimental
+   */
+  setAgentRuntime(config: AgentRuntimeConfig): void;
+  /**
+   * ⚠️ 试验性 API：清除当前聚焦 Agent 的运行配置，恢复 pluginAI 初始化配置。
+   * @experimental
+   */
+  clearAgentRuntime(): void;
   /** 向指定 comId 的对话输入框追加文本或图片附件。 */
   appendInput(comId: string, input: string | SendToAgentParams): void;
   /**
@@ -203,8 +214,8 @@ export interface PluginAIParams {
   };
   /** 透传给 CodeAgent 的历史记录实现，不传时使用内置 IDBHistory */
   history?: import("../../agent/src").History;
-  /** Agent 运行模式。默认 local；server/http 模式会对接远程 CodeAgent 服务。 */
-  agentRuntime?: AgentRuntimeConfig;
+  /** 初始 Agent 配置。server/http 会对接远程 CodeAgent 服务；其余配置覆盖本地 Agent 资源。 */
+  agentRuntime?: InitialAgentRuntimeConfig;
   /** 消息发送者信息，注入到每条用户消息中，UI 展示时优先使用 */
   sender?: TurnSender;
 }
@@ -307,7 +318,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
 
   // ── window._sandbox_：sandbox 与 Plugin 的统一交互 API ─────────────────────
 
-  setupSandbox({
+  const agentRuntimeController = setupSandbox({
     requestAsStream,
     llmPluginKey: pluginKey,
     virtualFiles,
@@ -354,6 +365,12 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
       },
       requestAI(comId: string, params: SendToAgentParams) {
         window._sandbox_?.helpers.sendToAgent(comId, params);
+      },
+      setAgentRuntime(config: AgentRuntimeConfig) {
+        agentRuntimeController.setAgentRuntime(config);
+      },
+      clearAgentRuntime() {
+        agentRuntimeController.clearAgentRuntime();
       },
       appendInput(comId: string, input: string | SendToAgentParams) {
         ensureAIPanelOpen(comId).then(() => {

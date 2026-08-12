@@ -130,6 +130,7 @@ import { renderAttachmentSuffixCase } from "./attachment-suffix";
 import { renderFocusCase } from "./render-focus";
 import { customActionBarCase } from "./action-bar";
 import { streamingRenderPerformanceCase } from "./render-performance";
+import { agentRuntimeSwitchCase } from "./agent-runtime";
 import {
   bashMvRenameCase,
   bashMvToDirectoryCase,
@@ -184,6 +185,8 @@ export const ALL_CASES: TestCase[] = [
   historyLazyLoadFallbackCase,
   historyLazyLoadSlowCase,
   toolDeletePartialPermissionCase,
+  // ─── 实验性 ─────────────────────────────────────
+  agentRuntimeSwitchCase,
   // ─── 网络中断 ───────────────────────────────────
   requestBusinessErrorMessageCase,
   networkErrorDelayedCase,

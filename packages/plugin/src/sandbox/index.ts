@@ -2,13 +2,4 @@ export type { Designer, RegistSandBoxConfig, ChatChipRemoveHandler, SandboxChipC
 export type { AgentHooks as Hooks } from "../../../agent/src";
 export { setupSandbox } from "./setup";
 export { triggerChipRemove } from "./chip-remove";
-export type {
-  AgentRuntimeConfig,
-  PluginGetUserContextMessage,
-  SandboxAPI,
-  SandboxConfig,
-  SandboxHelpers,
-  SendToAgentParams,
-  SetupSandboxParams,
-  VirtualFilesRuntimeContext,
-} from "./setup";
+export type { AgentRuntimeConfig, HttpAgentRuntimeConfig, InitialAgentRuntimeConfig, SetupSandboxParams, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams, PluginGetUserContextMessage, VirtualFilesRuntimeContext } from "./setup";
