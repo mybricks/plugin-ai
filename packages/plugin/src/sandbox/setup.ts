@@ -149,8 +149,6 @@ export interface VirtualFilesRuntimeContext {
  * @experimental
  */
 export interface AgentRuntimeConfig {
-  /** 保持与旧版 local 配置兼容；本地运行时配置无需显式指定。 */
-  type?: "local";
   promptSections?: PromptSections;
   tools?: Tool[];
   skills?: SkillFile[];
@@ -158,8 +156,8 @@ export interface AgentRuntimeConfig {
   componentRuntime?: any;
 }
 
-/** 服务端 Agent 的初始化配置。传给 pluginAI 的 agentRuntime 为此类型时，保留 HTTP Agent 工作流。 */
-export interface HttpAgentRuntimeConfig {
+/** 服务端 Agent 的初始化配置。传给 pluginAI 的 remoteAgent 时会创建 HTTP Agent。 */
+export interface RemoteAgentConfig {
   type: "http" | "server";
   /** 方舟测试环境默认值：http://localhost:3001/agents/api */
   baseUrl?: string;
@@ -175,9 +173,6 @@ export interface HttpAgentRuntimeConfig {
   headers?: HttpAgentOptions["headers"];
   browserToolHandler?: HttpAgentOptions["browserToolHandler"];
 }
-
-/** pluginAI 初始化时可使用本地运行时覆盖或服务端 Agent 配置。 */
-export type InitialAgentRuntimeConfig = AgentRuntimeConfig | HttpAgentRuntimeConfig;
 
 /** @internal 由 pluginAI controller 使用的运行配置管理器。 */
 export interface AgentRuntimeController {
@@ -272,8 +267,8 @@ export interface SetupSandboxParams {
   disabledModes?: AgentOptions["disabledModes"];
   /** 透传给 CodeAgent 的历史记录实现，不传时使用内置 IDBHistory */
   history?: History;
-  /** 初始 Agent 配置；HTTP/server 类型会创建服务端 Agent，其余配置覆盖本地 CodeAgent 资源。 */
-  agentRuntime?: InitialAgentRuntimeConfig;
+  /** 服务端 Agent 配置。设置后会创建 HTTP Agent；未设置时使用本地 CodeAgent。 */
+  remoteAgent?: RemoteAgentConfig;
   /** 消息发送者信息，注入到每条用户消息中，UI 展示时优先使用 */
   sender?: TurnSender;
 }
@@ -285,13 +280,12 @@ export interface SetupSandboxParams {
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
 export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController {
-  const { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, sender } = params;
+  const { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, remoteAgent, sender } = params;
   const agentRuntimeRefs = new Map<string, AgentRuntimeRef>();
-  const initialRuntime = isHttpAgentRuntimeConfig(agentRuntime) ? undefined : agentRuntime;
 
   window._sandbox_ = {
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
-      return connectToAI(comId, config, { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, initialRuntime, sender, agentRuntimeRefs });
+      return connectToAI(comId, config, { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, remoteAgent, sender, agentRuntimeRefs });
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
@@ -384,8 +378,7 @@ interface PluginParams {
   formatUserMessage?: AgentOptions["formatUserMessage"];
   disabledModes?: AgentOptions["disabledModes"];
   history?: History;
-  agentRuntime?: InitialAgentRuntimeConfig;
-  initialRuntime?: AgentRuntimeConfig;
+  remoteAgent?: RemoteAgentConfig;
   sender?: TurnSender;
   agentRuntimeRefs: Map<string, AgentRuntimeRef>;
 }
@@ -425,10 +418,6 @@ function injectPluginRuntimeContext(
   };
 }
 
-function isHttpAgentRuntimeConfig(config?: InitialAgentRuntimeConfig): config is HttpAgentRuntimeConfig {
-  return config?.type === "http" || config?.type === "server";
-}
-
 function prefixPluginBrowserToolName(pluginName: string, tool: Tool): Tool {
   return {
     ...tool,
@@ -458,11 +447,11 @@ function formatLibraryDocs(libraries: Array<{ name: string; version?: string; us
 function connectToAI(
   comId: string,
   { designer, hooks, chips }: RegistSandBoxConfig,
-  { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, agentRuntime, initialRuntime, sender, agentRuntimeRefs }: PluginParams
+  { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, remoteAgent, sender, agentRuntimeRefs }: PluginParams
 ): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
   registerChips(agentKey, chips);
-  const runtimeRef = agentRuntimeRefs.get(agentKey) ?? { current: initialRuntime };
+  const runtimeRef = agentRuntimeRefs.get(agentKey) ?? { current: undefined };
   agentRuntimeRefs.set(agentKey, runtimeRef);
   const runtime = runtimeRef.current;
   const getRuntimePromptSections = (config = runtimeRef.current) => config?.promptSections ?? promptSections;
@@ -697,22 +686,22 @@ function connectToAI(
     plugins: effectivePlugins,
   });
 
-  if (isHttpAgentRuntimeConfig(agentRuntime)) {
-    const workspaceId = typeof agentRuntime.workspaceId === "function"
-      ? agentRuntime.workspaceId({ comId, agentKey })
-      : agentRuntime.workspaceId ?? agentKey;
-    const httpKey = typeof agentRuntime.key === "function"
-      ? agentRuntime.key({ comId, agentKey, workspaceId })
-      : agentRuntime.key ?? agentKey;
+  if (remoteAgent) {
+    const workspaceId = typeof remoteAgent.workspaceId === "function"
+      ? remoteAgent.workspaceId({ comId, agentKey })
+      : remoteAgent.workspaceId ?? agentKey;
+    const httpKey = typeof remoteAgent.key === "function"
+      ? remoteAgent.key({ comId, agentKey, workspaceId })
+      : remoteAgent.key ?? agentKey;
     const agent = new HttpAgent({
       key: httpKey,
-      baseUrl: agentRuntime.baseUrl,
+      baseUrl: remoteAgent.baseUrl,
       workspaceId,
-      sessionId: agentRuntime.sessionId,
-      agentId: agentRuntime.agentId,
-      userId: agentRuntime.userId,
-      headers: agentRuntime.headers,
-      browserToolHandler: agentRuntime.browserToolHandler,
+      sessionId: remoteAgent.sessionId,
+      agentId: remoteAgent.agentId,
+      userId: remoteAgent.userId,
+      headers: remoteAgent.headers,
+      browserToolHandler: remoteAgent.browserToolHandler,
       browserTools,
     });
     agent.files.bindSandbox(sandbox);

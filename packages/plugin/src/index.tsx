@@ -14,7 +14,7 @@ import { DEFAULT_PLUGIN_SKILLS } from "./skills/default";
 import { context } from "./context";
 import { setupSandbox } from "./sandbox";
 import { chipRegistry } from "./sandbox/setup";
-import type { AgentRuntimeConfig, InitialAgentRuntimeConfig, Designer, Hooks, RegistSandBoxConfig, PluginGetUserContextMessage, SendToAgentParams } from "./sandbox";
+import type { AgentRuntimeConfig, RemoteAgentConfig, Designer, Hooks, RegistSandBoxConfig, PluginGetUserContextMessage, SendToAgentParams } from "./sandbox";
 import { ChatPanelList } from "./ui/chat/chat-panel-list";
 import { ComChatFocusView } from "./ui/chat/chat-focus-view";
 import { ensureAIPanelOpen, ensureFocusComId } from "./utils/ensure-ai-panel-open";
@@ -31,7 +31,7 @@ export { createRequestAsStream, createOnUpload } from "../../request/src";
 export type { RequestAsStreamFn } from "../../request/src";
 export { openSetting, closeSetting, SettingModal } from "./ui/setting";
 export type { SettingModalProps } from "./ui/setting";
-export type { AgentRuntimeConfig, HttpAgentRuntimeConfig, InitialAgentRuntimeConfig, Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams, PluginGetUserContextMessage, VirtualFilesRuntimeContext, ChatChipRemoveHandler, SandboxChipConfig, SandboxChipRecordConfig, SandboxChipsConfig } from "./sandbox";
+export type { AgentRuntimeConfig, RemoteAgentConfig, Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams, PluginGetUserContextMessage, VirtualFilesRuntimeContext, ChatChipRemoveHandler, SandboxChipConfig, SandboxChipRecordConfig, SandboxChipsConfig } from "./sandbox";
 export type { MentionProvider, MentionMenuItem } from "./ui/components/types";
 // ProviderConfig / ModelConfig 已由 request 包导出，此处仅导出 plugin 专属类型
 export type { SettingValue } from "./ui/setting";
@@ -214,8 +214,8 @@ export interface PluginAIParams {
   };
   /** 透传给 CodeAgent 的历史记录实现，不传时使用内置 IDBHistory */
   history?: import("../../agent/src").History;
-  /** 初始 Agent 配置。server/http 会对接远程 CodeAgent 服务；其余配置覆盖本地 Agent 资源。 */
-  agentRuntime?: InitialAgentRuntimeConfig;
+  /** 服务端 Agent 配置。设置后会创建 HTTP Agent；未设置时使用本地 CodeAgent。 */
+  remoteAgent?: RemoteAgentConfig;
   /** 消息发送者信息，注入到每条用户消息中，UI 展示时优先使用 */
   sender?: TurnSender;
 }
@@ -241,7 +241,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     disallowedDebugEnvs,
     llm,
     history,
-    agentRuntime,
+    remoteAgent,
     sender,
     renderAttachmentSuffix,
     mentions,
@@ -336,7 +336,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     designRules: codingConfig?.designRules,
     componentRuntime,
     history,
-    agentRuntime,
+    remoteAgent,
     sender,
   });
 
