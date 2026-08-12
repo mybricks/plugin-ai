@@ -598,7 +598,9 @@ function connectToAI(
 
       const libraries = await designer.getEffectiveLibraries();
       return buildDevelopmentGuideContext({
-        promptSections,
+        // promptSections 的开发/设计/文档规范通过稳定上下文注入。
+        // 这里必须按每个 turn 读取当前 runtime，才能与 agent system、tools、skills 一起切换。
+        promptSections: getRuntimePromptSections(),
         codeRules,
         designRules,
         libraries,
