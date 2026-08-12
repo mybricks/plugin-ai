@@ -365,6 +365,7 @@ function callLLM(
     };
     signal.addEventListener("abort", onAbort);
 
+    // request 可能通过 emits.error 或 Promise rejection 报错；两种路径都要结束本轮。
     options.request({
       messages,
       tools: buildToolDescriptors(options.tools),
@@ -441,6 +442,10 @@ function callLLM(
         },
       },
       ...rest,
+    }).catch((error) => {
+      // 兼容未调用 emits.error、直接 reject 的 request 实现。
+      signal.removeEventListener("abort", onAbort);
+      if (!aborted) reject(error);
     });
   });
 }
