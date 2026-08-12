@@ -365,6 +365,7 @@ function callLLM(
     };
     signal.addEventListener("abort", onAbort);
 
+    // request 可能通过 emits.error 或 Promise rejection 报错；两种路径都要结束本轮。
     options.request({
       messages,
       tools: buildToolDescriptors(options.tools),
@@ -441,6 +442,10 @@ function callLLM(
         },
       },
       ...rest,
+    }).catch((error) => {
+      // 兼容未调用 emits.error、直接 reject 的 request 实现。
+      signal.removeEventListener("abort", onAbort);
+      if (!aborted) reject(error);
     });
   });
 }
@@ -830,6 +835,9 @@ export class Agent {
           return;
         }
 
+        // 每个 step 分配一个稳定的 iterId，贯穿该 step 所有事件和 iter 对象
+        const currentIterId = randomUUID();
+
         // 每次 LLM 请求之前判断是否需要 warmup（compact 等预处理）
         if (this._shouldAutoCompact() && !this._isAlreadyCompacted()) {
           const warmupAborted = await this._runWarmup(turn, signal, persistMode);
@@ -841,7 +849,7 @@ export class Agent {
           ? turn.startTime
           : Date.now();
 
-        this.events.emit("llm:start", { step, startTime: stepLLMStartTime });
+        this.events.emit("llm:start", { step, startTime: stepLLMStartTime, iterId: currentIterId });
 
         // 执行 beforeRequest hook，支持注入额外消息到 tail
         try {
@@ -898,10 +906,10 @@ export class Agent {
             { ...stepLLMRest, _step: step, turnId: turn?.id }, // 传递 step 用于 retry 事件，turnId 用于 SSE 请求头
             step,
             (delta, content, thinkingDelta, thinkingContent) => {
-              this.events.emit("llm:content", { delta, content, thinkingDelta, thinkingContent, step });
+              this.events.emit("llm:content", { delta, content, thinkingDelta, thinkingContent, step, iterId: currentIterId });
             },
             (callId, name, delta, content) => {
-              this.events.emit("tool:args", { callId, name, delta, content, step });
+              this.events.emit("tool:args", { callId, name, delta, content, step, iterId: currentIterId });
             }
           );
         } catch (e) {
@@ -927,6 +935,7 @@ export class Agent {
         const iterToolCallRecords: ToolCallRecord[] = [];
         const iterEndTime = Date.now();
         const currentIter: TurnRecord["iterations"][number] = {
+          iterId: currentIterId,
           content: llmResult.content,
           toolCalls: iterToolCallRecords,
           startTime: stepLLMStartTime,
@@ -951,14 +960,14 @@ export class Agent {
           turn.endTime = iterEndTime;
           turn.status = "success";
           await this._saveTurnRecord(turn, persistMode);
-          this.events.emit("llm:complete", { step, finishReason: llmResult.finishReason, usage: llmResult.usage, done: true, endTime: turn.endTime });
+          this.events.emit("llm:complete", { step, finishReason: llmResult.finishReason, usage: llmResult.usage, done: true, endTime: turn.endTime, iterId: currentIterId });
           this.events.emit("turn:complete", {});
           this._onTurnEnd(turn);
           return;
         }
 
         // 仍需后续 step：工具调用或 length 截断续跑
-        this.events.emit("llm:complete", { step, finishReason: llmResult.finishReason, usage: llmResult.usage, done: false, endTime: iterEndTime });
+        this.events.emit("llm:complete", { step, finishReason: llmResult.finishReason, usage: llmResult.usage, done: false, endTime: iterEndTime, iterId: currentIterId });
 
         // 追加 assistant message 到 tail。length 续跑时不追加额外 user 提示。
         const assistantMsg: Message = {
@@ -1009,7 +1018,7 @@ export class Agent {
             execEndTime: 0,
           };
           iterToolCallRecords.push(toolRecord);
-          this.events.emit("tool:call", { callId: tc.id, name: tc.name, args: tc.args ?? undefined, step, startTime: execStartTime });
+          this.events.emit("tool:call", { callId: tc.id, name: tc.name, args: tc.args ?? undefined, step, startTime: execStartTime, iterId: currentIterId });
 
           let toolResultContent: string;
           const toolContext: ToolExecutionContext = {
@@ -1030,7 +1039,7 @@ export class Agent {
               this.setMode(mode, reason);
             },
             emitProgress: (data: any) => {
-              this.events.emit("tool:progress", { callId: tc.id, name: tc.name, data, step });
+              this.events.emit("tool:progress", { callId: tc.id, name: tc.name, data, step, iterId: currentIterId });
             },
             waitUIRender: <T>() => this.toolUI.wait<T>(tc.id, { signal }),
           };
@@ -1049,7 +1058,7 @@ export class Agent {
               toolRecord.error = `Error: 用户已取消`;
               toolResultContent = toolRecord.error
               toolRecord.execEndTime = Date.now();
-              this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: toolRecord.error, errorType: toolRecord.errorType, step, endTime: toolRecord.execEndTime });
+              this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: toolRecord.error, errorType: toolRecord.errorType, step, endTime: toolRecord.execEndTime, iterId: currentIterId });
             } else {
               toolRecord.result = { output: result.output, metadata: result.metadata };
               toolRecord.status = "success";
@@ -1068,10 +1077,10 @@ export class Agent {
                 toolRecord.error = overLimitMsg;
                 toolResultContent = overLimitMsg;
                 toolRecord.execEndTime = Date.now();
-                this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: overLimitMsg, errorType: toolRecord.errorType, step, endTime: toolRecord.execEndTime });
+                this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: overLimitMsg, errorType: toolRecord.errorType, step, endTime: toolRecord.execEndTime, iterId: currentIterId });
               } else {
                 toolResultContent = result.output;
-                this.events.emit("tool:result", { callId: tc.id, name: tc.name, result: toolRecord.result, step, endTime: toolRecord.execEndTime });
+                this.events.emit("tool:result", { callId: tc.id, name: tc.name, result: toolRecord.result, step, endTime: toolRecord.execEndTime, iterId: currentIterId });
               }
             }
           } catch (e) {
@@ -1088,7 +1097,7 @@ export class Agent {
 
             toolResultContent = toolRecord.error;
             toolRecord.execEndTime = Date.now();
-            this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: toolRecord.error, errorType: toolRecord.errorType, step, endTime: toolRecord.execEndTime });
+            this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: toolRecord.error, errorType: toolRecord.errorType, step, endTime: toolRecord.execEndTime, iterId: currentIterId });
           }
 
           toolResultMessages.push({
@@ -1142,10 +1151,11 @@ export class Agent {
       // 超出 maxSteps
       const lastIter = turn.iterations[turn.iterations.length - 1];
       const lastIterUsage = lastIter && !("type" in lastIter) ? (lastIter as any).usage : undefined;
+      const lastIterId = lastIter ? (lastIter as any).iterId ?? "" : "";
       turn.endTime = Date.now();
       turn.status = "success";
       await this._saveTurnRecord(turn, persistMode);
-      this.events.emit("llm:complete", { step: maxSteps, finishReason: "length", usage: lastIterUsage, done: true, endTime: turn.endTime });
+      this.events.emit("llm:complete", { step: maxSteps, finishReason: "length", usage: lastIterUsage, done: true, endTime: turn.endTime, iterId: lastIterId });
       this.events.emit("turn:complete", {});
       this._onTurnEnd(turn);
     } catch (e) {
@@ -1673,15 +1683,17 @@ IMPORTANT: 不要调用工具！
     if (!needCompact) return false;
 
     const warmupStartTime = Date.now();
+    const warmupIterId = randomUUID();
     const warmupIter: WarmupIter = {
       type: "warmup",
+      iterId: warmupIterId,
       status: "loading",
       content: "当前正在压缩上下文...",
       startTime: warmupStartTime,
       toolCalls: [],
     };
     turn.iterations.push(warmupIter);
-    this.events.emit("warmup:start", { startTime: warmupStartTime, content: warmupIter.content });
+    this.events.emit("warmup:start", { startTime: warmupStartTime, content: warmupIter.content, iterId: warmupIterId });
 
     // ── compact 步骤（错误内部消化）
     if (needCompact) {
@@ -1696,7 +1708,7 @@ IMPORTANT: 不要调用工具！
         warmupIter.status = "error";
         warmupIter.content = errorMsg;
         warmupIter.endTime = Date.now();
-        this.events.emit("warmup:complete", { status: "error", content: errorMsg, endTime: warmupIter.endTime });
+        this.events.emit("warmup:complete", { status: "error", content: errorMsg, endTime: warmupIter.endTime, iterId: warmupIterId });
         turn.endTime = warmupIter.endTime;
         turn.status = "error";
         turn.error = errorMsg;
@@ -1713,7 +1725,7 @@ IMPORTANT: 不要调用工具！
       warmupIter.status = "error";
       warmupIter.content = "已取消";
       warmupIter.endTime = warmupEndTime;
-      this.events.emit("warmup:complete", { status: "error", content: warmupIter.content, endTime: warmupEndTime });
+      this.events.emit("warmup:complete", { status: "error", content: warmupIter.content, endTime: warmupEndTime, iterId: warmupIterId });
       turn.endTime = warmupEndTime;
       turn.status = "abort";
       await this._saveTurnRecord(turn, persistMode);
@@ -1729,7 +1741,7 @@ IMPORTANT: 不要调用工具！
     warmupIter.status = "success";
     warmupIter.content = "上下文压缩完成。";
     warmupIter.endTime = warmupEndTime;
-    this.events.emit("warmup:complete", { status: "success", content: warmupIter.content, endTime: warmupEndTime });
+    this.events.emit("warmup:complete", { status: "success", content: warmupIter.content, endTime: warmupEndTime, iterId: warmupIterId });
     return false;
   }
 
