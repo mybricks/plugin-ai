@@ -314,7 +314,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       agentKey,
       async () => {
         context.aiQueue.registerAbort(agentKey, () => agent.abort());
-        await agent.requestAI({ message, attachments, ...(mode ? { mode } : {}), ...(meta ? { meta } : {}) });
+        await agent.requestAI(chipRegistry.formatRequestParams({ message, attachments, ...(mode ? { mode } : {}), ...(meta ? { meta } : {}) }));
       },
       { message, attachments }
     );

@@ -87,7 +87,7 @@ const ChatFocusView = ({
         async () => {
           context.aiQueue.registerAbort(agentKey, () => agent.abort());
           // focus-view 立即发送，不传 mode 即走默认 Build 模式
-          await agent.requestAI({ message: requestMessage, attachments, ...(meta ? { meta } : {}) });
+          await agent.requestAI(chipRegistry.formatRequestParams({ message: requestMessage, attachments, ...(meta ? { meta } : {}) }));
         },
         { message: requestMessage, attachments: params.attachments, ...(meta ? { meta } : {}) }
       );

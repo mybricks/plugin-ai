@@ -178,26 +178,32 @@ export class ChipRegistry {
   }
 
   /** 判断给定 chips 中是否存在会被实际格式化的项（type 已注册）。 */
-  hasFormattableChips(chips?: ChatChipInstance[]): boolean {
+  private _hasFormattableChips(chips?: ChatChipInstance[]): boolean {
     if (!chips?.length || this._types.size === 0) return false;
     return chips.some((chip) => this._types.has(chip.type));
   }
 
   /**
-   * 格式化 request params：先按 chip type 分组调用 def.format，再返回新的 params。
+   * 格式化 request params：
+   * 1. 若存在可格式化的 chip，用 <user_query> 包裹原始正文，实现正文与引用块的显式分层。
+   * 2. 按 chip type 分组调用 def.format 展开占位符。
+   *
    * 不修改原对象；如果 message 没有变化，返回原 params 引用。
+   * 无 chip 时直接返回原 params，零开销。
    */
   formatRequestParams<T extends { message: string; meta?: Record<string, any> }>(params: T): T {
     const chips = params.meta?.chips as ChatChipInstance[] | undefined;
-    if (!chips?.length || this._types.size === 0) return params;
+    if (!this._hasFormattableChips(chips)) return params;
+
+    const wrappedMessage = `<user_query>\n${params.message}\n</user_query>`;
 
     const typeGroups = new Map<string, ChatChipInstance[]>();
-    for (const chip of chips) {
+    for (const chip of chips!) {
       if (!typeGroups.has(chip.type)) typeGroups.set(chip.type, []);
       typeGroups.get(chip.type)!.push(chip);
     }
 
-    let message = params.message;
+    let message = wrappedMessage;
     for (const [type, groupChips] of Array.from(typeGroups)) {
       const def = this._types.get(type);
       if (def) {
@@ -205,6 +211,6 @@ export class ChipRegistry {
       }
     }
 
-    return message === params.message ? params : { ...params, message };
+    return { ...params, message };
   }
 }

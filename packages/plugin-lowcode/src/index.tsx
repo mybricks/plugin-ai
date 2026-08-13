@@ -243,7 +243,6 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
       summary: { enabled: false },
       compact: { enabled: false },
     } as any);
-    agentRef.chipRegistry.register(lowCodeFocusChipDef);
     pluginContext.agentMap.set(agentKey, agentRef);
     notifyView();
     return agentRef;
@@ -258,7 +257,7 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
       agentKey,
       async () => {
         pluginContext.aiQueue.registerAbort(agentKey, () => agent.abort());
-        await agent.requestAI({
+        await agent.requestAI(chipRegistry.formatRequestParams({
           message,
           attachments,
           mode: AgentModeEnum.Build,
@@ -266,7 +265,7 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
             ...(requestParams.meta ?? {}),
             ...(focusChip ? { chips: [...(requestParams.meta?.chips ?? []), focusChip] } : {}),
           },
-        });
+        }));
       },
       { message, attachments, ...(focusChip ? { meta: { chips: [focusChip] } } : {}) }
     );

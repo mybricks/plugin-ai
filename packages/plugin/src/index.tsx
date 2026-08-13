@@ -438,11 +438,11 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
                   async () => {
                     await ensureFocusComId(comId);
                     context.aiQueue.registerAbort(agentKey, () => agent.abort());
-                    await agent.requestAI({
+                    await agent.requestAI(chipRegistry.formatRequestParams({
                       message: requestMessage,
                       attachments,
                       ...(requestMeta ? { meta: requestMeta } : {}),
-                    });
+                    }));
                   },
                   { message: requestMessage, attachments, ...(requestMeta ? { meta: requestMeta } : {}), focus }
                 );
