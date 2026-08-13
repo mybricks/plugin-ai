@@ -4,6 +4,7 @@ export interface AgentRuntimeState {
   running: boolean;
   turnId?: string;
   error?: unknown;
+  statusText?: string;
 }
 
 interface AgentEventsLike {

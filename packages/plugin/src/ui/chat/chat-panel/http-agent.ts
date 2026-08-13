@@ -34,6 +34,9 @@ export interface RemoteAgentEvent {
     | keyof AgentEventMap
     | "session:error"
     | "session:preparing"
+    | "session:locked"
+    | "session:files-synced"
+    | "session:agent-configured"
     | "session:start"
     | "workspace:file-change"
     | "browser:task";
@@ -222,6 +225,7 @@ export class HttpAgent {
 
   async requestAI(params: HttpAgentRequestAIParams): Promise<void> {
     if (this.isDisabled()) return;
+    this.setSessionState({ running: true, statusText: "准备中..." });
     // 与本地 Agent.requestAI 保持一致：历史 ready 后才能开始新 turn，
     // 避免迟到的 ready snapshot 覆盖正在流式更新的消息。
     await this.historyInitialization;
@@ -318,7 +322,8 @@ export class HttpAgent {
         throw reconnectError;
       }
     }
-    await this.reloadHistory();
+    // 当前 turn 已由 SSE 驱动 UI 收口；这里不能再读取 /turns 并覆盖
+    // 内存中的流式消息。/turns 只用于首屏历史恢复和向前分页。
     params.onClose?.();
   }
 
@@ -459,18 +464,6 @@ export class HttpAgent {
     this.historyManager.markReady({ hasMore: this.turnsPage.hasMore });
   }
 
-  private async reloadHistory(): Promise<void> {
-    const page = await this.loadLatestTurns();
-    this.turns = mergeTurnRecords(this.turns, page.turns ?? []);
-    if (!this.turnsPage.oldestTurnId) {
-      this.turnsPage = {
-        hasMore: Boolean(page.hasMore),
-        oldestTurnId: page.oldestTurnId ?? null,
-      };
-    }
-    this.compactRecord = null;
-  }
-
   private async loadLatestTurns(
     limit = DEFAULT_TURNS_PAGE_SIZE,
   ): Promise<TurnsPage> {
@@ -543,10 +536,36 @@ export class HttpAgent {
         String(event.data?.message ?? "Remote agent session failed"),
       );
     }
-    if (event.event === "session:preparing" || event.event === "session:start") {
+    this.applyTurnEvent(event);
+    if (event.event === "session:preparing" || event.event === "session:locked") {
       this.setSessionState({
         running: true,
         turnId: event.turnId ?? this.sessionState.turnId,
+        statusText: "准备中...",
+      });
+      return;
+    }
+    if (event.event === "session:files-synced") {
+      this.setSessionState({
+        running: true,
+        turnId: event.turnId ?? this.sessionState.turnId,
+        statusText: "获取最新文件...",
+      });
+      return;
+    }
+    if (event.event === "session:agent-configured") {
+      this.setSessionState({
+        running: true,
+        turnId: event.turnId ?? this.sessionState.turnId,
+        statusText: "获取配置...",
+      });
+      return;
+    }
+    if (event.event === "session:start") {
+      this.setSessionState({
+        running: true,
+        turnId: event.turnId ?? this.sessionState.turnId,
+        statusText: "等待模型响应...",
       });
       return;
     }
@@ -554,6 +573,7 @@ export class HttpAgent {
       this.setSessionState({
         running: true,
         turnId: event.data?.turnId ?? event.turnId,
+        statusText: "等待模型响应...",
       });
     } else if (
       event.event === "turn:complete" ||
@@ -574,11 +594,246 @@ export class HttpAgent {
     this.events.emit(event.event, event.data as never);
   }
 
+  /**
+   * 将 SSE 事件归并进 HttpAgent 的内存 turns，使 getTurns() 与本地 Agent
+   * 保持同一契约：在 llm:complete 前已经包含本轮完整快照。
+   */
+  private applyTurnEvent(event: RemoteAgentEvent): void {
+    const data = event.data || {};
+    const turnId = this.eventTurnId(event);
+    if (!turnId) return;
+
+    if (event.event === "turn:start") {
+      if (this.findTurn(turnId)) return;
+      let userText = "";
+      if (typeof data.message === "string") userText = data.message;
+      const turn: TurnRecord = {
+        id: turnId,
+        startTime: event.createdAt,
+        userText,
+        userAttachments: [],
+        iterations: [],
+        status: "success",
+      };
+      if (typeof data.userFormattedText === "string") {
+        turn.userFormattedText = data.userFormattedText;
+      }
+      if (data.meta) turn.meta = data.meta;
+      if (data.sender) turn.sender = data.sender;
+
+      if (Array.isArray(data.attachments)) {
+        for (const attachment of data.attachments) {
+          const userAttachment: Record<string, unknown> = {
+            type: attachment.type || "image",
+          };
+          if (attachment.content !== undefined) {
+            userAttachment.content = attachment.content;
+          }
+          if (attachment.url !== undefined) {
+            userAttachment.url = attachment.url;
+          }
+          if (attachment.filename || attachment.title) {
+            userAttachment.filename = attachment.filename || attachment.title;
+          }
+          if (attachment.mime) userAttachment.mime = attachment.mime;
+          if (attachment.mediaType) {
+            userAttachment.mediaType = attachment.mediaType;
+          }
+          turn.userAttachments.push(userAttachment as any);
+        }
+      }
+      this.turns.push(turn);
+      return;
+    }
+
+    const turn = this.findTurn(turnId);
+    if (!turn) return;
+
+    if (event.event === "turn:resume") {
+      turn.status = "success";
+      delete turn.error;
+      delete turn.endTime;
+      return;
+    }
+
+    let iterId: string | undefined;
+    if (typeof data.iterId === "string") iterId = data.iterId;
+    if (event.event === "llm:start" && iterId) {
+      if (!this.findLLMIteration(turn, iterId)) {
+        turn.iterations.push({
+          iterId,
+          content: "",
+          toolCalls: [],
+          startTime: Number(data.startTime) || event.createdAt,
+        });
+      }
+      return;
+    }
+
+    if (event.event === "llm:content" && iterId) {
+      const iter = this.findLLMIteration(turn, iterId);
+      if (!iter) return;
+      if (typeof data.content === "string") iter.content = data.content;
+      if (iter.responseTime === undefined) iter.responseTime = event.createdAt;
+      if (data.thinkingContent !== undefined) {
+        iter.thinkingContent = data.thinkingContent;
+      }
+      return;
+    }
+
+    if (event.event === "llm:complete" && iterId) {
+      const iter = this.findLLMIteration(turn, iterId);
+      if (!iter) return;
+      if (data.endTime !== undefined) iter.endTime = Number(data.endTime);
+      if (data.usage !== undefined) iter.usage = data.usage;
+      if (data.done) {
+        turn.status = "success";
+        turn.endTime = Number(data.endTime) || event.createdAt;
+      }
+      return;
+    }
+
+    if (event.event === "tool:args" && iterId) {
+      const iter = this.findLLMIteration(turn, iterId);
+      if (!iter || typeof data.callId !== "string") return;
+      const existing = iter.toolCalls.find((call) => call.callId === data.callId);
+      if (existing || typeof data.name !== "string") return;
+      const tool = this.getTools().find((item) => item.name === data.name);
+      const call = {
+        callId: data.callId,
+        name: data.name,
+        args: {},
+        status: "pending",
+        execStartTime: event.createdAt,
+        execEndTime: 0,
+      };
+      if (tool?.title) call.title = tool.title;
+      iter.toolCalls.push(call);
+      return;
+    }
+
+    if (event.event === "tool:call" && iterId) {
+      const iter = this.findLLMIteration(turn, iterId);
+      if (!iter || typeof data.callId !== "string") return;
+      const call = iter.toolCalls.find((item) => item.callId === data.callId);
+      if (call) {
+        if (data.args !== undefined) call.args = data.args;
+        call.execStartTime = Number(data.startTime) || event.createdAt;
+      }
+      return;
+    }
+
+    if ((event.event === "tool:result" || event.event === "tool:error") && iterId) {
+      const iter = this.findLLMIteration(turn, iterId);
+      if (!iter || typeof data.callId !== "string") return;
+      const call = iter.toolCalls.find((item) => item.callId === data.callId);
+      if (!call) return;
+      call.execEndTime = Number(data.endTime) || event.createdAt;
+      if (event.event === "tool:result") {
+        call.status = "success";
+        call.result = data.result;
+      } else {
+        call.status = "error";
+        call.error = data.error;
+        if (data.errorType) call.errorType = data.errorType;
+      }
+      return;
+    }
+
+    if (event.event === "warmup:start" && iterId) {
+      if (!turn.iterations.some((iter) => iter.iterId === iterId)) {
+        let content = "";
+        if (typeof data.content === "string") content = data.content;
+        turn.iterations.push({
+          type: "warmup",
+          iterId,
+          status: "loading",
+          content,
+          startTime: Number(data.startTime) || event.createdAt,
+          toolCalls: [],
+        });
+      }
+      return;
+    }
+
+    if (event.event === "warmup:content") {
+      let iter: Extract<TurnRecord["iterations"][number], { type: "warmup" }> | undefined;
+      for (let index = turn.iterations.length - 1; index >= 0; index--) {
+        const current = turn.iterations[index];
+        if ("type" in current && current.type === "warmup") {
+          iter = current;
+          break;
+        }
+      }
+      if (iter && typeof data.content === "string") iter.content = data.content;
+      return;
+    }
+
+    if (event.event === "warmup:complete" && iterId) {
+      const iter = turn.iterations.find(
+        (item) => "type" in item && item.type === "warmup" && item.iterId === iterId,
+      );
+      if (!iter) return;
+      if (data.status === "error") {
+        iter.status = "error";
+      } else {
+        iter.status = "success";
+      }
+      if (typeof data.content === "string") iter.content = data.content;
+      iter.endTime = Number(data.endTime) || event.createdAt;
+      return;
+    }
+
+    if (event.event === "turn:complete") {
+      turn.status = "success";
+      if (turn.endTime === undefined) turn.endTime = event.createdAt;
+    } else if (event.event === "turn:abort") {
+      turn.status = "abort";
+      if (turn.endTime === undefined) turn.endTime = event.createdAt;
+    } else if (event.event === "turn:error") {
+      turn.status = "error";
+      if (data.error && typeof data.error.message === "string") {
+        turn.error = data.error.message;
+      } else if (data.error !== undefined) {
+        turn.error = String(data.error);
+      } else {
+        turn.error = "Unknown error";
+      }
+      if (turn.endTime === undefined) turn.endTime = event.createdAt;
+    } else if (event.event === "turn:suggestions") {
+      turn.suggestions = data.suggestions;
+    } else if (event.event === "turn:suggestions:dismiss") {
+      turn.suggestionsDismissed = true;
+    } else if (event.event === "turn:delete") {
+      turn.deleted = true;
+    }
+  }
+
+  private eventTurnId(event: RemoteAgentEvent): string | null {
+    let turnId = event.turnId;
+    if (event.data && typeof event.data.turnId === "string") {
+      turnId = event.data.turnId;
+    }
+    if (typeof turnId === "string" && turnId) return turnId;
+    return null;
+  }
+
+  private findTurn(turnId: string): TurnRecord | undefined {
+    return this.turns.find((turn) => turn.id === turnId);
+  }
+
+  private findLLMIteration(turn: TurnRecord, iterId: string) {
+    return turn.iterations.find(
+      (iter) => !("type" in iter) && iter.iterId === iterId,
+    );
+  }
+
   private setSessionState(state: AgentRuntimeState): void {
     if (
       this.sessionState.running === state.running &&
       this.sessionState.turnId === state.turnId &&
-      this.sessionState.error === state.error
+      this.sessionState.error === state.error &&
+      this.sessionState.statusText === state.statusText
     ) {
       return;
     }
