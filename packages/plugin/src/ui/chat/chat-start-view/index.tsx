@@ -66,6 +66,7 @@ const ChatStartView = ({
   const [contextDisabled, setContextDisabled] = useState(() => context.disabled);
   const chatAgent = useAgent({ agent, disabled: contextDisabled });
   const loading = chatAgent.loading;
+  const loadingTip = chatAgent.loadingTip;
   const historyStatus = chatAgent.historyStatus;
   const historyBlocked = historyStatus === "loading" || historyStatus === "idle" || historyStatus === "error";
   const localAgent = agent && !isHttpAgent(agent) ? agent as CodeAgent : undefined;
@@ -116,7 +117,7 @@ const ChatStartView = ({
         </div>
       )}
       {loading && (
-        <LoadingView tip="正在思考中..." />
+        <LoadingView tip={loadingTip} />
       )}
       {!loading && (
         <Sender

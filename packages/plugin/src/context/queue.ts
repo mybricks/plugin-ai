@@ -25,6 +25,7 @@ export interface AgentQueueState {
   running: boolean;
   queue: QueueItem[];
   error?: unknown;
+  statusText?: string;
 }
 
 interface QueueEntry {
@@ -159,6 +160,9 @@ export class AgentQueue {
       queue: [...entry.queue],
       ...(entry.agentState.error !== undefined
         ? { error: entry.agentState.error }
+        : {}),
+      ...(entry.agentState.statusText
+        ? { statusText: entry.agentState.statusText }
         : {}),
     };
   }

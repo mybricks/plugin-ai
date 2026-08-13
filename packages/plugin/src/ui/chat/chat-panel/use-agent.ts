@@ -24,6 +24,7 @@ export interface ChatPanelAgentState {
   isLoadingMore: boolean;
   loadMoreHistory: (count?: number) => Promise<void>;
   loading: boolean;
+  loadingTip: string;
   pendingQueue: QueueItem[];
   availableModes: AgentMode[];
   showChatMode: boolean;
@@ -60,6 +61,7 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd }: { 
       : { running: false, queue: [] },
   );
   const loading = queueState.running;
+  const loadingTip = queueState.statusText ?? "等待模型响应...";
   const pendingQueue = queueState.queue;
   const availableModes = agent?.getAvailableModes() ?? [AgentModeEnum.Build];
   const showChatMode = availableModes.length > 1;
@@ -200,6 +202,7 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd }: { 
     isLoadingMore,
     loadMoreHistory,
     loading,
+    loadingTip,
     pendingQueue,
     availableModes,
     showChatMode,
