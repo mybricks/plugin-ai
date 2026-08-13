@@ -37,6 +37,7 @@ function getAccessMode(disabled: boolean): "owner" | "readonly" {
 | `GET /workspaces/:id/files` | 获取服务端文件 manifest 和 version |
 | `GET /workspaces/:id/files/content?path=...` | 获取文件内容 |
 | `GET /workspaces/:id/files/changes?sinceVersion=N` | 获取文件增量 |
+| `POST /workspaces/:id/browser/connect` | 在 run 前登记当前浏览器可执行 Browser Tool；非默认 Agent 的 body 为 `{ agentId }` |
 | `POST /workspaces/:id/browser/tasks/:requestId` | 回传 Browser Tool 结果 |
 | `POST /workspaces/:id/turns/clear` | 清空服务端历史对话 |
 | `GET /workspaces/:id/versions?pageSize=N&pageNum=N` | 查询版本快照元数据列表 |
@@ -74,28 +75,31 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["POST /run"] --> B["消费 /run SSE"]
-    B --> C{"收到事件"}
+    A["POST /browser/connect<br/>登记 Browser Tool"] --> B["POST /run"]
+    B --> C["消费 /run SSE"]
+    C --> D{"收到事件"}
 
-    C -->|"Agent 原生事件"| D["更新消息列表"]
-    D --> C
+    D -->|"Agent 原生事件"| E["更新消息列表"]
+    E --> D
 
-    C -->|"workspace:file-change"| E["比较 event.data.version<br/>和本地 fileVersion"]
-    E -->|"有新版本"| F["GET /files/changes"]
-    F --> G["write: GET /files/content<br/>delete: 删除本地文件"]
-    G --> H["更新 fileVersion"]
-    H --> C
+    D -->|"workspace:file-change"| F["比较 event.data.version<br/>和本地 fileVersion"]
+    F -->|"有新版本"| G["GET /files/changes"]
+    G --> H["write: GET /files/content<br/>delete: 删除本地文件"]
+    H --> I["更新 fileVersion"]
+    I --> D
 
-    C -->|"browser:task"| I["执行浏览器工具"]
-    I --> J["POST /browser/tasks/:requestId"]
-    J --> C
+    D -->|"browser:task"| J["执行浏览器工具"]
+    J --> K["POST /browser/tasks/:requestId"]
+    K --> D
 
-    C -->|"turn:complete / abort / error"| K["SSE 正常关闭"]
-    K --> L["GET /turns<br/>校准最终历史"]
-    L --> M["GET /files/changes<br/>执行文件收尾"]
+    D -->|"turn:complete / abort / error"| L["SSE 正常关闭"]
+    L --> M["GET /turns<br/>校准最终历史"]
+    M --> N["GET /files/changes<br/>执行文件收尾"]
 ```
 
 正常终态后 SSE 关闭，不调用 `/connect`。
+
+`POST /browser/connect` 是 Browser Tool 的尽力登记，不是 `/run` 的前置条件：登记失败会记录错误，但仍继续请求 `/run`，由服务端将 Browser Tool 视为不可用并自行降级。
 
 ### `/run` 返回 HTTP 错误
 

@@ -241,6 +241,16 @@ export class HttpAgent {
       ...(params.meta ? { meta: params.meta } : {}),
       ...(params.extra ? { extra: params.extra } : {}),
     });
+    // Browser Tool 的可用性由独立接口登记；不能从 /run 的 SSE 连接推断。
+    // hooks 执行期间可能切换为只读态，进入 run 前再确认一次所有权。
+    if (this.isDisabled()) {
+      this.setSessionState({ running: false });
+      return;
+    }
+    void this.connectBrowserTools().catch((error) => {
+      // Browser Tool 是可选能力：异步登记不阻塞 /run。
+      console.warn("[plugin-ai] browser tool connection failed", error);
+    });
     const turnId = params.turnId ?? createTurnId();
     let terminalSeen = false;
     this.handleRemoteEvent({
@@ -892,6 +902,18 @@ export class HttpAgent {
 
   private workspacePath(action: string): string {
     return `/workspaces/${encodeURIComponent(this.workspaceId)}/${action}`;
+  }
+
+  /**
+   * 在 run 前显式声明当前浏览器可执行 Browser Tool。服务端会把这项状态
+   * 与随后取得的 turn 锁绑定，并在 turn 结束时清理。
+   */
+  private async connectBrowserTools(signal?: AbortSignal): Promise<void> {
+    if (this.isDisabled()) return;
+    await this.workspaceBridge.connectBrowserTools(
+      this.agentId === DEFAULT_AGENT_ID ? undefined : this.agentId,
+      signal,
+    );
   }
 
   private async requestEventStream(

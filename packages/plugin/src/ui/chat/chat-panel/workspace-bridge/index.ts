@@ -54,6 +54,10 @@ export class WorkspaceBridge<TAgent> {
     return this.browserTools.handleRequest(request);
   }
 
+  connectBrowserTools(agentId?: string, signal?: AbortSignal): Promise<void> {
+    return this.browserTools.connect(agentId, signal);
+  }
+
   prepareRun(): Promise<void> {
     return this.fileHmr.prepareRun();
   }

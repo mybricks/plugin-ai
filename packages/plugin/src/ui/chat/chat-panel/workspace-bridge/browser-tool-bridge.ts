@@ -55,6 +55,21 @@ export class BrowserToolBridge<TAgent> {
     this.logRegisteredTools();
   }
 
+  /** 在 Agent run 前登记当前浏览器可执行 Browser Tool。 */
+  async connect(agentId?: string, signal?: AbortSignal): Promise<void> {
+    if (!this.tools.length || this.options.canHandleRequests?.() === false) {
+      return;
+    }
+    await this.options.requestJson(
+      `/workspaces/${encodeURIComponent(this.options.workspaceId)}/browser/connect`,
+      {
+        method: "POST",
+        signal,
+        body: JSON.stringify(agentId ? { agentId } : {}),
+      },
+    );
+  }
+
   async handleRequest(request: BrowserToolRequest): Promise<void> {
     if (
       !request?.requestId ||
