@@ -254,9 +254,8 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
     const message = `${focusChip ? `对于[[chip:${focusChip.id}]]` : ""}${requestParams.message ?? ""}`;
     const attachments = normalizeAttachments(requestParams.attachments);
     pluginContext.aiQueue.send(
-      agentKey,
+      agent,
       async () => {
-        pluginContext.aiQueue.registerAbort(agentKey, () => agent.abort());
         await agent.requestAI(chipRegistry.formatRequestParams({
           message,
           attachments,

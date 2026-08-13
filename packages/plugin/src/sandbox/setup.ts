@@ -290,11 +290,10 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
         if (!agent) return;
         ensureAIPanelOpen(comId).then(() => {
           context.aiQueue.send(
-            agentKey,
+            agent,
             async () => {
               await ensureFocusComId(comId);
               const requestParams = withMentionFocus(params);
-              context.aiQueue.registerAbort(agentKey, () => agent.abort());
               await agent.requestAI(chipRegistry.formatRequestParams({
                 message: requestParams.message,
                 attachments: requestParams.attachments ?? [],

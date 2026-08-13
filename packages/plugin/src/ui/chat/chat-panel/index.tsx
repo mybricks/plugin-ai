@@ -1,15 +1,11 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
 import classNames from "classnames";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
 import { chipRegistry } from "../../../sandbox/setup";
-import type { QueueItem } from "../../../context/queue";
-import type { AgentMode, CodeAgent } from "../../../../../agent/src";
-import { AgentModeEnum } from "../../../../../agent/src";
-import type { ModelSelection } from "../../../../../request/src/providers";
+import type { AgentMode } from "../../../../../agent/src";
 import type { AttachProcessor } from "../../../content-limits";
 import type { MentionProvider } from "../../components/types";
-import { useSession } from "../use-session";
 import { MessageList } from "../messages";
 import type { ActionBarItem, HistoryCollapseConfig } from "../messages";
 import { useHistoryCollapse } from "./use-history-collapse";
@@ -17,6 +13,7 @@ import { Header } from "./header";
 import { ChatPanelProvider } from "./context";
 import type { ChatMarkdownItConfig, MarkdownSkinConfig, MessagesRenderVariant } from "./context";
 import type { MessageRecord } from "../use-session";
+import { useAgent, type ChatAgent } from "./use-agent";
 import css from "./index.less";
 
 interface User {
@@ -32,7 +29,7 @@ export interface ChatPanelProps {
   /** 是否展示 Header，默认 true；传函数时自定义渲染 Header */
   header?: boolean | (() => React.ReactNode);
   /** agent 实例 */
-  agent?: CodeAgent;
+  agent?: ChatAgent;
   /** 上传文件回调，不传时回退到 context.pluginParams.onUpload */
   onUpload?: (file: File) => Promise<string>;
   /** Header 标题，不传时读 context.name */
@@ -168,45 +165,40 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   attachProcessors,
   mentions = (context.pluginParams.mentions ?? []) as MentionProvider[],
 }, ref) => {
-  const agentKey = agent?.key ?? "";
-
   const senderRef = useRef<SenderRef>(null);
-  const [loading, setLoading] = useState(() => context.aiQueue.isLoading(agentKey));
-  const [pendingQueue, setPendingQueue] = useState<QueueItem[]>(() => context.aiQueue.getQueue(agentKey));
-  const availableModes = agent?.getAvailableModes() ?? [AgentModeEnum.Build];
-  const showChatMode = availableModes.length > 1;
-  const [chatMode, setChatMode] = useState<AgentMode>(() => agent?.getMode() ?? availableModes[0] ?? AgentModeEnum.Build);
 
   useEffect(() => {
     mentions.forEach((mention) => chipRegistry.register(mention.chip));
   }, [mentions]);
-
-  // 模型选择状态由 plugin 层持有，避免 Agent 关心模型切换与持久化。
-  const modelSelection = context.getModelSelection(agent?.key);
-  const hasModelSelection = !!(modelSelection && modelSelection.isValid());
-  const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(
-    () => modelSelection?.getSelected() ?? null
-  );
-
-  useEffect(() => {
-    if (!modelSelection) return;
-    setSelectedModel(modelSelection.getSelected());
-    return modelSelection.onSelectionChange((selection) => setSelectedModel(selection));
-  }, [modelSelection]);
-
-  const modelSelector = useMemo(() => {
-    if (!hasModelSelection || !modelSelection) return undefined;
-    return {
-      models: modelSelection.getValidModels(),
-      selected: selectedModel,
-      onSelect: (selection: ModelSelection) => {
-        modelSelection.setSelected(selection.providerId, selection.modelId);
-      },
-    };
-  }, [hasModelSelection, modelSelection, selectedModel]);
-
-  const { messages, historyStatus, historyError, hasMore, isLoadingMore, subscribeSession, clearSession, loadMoreHistory } = useSession(agent);
   const messageListRef = useRef<{ scrollToBottom: () => void }>(null);
+
+  const scrollToBottom = useCallback(() => {
+    messageListRef.current?.scrollToBottom();
+  }, []);
+
+  const localAgent = useAgent({
+    agent,
+    disabled,
+    onTurnStart: scrollToBottom,
+    onTurnEnd: scrollToBottom,
+  });
+  const chatAgent = localAgent;
+
+  const {
+    messages,
+    historyStatus,
+    historyError,
+    hasMore,
+    isLoadingMore,
+    loading,
+    pendingQueue,
+    showChatMode,
+    chatMode,
+    modelSelector,
+    isDisabled,
+    canExecutePlan,
+  } = chatAgent;
+
   const maxHistoryIters = historyCollapse?.maxIters ?? 50;
   const {
     collapseCursor,
@@ -217,15 +209,14 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     if (isLoadingMore) return;
     const collapsedCount = collapseCursor?.visibleStartIndex ?? 0;
 
-    // 第一阶段：当前已加载的历史仅操作本地折叠状态。
+    // 当前页还有折叠内容时，只在本地展开；展开完后才向历史源请求更早记录。
     if (collapsedCount > 0) {
       onExpandHistoryBase(type === "one" ? "one" : "all");
       return;
     }
 
-    // 第二阶段：已加载历史已全部展开，按页请求尚未加载的更早记录。
-    if (hasMore && agent) await loadMoreHistory(agent, type === "one" ? 1 : 10);
-  }, [onExpandHistoryBase, collapseCursor?.visibleStartIndex, hasMore, agent, isLoadingMore, loadMoreHistory]);
+    if (hasMore) await chatAgent.loadMoreHistory(type === "one" ? 1 : 10);
+  }, [chatAgent, collapseCursor?.visibleStartIndex, hasMore, isLoadingMore, onExpandHistoryBase]);
 
   useImperativeHandle(ref, () => ({
     focus: () => {
@@ -244,104 +235,23 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     },
   }), []);
 
-  // 订阅 turn 事件 + turn 滚底；历史状态由 agent.historyManager 驱动。
-  useEffect(() => {
-    if (!agent) return;
-    const scrollToBottom = () => messageListRef.current?.scrollToBottom();
-    const handleTurnEnd = () => {
-      scrollToBottom();
-    };
-    // 先订阅 turn 事件，避免面板挂载瞬间错过新请求事件。
-    const unsubSession = subscribeSession(agent, { onTurnStart: scrollToBottom, onTurnEnd: handleTurnEnd });
-    // 同步 agent 内部的 mode 变化（如 requestAI 带 mode 参数）
-    const unsubMode = agent.events.on("mode:change", ({ mode }) => setChatMode(mode));
-    return () => {
-      unsubSession?.();
-      unsubMode();
-    };
-  }, [agent, subscribeSession]);
-
   // aiViewDisplay 时自动聚焦输入框
   useEffect(() => {
-    if (!agent || disabled) return;
+    if (isDisabled) return;
     senderRef.current?.focus()
     const unDisplay = context.events.on("aiViewDisplay", () => {
       setTimeout(() => senderRef.current?.focus());
     });
     return unDisplay;
-  }, [agent, disabled]);
-
-  // 监听 aiQueue loading / queue 状态
-  useEffect(() => {
-    const unL = context.aiQueue.events.on("loading", (d) => {
-      if (d.key === agentKey) setLoading(d.loading);
-    });
-    const unQ = context.aiQueue.events.on("queue", (d) => {
-      if (d.key === agentKey) setPendingQueue([...d.queue]);
-    });
-    return () => { unL(); unQ(); };
-  }, [agentKey]);
-
-  const onClear = async () => {
-    if (!agent || isDisabled) return;
-    await agent.clearHistory();
-    clearSession();
-  };
-
-  const onExportHistory = async () => {
-    if (!agent) return;
-
-    try {
-      const content = {
-        agentKey: agent.key,
-        exportedAt: new Date().toISOString(),
-        turns: await agent.getTurns(),
-        compactRecord: agent.getCompactRecord?.() ?? null,
-      };
-      const name = `rxai-${Date.now()}.json`;
-      await context.pluginParams.onDownload({ name, content: JSON.stringify(content) });
-    } catch (e) {
-      console.error("[plugin-ai] export history failed", e);
-    }
-  };
-
-  // 统一入口：带 mode 调用 requestAI 时同步更新 Sender UI
-  const onSend = (sendMessage: Parameters<SenderProps["onSend"]>[0]) => {
-    const { message, attachments, chips, mode } = sendMessage;
-    if (!agent) return;
-    const meta = chips?.length ? { chips } : undefined;
-    context.aiQueue.send(
-      agentKey,
-      async () => {
-        context.aiQueue.registerAbort(agentKey, () => agent.abort());
-        await agent.requestAI(chipRegistry.formatRequestParams({ message, attachments, ...(mode ? { mode } : {}), ...(meta ? { meta } : {}) }));
-      },
-      { message, attachments }
-    );
-  };
+  }, [isDisabled]);
 
   const historyFailed = historyStatus === "error";
   const historyLoading = historyStatus === "idle" || historyStatus === "loading";
-  const isDisabled = !agent || !!disabled || historyLoading || historyFailed;
-  const canExecutePlan = Boolean(agent && !isDisabled && availableModes.includes(AgentModeEnum.Build));
-
-  const onExecutePlan = useCallback((title: string) => {
-    if (!agent || !canExecutePlan) return;
-    const message = `执行「${title}」方案`;
-    context.aiQueue.send(
-      agentKey,
-      async () => {
-        context.aiQueue.registerAbort(agentKey, () => agent.abort());
-        await agent.requestAI({ message, mode: AgentModeEnum.Build });
-      },
-      { message }
-    );
-  }, [agent, agentKey, canExecutePlan]);
 
   const headerNode = typeof header === "function"
     ? header()
     : header
-      ? <Header title={title} onClear={onClear} onExport={onExportHistory} disabled={isDisabled} />
+      ? <Header title={title} onClear={chatAgent.clear} onExport={chatAgent.exportHistory} disabled={isDisabled} />
       : null;
 
   const senderNode = (
@@ -353,14 +263,14 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       disabled={isDisabled}
       mode="mention"
       chatMode={showChatMode ? chatMode : null}
-      onSend={onSend}
+      onSend={chatAgent.send}
       onChatModeChange={(nextMode: AgentMode | null) => {
-        if (nextMode) agent?.setMode(nextMode, "ui-change");
+        chatAgent.setChatMode(nextMode);
       }}
       onUpload={onUpload ?? context.pluginParams.onUpload}
-      onStop={() => context.aiQueue.stop(agentKey)}
+      onStop={chatAgent.stop}
       pendingQueue={pendingQueue}
-      onRemoveFromQueue={(id: string) => context.aiQueue.removeFromQueue(agentKey, id)}
+      onRemoveFromQueue={chatAgent.removeFromQueue}
       renderFocus={renderFocus}
       renderAttachmentSuffix={renderAttachmentSuffix}
       modelSelector={modelSelector}
@@ -369,7 +279,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       mentions={mentions}
       matchDefaultFocusContent={matchDefaultFocusContent}
       attachProcessors={attachProcessors}
-      agent={agent}
+      agent={chatAgent.source === "local" ? agent as any : undefined}
     />
   );
   const senderFooterNode = renderSenderFooter?.();
@@ -379,13 +289,9 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       <div className={css["sender-footer"]}>{senderFooterNode}</div>
     </div>
   ) : senderNode;
-  const chatPanelContextValue = useMemo(
-    () => ({ user, copilot, disabled: isDisabled, renderUserMessage, markdownSkin, markdownit, messagesRenderVariant }),
-    [copilot, isDisabled, markdownSkin, markdownit, messagesRenderVariant, renderUserMessage, user]
-  );
 
   return (
-    <ChatPanelProvider value={chatPanelContextValue}>
+    <ChatPanelProvider value={{ user, copilot, disabled: isDisabled, renderUserMessage, markdownSkin, markdownit, messagesRenderVariant }}>
       <div
         className={classNames(css["chat-panel"], css[`size-${size}`], className)}
         style={style}
@@ -404,9 +310,11 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
           <MessageList
             ref={messageListRef}
             messages={messages}
-            agent={agent}
+            agent={chatAgent.source === "local" ? agent as any : undefined}
             actionBar={actionBar}
-            onExecutePlan={onExecutePlan}
+            onRetry={chatAgent.retry}
+            onDelete={chatAgent.deleteTurn}
+            onExecutePlan={chatAgent.executePlan}
             canExecutePlan={canExecutePlan}
             renderEmpty={historyStatus === "ready" ? renderEmpty : undefined}
             renderFooter={scrollWithSender ? () => senderBlockNode : undefined}
@@ -422,3 +330,12 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
 
 export { ChatPanel };
 export type { ChatMarkdownItConfig, MarkdownSkinConfig, MessagesRenderVariant } from "./context";
+export { useAgent } from "./use-agent";
+export { HttpAgent, isHttpAgent } from "./http-agent";
+export type { ChatAgent, ChatPanelAgentState } from "./use-agent";
+export type {
+  BrowserToolRequest,
+  BrowserToolResult,
+  HttpAgentOptions,
+  RemoteAgentEvent,
+} from "./http-agent";
