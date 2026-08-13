@@ -5,6 +5,7 @@ import { MockHistory } from "./mock-history";
 import { MemFS } from "./mem-fs";
 import type { TestCase } from "../cases/types";
 import { context } from "@plugin/context";
+import { chipRegistry } from "@plugin/sandbox/setup";
 
 const AGENT_KEY = "playground_agent";
 
@@ -48,7 +49,7 @@ export function usePlaygroundAgent(
       ...(testCase.agentOptions?.doomLoopThreshold ? { doomLoopThreshold: testCase.agentOptions.doomLoopThreshold } : {}),
       ...(testCase.disabledModes ? { disabledModes: testCase.disabledModes } : {}),
     });
-    testCase.mentions?.forEach((mention) => newAgent.chipRegistry.register(mention.chip));
+    testCase.mentions?.forEach((mention) => chipRegistry.register(mention.chip));
 
     agentRef.current = newAgent;
     context.agentMap.set(AGENT_KEY, newAgent as any);

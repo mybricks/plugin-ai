@@ -295,7 +295,7 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
               await ensureFocusComId(comId);
               const requestParams = withMentionFocus(params);
               context.aiQueue.registerAbort(agentKey, () => agent.abort());
-              await agent.requestAI({
+              await agent.requestAI(chipRegistry.formatRequestParams({
                 message: requestParams.message,
                 attachments: requestParams.attachments ?? [],
                 ...(requestParams.extra ? { extra: requestParams.extra } : {}),
@@ -304,7 +304,7 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
                 ...(requestParams.providerId ? { providerId: requestParams.providerId } : {}),
                 ...(requestParams.modelId ? { modelId: requestParams.modelId } : {}),
                 ...(requestParams.meta ? { meta: requestParams.meta } : {}),
-              });
+              }));
             },
             { message: params.message, attachments: params.attachments ?? [], ...(params.extra ? { extra: params.extra } : {}), ...(params.mode ? { mode: params.mode } : {}) }
           );
@@ -738,7 +738,6 @@ function connectToAI(
       };
     },
   });
-  agent.chipRegistry = chipRegistry;
   agentRef = agent;
 
   // MVP：复用同一个 CodeAgent 实例，仅替换其运行时资源。

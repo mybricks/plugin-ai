@@ -34,7 +34,6 @@ import { getTurnMode } from "./utils/core";
 import { getAvailableAgentModes, AgentModeEnum } from "./mode-manager";
 import { TOOL_OUTPUT_MAX_TOKENS } from "./content-limits";
 import { kv } from "./kv";
-import { ChipRegistry } from "./chip";
 
 export { AgentEvents };
 export type { AgentMode, Message, History, Tool, TurnRecord, ToolCallRecord, WarmupIter };
@@ -487,7 +486,6 @@ function getLastRecordedMode(turns: TurnRecord[]): AgentMode | null {
 
 export class Agent {
   readonly events = new AgentEvents();
-  chipRegistry = new ChipRegistry();
   readonly key: string | undefined;
   readonly historyManager: HistoryManager;
   protected options: InternalAgentOptions;
@@ -1237,29 +1235,20 @@ export class Agent {
     // rest.aiRole = "image";
     
     // ── 格式化用户消息（在构建 TurnRecord 之前执行，格式化结果写入 turn）
-    // chip format 是 Agent 对 RequestAIOptions.meta.chips 的标准预处理，
-    // 外部 formatUserMessage 总是在 chip format 之后执行。
-    // formatUserMessage 返回 { message, attachments?, meta?, extra? }，可覆盖原始参数
-    // 注意：turn.userText 保留原始 message（UI 展示用），LLM 收到的是 formattedParams.message
-    //
-    // 仅当存在会被格式化的 chip 时，才把用户正文用 <user_query> 包裹：
-    // - 有 chip：占位符在正文内部，@ 替换正常生效；chip 追加的 <referenced-dom-nodes>/<file>
-    //   等实体说明块会落在 </user_query> 之外，成为平级兄弟节点，实现正文与引用块的显式分层。
-    // - 无 chip（纯文本消息）：不加标签，避免无意义的噪声。
-    const hasChips = this.chipRegistry.hasFormattableChips(params.meta?.chips as any);
-    const wrappedMessage = hasChips ? `<user_query>\n${message}\n</user_query>` : message;
-    const chipFormattedParams = this.chipRegistry.formatRequestParams({ ...params, message: wrappedMessage, mode: effectiveRequestMode });
-    let formattedParams: RequestAIOptions & Partial<FormatUserMessageResult> = chipFormattedParams;
+    // chip 预处理由调用方在 requestAI 之前完成（chipRegistry.formatRequestParams）。
+    // formatUserMessage 返回 { message, attachments?, meta?, extra? }，可覆盖原始参数。
+    // 注意：turn.userText 保留原始 message（UI 展示用），LLM 收到的是 formattedParams.message。
+    const baseParams = { ...params, mode: effectiveRequestMode };
+    let formattedParams: RequestAIOptions & Partial<FormatUserMessageResult> = baseParams;
     if (this.options.formatUserMessage) {
       try {
-        const result = await this.options.formatUserMessage(chipFormattedParams);
+        const result = await this.options.formatUserMessage(baseParams);
         formattedParams = {
-          ...chipFormattedParams,
-          mode: effectiveRequestMode,
+          ...baseParams,
           message: result.message,
           ...(result.attachments !== undefined ? { attachments: result.attachments } : {}),
-          ...(result.meta !== undefined ? { meta: { ...chipFormattedParams.meta, ...result.meta } } : {}),
-          ...(result.extra !== undefined ? { extra: { ...chipFormattedParams.extra, ...result.extra } } : {}),
+          ...(result.meta !== undefined ? { meta: { ...baseParams.meta, ...result.meta } } : {}),
+          ...(result.extra !== undefined ? { extra: { ...baseParams.extra, ...result.extra } } : {}),
           ...(result.sender !== undefined ? { sender: result.sender } : {}),
         };
       } catch (e) {
