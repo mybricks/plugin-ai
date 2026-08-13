@@ -3,7 +3,6 @@ import type { Sandbox } from "../../../../../../agent/src/code-agent";
 import {
   BrowserToolBridge,
   type BrowserToolRequest,
-  type BrowserToolHandler,
 } from "./browser-tool-bridge";
 import { FileHmr } from "./file-hmr";
 
@@ -18,17 +17,15 @@ export class WorkspaceBridge<TAgent> {
 
   constructor(options: {
     workspaceId: string;
-    userId?: string;
     requestJson: RequestJson;
     agent: TAgent;
     tools?: Tool[];
-    handler?: BrowserToolHandler<TAgent>;
+    canHandleBrowserTasks?: () => boolean;
     getMode: () => AgentMode;
     setMode: (mode: AgentMode, reason?: string) => void;
   }) {
     this.fileHmr = new FileHmr({
       workspaceId: options.workspaceId,
-      userId: options.userId,
       requestJson: options.requestJson,
     });
     this.browserTools = new BrowserToolBridge({
@@ -36,7 +33,7 @@ export class WorkspaceBridge<TAgent> {
       requestJson: options.requestJson,
       agent: options.agent,
       tools: options.tools,
-      handler: options.handler,
+      canHandleRequests: options.canHandleBrowserTasks,
       getSandbox: () => this.fileHmrSandbox,
       getMode: options.getMode,
       setMode: options.setMode,
@@ -53,16 +50,8 @@ export class WorkspaceBridge<TAgent> {
     this.browserTools.setTools(tools);
   }
 
-  setToolHandler(handler?: BrowserToolHandler<TAgent>): void {
-    this.browserTools.setHandler(handler);
-  }
-
   handleBrowserTask(request: BrowserToolRequest): Promise<void> {
     return this.browserTools.handleRequest(request);
-  }
-
-  setEnabled(enabled: boolean): void {
-    this.fileHmr.setEnabled(enabled);
   }
 
   prepareRun(): Promise<void> {
@@ -92,7 +81,6 @@ export class WorkspaceBridge<TAgent> {
   }
 }
 
-export type { BrowserToolHandler };
 export type {
   BrowserToolRequest,
   BrowserToolResult,

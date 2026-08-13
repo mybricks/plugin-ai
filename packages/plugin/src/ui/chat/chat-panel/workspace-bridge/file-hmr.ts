@@ -42,7 +42,6 @@ type RequestJson = <T = unknown>(
  */
 export class FileHmr {
   private sandbox?: Sandbox;
-  private enabled = false;
   private version = 0;
   private localHashMap = new Map<string, string>();
   private initialized = false;
@@ -54,7 +53,6 @@ export class FileHmr {
   constructor(
     private readonly options: {
       workspaceId: string;
-      userId?: string;
       requestJson: RequestJson;
     },
   ) {}
@@ -66,19 +64,15 @@ export class FileHmr {
     });
   }
 
-  setEnabled(enabled: boolean): void {
-    this.enabled = enabled;
-  }
-
   async ensureConnected(): Promise<void> {
-    if (!this.enabled || !this.sandbox) return;
+    if (!this.sandbox) return;
     if (!this.initialized) await this.syncSnapshot();
   }
 
   disconnect(): void {}
 
   async prepareRun(): Promise<void> {
-    if (!this.enabled || !this.sandbox) return;
+    if (!this.sandbox) return;
     if (!this.initialized) {
       await this.syncSnapshot();
     }
@@ -86,7 +80,7 @@ export class FileHmr {
 
   syncChanges(targetVersion?: number): Promise<void> {
     const sandbox = this.sandbox;
-    if (!this.enabled || !sandbox || !this.initialized) {
+    if (!sandbox || !this.initialized) {
       return Promise.resolve();
     }
     const target = Number(targetVersion) || this.version + 1;
@@ -131,9 +125,8 @@ export class FileHmr {
     if (!sandbox) return;
     this.sandbox = sandbox;
 
-    const manifestQuery = this.withUserId();
     const manifest = await this.options.requestJson<FileManifestResponse>(
-      `${this.workspacePath("files")}${manifestQuery}`,
+      this.workspacePath("files"),
     );
     this.version = Number(manifest?.version ?? 0);
 
@@ -175,7 +168,6 @@ export class FileHmr {
     const query = new URLSearchParams({
       sinceVersion: String(this.version),
     });
-    if (this.options.userId) query.set("userId", this.options.userId);
     const response = await this.options.requestJson<FileChangesResponse>(
       `${this.workspacePath("files/changes")}?${query.toString()}`,
     );
@@ -213,7 +205,6 @@ export class FileHmr {
     path: string,
   ): Promise<{ path: string; content: string } | null> {
     const query = new URLSearchParams({ path });
-    if (this.options.userId) query.set("userId", this.options.userId);
     const response = await this.options.requestJson<
       string | { path?: string; content?: string } | null
     >(`${this.workspacePath("files/content")}?${query.toString()}`);
@@ -227,11 +218,6 @@ export class FileHmr {
 
   private workspacePath(action: string): string {
     return `/workspaces/${encodeURIComponent(this.options.workspaceId)}/${action}`;
-  }
-
-  private withUserId(): string {
-    if (!this.options.userId) return "";
-    return `?${new URLSearchParams({ userId: this.options.userId }).toString()}`;
   }
 }
 

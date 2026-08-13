@@ -21,14 +21,6 @@ export interface BrowserToolResult {
   error?: string;
 }
 
-export type BrowserToolHandler<TAgent> = (
-  request: BrowserToolRequest,
-  context: {
-    agent: TAgent;
-    sandbox?: Sandbox;
-  },
-) => Promise<BrowserToolResult | unknown> | BrowserToolResult | unknown;
-
 type RequestJson = <T = unknown>(
   path: string,
   init?: RequestInit,
@@ -36,7 +28,6 @@ type RequestJson = <T = unknown>(
 
 export class BrowserToolBridge<TAgent> {
   private tools: Tool[];
-  private handler?: BrowserToolHandler<TAgent>;
 
   constructor(
     private readonly options: {
@@ -44,14 +35,14 @@ export class BrowserToolBridge<TAgent> {
       requestJson: RequestJson;
       agent: TAgent;
       tools?: Tool[];
-      handler?: BrowserToolHandler<TAgent>;
+      /** Browser task 是否仍可由当前客户端执行并回传。 */
+      canHandleRequests?: () => boolean;
       getSandbox: () => Sandbox | undefined;
       getMode: () => AgentMode;
       setMode: (mode: AgentMode, reason?: string) => void;
     },
   ) {
     this.tools = options.tools ?? [];
-    this.handler = options.handler;
     this.logRegisteredTools();
   }
 
@@ -64,12 +55,14 @@ export class BrowserToolBridge<TAgent> {
     this.logRegisteredTools();
   }
 
-  setHandler(handler?: BrowserToolHandler<TAgent>): void {
-    this.handler = handler;
-  }
-
   async handleRequest(request: BrowserToolRequest): Promise<void> {
-    if (!request?.requestId || !request.name) return;
+    if (
+      !request?.requestId ||
+      !request.name ||
+      this.options.canHandleRequests?.() === false
+    ) {
+      return;
+    }
     const result: BrowserToolResult = {};
     try {
       const tool = this.tools.find((item) => item.name === request.name);
@@ -81,20 +74,17 @@ export class BrowserToolBridge<TAgent> {
           output: toolResult.output,
           ...(toolResult.metadata ? { metadata: toolResult.metadata } : {}),
         });
-      } else if (this.handler) {
-        const output = await this.handler(request, {
-          agent: this.options.agent,
-          sandbox: this.options.getSandbox(),
-        });
-        Object.assign(result, normalizeBrowserToolResult(output));
       } else {
         throw new Error(
-          `No browser tool handler registered for ${request.name}.`,
+          `No browser tool registered for ${request.name}.`,
         );
       }
     } catch (error) {
       result.error = error instanceof Error ? error.message : String(error);
     }
+
+    // 执行期间可能切换为禁用态，此时不回传 Browser Tool 结果。
+    if (this.options.canHandleRequests?.() === false) return;
 
     await this.options.requestJson(
       `/workspaces/${encodeURIComponent(this.options.workspaceId)}/browser/tasks/${encodeURIComponent(request.requestId)}`,
@@ -135,20 +125,4 @@ export class BrowserToolBridge<TAgent> {
       this.tools.map((tool) => tool.name),
     );
   }
-}
-
-function normalizeBrowserToolResult(output: unknown): Partial<BrowserToolResult> {
-  if (
-    output &&
-    typeof output === "object" &&
-    ("output" in output || "metadata" in output || "error" in output)
-  ) {
-    const result = output as BrowserToolResult;
-    return {
-      ...(result.output !== undefined ? { output: result.output } : {}),
-      ...(result.metadata ? { metadata: result.metadata } : {}),
-      ...(result.error ? { error: result.error } : {}),
-    };
-  }
-  return { output };
 }

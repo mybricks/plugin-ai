@@ -1,7 +1,6 @@
 export { ChatPanel } from "./chat-panel";
 export { HttpAgent, isHttpAgent, useAgent } from "./chat-panel";
 export type {
-  BrowserToolHandler,
   BrowserToolRequest,
   BrowserToolResult,
   ChatAgent,

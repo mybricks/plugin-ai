@@ -15,7 +15,7 @@ function getAccessMode(disabled: boolean): "owner" | "readonly" {
 ```
 
 - `disabled === false`：当前浏览器持锁，可以 run，并实时接收消息和文件变化。
-- `disabled === true`：当前浏览器未持锁，只读取打开页面时的历史和文件快照。
+- `disabled === true`：当前浏览器不允许发起 Agent 请求、清空历史或写入版本，但仍可通过 `/connect` 回放 turn 和文件变化；不能执行或回传 Browser Tool。
 
 其他约定：
 
@@ -162,13 +162,12 @@ flowchart TD
     C --> D["对 hash 不同的文件<br/>GET /files/content"]
     D --> E["显示只读内容"]
 
-    E --> F["不调用 /connect"]
+    E --> F["GET /connect 回放 turn 与文件变化"]
     E --> G["不调用 /run"]
-    E --> H["不实时同步消息"]
-    E --> I["不实时同步文件"]
+    E --> H["不执行或回传 Browser Tool"]
 ```
 
-未持锁时看到的是页面打开时的快照。之后服务端继续产生的新消息和文件变化不实时反映到当前浏览器。
+未持锁时不能发起新的 `/run`，但 `/connect` 的回放及其中的文件变化仍会同步到当前浏览器；任何 `browser:task` 都不会由当前浏览器执行或回传。
 
 ## 场景五：锁状态发生变化
 
@@ -187,11 +186,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["disabled: false → true"] --> B["关闭当前浏览器 SSE"]
-    B --> C["停止实时消息更新"]
-    B --> D["停止实时文件更新"]
-    B --> E["不再处理 Browser Tool"]
-    B --> F["不调用 /abort<br/>服务端 Agent 继续运行"]
+    A["disabled: false → true"] --> B["保留或建立 /connect 回放"]
+    B --> C["继续回放消息与文件变化"]
+    B --> D["不再处理或回传 Browser Tool"]
+    B --> E["不调用 /abort<br/>服务端 Agent 继续运行"]
 ```
 
 关闭浏览器连接和中止服务端 Agent 是两个不同操作。只有用户明确点击停止时才调用 `/abort`。
@@ -215,7 +213,7 @@ flowchart TD
 
 ## Browser Tool 处理
 
-只有当前浏览器直接消费 `/run` 时处理：
+只有未禁用的当前浏览器直接消费 `/run` 时处理：
 
 ```mermaid
 sequenceDiagram
@@ -229,7 +227,7 @@ sequenceDiagram
     H->>S: POST /browser/tasks/:requestId
 ```
 
-`/connect` 不处理 Browser Tool。
+`/connect` 不处理 Browser Tool；即使服务端意外下发 `browser:task`，禁用态客户端也会在执行前和回传前分别拦截。
 
 ## History 对象接口
 

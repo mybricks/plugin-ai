@@ -38,7 +38,6 @@ export type { SettingValue } from "./ui/setting";
 export { ChatPanel } from "./ui/chat";
 export { HttpAgent } from "./ui/chat";
 export type {
-  BrowserToolHandler,
   BrowserToolRequest,
   BrowserToolResult,
   ChatPanelProps,
@@ -241,7 +240,6 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     disallowedDebugEnvs,
     llm,
     history,
-    remoteAgent,
     sender,
     renderAttachmentSuffix,
     mentions,

@@ -12,7 +12,6 @@ import type { Designer, RegistSandBoxConfig, SandboxChipConfig, SandboxChipsConf
 import { createCheckStatusTool } from "./tools/check-status";
 import { LoadingView, type ComChatStartViewProps, type LoadingViewProps } from "../ui/chat";
 import { HttpAgent } from "../ui/chat/chat-panel/http-agent";
-import type { HttpAgentOptions } from "../ui/chat/chat-panel/http-agent";
 import type { PrdRenderProps } from "../ui/renders/prd-render";
 import { LoadingViewWithStyles, ComChatStartViewWithStyles, PrdRenderWithStyles } from "../ui/renders/register";
 import { context } from "../context";
@@ -158,20 +157,12 @@ export interface AgentRuntimeConfig {
 
 /** 服务端 Agent 的初始化配置。传给 pluginAI 的 remoteAgent 时会创建 HTTP Agent。 */
 export interface RemoteAgentConfig {
-  type: "http" | "server";
   /** 方舟测试环境默认值：http://localhost:3001/agents/api */
   baseUrl?: string;
-  /** 不传时默认使用当前 comId 对应的 agentKey，保证多组件隔离。 */
-  workspaceId?: string | ((context: { comId: string; agentKey: string }) => string);
-  /** @deprecated 服务端路由不接受 sessionId；请使用 agentId。 */
-  sessionId?: string;
+  /** 服务端 workspaceId；通常对应平台 conversation id。 */
+  workspaceId: string;
   /** 服务端 agentId。未传时使用 workspace 的 default agent。 */
   agentId?: string;
-  /** 传给服务端平台接口的用户身份。 */
-  userId?: string;
-  key?: string | ((context: { comId: string; agentKey: string; workspaceId: string }) => string);
-  headers?: HttpAgentOptions["headers"];
-  browserToolHandler?: HttpAgentOptions["browserToolHandler"];
 }
 
 /** @internal 由 pluginAI controller 使用的运行配置管理器。 */
@@ -689,29 +680,21 @@ function connectToAI(
   });
 
   if (remoteAgent) {
-    const workspaceId = typeof remoteAgent.workspaceId === "function"
-      ? remoteAgent.workspaceId({ comId, agentKey })
-      : remoteAgent.workspaceId ?? agentKey;
-    const httpKey = typeof remoteAgent.key === "function"
-      ? remoteAgent.key({ comId, agentKey, workspaceId })
-      : remoteAgent.key ?? agentKey;
     const agent = new HttpAgent({
-      key: httpKey,
       baseUrl: remoteAgent.baseUrl,
-      workspaceId,
-      sessionId: remoteAgent.sessionId,
+      workspaceId: remoteAgent.workspaceId,
       agentId: remoteAgent.agentId,
-      userId: remoteAgent.userId,
-      headers: remoteAgent.headers,
-      browserToolHandler: remoteAgent.browserToolHandler,
+    }, {
+      disabled: () => {
+        if (context.disabled) {
+          // TODO: 补充 UI 提示，告知用户禁用期间不能执行 Agent 或写入版本。
+        }
+        return context.disabled;
+      },
       browserTools,
       hooks,
     });
     agent.files.bindSandbox(sandbox);
-    agent.setBrowserConnectionEnabled(!context.disabled);
-    context.events.on("disabled", (disabled: boolean) => {
-      agent.setBrowserConnectionEnabled(!disabled);
-    });
     context.agentMap.set(agentKey, agent);
     context.registerAgentComId(comId);
     return { history: agent.getHistory(), isRemoteAgent: true };

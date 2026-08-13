@@ -14,10 +14,7 @@ import {
 } from "../../../../../agent/src";
 import type { Sandbox } from "../../../../../agent/src/code-agent";
 import type { AgentRuntimeState } from "../../../context/agent-runtime";
-import type {
-  BrowserToolRequest,
-  BrowserToolHandler as WorkspaceBrowserToolHandler,
-} from "./workspace-bridge";
+import type { BrowserToolRequest } from "./workspace-bridge";
 import { WorkspaceBridge } from "./workspace-bridge";
 
 export type {
@@ -56,16 +53,13 @@ export interface HttpAgentOptions {
   baseUrl?: string;
   /** 服务端 workspaceId；当前对应平台 conversation id。 */
   workspaceId: string;
-  /** @deprecated 服务端路由不接受 sessionId；请使用 agentId。 */
-  sessionId?: string;
   /** 服务端 agentId。未传时使用 workspace 的 default agent。 */
   agentId?: string;
-  /** 传给服务端平台接口的用户身份。requestAI 参数中的 userId 优先。 */
-  userId?: string;
-  key?: string;
-  headers?: Record<string, string>;
-  /** 执行服务端 scene 下发的浏览器端工具请求。 */
-  browserToolHandler?: BrowserToolHandler;
+}
+
+interface HttpAgentRuntimeOptions {
+  /** 返回当前 Agent 是否禁用；未提供时默认启用。 */
+  disabled?: () => boolean;
   /** 注册到浏览器端执行的工具。服务端可通过 SSE browser:task 按 name 调用。 */
   browserTools?: Tool[];
   /**
@@ -80,7 +74,6 @@ export interface HttpAgentRequestAIParams {
   message: string;
   attachments?: any[];
   mode?: AgentMode;
-  userId?: string;
   meta?: Record<string, any>;
   extra?: Record<string, any>;
   aiRole?: string;
@@ -89,10 +82,7 @@ export interface HttpAgentRequestAIParams {
   signal?: AbortSignal;
   onError?: (error: Event | Error) => void;
   onClose?: () => void;
-  [key: string]: any;
 }
-
-export type BrowserToolHandler = WorkspaceBrowserToolHandler<HttpAgent>;
 
 // aicode-agents 通过 Nest 的全局路由前缀暴露 API。
 const DEFAULT_BASE_URL = "http://localhost:3001/agents/api";
@@ -105,14 +95,11 @@ export class HttpAgent {
   readonly events = new AgentEvents();
   readonly baseUrl: string;
   readonly workspaceId: string;
-  /** @deprecated 服务端路由不接受 sessionId；保留仅用于旧调用方迁移。 */
-  readonly sessionId?: string;
   /** 服务端 agentId；default 使用 workspace 直连路由。 */
   readonly agentId: string;
-  readonly userId?: string;
   readonly key: string;
-  readonly headers?: Record<string, string>;
   readonly historyManager: HistoryManager;
+  private readonly disabled: () => boolean;
   private readonly hooks?: AgentHooks;
   private readonly workspaceBridge: WorkspaceBridge<HttpAgent>;
   private mode: AgentMode = AgentModeEnum.Build;
@@ -131,25 +118,20 @@ export class HttpAgent {
   private readonly historyInitialization: Promise<void>;
   private readonly completedHookTurns = new Set<string>();
 
-  constructor(options: HttpAgentOptions) {
+  constructor(options: HttpAgentOptions, runtime: HttpAgentRuntimeOptions = {}) {
     this.baseUrl = trimRight(options.baseUrl ?? DEFAULT_BASE_URL, "/");
     this.workspaceId = options.workspaceId;
-    this.sessionId = options.sessionId;
-    this.agentId = options.agentId ?? options.sessionId ?? DEFAULT_AGENT_ID;
-    this.userId = options.userId;
-    this.key =
-      options.key ??
-      `http:${this.baseUrl}:${this.workspaceId}:${this.agentId}`;
-    this.headers = options.headers;
-    this.hooks = options.hooks;
+    this.agentId = options.agentId ?? DEFAULT_AGENT_ID;
+    this.key = `http:${this.baseUrl}:${this.workspaceId}:${this.agentId}`;
+    this.disabled = runtime.disabled ?? (() => false);
+    this.hooks = runtime.hooks;
     this.workspaceBridge = new WorkspaceBridge<HttpAgent>({
       workspaceId: this.workspaceId,
-      userId: this.userId,
       requestJson: <T>(path: string, init?: RequestInit) =>
         this.requestJson<T>(path, init),
       agent: this,
-      tools: options.browserTools,
-      handler: options.browserToolHandler,
+      tools: runtime.browserTools,
+      canHandleBrowserTasks: () => !this.isDisabled(),
       getMode: () => this.getMode(),
       setMode: (mode, reason) => this.setMode(mode, reason),
     });
@@ -234,19 +216,12 @@ export class HttpAgent {
     return () => this.sessionStateListeners.delete(listener);
   }
 
-  setBrowserToolHandler(handler?: BrowserToolHandler): void {
-    this.workspaceBridge.setToolHandler(handler);
-  }
-
   setBrowserTools(tools: Tool[]): void {
     this.workspaceBridge.setTools(tools);
   }
 
-  setBrowserConnectionEnabled(enabled: boolean): void {
-    this.workspaceBridge.setEnabled(enabled);
-  }
-
   async requestAI(params: HttpAgentRequestAIParams): Promise<void> {
+    if (this.isDisabled()) return;
     // 与本地 Agent.requestAI 保持一致：历史 ready 后才能开始新 turn，
     // 避免迟到的 ready snapshot 覆盖正在流式更新的消息。
     await this.historyInitialization;
@@ -284,9 +259,6 @@ export class HttpAgent {
             turnId,
             message: params.message,
             attachments: params.attachments,
-            ...(params.userId ?? this.userId
-              ? { userId: params.userId ?? this.userId }
-              : {}),
             ...(params.mode ? { mode: params.mode } : {}),
             ...(params.meta ? { meta: params.meta } : {}),
             ...(params.extra ? { extra: params.extra } : {}),
@@ -305,7 +277,7 @@ export class HttpAgent {
             ) {
               return;
             }
-            this.handleRemoteEvent(event);
+            this.handleRemoteEvent(event, { allowBrowserTasks: true });
           },
         },
       );
@@ -360,6 +332,7 @@ export class HttpAgent {
   }
 
   async clearHistory(): Promise<void> {
+    if (this.isDisabled()) return;
     await this.requestJson(this.sessionPath("turns/clear"), {
       method: "POST",
     });
@@ -438,6 +411,7 @@ export class HttpAgent {
         return normalizeVersionsPage(response);
       },
       addVersion: async (record, files) => {
+        if (this.isDisabled()) return;
         await this.requestJson(this.workspacePath("versions"), {
           method: "POST",
           body: JSON.stringify({ record, files }),
@@ -458,6 +432,7 @@ export class HttpAgent {
         return normalizeVersionRecord(response);
       },
       updateVersion: async (versionId, patch) => {
+        if (this.isDisabled()) return;
         await this.requestJson(
           this.workspacePath(`versions/${encodeURIComponent(versionId)}`),
           {
@@ -467,6 +442,10 @@ export class HttpAgent {
         );
       },
     };
+  }
+
+  private isDisabled(): boolean {
+    return this.disabled();
   }
 
   private async initializeHistory(): Promise<void> {
@@ -521,7 +500,13 @@ export class HttpAgent {
     });
   }
 
-  private handleRemoteEvent(event: RemoteAgentEvent): void {
+  /**
+   * Browser Tool 仅由直接消费 /run 的连接执行；/connect 只用于回放。
+   */
+  private handleRemoteEvent(
+    event: RemoteAgentEvent,
+    options: { allowBrowserTasks?: boolean } = {},
+  ): void {
     if (event.event === "workspace:file-change") {
       void this.workspaceBridge
         .syncFileChanges(Number(event.data?.version) || undefined)
@@ -531,6 +516,8 @@ export class HttpAgent {
       return;
     }
     if (event.event === "browser:task") {
+      // /connect 回放和文件同步在禁用态仍然可用，但不能接管 Browser Tool。
+      if (!options.allowBrowserTasks || this.isDisabled()) return;
       const request = event.data as Omit<
         BrowserToolRequest,
         "workspaceId" | "browserId"
@@ -628,7 +615,6 @@ export class HttpAgent {
       ...init,
       headers: {
         ...(init?.body ? { "content-type": "application/json" } : {}),
-        ...this.headers,
         ...init?.headers,
       },
     });
@@ -671,7 +657,6 @@ export class HttpAgent {
         headers: {
           accept: "text/event-stream",
           ...(init.body ? { "content-type": "application/json" } : {}),
-          ...this.headers,
           ...init.headers,
         },
       });

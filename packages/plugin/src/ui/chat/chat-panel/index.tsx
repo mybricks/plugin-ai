@@ -334,7 +334,6 @@ export { useAgent } from "./use-agent";
 export { HttpAgent, isHttpAgent } from "./http-agent";
 export type { ChatAgent, ChatPanelAgentState } from "./use-agent";
 export type {
-  BrowserToolHandler,
   BrowserToolRequest,
   BrowserToolResult,
   HttpAgentOptions,
