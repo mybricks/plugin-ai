@@ -58,17 +58,17 @@ export class WorkspaceBridge<TAgent> {
     return this.browserTools.connect(agentId, signal);
   }
 
-  prepareRun(): Promise<void> {
-    return this.fileHmr.prepareRun();
+  waitInitialized(): Promise<void> {
+    return this.fileHmr.waitInitialized();
   }
 
   syncFileChanges(targetVersion?: number): Promise<void> {
     return this.fileHmr.syncChanges(targetVersion);
   }
 
-  bindSandbox(sandbox: Sandbox): void {
+  bindSandbox(sandbox: Sandbox): Promise<void> {
     this.fileHmrSandbox = sandbox;
-    this.fileHmr.bindSandbox(sandbox);
+    return this.fileHmr.bindSandbox(sandbox);
   }
 
   syncSnapshot(sandbox?: Sandbox): Promise<void> {

@@ -2,6 +2,7 @@ import {
   AgentEvents,
   HistoryManager,
   AgentModeEnum,
+  getAvailableAgentModes,
   type AgentMode,
   type AgentEventMap,
   type AgentHooks,
@@ -63,6 +64,8 @@ export interface HttpAgentOptions {
 interface HttpAgentRuntimeOptions {
   /** 返回当前 Agent 是否禁用；未提供时默认启用。 */
   disabled?: () => boolean;
+  /** 禁用的运行模式；与本地 CodeAgent.disabledModes 语义一致。 */
+  disabledModes?: AgentMode[];
   /** 注册到浏览器端执行的工具。服务端可通过 SSE browser:task 按 name 调用。 */
   browserTools?: Tool[];
   /**
@@ -72,9 +75,8 @@ interface HttpAgentRuntimeOptions {
   hooks?: AgentHooks;
 }
 
-export interface HttpAgentRequestAIParams {
+interface HttpAgentRequestAICommonParams {
   turnId?: string;
-  message: string;
   attachments?: any[];
   mode?: AgentMode;
   meta?: Record<string, any>;
@@ -86,6 +88,26 @@ export interface HttpAgentRequestAIParams {
   onError?: (error: Event | Error) => void;
   onClose?: () => void;
 }
+
+/** 单消息请求：同一文本用于展示与模型输入。 */
+export interface MessageHttpAgentRequestAIParams
+  extends HttpAgentRequestAICommonParams {
+  message: string;
+  displayMessage?: never;
+  modelMessage?: never;
+}
+
+/** 双消息请求：displayMessage 用于展示，modelMessage 用于模型输入。 */
+export interface DisplayModelHttpAgentRequestAIParams
+  extends HttpAgentRequestAICommonParams {
+  displayMessage: string;
+  modelMessage: string;
+  message?: never;
+}
+
+export type HttpAgentRequestAIParams =
+  | MessageHttpAgentRequestAIParams
+  | DisplayModelHttpAgentRequestAIParams;
 
 // aicode-agents 通过 Nest 的全局路由前缀暴露 API。
 const DEFAULT_BASE_URL = "http://localhost:3001/agents/api";
@@ -103,6 +125,7 @@ export class HttpAgent {
   readonly key: string;
   readonly historyManager: HistoryManager;
   private readonly disabled: () => boolean;
+  private readonly disabledModes: AgentMode[];
   private readonly hooks?: AgentHooks;
   private readonly workspaceBridge: WorkspaceBridge<HttpAgent>;
   private mode: AgentMode = AgentModeEnum.Build;
@@ -127,6 +150,7 @@ export class HttpAgent {
     this.agentId = options.agentId ?? DEFAULT_AGENT_ID;
     this.key = `http:${this.baseUrl}:${this.workspaceId}:${this.agentId}`;
     this.disabled = runtime.disabled ?? (() => false);
+    this.disabledModes = runtime.disabledModes ?? [];
     this.hooks = runtime.hooks;
     this.workspaceBridge = new WorkspaceBridge<HttpAgent>({
       workspaceId: this.workspaceId,
@@ -142,9 +166,10 @@ export class HttpAgent {
     this.historyManager = new HistoryManager({});
     this.historyInitialization = this.initializeHistory();
     void this.historyInitialization
+      .then(() => this.workspaceBridge.waitInitialized())
       .then(() => this.connectEventReplay())
       .catch((error) => {
-        console.error("[plugin-ai] remote history initialization failed", error);
+        console.error("[plugin-ai] remote init failed", error);
       });
   }
 
@@ -161,7 +186,7 @@ export class HttpAgent {
   }
 
   getAvailableModes(): AgentMode[] {
-    return [AgentModeEnum.Build];
+    return getAvailableAgentModes({ disabledModes: this.disabledModes });
   }
 
   getLLMProviders(): undefined {
@@ -225,53 +250,55 @@ export class HttpAgent {
 
   async requestAI(params: HttpAgentRequestAIParams): Promise<void> {
     if (this.isDisabled()) return;
+    const displayMessage = params.displayMessage ?? params.message!;
+    const modelMessage = params.modelMessage ?? params.message!;
     this.setSessionState({ running: true, statusText: "准备中..." });
-    // 与本地 Agent.requestAI 保持一致：历史 ready 后才能开始新 turn，
-    // 避免迟到的 ready snapshot 覆盖正在流式更新的消息。
-    await this.historyInitialization;
-    await this.workspaceBridge.prepareRun();
-    await this.hooks?.beforeTurn?.({
-      message: params.message,
-      formattedMessage: params.message,
-      attachments: params.attachments ?? [],
-      ...(params.meta ? { meta: params.meta } : {}),
-      ...(params.extra ? { extra: params.extra } : {}),
-    });
-    await this.hooks?.beforeRequest?.({
-      ...(params.meta ? { meta: params.meta } : {}),
-      ...(params.extra ? { extra: params.extra } : {}),
-    });
-    // Browser Tool 的可用性由独立接口登记；不能从 /run 的 SSE 连接推断。
-    // hooks 执行期间可能切换为只读态，进入 run 前再确认一次所有权。
-    if (this.isDisabled()) {
-      this.setSessionState({ running: false });
-      return;
-    }
-    void this.connectBrowserTools().catch((error) => {
-      // Browser Tool 是可选能力：异步登记不阻塞 /run。
-      console.warn("[plugin-ai] browser tool connection failed", error);
-    });
-    const turnId = params.turnId ?? createTurnId();
-    let terminalSeen = false;
-    this.handleRemoteEvent({
-      event: "turn:start",
-      turnId,
-      createdAt: Date.now(),
-      data: {
-        turnId,
-        message: params.message,
+    let turnId: string | undefined;
+    try {
+      await this.historyInitialization;
+      await this.hooks?.beforeTurn?.({
+        message: displayMessage,
+        formattedMessage: modelMessage,
         attachments: params.attachments ?? [],
         ...(params.meta ? { meta: params.meta } : {}),
-      },
-    });
-    try {
+        ...(params.extra ? { extra: params.extra } : {}),
+      });
+      await this.hooks?.beforeRequest?.({
+        ...(params.meta ? { meta: params.meta } : {}),
+        ...(params.extra ? { extra: params.extra } : {}),
+      });
+      if (this.isDisabled()) return;
+      void this.connectBrowserTools().catch((error) => {
+        console.warn("[plugin-ai] browser tool connection failed", error);
+      });
+      turnId = params.turnId ?? createTurnId();
+      this.handleRemoteEvent({
+        event: "turn:start",
+        turnId,
+        createdAt: Date.now(),
+        data: {
+          turnId,
+          message: displayMessage,
+          attachments: params.attachments ?? [],
+          ...(params.meta ? { meta: params.meta } : {}),
+          ...(modelMessage !== displayMessage
+            ? { userFormattedText: modelMessage }
+            : {}),
+        },
+      });
+      let terminalSeen = false;
       await this.requestEventStream(
         this.sessionPath("run"),
         {
           method: "POST",
-          body: JSON.stringify({
+          body: jsonStringifySafe({
             turnId,
-            message: params.message,
+            ...(params.message !== undefined
+              ? { message: params.message }
+              : {
+                  displayMessage: params.displayMessage,
+                  modelMessage: params.modelMessage,
+                }),
             attachments: params.attachments,
             ...(params.mode ? { mode: params.mode } : {}),
             ...(params.meta ? { meta: params.meta } : {}),
@@ -287,7 +314,7 @@ export class HttpAgent {
             terminalSeen ||= isTerminalRemoteEvent(event);
             if (
               event.event === "turn:start" &&
-              ((event.data?.turnId ?? event.turnId) === turnId)
+              (event.data?.turnId ?? event.turnId) === turnId
             ) {
               return;
             }
@@ -296,45 +323,23 @@ export class HttpAgent {
         },
       );
       if (!terminalSeen && !params.signal?.aborted) {
-        throw new SseDisconnectedError(
-          "Run SSE closed before a terminal event",
-        );
+        throw new SseDisconnectedError("Run SSE closed before a terminal event");
       }
     } catch (error) {
-      if (
-        (error as Error)?.name === "AbortError" ||
-        error instanceof RemoteSessionError ||
-        error instanceof HttpResponseError
-      ) {
-        if (!params.signal?.aborted) {
-          this.handleRemoteEvent({
-            event: "turn:error",
-            turnId,
-            createdAt: Date.now(),
-            data: { error },
-          });
-        }
-        params.onError?.(error as Error);
-        throw error;
+      if (turnId && !params.signal?.aborted) {
+        this.handleRemoteEvent({
+          event: "turn:error",
+          turnId,
+          createdAt: Date.now(),
+          data: { error: serializeError(error) },
+        });
       }
-      // /run 连接断开不会取消服务端 Agent，改用 /connect 跨实例重放并续接。
-      try {
-        await this.requestEventStream(
-          this.sessionPath("connect"),
-          { method: "GET" },
-          {
-            signal: params.signal,
-            onEvent: (event) => this.handleRemoteEvent(event),
-          },
-        );
-      } catch (reconnectError) {
-        params.onError?.(reconnectError as Error);
-        throw reconnectError;
-      }
+      params.onError?.(error as Error);
+      throw error;
+    } finally {
+      this.setSessionState({ running: false });
+      if (turnId) params.onClose?.();
     }
-    // 当前 turn 已由 SSE 驱动 UI 收口；这里不能再读取 /turns 并覆盖
-    // 内存中的流式消息。/turns 只用于首屏历史恢复和向前分页。
-    params.onClose?.();
   }
 
   async abort(): Promise<void> {
@@ -1096,6 +1101,22 @@ class HttpResponseError extends Error {
   ) {
     super(`${status} ${message}`);
   }
+}
+
+function jsonStringifySafe(value: unknown): string {
+  return JSON.stringify(value, (_key, val) => {
+    if (val !== null && typeof val === "object" && "nodeType" in val) {
+      return undefined;
+    }
+    return val;
+  });
+}
+
+function serializeError(error: unknown): { message: string; name?: string } {
+  if (error instanceof Error) {
+    return { message: error.message, name: error.name };
+  }
+  return { message: String(error) };
 }
 
 function isTerminalRemoteEvent(event: RemoteAgentEvent): boolean {

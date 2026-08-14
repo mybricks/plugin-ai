@@ -99,7 +99,7 @@ const configs = [
       },
     },
     external,
-    plugins: [...sharedPlugins, terser()],
+    plugins: [...sharedPlugins, ...(APP_ENV === 'development' ? [] : [terser()])],
   },
 ];
 

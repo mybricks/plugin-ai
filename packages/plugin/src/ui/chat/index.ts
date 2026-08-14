@@ -9,7 +9,10 @@ export type {
   ChatPanelProps,
   ChatPanelRef,
   ChatPanelSize,
+  DisplayModelHttpAgentRequestAIParams,
   HttpAgentOptions,
+  HttpAgentRequestAIParams,
+  MessageHttpAgentRequestAIParams,
   MessagesRenderVariant,
   RemoteAgentEvent,
 } from "./chat-panel";

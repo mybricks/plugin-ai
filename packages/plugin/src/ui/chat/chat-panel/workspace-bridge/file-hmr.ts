@@ -45,6 +45,7 @@ export class FileHmr {
   private version = 0;
   private localHashMap = new Map<string, string>();
   private initialized = false;
+  private snapshotPromise: Promise<void> | null = null;
   private syncPromise: Promise<void> = Promise.resolve();
   private syncPending = false;
   private syncRequestedWhilePending = false;
@@ -57,11 +58,9 @@ export class FileHmr {
     },
   ) {}
 
-  bindSandbox(sandbox: Sandbox): void {
+  async bindSandbox(sandbox: Sandbox): Promise<void> {
     this.sandbox = sandbox;
-    void this.syncSnapshot().catch((error) => {
-      console.error("[plugin-ai] initialize remote file sync failed", error);
-    });
+    await this.syncSnapshot(sandbox);
   }
 
   async ensureConnected(): Promise<void> {
@@ -69,14 +68,14 @@ export class FileHmr {
     if (!this.initialized) await this.syncSnapshot();
   }
 
-  disconnect(): void {}
-
-  async prepareRun(): Promise<void> {
-    if (!this.sandbox) return;
-    if (!this.initialized) {
-      await this.syncSnapshot();
-    }
+  /** 等待当前 in-flight 的首次 snapshot 完成；失败直接抛。 */
+  async waitInitialized(): Promise<void> {
+    if (this.initialized) return;
+    if (!this.snapshotPromise) return;
+    await this.snapshotPromise;
   }
+
+  disconnect(): void {}
 
   syncChanges(targetVersion?: number): Promise<void> {
     const sandbox = this.sandbox;
@@ -122,9 +121,16 @@ export class FileHmr {
   }
 
   async syncSnapshot(sandbox = this.sandbox): Promise<void> {
+    if (this.snapshotPromise) return this.snapshotPromise;
     if (!sandbox) return;
     this.sandbox = sandbox;
+    this.snapshotPromise = this.doSyncSnapshot(sandbox).finally(() => {
+      this.snapshotPromise = null;
+    });
+    return this.snapshotPromise;
+  }
 
+  private async doSyncSnapshot(sandbox: Sandbox): Promise<void> {
     const manifest = await this.options.requestJson<FileManifestResponse>(
       this.workspacePath("files"),
     );

@@ -690,6 +690,7 @@ function connectToAI(
         }
         return context.disabled;
       },
+      ...(disabledModes ? { disabledModes } : {}),
       browserTools,
       hooks,
     });

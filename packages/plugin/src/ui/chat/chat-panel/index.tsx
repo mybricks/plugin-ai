@@ -336,6 +336,9 @@ export type { ChatAgent, ChatPanelAgentState } from "./use-agent";
 export type {
   BrowserToolRequest,
   BrowserToolResult,
+  DisplayModelHttpAgentRequestAIParams,
   HttpAgentOptions,
+  HttpAgentRequestAIParams,
+  MessageHttpAgentRequestAIParams,
   RemoteAgentEvent,
 } from "./http-agent";

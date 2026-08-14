@@ -40,9 +40,12 @@ export { HttpAgent } from "./ui/chat";
 export type {
   BrowserToolRequest,
   BrowserToolResult,
+  DisplayModelHttpAgentRequestAIParams,
   ChatPanelProps,
   ChatPanelRef,
   HttpAgentOptions,
+  HttpAgentRequestAIParams,
+  MessageHttpAgentRequestAIParams,
 } from "./ui/chat";
 export * from "../../kit/src/preset";
 export { default as pluginLowCodeAI } from "../../plugin-lowcode/src";
