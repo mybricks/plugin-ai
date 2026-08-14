@@ -238,11 +238,12 @@ export interface AgentOptions {
   };
   /**
    * 用户消息格式化函数（异步）。
-   * 在 turn 开始时、buildBaseMessages 之前调用，对用户输入进行后处理。
-   * 入参：requestAI 的完整参数（message、attachments、meta?）。
+   * 在 turn 开始时、buildBaseMessages 之前调用，对模型输入进行后处理。
+   * 入参中的 message 始终是模型文本：单消息请求时等于 requestAI.message，
+   * 双消息请求时等于 requestAI.modelMessage。
    * 出参：处理后的 { message, attachments, meta }，可用于注入 focus 上下文等。
    */
-  formatUserMessage?: (params: RequestAIOptions) => Promise<FormatUserMessageResult> | FormatUserMessageResult;
+  formatUserMessage?: (params: FormatUserMessageParams) => Promise<FormatUserMessageResult> | FormatUserMessageResult;
   /**
    * 重试配置（用于网络瞬时故障自动重试）。
    * 只要 emits.error 被调用就重试，不做额外的错误类型判断。
@@ -323,8 +324,7 @@ export interface ForkOptions {
 
 // ─── ForkAgent ────────────────────────────────────────────────────────────────
 
-export interface RequestAIOptions {
-  message: string;
+export interface RequestAICommonOptions {
   attachments?: any[];
   /** 本次请求前切换到指定模式（可由 sender UI 传入） */
   mode?: AgentMode;
@@ -339,6 +339,33 @@ export interface RequestAIOptions {
   /** 业务扩展字段，存入 TurnRecord.extra，不参与 LLM 上下文构建 */
   extra?: Record<string, any>;
   [key: string]: any;
+}
+
+/**
+ * 常规请求：同一份 message 同时用于 UI 展示与模型输入。
+ */
+export interface MessageRequestAIOptions extends RequestAICommonOptions {
+  message: string;
+  displayMessage?: never;
+  modelMessage?: never;
+}
+
+/**
+ * 双消息请求：displayMessage 用于 UI，modelMessage 会继续经过 formatUserMessage 后发给模型。
+ * 适用于 Chip 等由调用方预处理、但 Agent 不感知其具体实现的富文本能力。
+ */
+export interface DisplayModelRequestAIOptions extends RequestAICommonOptions {
+  displayMessage: string;
+  modelMessage: string;
+  message?: never;
+}
+
+/** requestAI 支持常规单消息请求，或显式分离展示/模型文本的双消息请求。 */
+export type RequestAIOptions = MessageRequestAIOptions | DisplayModelRequestAIOptions;
+
+/** formatUserMessage 接收到的始终是模型消息；保持既有 params.message 语义。 */
+export interface FormatUserMessageParams extends RequestAICommonOptions {
+  message: string;
 }
 
 export type TurnPersistMode = "append" | "update";

@@ -4,6 +4,7 @@ import { AgentEvents } from "./events";
 import { HistoryManager } from "./history/manager";
 import type {
   AgentMode,
+  FormatUserMessageParams,
   AgentOptions,
   AgentsMdConfig,
   BoundHistory,
@@ -46,6 +47,10 @@ export type {
   ForkAgentOptions,
   ForkOptions,
   FormatUserMessageResult,
+  FormatUserMessageParams,
+  RequestAICommonOptions,
+  MessageRequestAIOptions,
+  DisplayModelRequestAIOptions,
   RequestAIOptions,
   ToolExecutionContext,
   BoundHistory,
@@ -268,7 +273,7 @@ function assembleMessages(
   historyStartIndex: number,
   options: AgentOptions,
   turns: TurnRecord[],
-  params: RequestAIOptions,
+  params: FormatUserMessageParams,
   tail: Message[],
   attachmentContextMessages: MessageSection[]
 ): Message[] {
@@ -1229,7 +1234,9 @@ export class Agent {
    */
   async requestAI(params: RequestAIOptions): Promise<void> {
     await this.ensureHistoryReady();
-    const { message, attachments, mode = AgentModeEnum.Build, ...rest } = params;
+    const { message, displayMessage, modelMessage, attachments, mode = AgentModeEnum.Build, ...rest } = params;
+    const userMessage = displayMessage ?? message!;
+    const initialModelMessage = modelMessage ?? message!;
     this.setMode(mode, "requestAI");
     const effectiveRequestMode = this.getMode();
     // 有图片附件时，自动将 aiRole 覆盖为 "image"，使请求层路由到支持视觉的模型。
@@ -1257,11 +1264,10 @@ export class Agent {
     // rest.aiRole = "image";
     
     // ── 格式化用户消息（在构建 TurnRecord 之前执行，格式化结果写入 turn）
-    // chip 预处理由调用方在 requestAI 之前完成（chipRegistry.formatRequestParams）。
     // formatUserMessage 返回 { message, attachments?, meta?, extra? }，可覆盖原始参数。
-    // 注意：turn.userText 保留原始 message（UI 展示用），LLM 收到的是 formattedParams.message。
-    const baseParams = { ...params, mode: effectiveRequestMode };
-    let formattedParams: RequestAIOptions & Partial<FormatUserMessageResult> = baseParams;
+    // 注意：turn.userText 保留展示消息，LLM 收到的是 formattedParams.message。
+    const baseParams: FormatUserMessageParams = { ...rest, message: initialModelMessage, attachments, mode: effectiveRequestMode };
+    let formattedParams: FormatUserMessageParams & Partial<FormatUserMessageResult> = baseParams;
     if (this.options.formatUserMessage) {
       try {
         const result = await this.options.formatUserMessage(baseParams);
@@ -1295,8 +1301,8 @@ export class Agent {
     const turn: TurnRecord = {
       id: turnId,
       startTime: Date.now(),
-      userText: message,
-      ...(formattedParams.message !== message ? { userFormattedText: formattedParams.message } : {}),
+      userText: userMessage,
+      ...(formattedParams.message !== userMessage ? { userFormattedText: formattedParams.message } : {}),
       userAttachments,
       ...(formattedMeta ? { meta: formattedMeta } : {}),
       ...(formattedExtra ? { extra: formattedExtra } : {}),
@@ -1307,18 +1313,18 @@ export class Agent {
 
     this.events.emit("turn:start", {
       turnId,
-      message,
+      message: userMessage,
       attachments: formattedParams.attachments ?? attachments,
       meta: formattedMeta,
       ...(formattedParams.sender ? { sender: formattedParams.sender } : {}),
-      ...(formattedParams.message !== message ? { userFormattedText: formattedParams.message } : {}),
+      ...(formattedParams.message !== userMessage ? { userFormattedText: formattedParams.message } : {}),
     });
 
     // 将 turn 加入内存（_runTurn 内的消息快照需要排除它，_saveTurnRecord 会更新它）
     this.turns.push(turn);
 
     await this._runTurn(turn, {
-      userParams: { message, attachments: formattedParams.attachments ?? attachments, meta: formattedMeta, extra: formattedExtra },
+      userParams: { message: userMessage, attachments: formattedParams.attachments ?? attachments, meta: formattedMeta, extra: formattedExtra },
       llmRest: rest,
       persistMode: "append",
     });
@@ -2044,7 +2050,7 @@ export class ForkAgent extends Agent {
    * 重写 requestAI，自动注入 fork 时指定的 aiRole。
    */
   async requestAI(params: RequestAIOptions): Promise<void> {
-    const { message, attachments, mode, ...rest } = params;
+    const { attachments, ...rest } = params;
     // 有图片附件时，自动将 aiRole 覆盖为 "image"
     if (attachments?.length) {
       rest.aiRole = "image";
@@ -2052,6 +2058,6 @@ export class ForkAgent extends Agent {
       // 否则使用 fork 时指定的 aiRole
       rest.aiRole = this._forkAiRole;
     }
-    return super.requestAI({ message, attachments, ...(mode !== undefined ? { mode } : {}), ...rest });
+    return super.requestAI({ ...rest, ...(attachments !== undefined ? { attachments } : {}) });
   }
 }

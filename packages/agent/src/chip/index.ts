@@ -142,13 +142,15 @@ export const fileChipDef: ChatChipDef = {
  *
  * 职责：
  * 1. 管理 chip 类型（register / get / getAll）
- * 2. 提供 formatRequestParams，将 meta.chips 中的占位符格式化为 LLM 可读文本。
+ * 2. 提供 formatRequestParams，将 meta.chips 中的占位符格式化为 LLM 可读文本，
+ *    并产出 displayMessage + modelMessage 的显式双消息请求参数。
  *
  * 使用方式：
  * ```ts
  * const chipRegistry = new ChipRegistry();
  * chipRegistry.register(domChipDef);
  * const formattedParams = chipRegistry.formatRequestParams(requestParams);
+ * // formattedParams.displayMessage 为原始文本；formattedParams.modelMessage 为格式化结果
  * ```
  *
  * 内置 chip 类型（无需手动注册）：
@@ -184,18 +186,21 @@ export class ChipRegistry {
   }
 
   /**
-   * 格式化 request params：
+   * 编译 request params：
    * 1. 若存在可格式化的 chip，用 <user_query> 包裹原始正文，实现正文与引用块的显式分层。
    * 2. 按 chip type 分组调用 def.format 展开占位符。
+   * 3. 产出 displayMessage + modelMessage，确保 UI 与模型各自使用正确的文本。
    *
-   * 不修改原对象；如果 message 没有变化，返回原 params 引用。
-   * 无 chip 时直接返回原 params，零开销。
+   * 不修改原对象。
    */
-  formatRequestParams<T extends { message: string; meta?: Record<string, any> }>(params: T): T {
+  formatRequestParams<T extends { message: string; meta?: Record<string, any> }>(params: T): Omit<T, "message"> & { displayMessage: string; modelMessage: string } {
+    const { message: displayMessage, ...rest } = params;
     const chips = params.meta?.chips as ChatChipInstance[] | undefined;
-    if (!this._hasFormattableChips(chips)) return params;
+    if (!this._hasFormattableChips(chips)) {
+      return { ...rest, displayMessage, modelMessage: displayMessage };
+    }
 
-    const wrappedMessage = `<user_query>\n${params.message}\n</user_query>`;
+    const wrappedMessage = `<user_query>\n${displayMessage}\n</user_query>`;
 
     const typeGroups = new Map<string, ChatChipInstance[]>();
     for (const chip of chips!) {
@@ -211,6 +216,6 @@ export class ChipRegistry {
       }
     }
 
-    return { ...params, message };
+    return { ...rest, displayMessage, modelMessage: message };
   }
 }
