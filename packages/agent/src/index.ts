@@ -1,5 +1,5 @@
 export { Agent, AgentEvents, ForkAgent } from "./agent";
-export type { AgentMode, AgentOptions, AgentHooks, RequestAIOptions, MaskOptions, HandoffOptions, ForkOptions, ForkAgentOptions, CompactRecord, FormatUserMessageResult, AgentsMdConfig, AgentsMdConfigResolver } from "./agent";
+export type { AgentMode, AgentOptions, AgentHooks, RequestAIOptions, RequestAICommonOptions, MessageRequestAIOptions, DisplayModelRequestAIOptions, FormatUserMessageParams, MaskOptions, HandoffOptions, ForkOptions, ForkAgentOptions, CompactRecord, FormatUserMessageResult, AgentsMdConfig, AgentsMdConfigResolver } from "./agent";
 export type { RequestAsStreamFn, RequestAsStreamParams, RequestAsStreamEmits, ToolDescriptor, ToolCallSpec, ToolCallStreamDelta } from "./types/request";
 export { maskMessages } from "./mask";
 export { computeHandoffTurnIds } from "./handoff";
