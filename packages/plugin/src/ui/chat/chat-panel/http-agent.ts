@@ -110,6 +110,12 @@ export type HttpAgentRequestAIParams =
   | MessageHttpAgentRequestAIParams
   | DisplayModelHttpAgentRequestAIParams;
 
+export interface HttpAgentRetryParams {
+  turnId: string;
+  signal?: AbortSignal;
+  onError?: (error: Event | Error) => void;
+  onClose?: () => void;
+}
 
 // aicode-agents 通过 Nest 的全局路由前缀暴露 API。
 const DEFAULT_BASE_URL = "http://localhost:3001/agents/api";
@@ -339,6 +345,45 @@ export class HttpAgent {
     }
   }
 
+  async retry(params: HttpAgentRetryParams): Promise<void> {
+    if (this.isDisabled()) return;
+    const { turnId } = params;
+    this.setSessionState({ running: true, statusText: "准备中..." });
+    try {
+      await this.historyInitialization;
+      const turn = this.findTurn(turnId);
+      await this.hooks?.beforeTurn?.({
+        message: turn?.userText ?? "",
+        formattedMessage: turn?.userFormattedText ?? turn?.userText ?? "",
+        attachments: (turn?.userAttachments as any[]) ?? [],
+      });
+      await this.hooks?.beforeRequest?.({});
+      if (this.isDisabled()) return;
+      void this.connectBrowserTools().catch((error) => {
+        console.warn("[plugin-ai] browser tool connection failed", error);
+      });
+      this.startedHookTurns.add(turnId);
+      await this.consumeRunStream(
+        this.sessionPath("retry"),
+        { method: "POST", body: jsonStringifySafe({ turnId }) },
+        { signal: params.signal },
+      );
+    } catch (error) {
+      if (!params.signal?.aborted) {
+        this.handleRemoteEvent({
+          event: "turn:error",
+          turnId,
+          createdAt: Date.now(),
+          data: { error: serializeError(error) },
+        });
+      }
+      params.onError?.(error as Error);
+      throw error;
+    } finally {
+      this.setSessionState({ running: false });
+      params.onClose?.();
+    }
+  }
 
   async abort(): Promise<void> {
     await this.requestJson(
