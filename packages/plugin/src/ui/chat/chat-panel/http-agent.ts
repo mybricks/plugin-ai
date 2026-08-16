@@ -15,6 +15,7 @@ import {
 } from "../../../../../agent/src";
 import type { Sandbox } from "../../../../../agent/src/code-agent";
 import type { AgentRuntimeState } from "../../../context/agent-runtime";
+import { context } from "../../../context";
 import type { BrowserToolRequest } from "./workspace-bridge";
 import { WorkspaceBridge } from "./workspace-bridge";
 
@@ -109,6 +110,7 @@ export type HttpAgentRequestAIParams =
   | MessageHttpAgentRequestAIParams
   | DisplayModelHttpAgentRequestAIParams;
 
+
 // aicode-agents 通过 Nest 的全局路由前缀暴露 API。
 const DEFAULT_BASE_URL = "http://localhost:3001/agents/api";
 const DEFAULT_AGENT_ID = "default";
@@ -142,6 +144,10 @@ export class HttpAgent {
   >();
   private readonly remoteHistory: BoundHistory;
   private readonly historyInitialization: Promise<void>;
+  /** 已进入浏览器侧 hook 生命周期的 turn，避免 /run 与 /connect 回放重复启动。 */
+  private readonly startedHookTurns = new Set<string>();
+  /** /connect 启动 hook 可能是异步的；终态必须在其完成后再触发 afterTurn。 */
+  private readonly replayStartHookTasks = new Map<string, Promise<void>>();
   private readonly completedHookTurns = new Set<string>();
 
   constructor(options: HttpAgentOptions, runtime: HttpAgentRuntimeOptions = {}) {
@@ -272,6 +278,9 @@ export class HttpAgent {
         console.warn("[plugin-ai] browser tool connection failed", error);
       });
       turnId = params.turnId ?? createTurnId();
+      // 正常 /run 已执行过启动 hooks。初始化时若 /connect 恰好重放同一 turn，
+      // 需要跳过它，避免重复上锁和重复触发 onStart。
+      this.startedHookTurns.add(turnId);
       this.handleRemoteEvent({
         event: "turn:start",
         turnId,
@@ -286,8 +295,11 @@ export class HttpAgent {
             : {}),
         },
       });
-      let terminalSeen = false;
-      await this.requestEventStream(
+      const { providerId, modelId } = this.resolveModelSelection(
+        params.providerId,
+        params.modelId,
+      );
+      await this.consumeRunStream(
         this.sessionPath("run"),
         {
           method: "POST",
@@ -304,27 +316,12 @@ export class HttpAgent {
             ...(params.meta ? { meta: params.meta } : {}),
             ...(params.extra ? { extra: params.extra } : {}),
             ...(params.aiRole ? { aiRole: params.aiRole } : {}),
-            ...(params.providerId ? { providerId: params.providerId } : {}),
-            ...(params.modelId ? { modelId: params.modelId } : {}),
+            ...(providerId ? { providerId } : {}),
+            ...(modelId ? { modelId } : {}),
           }),
         },
-        {
-          signal: params.signal,
-          onEvent: (event) => {
-            terminalSeen ||= isTerminalRemoteEvent(event);
-            if (
-              event.event === "turn:start" &&
-              (event.data?.turnId ?? event.turnId) === turnId
-            ) {
-              return;
-            }
-            this.handleRemoteEvent(event, { allowBrowserTasks: true });
-          },
-        },
+        { signal: params.signal, skipTurnStartId: turnId },
       );
-      if (!terminalSeen && !params.signal?.aborted) {
-        throw new SseDisconnectedError("Run SSE closed before a terminal event");
-      }
     } catch (error) {
       if (turnId && !params.signal?.aborted) {
         this.handleRemoteEvent({
@@ -341,6 +338,7 @@ export class HttpAgent {
       if (turnId) params.onClose?.();
     }
   }
+
 
   async abort(): Promise<void> {
     await this.requestJson(
@@ -468,6 +466,22 @@ export class HttpAgent {
     return this.disabled();
   }
 
+  /**
+   * 解析本次请求使用的模型：显式传入的 providerId/modelId 优先，
+   * 否则取 context 中为该 agent key 保存的模型选择（与模型选择 UI 联动）。
+   * 未配置 LLM providers 时返回空对象，不向服务端传模型参数。
+   */
+  private resolveModelSelection(providerId?: string, modelId?: string): {
+    providerId?: string;
+    modelId?: string;
+  } {
+    const selected = context.getModelSelection(this.key)?.getSelected();
+    return {
+      providerId: providerId ?? selected?.providerId,
+      modelId: modelId ?? selected?.modelId,
+    };
+  }
+
   private async initializeHistory(): Promise<void> {
     const page = await this.loadLatestTurns();
     this.turns = page.turns ?? [];
@@ -498,6 +512,9 @@ export class HttpAgent {
             event.data?.message ?? event.data,
           );
           return;
+        }
+        if (event.event === "session:locked") {
+          this.startReplayHookLifecycle(event);
         }
         this.handleRemoteEvent(event);
       },
@@ -843,6 +860,33 @@ export class HttpAgent {
     );
   }
 
+  /**
+   * 刷新后只有 /connect 回放，不会经过 requestAI，因此也不会自然触发
+   * beforeTurn / beforeRequest。收到 session:locked 时补齐一次浏览器侧
+   * 生命周期，以恢复 loading、设计器 lock 和 vibing 等 UI 状态。
+   *
+   * session:locked 发生在服务端完成 workspace 准备之前，尚无用户消息可用；
+   * 该 hook 仅用于恢复本地 UI，消息内容仍由后续的 turn:start 回放填充。
+   */
+  private startReplayHookLifecycle(event: RemoteAgentEvent): void {
+    const turnId = this.eventTurnId(event);
+    if (!turnId || this.startedHookTurns.has(turnId)) return;
+
+    this.startedHookTurns.add(turnId);
+    const task = (async () => {
+      await this.hooks?.beforeTurn?.({
+        message: "",
+        formattedMessage: "",
+        attachments: [],
+      });
+      await this.hooks?.beforeRequest?.({});
+    })();
+    this.replayStartHookTasks.set(turnId, task);
+    void task.catch((error) => {
+      console.warn("[HttpAgent] replay start hooks failed:", error);
+    });
+  }
+
   private setSessionState(state: AgentRuntimeState): void {
     if (
       this.sessionState.running === state.running &&
@@ -869,15 +913,22 @@ export class HttpAgent {
         : event.event === "turn:abort"
           ? "abort"
           : "error";
-    void Promise.resolve(
-      this.hooks?.afterTurn?.({
+    const replayStartTask = this.replayStartHookTasks.get(turnId);
+    void Promise.resolve(replayStartTask)
+      // 启动 hook 的错误已单独记录；仍要运行 afterTurn，以清理已部分建立的 UI 状态。
+      .catch(() => undefined)
+      .then(() => this.hooks?.afterTurn?.({
         id: turnId,
         status,
         ...(event.event === "turn:error" ? { error: event.data?.error } : {}),
-      } as TurnRecord),
-    ).catch((error) => {
-      console.warn("[HttpAgent] hooks.afterTurn failed:", error);
-    });
+      } as TurnRecord))
+      .catch((error) => {
+        console.warn("[HttpAgent] hooks.afterTurn failed:", error);
+      })
+      .finally(() => {
+        this.replayStartHookTasks.delete(turnId);
+        this.startedHookTurns.delete(turnId);
+      });
   }
 
   async requestJson<T = unknown>(path: string, init?: RequestInit): Promise<T> {
@@ -919,6 +970,38 @@ export class HttpAgent {
       this.agentId === DEFAULT_AGENT_ID ? undefined : this.agentId,
       signal,
     );
+  }
+
+  private async consumeRunStream(
+    path: string,
+    init: RequestInit,
+    options: {
+      signal?: AbortSignal;
+      skipTurnStartId?: string;
+    } = {},
+  ): Promise<void> {
+    let terminalSeen = false;
+    await this.requestEventStream(
+      path,
+      init,
+      {
+        signal: options.signal,
+        onEvent: (event) => {
+          terminalSeen ||= isTerminalRemoteEvent(event);
+          if (
+            options.skipTurnStartId &&
+            event.event === "turn:start" &&
+            (event.data?.turnId ?? event.turnId) === options.skipTurnStartId
+          ) {
+            return;
+          }
+          this.handleRemoteEvent(event, { allowBrowserTasks: true });
+        },
+      },
+    );
+    if (!terminalSeen && !options.signal?.aborted) {
+      throw new SseDisconnectedError("SSE closed before a terminal event");
+    }
   }
 
   private async requestEventStream(

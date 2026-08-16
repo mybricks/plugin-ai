@@ -694,6 +694,11 @@ function connectToAI(
       browserTools,
       hooks,
     });
+    // 与本地 CodeAgent 一致：存在 llmPluginKey 时把 HttpAgent.key 关联到 LLM runtime，
+    // 使模型选择 UI 与 requestAI 能解析出当前选中模型。返回值 request 函数仅本地 Agent 使用。
+    if (llmPluginKey) {
+      context.createLLMRequest(llmPluginKey, agent.key);
+    }
     agent.files.bindSandbox(sandbox);
     context.agentMap.set(agentKey, agent);
     context.registerAgentComId(comId);
