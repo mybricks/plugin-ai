@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { context } from "../../../context";
 import { chipRegistry } from "../../../sandbox/setup";
-import type {
-  AgentQueueState,
-  QueueItem,
-} from "../../../context/queue";
+import type { QueueItem } from "../../../context/queue";
 import type { SenderProps } from "../../components/sender";
 import type { AgentMode, CodeAgent } from "../../../../../agent/src";
 import { AgentModeEnum } from "../../../../../agent/src";
@@ -12,6 +9,10 @@ import type { HistoryStatus } from "../../../../../agent/src";
 import type { ModelSelection } from "../../../../../request/src/providers";
 import { useSession } from "../use-session";
 import { isHttpAgent, type HttpAgent } from "./http-agent";
+import {
+  useSessionState,
+  type UseSessionStateOptions,
+} from "./use-session-state";
 
 export type ChatAgent = CodeAgent | HttpAgent;
 
@@ -26,6 +27,7 @@ export interface ChatPanelAgentState {
   loadMoreHistory: (count?: number) => Promise<void>;
   loading: boolean;
   loadingTip: string;
+  loadingTurnId?: string;
   pendingQueue: QueueItem[];
   availableModes: AgentMode[];
   showChatMode: boolean;
@@ -49,21 +51,34 @@ export interface UseAgentOptions {
   disabled?: boolean;
   onTurnStart?: () => void;
   onTurnEnd?: () => void;
+  /** 覆盖当前 Agent 运行阶段的默认展示文案。 */
+  resolveSessionStageText?: UseSessionStateOptions["resolveStageText"];
 }
 
-export function useAgent({ agent, disabled = false, onTurnStart, onTurnEnd }: UseAgentOptions): ChatPanelAgentState {
-  return useAgentSession({ agent, disabled, onTurnStart, onTurnEnd });
+export function useAgent({ agent, disabled = false, onTurnStart, onTurnEnd, resolveSessionStageText }: UseAgentOptions): ChatPanelAgentState {
+  return useAgentSession({
+    agent,
+    disabled,
+    onTurnStart,
+    onTurnEnd,
+    resolveSessionStageText,
+  });
 }
 
-function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd }: { agent?: ChatAgent; disabled?: boolean; onTurnStart?: () => void; onTurnEnd?: () => void; }): ChatPanelAgentState {
-  const [queueState, setQueueState] = useState<AgentQueueState>(() =>
-    agent
-      ? context.aiQueue.getState(agent)
-      : { running: false, queue: [] },
-  );
-  const loading = queueState.running;
-  const loadingTip = queueState.statusText ?? "等待模型响应...";
-  const pendingQueue = queueState.queue;
+function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, resolveSessionStageText }: {
+  agent?: ChatAgent;
+  disabled?: boolean;
+  onTurnStart?: () => void;
+  onTurnEnd?: () => void;
+  resolveSessionStageText?: UseSessionStateOptions["resolveStageText"];
+}): ChatPanelAgentState {
+  const sessionState = useSessionState(agent, {
+    resolveStageText: resolveSessionStageText,
+  });
+  const loading = sessionState.loading;
+  const loadingTip = sessionState.statusText;
+  const loadingTurnId = sessionState.turnId;
+  const pendingQueue = sessionState.pendingQueue;
   const availableModes = agent?.getAvailableModes() ?? [AgentModeEnum.Build];
   const showChatMode = availableModes.length > 1;
   const [chatMode, setChatModeState] = useState<AgentMode>(() => agent?.getMode() ?? availableModes[0] ?? AgentModeEnum.Build);
@@ -84,14 +99,6 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd }: { 
     clearSession,
     loadMoreHistory: loadMoreHistoryBase,
   } = useSession(agent);
-
-  useEffect(() => {
-    if (!agent) {
-      setQueueState({ running: false, queue: [] });
-      return;
-    }
-    return context.aiQueue.subscribe(agent, setQueueState);
-  }, [agent]);
 
   useEffect(() => {
     if (!modelSelection) {
@@ -204,6 +211,7 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd }: { 
     loadMoreHistory,
     loading,
     loadingTip,
+    loadingTurnId,
     pendingQueue,
     availableModes,
     showChatMode,

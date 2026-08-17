@@ -11,6 +11,7 @@ import { SenderActivePlanCard, usePlanState } from "../../components/plan";
 import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
 import { isHttpAgent } from "../chat-panel/http-agent";
 import { useAgent, type ChatAgent } from "../chat-panel/use-agent";
+import type { SessionStageTextResolver } from "../chat-panel/session-status";
 import css from "./index.less";
 
 // ─── LoadingView ────────────────────────────────────────────────────────────
@@ -50,6 +51,8 @@ export interface ChatStartViewProps {
   attachProcessors?: AttachProcessor[];
   /** 自定义 mention 注册源 */
   mentions?: MentionProvider[];
+  /** 覆盖当前 Agent 运行阶段的默认展示文案。 */
+  resolveSessionStageText?: SessionStageTextResolver;
 }
 
 const ChatStartView = ({
@@ -60,11 +63,16 @@ const ChatStartView = ({
   welcomeTitle = "在这里，开始您的需求",
   attachProcessors,
   mentions = context.pluginParams.mentions ?? [],
+  resolveSessionStageText,
 }: ChatStartViewProps) => {
   const senderRef = useRef<SenderRef>(null);
   const [empty, setEmpty] = useState(true);
   const [contextDisabled, setContextDisabled] = useState(() => context.disabled);
-  const chatAgent = useAgent({ agent, disabled: contextDisabled });
+  const chatAgent = useAgent({
+    agent,
+    disabled: contextDisabled,
+    resolveSessionStageText,
+  });
   const loading = chatAgent.loading;
   const loadingTip = chatAgent.loadingTip;
   const historyStatus = chatAgent.historyStatus;

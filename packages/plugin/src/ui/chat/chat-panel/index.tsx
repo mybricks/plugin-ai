@@ -14,6 +14,7 @@ import { ChatPanelProvider } from "./context";
 import type { ChatMarkdownItConfig, MarkdownSkinConfig, MessagesRenderVariant } from "./context";
 import type { MessageRecord } from "../use-session";
 import { useAgent, type ChatAgent } from "./use-agent";
+import type { SessionStageTextResolver } from "./session-status";
 import css from "./index.less";
 
 interface User {
@@ -119,6 +120,8 @@ export interface ChatPanelProps {
   attachProcessors?: AttachProcessor[];
   /** 自定义 mention 注册源，透传给 Sender */
   mentions?: MentionProvider[];
+  /** 覆盖当前 Agent 运行阶段的默认展示文案。 */
+  resolveSessionStageText?: SessionStageTextResolver;
 }
 
 export interface ChatPanelRef {
@@ -164,6 +167,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   selectorRenderInTop = false,
   attachProcessors,
   mentions = (context.pluginParams.mentions ?? []) as MentionProvider[],
+  resolveSessionStageText,
 }, ref) => {
   const senderRef = useRef<SenderRef>(null);
 
@@ -181,6 +185,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     disabled,
     onTurnStart: scrollToBottom,
     onTurnEnd: scrollToBottom,
+    resolveSessionStageText,
   });
   const chatAgent = localAgent;
 
@@ -191,6 +196,8 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     hasMore,
     isLoadingMore,
     loading,
+    loadingTip,
+    loadingTurnId,
     pendingQueue,
     showChatMode,
     chatMode,
@@ -311,6 +318,8 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
             ref={messageListRef}
             messages={messages}
             agent={chatAgent.source === "local" ? agent as any : undefined}
+            activeStageText={loadingTip}
+            activeTurnId={loadingTurnId}
             actionBar={actionBar}
             onRetry={chatAgent.retry}
             onDelete={chatAgent.deleteTurn}
@@ -330,7 +339,14 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
 
 export { ChatPanel };
 export type { ChatMarkdownItConfig, MarkdownSkinConfig, MessagesRenderVariant } from "./context";
+export { CODE_AGENT_SESSION_STAGE } from "../../../context/agent-runtime";
+export {
+  HTTP_AGENT_SESSION_STAGE,
+  type SessionStageTextResolver,
+} from "./session-status";
 export { useAgent } from "./use-agent";
+export { useSessionState } from "./use-session-state";
+export type { SessionState, UseSessionStateOptions } from "./use-session-state";
 export { HttpAgent, isHttpAgent } from "./http-agent";
 export type { ChatAgent, ChatPanelAgentState } from "./use-agent";
 export type {

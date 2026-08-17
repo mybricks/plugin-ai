@@ -3,6 +3,7 @@ import {
   createAgentRuntime,
   type AgentRuntime,
   type AgentRuntimeState,
+  type AgentRuntimeStage,
   type RuntimeAgent,
 } from "./agent-runtime";
 
@@ -23,9 +24,12 @@ export interface QueueItem {
 
 export interface AgentQueueState {
   running: boolean;
+  /** 正在执行的 turn；用于把运行阶段文案对应到正确的消息气泡。 */
+  turnId?: string;
+  /** Agent 自己定义的运行阶段；文案由 UI 注入的 resolver 处理。 */
+  stage?: AgentRuntimeStage;
   queue: QueueItem[];
   error?: unknown;
-  statusText?: string;
 }
 
 interface QueueEntry {
@@ -158,11 +162,12 @@ export class AgentQueue {
     return {
       running: this.isRunning(entry),
       queue: [...entry.queue],
+      ...(entry.agentState.turnId
+        ? { turnId: entry.agentState.turnId }
+        : {}),
+      ...(entry.agentState.stage ? { stage: entry.agentState.stage } : {}),
       ...(entry.agentState.error !== undefined
         ? { error: entry.agentState.error }
-        : {}),
-      ...(entry.agentState.statusText
-        ? { statusText: entry.agentState.statusText }
         : {}),
     };
   }

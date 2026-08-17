@@ -57,6 +57,10 @@ export type ActionBarItem = ActionBarBuiltinItem | ActionBarCustomItem;
 export interface MessageListProps {
   messages: MessageRecord[];
   agent?: CodeAgent;
+  /** 当前活跃 turn 的运行阶段文案。 */
+  activeStageText?: string;
+  /** 当前运行阶段所属的 turn。 */
+  activeTurnId?: string;
   /**
    * ActionBar 白名单配置。
    * - 不传：默认只展示复制
@@ -121,7 +125,7 @@ const CollapseBar = ({
 const DEFAULT_ACTION_BAR: ActionBarItem[] = [];
 
 const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
-  function MessageListInner({ messages, agent, actionBar, onRetry, onDelete, onExecutePlan, canExecutePlan = true, renderEmpty, renderFooter, collapseCursor, onExpandHistory }, ref) {
+  function MessageListInner({ messages, agent, activeStageText, activeTurnId, actionBar, onRetry, onDelete, onExecutePlan, canExecutePlan = true, renderEmpty, renderFooter, collapseCursor, onExpandHistory }, ref) {
   const resolvedActionBar = actionBar ?? DEFAULT_ACTION_BAR;
   const mainRef = useRef<HTMLElement>(null);
   const scrollerRef = useRef<AutoScroller | null>(null);
@@ -174,6 +178,12 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
             {messages.map((record, index) => {
               if (index < visibleStartIndex) return null;
               const isLast = index === messages.length - 1;
+              // 运行阶段只展示在它所属的 pending turn，避免 /connect 回放串到历史消息。
+              const stageText =
+                record.status === "pending" &&
+                record.id === activeTurnId
+                  ? activeStageText
+                  : undefined;
               return (
                 <MessageBubble
                   key={record.id}
@@ -184,6 +194,7 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
                   onDelete={onDelete}
                   isLast={isLast}
                   agent={agent}
+                  stageText={stageText}
                   onExecutePlan={onExecutePlan}
                   canExecutePlan={canExecutePlan}
                   activePlan={activePlan}
@@ -202,7 +213,7 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
 
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
-const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMap, actionBar, onRetry, onDelete, isLast, agent, onExecutePlan, canExecutePlan = true, activePlan }: {
+const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMap, actionBar, onRetry, onDelete, isLast, agent, stageText, onExecutePlan, canExecutePlan = true, activePlan }: {
   record: MessageRecord;
   toolRendererMap: Map<string, ToolRenderer>;
   actionBar: ActionBarItem[];
@@ -211,6 +222,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
   onDelete?: (turnId: string) => void;
   isLast?: boolean;
   agent?: CodeAgent;
+  stageText?: string;
   onExecutePlan?: (title: string) => void;
   canExecutePlan?: boolean;
   activePlan: ActivePlanFile | null;
@@ -337,7 +349,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
                       重试 {retryState.attempt}/{retryState.maxRetries}
                     </span>
                   )}
-                  <TextShimmer className={css["iter-header-placeholder"]}>连接中...</TextShimmer>
+                  <TextShimmer className={css["iter-header-placeholder"]}>{stageText ?? "等待模型响应..."}</TextShimmer>
                 </div>
               </div>
             )}
@@ -352,6 +364,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
                 retryState={retryState}
                 toolRendererMap={toolRendererMap}
                 agent={agent}
+                stageText={stageText}
               />
             ))}
 
@@ -434,6 +447,7 @@ const MessageIteration = React.memo(function MessageIteration({
   retryState,
   toolRendererMap,
   agent,
+  stageText,
 }: {
   iter: MessageRecord["iterations"][number];
   isLastItem: boolean;
@@ -441,6 +455,7 @@ const MessageIteration = React.memo(function MessageIteration({
   retryState: { attempt: number; maxRetries: number } | null;
   toolRendererMap: Map<string, ToolRenderer>;
   agent?: CodeAgent;
+  stageText?: string;
 }) {
   if (iter.type === "warmup") {
     const warmupIter = iter as WarmupIter;
@@ -490,7 +505,7 @@ const MessageIteration = React.memo(function MessageIteration({
                   重试 {retryState.attempt}/{retryState.maxRetries}
                 </span>
               )}
-              <TextShimmer className={css["iter-header-placeholder"]}>连接中...</TextShimmer>
+              <TextShimmer className={css["iter-header-placeholder"]}>{stageText ?? "等待模型响应..."}</TextShimmer>
             </div>
             {iter.startTime && <ElapsedTime startTime={iter.startTime} endTime={iter.endTime} className={css["planning-elapsed"]} />}
           </>

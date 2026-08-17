@@ -18,6 +18,7 @@ import type { AgentRuntimeState } from "../../../context/agent-runtime";
 import { context } from "../../../context";
 import type { BrowserToolRequest } from "./workspace-bridge";
 import { WorkspaceBridge } from "./workspace-bridge";
+import { HTTP_AGENT_SESSION_STAGE } from "./session-status";
 
 export type {
   BrowserToolRequest,
@@ -264,8 +265,12 @@ export class HttpAgent {
     if (this.isDisabled()) return;
     const displayMessage = params.displayMessage ?? params.message!;
     const modelMessage = params.modelMessage ?? params.message!;
-    this.setSessionState({ running: true, statusText: "准备中..." });
-    let turnId: string | undefined;
+    const turnId = params.turnId ?? createTurnId();
+    this.setSessionState({
+      running: true,
+      turnId,
+      stage: { key: HTTP_AGENT_SESSION_STAGE.PREPARING },
+    });
     try {
       await this.historyInitialization;
       await this.hooks?.beforeTurn?.({
@@ -280,27 +285,32 @@ export class HttpAgent {
         ...(params.extra ? { extra: params.extra } : {}),
       });
       if (this.isDisabled()) return;
-      void this.connectBrowserTools().catch((error) => {
+      // browser/connect 必须在 /run 取得 turn 锁前完成；否则服务端可能还没
+      // 把当前浏览器登记为 Browser Tool 执行端。登记失败仍允许纯模型请求继续。
+      await this.connectBrowserTools(params.signal).catch((error) => {
         console.warn("[plugin-ai] browser tool connection failed", error);
       });
-      turnId = params.turnId ?? createTurnId();
       // 正常 /run 已执行过启动 hooks。初始化时若 /connect 恰好重放同一 turn，
       // 需要跳过它，避免重复上锁和重复触发 onStart。
       this.startedHookTurns.add(turnId);
-      this.handleRemoteEvent({
-        event: "turn:start",
-        turnId,
-        createdAt: Date.now(),
-        data: {
+      this.handleRemoteEvent(
+        {
+          event: "turn:start",
           turnId,
-          message: displayMessage,
-          attachments: params.attachments ?? [],
-          ...(params.meta ? { meta: params.meta } : {}),
-          ...(modelMessage !== displayMessage
-            ? { userFormattedText: modelMessage }
-            : {}),
+          createdAt: Date.now(),
+          data: {
+            turnId,
+            message: displayMessage,
+            attachments: params.attachments ?? [],
+            ...(params.meta ? { meta: params.meta } : {}),
+            ...(modelMessage !== displayMessage
+              ? { userFormattedText: modelMessage }
+              : {}),
+          },
         },
-      });
+        // 本地合成 turn:start 只为立即渲染用户消息，不能跳过服务端的准备阶段。
+        { updateSessionState: false },
+      );
       const { providerId, modelId } = this.resolveModelSelection(
         params.providerId,
         params.modelId,
@@ -348,7 +358,11 @@ export class HttpAgent {
   async retry(params: HttpAgentRetryParams): Promise<void> {
     if (this.isDisabled()) return;
     const { turnId } = params;
-    this.setSessionState({ running: true, statusText: "准备中..." });
+    this.setSessionState({
+      running: true,
+      turnId,
+      stage: { key: HTTP_AGENT_SESSION_STAGE.PREPARING },
+    });
     try {
       await this.historyInitialization;
       const turn = this.findTurn(turnId);
@@ -359,7 +373,7 @@ export class HttpAgent {
       });
       await this.hooks?.beforeRequest?.({});
       if (this.isDisabled()) return;
-      void this.connectBrowserTools().catch((error) => {
+      await this.connectBrowserTools(params.signal).catch((error) => {
         console.warn("[plugin-ai] browser tool connection failed", error);
       });
       this.startedHookTurns.add(turnId);
@@ -575,7 +589,11 @@ export class HttpAgent {
    */
   private handleRemoteEvent(
     event: RemoteAgentEvent,
-    options: { allowBrowserTasks?: boolean } = {},
+    options: {
+      allowBrowserTasks?: boolean;
+      /** 本地合成事件仅用于同步消息记录，不应覆盖服务端阶段状态。 */
+      updateSessionState?: boolean;
+    } = {},
   ): void {
     if (event.event === "workspace:file-change") {
       void this.workspaceBridge
@@ -614,56 +632,78 @@ export class HttpAgent {
       );
     }
     this.applyTurnEvent(event);
-    if (event.event === "session:preparing" || event.event === "session:locked") {
+    const shouldUpdateSessionState =
+      options.updateSessionState !== false &&
+      this.shouldUpdateSessionState(event);
+    const eventTurnId = this.eventTurnId(event);
+    if (
+      shouldUpdateSessionState &&
+      (event.event === "session:preparing" || event.event === "session:locked")
+    ) {
       this.setSessionState({
         running: true,
-        turnId: event.turnId ?? this.sessionState.turnId,
-        statusText: "准备中...",
+        turnId: eventTurnId ?? this.sessionState.turnId,
+        stage: { key: HTTP_AGENT_SESSION_STAGE.PREPARING },
       });
       return;
     }
-    if (event.event === "session:files-synced") {
+    if (shouldUpdateSessionState && event.event === "session:files-synced") {
       this.setSessionState({
         running: true,
-        turnId: event.turnId ?? this.sessionState.turnId,
-        statusText: "获取最新文件...",
+        turnId: eventTurnId ?? this.sessionState.turnId,
+        stage: { key: HTTP_AGENT_SESSION_STAGE.SYNCING_FILES },
       });
       return;
     }
-    if (event.event === "session:agent-configured") {
+    if (shouldUpdateSessionState && event.event === "session:agent-configured") {
       this.setSessionState({
         running: true,
-        turnId: event.turnId ?? this.sessionState.turnId,
-        statusText: "获取配置...",
+        turnId: eventTurnId ?? this.sessionState.turnId,
+        stage: { key: HTTP_AGENT_SESSION_STAGE.CONFIGURING },
       });
       return;
     }
-    if (event.event === "session:start") {
+    if (shouldUpdateSessionState && event.event === "session:start") {
       this.setSessionState({
         running: true,
-        turnId: event.turnId ?? this.sessionState.turnId,
-        statusText: "等待模型响应...",
+        turnId: eventTurnId ?? this.sessionState.turnId,
+        stage: { key: HTTP_AGENT_SESSION_STAGE.AWAITING_MODEL },
       });
       return;
     }
-    if (event.event === "turn:start" || event.event === "turn:resume") {
+    if (
+      shouldUpdateSessionState &&
+      (event.event === "turn:start" || event.event === "turn:resume")
+    ) {
       this.setSessionState({
         running: true,
-        turnId: event.data?.turnId ?? event.turnId,
-        statusText: "等待模型响应...",
+        turnId: eventTurnId ?? this.sessionState.turnId,
+        stage: { key: HTTP_AGENT_SESSION_STAGE.AWAITING_MODEL },
       });
     } else if (
-      event.event === "turn:complete" ||
-      event.event === "turn:abort"
+      shouldUpdateSessionState &&
+      (event.event === "turn:complete" || event.event === "turn:abort")
     ) {
       this.setSessionState({ running: false });
       this.triggerAfterTurn(event);
-    } else if (event.event === "turn:error") {
+    } else if (shouldUpdateSessionState && event.event === "turn:error") {
       this.setSessionState({
         running: false,
         error: event.data?.error,
       });
       this.triggerAfterTurn(event);
+    } else if (
+      event.event === "turn:complete" ||
+      event.event === "turn:abort" ||
+      event.event === "turn:error"
+    ) {
+      this.triggerAfterTurn(event);
+    } else if (shouldUpdateSessionState && event.event === "llm:start") {
+      this.setSessionState({
+        running: true,
+        turnId: eventTurnId ?? this.sessionState.turnId,
+        stage: { key: HTTP_AGENT_SESSION_STAGE.AWAITING_MODEL },
+      });
     }
     if (event.event === "mode:change" && event.data?.mode) {
       this.mode = event.data.mode;
@@ -895,6 +935,17 @@ export class HttpAgent {
     return null;
   }
 
+  /** /connect 回放不应把当前 /run 的状态切回其他 turn 的阶段文案。 */
+  private shouldUpdateSessionState(event: RemoteAgentEvent): boolean {
+    const eventTurnId = this.eventTurnId(event);
+    return (
+      !eventTurnId ||
+      !this.sessionState.running ||
+      !this.sessionState.turnId ||
+      this.sessionState.turnId === eventTurnId
+    );
+  }
+
   private findTurn(turnId: string): TurnRecord | undefined {
     return this.turns.find((turn) => turn.id === turnId);
   }
@@ -937,7 +988,7 @@ export class HttpAgent {
       this.sessionState.running === state.running &&
       this.sessionState.turnId === state.turnId &&
       this.sessionState.error === state.error &&
-      this.sessionState.statusText === state.statusText
+      this.sessionState.stage?.key === state.stage?.key
     ) {
       return;
     }
