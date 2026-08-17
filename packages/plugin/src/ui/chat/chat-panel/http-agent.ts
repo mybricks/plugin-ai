@@ -467,8 +467,8 @@ export class HttpAgent {
     syncSnapshot: async (sandbox: Sandbox): Promise<void> => {
       await this.workspaceBridge.syncSnapshot(sandbox);
     },
-    bindSandbox: (sandbox: Sandbox): void => {
-      this.workspaceBridge.bindSandbox(sandbox);
+    bindSandbox: (sandbox: Sandbox): Promise<void> => {
+      return this.workspaceBridge.bindSandbox(sandbox);
     },
     ensureBrowserConnected: async (): Promise<void> => {
       await this.workspaceBridge.ensureConnected();

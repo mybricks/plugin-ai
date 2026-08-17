@@ -189,6 +189,12 @@ export interface ConnectToAIResult {
   history: BoundHistory | null;
   /** 当前 History 是否由 remote Agent 的 workspace API 提供。 */
   isRemoteAgent: boolean;
+  /**
+   * remote Agent 首次把服务端 workspace 快照同步到 sandbox 后兑现。
+   * 宿主可用它阻止依赖 data.files 的 Runtime 在空数据阶段先挂载。
+   * 本地 Agent 不需要远端同步，因此不提供该字段。
+   */
+  workspaceReady?: Promise<void>;
 }
 
 export interface SandboxAPI {
@@ -707,10 +713,11 @@ function connectToAI(
       context.createLLMRequest(llmPluginKey, agent.key);
     }
     context.aiQueue.setRequestGuard(agent, requestGuard);
-    agent.files.bindSandbox(sandbox);
+    // 首次远端文件快照必须在 Runtime 首次渲染前完成；由宿主按需 await。
+    const workspaceReady = agent.files.bindSandbox(sandbox);
     context.agentMap.set(agentKey, agent);
     context.registerAgentComId(comId);
-    return { history: agent.getHistory(), isRemoteAgent: true };
+    return { history: agent.getHistory(), isRemoteAgent: true, workspaceReady };
   }
 
   const agent = new CodeAgent({
