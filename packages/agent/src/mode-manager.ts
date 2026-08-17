@@ -18,7 +18,7 @@ export interface AgentModeAvailabilityOptions {
 }
 
 const AGENT_MODE_LABELS: Record<AgentMode, string> = {
-  [AgentModeEnum.Build]: "智能模式",
+  [AgentModeEnum.Build]: "自动模式",
   [AgentModeEnum.Plan]: "计划模式",
 };
 
@@ -234,7 +234,7 @@ function getPlanFileGuideSlugInPlanMode(): string {
 
 function getPlanFileGuideSlugInBuildMode(): string {
   return `## 计划文件说明
-注意：由于你现在处于智能体模式下，不允许创建计划文件，如有必要，你可以对计划文件进行阅读以及修改内容，但是一定不允许创建计划文件。
+注意：由于你现在处于自动模式下，不允许创建计划文件，如有必要，你可以对计划文件进行阅读以及修改内容，但是一定不允许创建计划文件。
 - 目录：\`${DEFAULT_PLAN_DIR}\`。
 - frontmatter 规范
   每个计划文件必须包含以下 frontmatter：
@@ -445,11 +445,11 @@ export function createSwitchModeTool(options?: AgentModeAvailabilityOptions): To
   return {
     name: SWITCH_MODE_TOOL_NAME,
     title: "切换模式",
-    description: `在「计划模式(plan)」和「智能模式(build)」之间切换当前 Agent 的运行模式。
+    description: `在「计划模式(plan)」和「自动模式(build)」之间切换当前 Agent 的运行模式。
 
 模式说明：
 - plan（计划模式）：先阅读、分析、维护计划文件，不改项目；适合用户要求"先讨论/先规划/别直接改"。
-- build（智能模式）：按已确认目标直接执行修改；适合快速修改、简单直接任务，或用户已经批准方案。
+- build（自动模式）：按已确认目标直接执行修改；适合快速修改、简单直接任务，或用户已经批准方案。
 
 使用时机：
 - 当用户要求进入计划、规划、评审方案，切到 plan。
@@ -461,7 +461,7 @@ export function createSwitchModeTool(options?: AgentModeAvailabilityOptions): To
         mode: {
           type: "string",
           enum: availableModes,
-          description: "目标模式。build=智能模式，plan=计划模式",
+          description: "目标模式。build=自动模式，plan=计划模式",
         },
       },
       required: ["mode"],
