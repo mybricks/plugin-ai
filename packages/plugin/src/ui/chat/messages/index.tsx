@@ -6,8 +6,11 @@ import { AttachmentsList } from "../../components/attachments";
 import { ImagePreviewGroup } from "../../components/image-preview";
 import { ElapsedTime } from "../../components/elapsed-time";
 import type { MessageRecord } from "../use-session";
-import type { ToolCallRecord, WarmupIter } from "../../../../../agent/src/types";
-import type { CodeAgent } from "../../../../../agent/src";
+import type {
+  ToolCallRecord,
+  WarmupIter,
+} from "../../../../../agent/src/types";
+import type { CodeAgent, ToolUIChannel } from "../../../../../agent/src";
 import { AgentModeEnum } from "../../../../../agent/src";
 import type { ActivePlanFile } from "../../../../../agent/src/mode-manager";
 import { WRITE_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/write";
@@ -57,6 +60,8 @@ export type ActionBarItem = ActionBarBuiltinItem | ActionBarCustomItem;
 export interface MessageListProps {
   messages: MessageRecord[];
   agent?: CodeAgent;
+  /** 远端 Agent 的浏览器工具交互通道；本地 Agent 仍由 agent.getToolUI() 提供。 */
+  toolUI?: ToolUIChannel;
   /** 当前活跃 turn 的运行阶段文案。 */
   activeStageText?: string;
   /** 当前运行阶段所属的 turn。 */
@@ -125,7 +130,7 @@ const CollapseBar = ({
 const DEFAULT_ACTION_BAR: ActionBarItem[] = [];
 
 const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
-  function MessageListInner({ messages, agent, activeStageText, activeTurnId, actionBar, onRetry, onDelete, onExecutePlan, canExecutePlan = true, renderEmpty, renderFooter, collapseCursor, onExpandHistory }, ref) {
+  function MessageListInner({ messages, agent, toolUI, activeStageText, activeTurnId, actionBar, onRetry, onDelete, onExecutePlan, canExecutePlan = true, renderEmpty, renderFooter, collapseCursor, onExpandHistory }, ref) {
   const resolvedActionBar = actionBar ?? DEFAULT_ACTION_BAR;
   const mainRef = useRef<HTMLElement>(null);
   const scrollerRef = useRef<AutoScroller | null>(null);
@@ -194,6 +199,7 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
                   onDelete={onDelete}
                   isLast={isLast}
                   agent={agent}
+                  toolUI={toolUI}
                   stageText={stageText}
                   onExecutePlan={onExecutePlan}
                   canExecutePlan={canExecutePlan}
@@ -213,7 +219,7 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
 
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
-const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMap, actionBar, onRetry, onDelete, isLast, agent, stageText, onExecutePlan, canExecutePlan = true, activePlan }: {
+const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMap, actionBar, onRetry, onDelete, isLast, agent, toolUI, stageText, onExecutePlan, canExecutePlan = true, activePlan }: {
   record: MessageRecord;
   toolRendererMap: Map<string, ToolRenderer>;
   actionBar: ActionBarItem[];
@@ -222,6 +228,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
   onDelete?: (turnId: string) => void;
   isLast?: boolean;
   agent?: CodeAgent;
+  toolUI?: ToolUIChannel;
   stageText?: string;
   onExecutePlan?: (title: string) => void;
   canExecutePlan?: boolean;
@@ -369,6 +376,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
                 retryState={retryState}
                 toolRendererMap={toolRendererMap}
                 agent={agent}
+                toolUI={toolUI}
                 stageText={stageText}
               />
             ))}
@@ -452,6 +460,7 @@ const MessageIteration = React.memo(function MessageIteration({
   retryState,
   toolRendererMap,
   agent,
+  toolUI,
   stageText,
 }: {
   iter: MessageRecord["iterations"][number];
@@ -460,6 +469,7 @@ const MessageIteration = React.memo(function MessageIteration({
   retryState: { attempt: number; maxRetries: number } | null;
   toolRendererMap: Map<string, ToolRenderer>;
   agent?: CodeAgent;
+  toolUI?: ToolUIChannel;
   stageText?: string;
 }) {
   if (iter.type === "warmup") {
@@ -518,7 +528,13 @@ const MessageIteration = React.memo(function MessageIteration({
       </div>
 
       {iter.toolCalls.map((tool) => (
-        <ToolBubble key={tool.callId} tool={tool} toolRendererMap={toolRendererMap} agent={agent} />
+        <ToolBubble
+          key={tool.callId}
+          tool={tool}
+          toolRendererMap={toolRendererMap}
+          agent={agent}
+          toolUI={toolUI}
+        />
       ))}
     </>
   );
@@ -632,10 +648,12 @@ const ToolBubble = React.memo(function ToolBubble({
   tool,
   toolRendererMap,
   agent,
+  toolUI,
 }: {
   tool: ToolCallRecord;
   toolRendererMap: Map<string, ToolRenderer>;
   agent?: CodeAgent;
+  toolUI?: ToolUIChannel;
 }) {
   const uiTool: UIToolRecord = {
     ...tool,
@@ -644,29 +662,65 @@ const ToolBubble = React.memo(function ToolBubble({
   // 优先从 agent 的工具列表中查找自定义渲染函数（已缓存）
   const customRenderer = toolRendererMap.get(uiTool.name);
   if (customRenderer) {
-    return renderToolWithErrorBoundary(customRenderer, uiTool, "custom", agent);
+    return renderToolWithErrorBoundary(
+      customRenderer,
+      uiTool,
+      "custom",
+      agent,
+      toolUI,
+    );
   }
 
   // 降级到全局 registry（用于内置工具）
   const globalRenderer = getToolRenderer(uiTool.name);
   if (globalRenderer) {
-    return renderToolWithErrorBoundary(globalRenderer, uiTool, "registry", agent);
+    return renderToolWithErrorBoundary(
+      globalRenderer,
+      uiTool,
+      "registry",
+      agent,
+      toolUI,
+    );
   }
 
   // 最终降级到默认渲染器
   return <DefaultToolRenderer tool={uiTool as any} />;
 });
 
-function renderToolWithErrorBoundary(renderer: ToolRenderer, tool: UIToolRecord, source: "custom" | "registry", agent?: CodeAgent) {
+function renderToolWithErrorBoundary(
+  renderer: ToolRenderer,
+  tool: UIToolRecord,
+  source: "custom" | "registry",
+  agent?: CodeAgent,
+  toolUI?: ToolUIChannel,
+) {
   return React.createElement(
     ToolRendererErrorBoundary as any,
     { tool, source, resetKey: getToolRendererResetKey(tool) },
-    <ToolRendererInvoker renderer={renderer} tool={tool as any} agent={agent} />
+    <ToolRendererInvoker
+      renderer={renderer}
+      tool={tool as any}
+      agent={agent}
+      toolUI={toolUI}
+    />
   );
 }
 
-const ToolRendererInvoker = ({ renderer, tool, agent }: { renderer: ToolRenderer; tool: ToolCallRecord; agent?: CodeAgent }) => {
-  return renderer(tool as any, createToolRendererContext(tool.callId, agent?.getToolUI()));
+const ToolRendererInvoker = ({
+  renderer,
+  tool,
+  agent,
+  toolUI,
+}: {
+  renderer: ToolRenderer;
+  tool: ToolCallRecord;
+  agent?: CodeAgent;
+  toolUI?: ToolUIChannel;
+}) => {
+  return renderer(
+    tool as any,
+    createToolRendererContext(tool.callId, toolUI ?? agent?.getToolUI()),
+  );
 };
 
 class ToolRendererErrorBoundary extends React.Component<

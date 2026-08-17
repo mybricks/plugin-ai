@@ -318,6 +318,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
             ref={messageListRef}
             messages={messages}
             agent={chatAgent.source === "local" ? agent as any : undefined}
+            toolUI={chatAgent.agent?.getToolUI()}
             activeStageText={loadingTip}
             activeTurnId={loadingTurnId}
             actionBar={actionBar}

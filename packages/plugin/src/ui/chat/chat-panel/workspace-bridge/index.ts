@@ -1,4 +1,8 @@
-import type { AgentMode, Tool } from "../../../../../../agent/src";
+import type {
+  AgentMode,
+  Tool,
+  ToolUIChannel,
+} from "../../../../../../agent/src";
 import type { Sandbox } from "../../../../../../agent/src/code-agent";
 import {
   BrowserToolBridge,
@@ -48,6 +52,10 @@ export class WorkspaceBridge<TAgent> {
 
   setTools(tools: Tool[]): void {
     this.browserTools.setTools(tools);
+  }
+
+  getToolUI(): ToolUIChannel {
+    return this.browserTools.getToolUI();
   }
 
   handleBrowserTask(request: BrowserToolRequest): Promise<void> {

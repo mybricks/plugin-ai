@@ -1,6 +1,7 @@
 import type {
   AgentMode,
   Tool,
+  ToolUIChannel,
 } from "../../../../../../agent/src";
 import type { Sandbox } from "../../../../../../agent/src/code-agent";
 
@@ -21,6 +22,11 @@ export interface BrowserToolResult {
   error?: string;
 }
 
+type PendingUIResponse = {
+  requestId: string;
+  resolve: (value: unknown | null) => void;
+};
+
 type RequestJson = <T = unknown>(
   path: string,
   init?: RequestInit,
@@ -28,6 +34,19 @@ type RequestJson = <T = unknown>(
 
 export class BrowserToolBridge<TAgent> {
   private tools: Tool[];
+  /**
+   * Browser Tool 目前串行执行；ask_questions 在其 execute 内等待用户回答，
+   * 因此单个 pending slot 足以将聊天卡片的操作回传给当前 browser task。
+   */
+  private pendingUIResponse: PendingUIResponse | null = null;
+  private readonly toolUI: ToolUIChannel = {
+    wait: <T>(requestId: string) => this.waitForUIResponse<T>(requestId),
+    respond: (_toolCallId, value) => this.settleUIResponse(value),
+    cancel: (_toolCallId) => this.settleUIResponse(null),
+    dispose: () => {
+      this.settleUIResponse(null);
+    },
+  };
 
   constructor(
     private readonly options: {
@@ -53,6 +72,11 @@ export class BrowserToolBridge<TAgent> {
   setTools(tools: Tool[]): void {
     this.tools = tools;
     this.logRegisteredTools();
+  }
+
+  /** 供远端 HttpAgent 的工具卡片 renderer 提交或取消浏览器工具交互。 */
+  getToolUI(): ToolUIChannel {
+    return this.toolUI;
   }
 
   /** 在 Agent run 前登记当前浏览器可执行 Browser Tool。 */
@@ -128,9 +152,36 @@ export class BrowserToolBridge<TAgent> {
       mode: this.options.getMode(),
       getMode: this.options.getMode,
       setMode: this.options.setMode,
+      // ask_questions 会在这里等待；工具卡片的 submit/cancel 通过 getToolUI()
+      // 唤醒同一个等待，再由既有 browser task 协议回传服务端。
+      waitUIRender: <T>() => this.toolUI.wait<T>(request.requestId),
       // 新协议只定义最终 HTTP 回传；进度由具体工具自行展示。
       emitProgress: () => {},
     };
+  }
+
+  private waitForUIResponse<T>(requestId: string): Promise<T | null> {
+    if (this.pendingUIResponse) {
+      return Promise.reject(
+        new Error(
+          `Browser tool is already waiting for UI input: ${this.pendingUIResponse.requestId}`,
+        ),
+      );
+    }
+    return new Promise<T | null>((resolve) => {
+      this.pendingUIResponse = {
+        requestId,
+        resolve: resolve as (value: unknown | null) => void,
+      };
+    });
+  }
+
+  private settleUIResponse(value: unknown | null): boolean {
+    const pending = this.pendingUIResponse;
+    if (!pending) return false;
+    this.pendingUIResponse = null;
+    pending.resolve(value);
+    return true;
   }
 
   private logRegisteredTools(): void {

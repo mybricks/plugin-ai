@@ -9,6 +9,7 @@ import {
   type CompactRecord,
   type BoundHistory,
   type Tool,
+  type ToolUIChannel,
   type TurnRecord,
   type VersionFile,
   type VersionRecord,
@@ -218,6 +219,14 @@ export class HttpAgent {
 
   getTools(): Tool[] {
     return this.workspaceBridge.getTools();
+  }
+
+  /**
+   * 远端 Agent 的工具交互实际由浏览器 BrowserToolBridge 承接。
+   * 与 CodeAgent 的同名方法保持一致，让工具 renderer 能直接提交问答答案。
+   */
+  getToolUI(): ToolUIChannel {
+    return this.workspaceBridge.getToolUI();
   }
 
   getTurns(): TurnRecord[] {
