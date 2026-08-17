@@ -32,6 +32,13 @@ export interface AgentQueueState {
   error?: unknown;
 }
 
+/** 按 Agent 实例绑定的发送校验（支持多 plugin 实例各自配置回调）。 */
+export interface AgentRequestGuard {
+  isDisabled: () => boolean;
+  /** 禁用状态下仍尝试发送时回调，典型用途：宿主弹 toast。 */
+  onDisabledRequest?: () => void;
+}
+
 interface QueueEntry {
   key: string;
   agent: RuntimeAgent;
@@ -46,6 +53,7 @@ interface QueueEntry {
 export class AgentQueue {
   private entries = new Map<string, QueueEntry>();
   private agentKeys = new WeakMap<RuntimeAgent, string>();
+  private requestGuards = new WeakMap<RuntimeAgent, AgentRequestGuard>();
   private listeners = new Map<
     string,
     Set<(state: AgentQueueState) => void>
@@ -71,12 +79,18 @@ export class AgentQueue {
     };
   }
 
+  /** 为指定 Agent 绑定 disabled 校验与提示回调。 */
+  setRequestGuard(agent: RuntimeAgent, guard: AgentRequestGuard) {
+    this.requestGuards.set(agent, guard);
+  }
+
   /** 发送请求；Agent 或当前请求正在运行时，进入浏览器内队列。 */
   send(
     agent: RuntimeAgent,
     runFn: () => Promise<void>,
     params: AIRequestParams,
   ) {
+    if (this.blockIfDisabled(agent)) return;
     const entry = this.ensureEntry(agent);
     if (this.isRunning(entry)) {
       const item: QueueItem = {
@@ -103,6 +117,17 @@ export class AgentQueue {
     const entry = this.ensureEntry(agent);
     entry.queue = entry.queue.filter((item) => item.id !== id);
     this.notify(entry);
+  }
+
+  private blockIfDisabled(agent: RuntimeAgent): boolean {
+    const guard = this.requestGuards.get(agent);
+    if (!guard?.isDisabled()) return false;
+    try {
+      guard.onDisabledRequest?.();
+    } catch (error) {
+      console.warn("[plugin-ai] onDisabledRequest failed", error);
+    }
+    return true;
   }
 
   private ensureEntry(agent: RuntimeAgent): QueueEntry {

@@ -142,6 +142,11 @@ export interface PluginAIParams {
   onRequest?: RequestAsStreamFn;
   onUpload?: (file: File) => Promise<string>;
   onDownload?: (params: { name: string; content: string }) => Promise<void> | void;
+  /**
+   * 插件处于 disabled 时若仍尝试发送消息、清空历史或写入版本，会调用此回调。
+   * 典型用途：由宿主弹出 toast / message 提示用户当前不可操作。
+   */
+  onDisabledRequest?: () => void;
   codingConfig?: {
     availableLibraries?: any[];
     themes?: any[];
@@ -230,6 +235,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     onRequest,
     onUpload,
     onDownload,
+    onDisabledRequest,
     codingConfig,
     virtualFiles,
     skills,
@@ -335,6 +341,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     getUserContextMessage,
     formatUserMessage,
     disabledModes,
+    onDisabledRequest,
     availableLibraries: codingConfig?.availableLibraries ?? [],
     themes: codingConfig?.themes ?? [],
     disallowedDebugEnvs: disallowedDebugEnvs ?? [],

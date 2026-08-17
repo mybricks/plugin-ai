@@ -68,6 +68,11 @@ export interface PluginLowCodeAIParams {
   onRequest?: RequestAsStreamFn;
   onUpload?: (file: File) => Promise<string>;
   onDownload?: (params: { name: string; content: string }) => Promise<void> | void;
+  /**
+   * 插件处于 disabled 时若仍尝试 requestAI / retry，会调用此回调。
+   * 典型用途：由宿主弹出 toast / message 提示用户当前不可发送。
+   */
+  onDisabledRequest?: () => void;
   llm?: {
     providers?: ProviderConfig[];
   };
@@ -173,6 +178,7 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
     onRequest,
     onUpload,
     onDownload,
+    onDisabledRequest,
     llm,
     history,
     sender,
@@ -243,6 +249,10 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
       summary: { enabled: false },
       compact: { enabled: false },
     } as any);
+    pluginContext.aiQueue.setRequestGuard(agentRef, {
+      isDisabled: () => disabled,
+      ...(onDisabledRequest ? { onDisabledRequest } : {}),
+    });
     pluginContext.agentMap.set(agentKey, agentRef);
     notifyView();
     return agentRef;

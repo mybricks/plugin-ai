@@ -258,6 +258,11 @@ export interface SetupSandboxParams {
   formatUserMessage?: AgentOptions["formatUserMessage"];
   /** 禁用的 Agent 运行模式；当只剩一种可用模式时隐藏模式切换器且不注册切换工具。 */
   disabledModes?: AgentOptions["disabledModes"];
+  /**
+   * 插件处于 disabled 时若仍尝试 requestAI / retry，会调用此回调。
+   * 典型用途：由宿主弹出 toast / message 提示用户当前不可发送。
+   */
+  onDisabledRequest?: () => void;
   /** 透传给 CodeAgent 的历史记录实现，不传时使用内置 IDBHistory */
   history?: History;
   /** 服务端 Agent 配置。设置后会创建 HTTP Agent；未设置时使用本地 CodeAgent。 */
@@ -273,12 +278,12 @@ export interface SetupSandboxParams {
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
 export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController {
-  const { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, remoteAgent, sender } = params;
+  const { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, onDisabledRequest, history, remoteAgent, sender } = params;
   const agentRuntimeRefs = new Map<string, AgentRuntimeRef>();
 
   window._sandbox_ = {
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
-      return connectToAI(comId, config, { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, remoteAgent, sender, agentRuntimeRefs });
+      return connectToAI(comId, config, { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, onDisabledRequest, history, remoteAgent, sender, agentRuntimeRefs });
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
@@ -369,6 +374,7 @@ interface PluginParams {
   getUserContextMessage?: PluginGetUserContextMessage;
   formatUserMessage?: AgentOptions["formatUserMessage"];
   disabledModes?: AgentOptions["disabledModes"];
+  onDisabledRequest?: () => void;
   history?: History;
   remoteAgent?: RemoteAgentConfig;
   sender?: TurnSender;
@@ -439,7 +445,7 @@ function formatLibraryDocs(libraries: Array<{ name: string; version?: string; us
 function connectToAI(
   comId: string,
   { designer, hooks, chips }: RegistSandBoxConfig,
-  { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, history, remoteAgent, sender, agentRuntimeRefs }: PluginParams
+  { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, onDisabledRequest, history, remoteAgent, sender, agentRuntimeRefs }: PluginParams
 ): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
   registerChips(agentKey, chips);
@@ -462,10 +468,15 @@ function connectToAI(
   const runtimeSkills = getRuntimeSkills(runtime);
   const runtimePlugins = plugins?.map((plugin) => injectPluginRuntimeContext(plugin, runtimeContext));
   const effectivePlugins = context.applyPluginEnabledOverrides(runtimePlugins);
+  const requestGuard = {
+    isDisabled: () => context.disabled,
+    ...(onDisabledRequest ? { onDisabledRequest } : {}),
+  };
 
   if (context.agentMap.has(agentKey)) {
     // 已注册：直接从现有 agent 实例上取 history 返回，不重复初始化
     const existingAgent = context.agentMap.get(agentKey)!;
+    context.aiQueue.setRequestGuard(existingAgent, requestGuard);
     return { history: existingAgent.getHistory(), isRemoteAgent: !!remoteAgent };
   }
 
@@ -684,12 +695,8 @@ function connectToAI(
       workspaceId: remoteAgent.workspaceId,
       agentId: remoteAgent.agentId,
     }, {
-      disabled: () => {
-        if (context.disabled) {
-          // TODO: 补充 UI 提示，告知用户禁用期间不能执行 Agent 或写入版本。
-        }
-        return context.disabled;
-      },
+      disabled: () => context.disabled,
+      ...(onDisabledRequest ? { onDisabledRequest } : {}),
       ...(disabledModes ? { disabledModes } : {}),
       browserTools,
       hooks,
@@ -699,6 +706,7 @@ function connectToAI(
     if (llmPluginKey) {
       context.createLLMRequest(llmPluginKey, agent.key);
     }
+    context.aiQueue.setRequestGuard(agent, requestGuard);
     agent.files.bindSandbox(sandbox);
     context.agentMap.set(agentKey, agent);
     context.registerAgentComId(comId);
@@ -743,6 +751,7 @@ function connectToAI(
       };
     },
   });
+  context.aiQueue.setRequestGuard(agent, requestGuard);
   agentRef = agent;
 
   // MVP：复用同一个 CodeAgent 实例，仅替换其运行时资源。
