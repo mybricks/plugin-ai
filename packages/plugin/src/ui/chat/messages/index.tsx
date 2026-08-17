@@ -321,6 +321,11 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
               attachments={record.userAttachments.filter((a) => a.type === "image") as any}
             />
           )}
+          {record.userText && (
+            <ActionBar className={css["user-action-bar"]}>
+              <ActionBar.Copy key="copy" text={record.userText} />
+            </ActionBar>
+          )}
         </section>
       </div>
 
