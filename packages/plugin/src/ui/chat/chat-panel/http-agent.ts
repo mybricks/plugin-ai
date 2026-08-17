@@ -42,6 +42,7 @@ export interface RemoteAgentEvent {
     | "session:agent-configured"
     | "session:start"
     | "workspace:file-change"
+    | "turn:summary"
     | "browser:task";
   data: any;
   createdAt: number;
@@ -162,6 +163,8 @@ export class HttpAgent {
   /** /connect 启动 hook 可能是异步的；终态必须在其完成后再触发 afterTurn。 */
   private readonly replayStartHookTasks = new Map<string, Promise<void>>();
   private readonly completedHookTurns = new Set<string>();
+  /** 已消费的异步摘要，避免 run/connect 重放或重复摘要订阅触发两次。 */
+  private readonly completedSummaryHookTurns = new Set<string>();
 
   constructor(options: HttpAgentOptions, runtime: HttpAgentRuntimeOptions = {}) {
     this.baseUrl = trimRight(options.baseUrl ?? DEFAULT_BASE_URL, "/");
@@ -652,6 +655,9 @@ export class HttpAgent {
         String(event.data?.message ?? "Remote agent session failed"),
       );
     }
+    if (event.event === "turn:summary") {
+      this.triggerAfterTurnSummary(event);
+    }
     this.applyTurnEvent(event);
     const shouldUpdateSessionState =
       options.updateSessionState !== false &&
@@ -729,7 +735,7 @@ export class HttpAgent {
     if (event.event === "mode:change" && event.data?.mode) {
       this.mode = event.data.mode;
     }
-    this.events.emit(event.event, event.data as never);
+    this.events.emit(event.event as keyof AgentEventMap, event.data as never);
   }
 
   /**
@@ -788,6 +794,7 @@ export class HttpAgent {
     if (!turn) return;
 
     if (event.event === "turn:resume") {
+      this.completedSummaryHookTurns.delete(turnId);
       turn.status = "success";
       delete turn.error;
       delete turn.endTime;
@@ -1048,6 +1055,28 @@ export class HttpAgent {
       });
   }
 
+  /** 服务端已落库的摘要事件；客户端仅更新展示，不再写 history。 */
+  private triggerAfterTurnSummary(event: RemoteAgentEvent): void {
+    const turnId = this.eventTurnId(event);
+    const summary = event.data?.summary;
+    if (
+      !turnId ||
+      typeof summary !== "string" ||
+      this.completedSummaryHookTurns.has(turnId)
+    ) {
+      return;
+    }
+    this.completedSummaryHookTurns.add(turnId);
+    const turn =
+      this.findTurn(turnId) ??
+      ({ id: turnId, status: "success" } as TurnRecord);
+    void Promise.resolve(this.hooks?.afterTurnSummary?.(turn, summary)).catch(
+      (error) => {
+        console.warn("[HttpAgent] hooks.afterTurnSummary failed:", error);
+      },
+    );
+  }
+
   async requestJson<T = unknown>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       ...init,
@@ -1097,14 +1126,11 @@ export class HttpAgent {
       skipTurnStartId?: string;
     } = {},
   ): Promise<void> {
-    let terminalSeen = false;
-    await this.requestEventStream(
-      path,
-      init,
-      {
+    await new Promise<void>((resolve, reject) => {
+      let terminalSeen = false;
+      void this.requestEventStream(path, init, {
         signal: options.signal,
         onEvent: (event) => {
-          terminalSeen ||= isTerminalRemoteEvent(event);
           if (
             options.skipTurnStartId &&
             event.event === "turn:start" &&
@@ -1113,12 +1139,32 @@ export class HttpAgent {
             return;
           }
           this.handleRemoteEvent(event, { allowBrowserTasks: true });
+          if (!isTerminalRemoteEvent(event)) return;
+          terminalSeen = true;
+          // `turn:complete` 已经完成 UI 生命周期；SSE 读取器继续在后台等待
+          // `turn:summary`，但 requestAI 不再等待它。
+          resolve();
         },
-      },
-    );
-    if (!terminalSeen && !options.signal?.aborted) {
-      throw new SseDisconnectedError("SSE closed before a terminal event");
-    }
+      })
+        .then(() => {
+          if (terminalSeen || options.signal?.aborted) {
+            if (!terminalSeen) resolve();
+            return;
+          }
+          reject(new SseDisconnectedError("SSE closed before a terminal event"));
+        })
+        .catch((error) => {
+          if (options.signal?.aborted) {
+            resolve();
+            return;
+          }
+          if (!terminalSeen) {
+            reject(error);
+            return;
+          }
+          console.warn("[HttpAgent] post-turn SSE closed before summary:", error);
+        });
+    });
   }
 
   private async requestEventStream(
