@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import classNames from "classnames";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
@@ -9,6 +9,7 @@ import type { MentionProvider } from "../../components/types";
 import type { ActivePlanFile } from "../../../../../agent/src/mode-manager";
 import { SenderActivePlanCard, usePlanState } from "../../components/plan";
 import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
+import { usePluginDisabled } from "../../../utils/use-plugin-disabled";
 import { isHttpAgent } from "../chat-panel/http-agent";
 import { useAgent, type ChatAgent } from "../chat-panel/use-agent";
 import type { SessionStageTextResolver } from "../chat-panel/session-status";
@@ -67,7 +68,7 @@ const ChatStartView = ({
 }: ChatStartViewProps) => {
   const senderRef = useRef<SenderRef>(null);
   const [empty, setEmpty] = useState(true);
-  const [contextDisabled, setContextDisabled] = useState(() => context.disabled);
+  const contextDisabled = usePluginDisabled();
   const chatAgent = useAgent({
     agent,
     disabled: contextDisabled,
@@ -82,13 +83,8 @@ const ChatStartView = ({
     activePlan,
   } = usePlanState(localAgent);
 
-  useEffect(() => {
-    const unD = context.events.on("disabled", (v: boolean) => setContextDisabled(v));
-    return () => { unD(); };
-  }, []);
-
   const onSend = (params: Parameters<SenderProps["onSend"]>[0]) => {
-    if (loading || historyBlocked || !agent || !comId) return;
+    if (contextDisabled || loading || historyBlocked || !agent || !comId) return;
     setEmpty(false);
 
     ensureAIPanelOpen(comId).then(() => {
@@ -97,7 +93,7 @@ const ChatStartView = ({
   };
 
   const onExecutePlan = (plan: ActivePlanFile) => {
-    if (!agent || !comId || historyBlocked || !chatAgent.canExecutePlan) return;
+    if (contextDisabled || !agent || !comId || historyBlocked || !chatAgent.canExecutePlan) return;
     const title = plan.title ?? plan.path;
     ensureAIPanelOpen(comId).then(() => {
       chatAgent.executePlan(title);
@@ -118,7 +114,13 @@ const ChatStartView = ({
   }] : undefined;
 
   return (
-    <div className={classNames(css["start-view"], { [css["empty"]]: empty && !loading })}>
+    <div
+      className={classNames(css["start-view"], {
+        [css["empty"]]: empty && !loading,
+        [css.disabled]: contextDisabled,
+      })}
+      aria-disabled={contextDisabled}
+    >
       {empty && !loading && (
         <div className={css["welcome-header"]}>
           <div className={css["welcome-title"]}>{welcomeTitle}</div>

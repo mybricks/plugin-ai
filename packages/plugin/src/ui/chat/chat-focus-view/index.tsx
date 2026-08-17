@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
+import classNames from "classnames";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
 import { chipRegistry } from "../../../sandbox/setup";
 import type { ChatChipDef } from "../../../../../agent/src";
 import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
 import { createDomChip, DOM_CHIP_TYPE, formatDomChipMessage, matchDefaultDomFocusContent } from "../../../utils/dom-info";
+import { usePluginDisabled } from "../../../utils/use-plugin-disabled";
 import css from "./index.less";
 
 export interface ChatFocusViewProps {
@@ -56,6 +58,7 @@ const ChatFocusView = ({
   const [focusParams, setFocusParams] = useState<AiServiceFocusParams | undefined>(
     () => context.currentFocus
   );
+  const contextDisabled = usePluginDisabled();
 
   useEffect(() => {
     const unsub = context.events.on("focus", (params: AiServiceFocusParams) => {
@@ -65,16 +68,17 @@ const ChatFocusView = ({
   }, []);
 
   useEffect(() => {
+    if (contextDisabled) return;
     const timer = setTimeout(() => senderRef.current?.focus());
     return () => clearTimeout(timer);
-  }, [focusParams]);
+  }, [focusParams, contextDisabled]);
 
   const comId = focusParams?.comId ?? focusParams?.pageId;
   const agentKey = comId ? context.getAgentKey(comId) : "";
   const agent = comId ? context.agentMap.get(agentKey) : undefined;
 
   const onSend: SenderProps["onSend"] = (params) => {
-    if (!agent || !comId) return;
+    if (contextDisabled || !agent || !comId) return;
     const { message, attachments, chips } = params;
     const focusChip = focusParams?.focusArea?.ele ? createDomChip(focusParams) : undefined;
     const requestMessage = focusChip ? `对于[[chip:${focusChip.id}]]${message}` : message;
@@ -97,7 +101,7 @@ const ChatFocusView = ({
     event?.preventDefault();
     event?.stopPropagation();
 
-    if (!comId) return;
+    if (contextDisabled || !comId) return;
     const input = senderRef.current?.getInput();
     const message = input?.message ?? "";
     if (!message.trim()) return;
@@ -125,11 +129,11 @@ const ChatFocusView = ({
     senderRef.current?.clear();
   };
 
-  const renderActionPrefix: SenderProps["renderActionPrefix"] = ({ hasInput }) => (
+  const renderActionPrefix: SenderProps["renderActionPrefix"] = ({ hasInput, disabled }) => (
     <button
       className={css["append-btn"]}
       title={hasInput ? "追加到对话框，可与其他消息一起编辑后发送" : "请输入内容后再追加"}
-      disabled={!hasInput}
+      disabled={disabled || !hasInput}
       onClick={onAppendToChat}
     >
       <svg className={css["append-icon"]} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -149,6 +153,8 @@ const ChatFocusView = ({
       renderActionPrefix={renderActionPrefix}
       chipTypes={chipRegistry.getAll()}
       mentions={context.pluginParams.mentions}
+      disabled={contextDisabled}
+      className={classNames(css["focus-view"], { [css.disabled]: contextDisabled })}
     />
   );
 };

@@ -7,6 +7,7 @@ import type { SendToAgentParams } from "../../../sandbox";
 import type { ChatChipInstance } from "../../../../../agent/src";
 import { createDomChip, DOM_CHIP_TYPE, matchDefaultDomFocusContent } from "../../../utils/dom-info";
 import { useAIPanelReady } from "../../../utils/ensure-ai-panel-open";
+import { usePluginDisabled } from "../../../utils/use-plugin-disabled";
 import css from "../chat-panel/index.less";
 
 interface User {
@@ -53,7 +54,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
 
   const [currentComId, setCurrentComId] = useState<string | undefined>(undefined);
   const [instances, setInstances] = useState<ComInstance[]>([]);
-  const [contextDisabled, setContextDisabled] = useState(() => context.disabled);
+  const contextDisabled = usePluginDisabled();
   const panelRefs = useRef(new Map<string, ChatPanelRef | null>());
   const currentComIdRef = useRef<string | undefined>(undefined);
   const appendFocusChipTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -190,8 +191,6 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
         panel.appendInput(input as any);
       });
     });
-    const unDisabled = context.events.on("disabled", (value: boolean) => setContextDisabled(value));
-
     // 注册 inputGetter，供 context.getInput() 调用（与 appendInput 同构，反向读取）
     context.registerInputGetter((comId?: string) => {
       const targetComId = comId ?? currentComIdRef.current;
@@ -204,7 +203,6 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
       unAgentComId();
       unDisplay();
       unAppendInput();
-      unDisabled();
       if (appendFocusChipTimerRef.current) {
         clearTimeout(appendFocusChipTimerRef.current);
       }
