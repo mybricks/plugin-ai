@@ -67,8 +67,8 @@ export interface HttpAgentOptions {
 }
 
 interface HttpAgentRuntimeOptions {
-  /** 当前 Agent 所属 plugin 的 key，用于读取对应的 disabledHandler。 */
-  pluginKey?: string;
+  /** plugin-ai 初始化时创建的统一 disabled handler。 */
+  disabledHandler?: DisabledHandler;
   /** 禁用的运行模式；与本地 CodeAgent.disabledModes 语义一致。 */
   disabledModes?: AgentMode[];
   /** 注册到浏览器端执行的工具。服务端可通过 SSE browser:task 按 name 调用。 */
@@ -136,7 +136,7 @@ export class HttpAgent {
   readonly agentId: string;
   readonly key: string;
   readonly historyManager: HistoryManager;
-  private readonly pluginKey: string;
+  private readonly disabledHandler?: DisabledHandler;
   private readonly disabledModes: AgentMode[];
   private readonly hooks?: AgentHooks;
   private readonly workspaceBridge: WorkspaceBridge<HttpAgent>;
@@ -167,7 +167,7 @@ export class HttpAgent {
     this.workspaceId = options.workspaceId;
     this.agentId = options.agentId ?? DEFAULT_AGENT_ID;
     this.key = `http:${this.baseUrl}:${this.workspaceId}:${this.agentId}`;
-    this.pluginKey = runtime.pluginKey ?? "";
+    this.disabledHandler = runtime.disabledHandler;
     this.disabledModes = runtime.disabledModes ?? [];
     this.hooks = runtime.hooks;
     this.workspaceBridge = new WorkspaceBridge<HttpAgent>({
@@ -535,7 +535,7 @@ export class HttpAgent {
   }
 
   private isDisabled(): boolean {
-    return context.getDisabledHandler(this.pluginKey)?.isDisabled() ?? false;
+    return this.disabledHandler?.isDisabled() ?? false;
   }
 
   /**
@@ -544,7 +544,7 @@ export class HttpAgent {
    */
   private blockIfDisabled(): boolean {
     if (!this.isDisabled()) return false;
-    context.getDisabledHandler(this.pluginKey)?.message("当前没有操作权限");
+    this.disabledHandler?.message("当前没有操作权限");
     return true;
   }
 
