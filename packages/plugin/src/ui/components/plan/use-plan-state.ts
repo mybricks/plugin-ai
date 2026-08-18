@@ -3,6 +3,12 @@ import type { CodeAgent } from "../../../../../agent/src";
 import { AgentModeEnum } from "../../../../../agent/src";
 import type { ActivePlanFile } from "../../../../../agent/src/mode-manager";
 
+export type PlanAwareAgent = Pick<
+  CodeAgent,
+  "key" | "events" | "getAvailableModes" | "getPlanFile"
+> &
+  Partial<Pick<CodeAgent, "abandonPlan">>;
+
 type PlanStore = {
   activePlan: ActivePlanFile | null;
   listeners: Set<() => void>;
@@ -35,7 +41,7 @@ function setActivePlan(agentKey: string, plan: ActivePlanFile | null) {
   notify(store);
 }
 
-export function usePlanState(agent?: CodeAgent) {
+export function usePlanState(agent?: PlanAwareAgent) {
   const agentKey = agent?.key ?? "";
   const planEnabled = agent?.getAvailableModes().includes(AgentModeEnum.Plan) ?? false;
   const store = useMemo(() => getStore(agentKey), [agentKey]);
@@ -77,7 +83,7 @@ export function usePlanState(agent?: CodeAgent) {
   }, [agent, agentKey, planEnabled, refreshActivePlan]);
 
   const abandonPlan = useCallback(async (plan: ActivePlanFile) => {
-    if (!agent || !agentKey || !planEnabled) return;
+    if (!agent || !agentKey || !planEnabled || !agent.abandonPlan) return;
     await agent.abandonPlan(plan.path, plan.content);
     refreshActivePlan();
   }, [agent, agentKey, planEnabled, refreshActivePlan]);

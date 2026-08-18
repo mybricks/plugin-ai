@@ -1,6 +1,6 @@
 import React from "react";
 import classNames from "classnames";
-import type { CodeAgent } from "../../../../../../agent/src";
+import type { ChatAgent } from "../../chat-panel/use-agent";
 import { context } from "../../../../context";
 import { useChatPanel } from "../../chat-panel/context";
 import css from "./suggestions-card.less";
@@ -12,7 +12,7 @@ export const SuggestionsBlock = ({
 }: {
   turnId: string;
   suggestions: { desc?: string; options: string[] };
-  agent: CodeAgent;
+  agent: ChatAgent;
 }) => {
   const { disabled } = useChatPanel();
 

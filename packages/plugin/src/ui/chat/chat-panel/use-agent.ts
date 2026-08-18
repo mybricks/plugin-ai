@@ -42,8 +42,7 @@ export interface ChatPanelAgentState {
   exportHistory: () => Promise<void>;
   executePlan: (title: string) => void;
   setChatMode: (mode: AgentMode | null) => void;
-  retry?: (turnId: string) => void;
-  deleteTurn?: (turnId: string) => void;
+  retry: (turnId: string) => void;
 }
 
 export interface UseAgentOptions {
@@ -196,6 +195,15 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
     );
   }, [agent, canExecutePlan]);
 
+  const retry = useCallback((turnId: string) => {
+    if (!agent || isDisabled) return;
+    context.aiQueue.send(
+      agent,
+      () => agent.retry(turnId),
+      { message: "重试" },
+    );
+  }, [agent, isDisabled]);
+
   const setChatMode = useCallback((mode: AgentMode | null) => {
     if (mode) agent?.setMode(mode, "ui-change");
   }, [agent]);
@@ -225,6 +233,7 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
     clear,
     exportHistory,
     executePlan,
+    retry,
     setChatMode,
   };
 }

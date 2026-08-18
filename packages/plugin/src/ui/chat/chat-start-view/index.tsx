@@ -81,7 +81,7 @@ const ChatStartView = ({
   const localAgent = agent && !isHttpAgent(agent) ? agent as CodeAgent : undefined;
   const {
     activePlan,
-  } = usePlanState(localAgent);
+  } = usePlanState(agent);
 
   const onSend = (params: Parameters<SenderProps["onSend"]>[0]) => {
     if (contextDisabled || loading || historyBlocked || !agent || !comId) return;

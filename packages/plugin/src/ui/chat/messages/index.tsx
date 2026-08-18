@@ -10,7 +10,8 @@ import type {
   ToolCallRecord,
   WarmupIter,
 } from "../../../../../agent/src/types";
-import type { CodeAgent, ToolUIChannel } from "../../../../../agent/src";
+import type { ToolUIChannel } from "../../../../../agent/src";
+import type { ChatAgent } from "../chat-panel/use-agent";
 import { AgentModeEnum } from "../../../../../agent/src";
 import type { ActivePlanFile } from "../../../../../agent/src/mode-manager";
 import { WRITE_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/write";
@@ -59,7 +60,7 @@ export type ActionBarItem = ActionBarBuiltinItem | ActionBarCustomItem;
 
 export interface MessageListProps {
   messages: MessageRecord[];
-  agent?: CodeAgent;
+  agent?: ChatAgent;
   /** 远端 Agent 的浏览器工具交互通道；本地 Agent 仍由 agent.getToolUI() 提供。 */
   toolUI?: ToolUIChannel;
   /** 当前活跃 turn 的运行阶段文案。 */
@@ -227,7 +228,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
   onRetry?: (turnId: string) => void;
   onDelete?: (turnId: string) => void;
   isLast?: boolean;
-  agent?: CodeAgent;
+  agent?: MessageAgent;
   toolUI?: ToolUIChannel;
   stageText?: string;
   onExecutePlan?: (title: string) => void;
@@ -261,7 +262,8 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
       onDelete(record.id);
       return;
     }
-    void agent?.deleteTurn(record.id);
+    const deleteTurn = (agent as Partial<CodeAgent> | undefined)?.deleteTurn;
+    if (deleteTurn) void deleteTurn.call(agent, record.id);
   };
   const handleRetryTurn = () => {
     if (onRetry) {
@@ -468,7 +470,7 @@ const MessageIteration = React.memo(function MessageIteration({
   isPending: boolean;
   retryState: { attempt: number; maxRetries: number } | null;
   toolRendererMap: Map<string, ToolRenderer>;
-  agent?: CodeAgent;
+  agent?: MessageAgent;
   toolUI?: ToolUIChannel;
   stageText?: string;
 }) {
@@ -652,7 +654,7 @@ const ToolBubble = React.memo(function ToolBubble({
 }: {
   tool: ToolCallRecord;
   toolRendererMap: Map<string, ToolRenderer>;
-  agent?: CodeAgent;
+  agent?: MessageAgent;
   toolUI?: ToolUIChannel;
 }) {
   const uiTool: UIToolRecord = {
@@ -691,7 +693,7 @@ function renderToolWithErrorBoundary(
   renderer: ToolRenderer,
   tool: UIToolRecord,
   source: "custom" | "registry",
-  agent?: CodeAgent,
+  agent?: MessageAgent,
   toolUI?: ToolUIChannel,
 ) {
   return React.createElement(
@@ -714,7 +716,7 @@ const ToolRendererInvoker = ({
 }: {
   renderer: ToolRenderer;
   tool: ToolCallRecord;
-  agent?: CodeAgent;
+  agent?: MessageAgent;
   toolUI?: ToolUIChannel;
 }) => {
   return renderer(

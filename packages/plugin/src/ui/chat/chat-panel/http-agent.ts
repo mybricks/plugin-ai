@@ -15,6 +15,10 @@ import {
   type VersionRecord,
 } from "../../../../../agent/src";
 import type { Sandbox } from "../../../../../agent/src/code-agent";
+import type {
+  ActivePlanFile,
+  PlanFileInfo,
+} from "../../../../../agent/src/mode-manager";
 import type { AgentRuntimeState } from "../../../context/agent-runtime";
 import { context } from "../../../context";
 import type { BrowserToolRequest } from "./workspace-bridge";
@@ -33,6 +37,11 @@ type VersionsPageResponse =
   | VersionRecord[];
 type VersionRecordResponse = { record?: VersionRecord } | VersionRecord | null;
 type VersionFilesResponse = { files?: VersionFile[] } | VersionFile[];
+type PlansPageResponse = {
+  items?: Array<PlanFileInfo & { content: string }>;
+  total?: number;
+  nextCursor?: string | null;
+};
 
 export interface RemoteAgentEvent {
   event:
@@ -49,6 +58,10 @@ export interface RemoteAgentEvent {
   data: any;
   createdAt: number;
   turnId?: string;
+  /** LLM iter 的模式快照；服务端只在 llm:* 事件上提供。 */
+  mode?: AgentMode;
+  /** LLM iter 的模型快照；服务端只在 llm:* 事件上提供。 */
+  model?: string;
 }
 
 export interface TurnsPage {
@@ -114,7 +127,7 @@ export type HttpAgentRequestAIParams =
   | MessageHttpAgentRequestAIParams
   | DisplayModelHttpAgentRequestAIParams;
 
-export interface HttpAgentRetryParams {
+interface HttpAgentRetryOptions {
   turnId: string;
   signal?: AbortSignal;
   onError?: (error: Event | Error) => void;
@@ -193,6 +206,16 @@ export class HttpAgent {
 
   getMode(): AgentMode {
     return this.mode;
+  }
+
+  /** 远端 workspace 中当前 active 的计划文件。 */
+  async getPlanFile(): Promise<ActivePlanFile | null> {
+    const query = new URLSearchParams({ status: "active", limit: "1" });
+    const page = await this.requestJson<PlansPageResponse>(
+      `${this.workspacePath("plans")}?${query.toString()}`,
+    );
+    const plan = page.items?.[0];
+    return plan?.status === "active" ? plan as ActivePlanFile : null;
   }
 
   setMode(mode: AgentMode, reason?: string): void {
@@ -368,7 +391,12 @@ export class HttpAgent {
     }
   }
 
-  async retry(params: HttpAgentRetryParams): Promise<void> {
+  async retry(turnId: string): Promise<void>;
+  async retry(params: HttpAgentRetryOptions): Promise<void>;
+  async retry(turnIdOrOptions: string | HttpAgentRetryOptions): Promise<void> {
+    const params = typeof turnIdOrOptions === "string"
+      ? { turnId: turnIdOrOptions }
+      : turnIdOrOptions;
     if (this.blockIfDisabled()) return;
     const { turnId } = params;
     this.setSessionState({
@@ -433,6 +461,20 @@ export class HttpAgent {
       oldestTurnId: null,
     };
     this.historyManager.markReady({ hasMore: this.turnsPage.hasMore });
+  }
+
+  async dismissSuggestions(turnId: string): Promise<void> {
+    if (this.blockIfDisabled()) return;
+    await this.requestJson(
+      this.sessionPath(`turns/${encodeURIComponent(turnId)}/suggestions/dismiss`),
+      { method: "POST" },
+    );
+    this.handleRemoteEvent({
+      event: "turn:suggestions:dismiss",
+      turnId,
+      createdAt: Date.now(),
+      data: { turnId },
+    });
   }
 
   readonly session = {
@@ -809,6 +851,7 @@ export class HttpAgent {
           content: "",
           toolCalls: [],
           startTime: Number(data.startTime) || event.createdAt,
+          ...(event.mode ? { mode: event.mode } : {}),
         });
       }
       return;

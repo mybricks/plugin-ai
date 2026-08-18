@@ -317,13 +317,12 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
           <MessageList
             ref={messageListRef}
             messages={messages}
-            agent={chatAgent.source === "local" ? agent as any : undefined}
+            agent={chatAgent.agent}
             toolUI={chatAgent.agent?.getToolUI()}
             activeStageText={loadingTip}
             activeTurnId={loadingTurnId}
             actionBar={actionBar}
             onRetry={chatAgent.retry}
-            onDelete={chatAgent.deleteTurn}
             onExecutePlan={chatAgent.executePlan}
             canExecutePlan={canExecutePlan}
             renderEmpty={historyStatus === "ready" ? renderEmpty : undefined}

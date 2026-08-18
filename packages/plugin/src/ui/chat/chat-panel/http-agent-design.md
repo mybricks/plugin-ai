@@ -37,9 +37,11 @@ function getAccessMode(disabled: boolean): "owner" | "readonly" {
 | `GET /workspaces/:id/files` | 获取服务端文件 manifest 和 version |
 | `GET /workspaces/:id/files/content?path=...` | 获取文件内容 |
 | `GET /workspaces/:id/files/changes?sinceVersion=N` | 获取文件增量 |
+| `GET /workspaces/:id/plans?status=active&limit=1` | 按 frontmatter `status` 查询计划文件；返回 `{ items, total, nextCursor }`，支持 cursor 分页 |
 | `POST /workspaces/:id/browser/connect` | 在 run 前登记当前浏览器可执行 Browser Tool；非默认 Agent 的 body 为 `{ agentId }` |
 | `POST /workspaces/:id/browser/tasks/:requestId` | 回传 Browser Tool 结果 |
 | `POST /workspaces/:id/turns/clear` | 清空服务端历史对话 |
+| `POST /workspaces/:id/turns/:turnId/suggestions/dismiss` | 持久化关闭某轮建议选项 |
 | `GET /workspaces/:id/versions?pageSize=N&pageNum=N` | 查询版本快照元数据列表 |
 | `GET /workspaces/:id/versions/:versionId` | 获取单个版本快照元数据 |
 | `GET /workspaces/:id/versions/:versionId/files` | 获取版本快照文件列表 |
