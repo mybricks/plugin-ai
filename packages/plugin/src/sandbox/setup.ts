@@ -1,5 +1,6 @@
 import React from "react";
 import { AGENT_INTERNAL_FILE_EXCLUDE, CodeAgent, IDBHistory, isFileExcluded } from "../../../agent/src";
+import { DisabledHandler, type DisabledRequestHandler } from "../disabled-handler";
 import { ChipRegistry } from "../../../agent/src";
 import { splitFrontmatter, getFrontmatterString, getFrontmatterStringArray } from "../../../agent/src/utils/frontmatter";
 import { GLOB_TOOL_NAME, createInitProjectTool } from "../../../agent/src/code-agent/tools";
@@ -187,6 +188,8 @@ export interface ConnectToAIResult {
    * 若 Agent 未配置 history 则为 null（正常情况下不会出现）。
    */
   history: BoundHistory | null;
+  /** 统一的 disabled 判断与消息处理。 */
+  disabledHandler: DisabledHandler;
   /** 当前 History 是否由 remote Agent 的 workspace API 提供。 */
   isRemoteAgent: boolean;
   /**
@@ -265,10 +268,11 @@ export interface SetupSandboxParams {
   /** 禁用的 Agent 运行模式；当只剩一种可用模式时隐藏模式切换器且不注册切换工具。 */
   disabledModes?: AgentOptions["disabledModes"];
   /**
-   * 插件处于 disabled 时若仍尝试 requestAI / retry，会调用此回调。
+   * 插件处于 disabled 时若仍尝试 requestAI / retry / 手动保存版本，会调用此回调。
    * 典型用途：由宿主弹出 toast / message 提示用户当前不可发送。
+   * 参数支持字符串，或 `{ type: 'info' | 'warn', content }`。
    */
-  onDisabledRequest?: () => void;
+  onDisabledRequest?: DisabledRequestHandler;
   /** 透传给 CodeAgent 的历史记录实现，不传时使用内置 IDBHistory */
   history?: History;
   /** 服务端 Agent 配置。设置后会创建 HTTP Agent；未设置时使用本地 CodeAgent。 */
@@ -285,11 +289,15 @@ export interface SetupSandboxParams {
  */
 export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController {
   const { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, onDisabledRequest, history, remoteAgent, sender } = params;
+  const disabledHandler = new DisabledHandler({
+    getDisabled: () => context.disabled,
+    onDisabledRequest,
+  });
   const agentRuntimeRefs = new Map<string, AgentRuntimeRef>();
 
   window._sandbox_ = {
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
-      return connectToAI(comId, config, { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, onDisabledRequest, history, remoteAgent, sender, agentRuntimeRefs });
+      return connectToAI(comId, config, { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs });
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
@@ -380,7 +388,7 @@ interface PluginParams {
   getUserContextMessage?: PluginGetUserContextMessage;
   formatUserMessage?: AgentOptions["formatUserMessage"];
   disabledModes?: AgentOptions["disabledModes"];
-  onDisabledRequest?: () => void;
+  disabledHandler: DisabledHandler;
   history?: History;
   remoteAgent?: RemoteAgentConfig;
   sender?: TurnSender;
@@ -451,7 +459,7 @@ function formatLibraryDocs(libraries: Array<{ name: string; version?: string; us
 function connectToAI(
   comId: string,
   { designer, hooks, chips }: RegistSandBoxConfig,
-  { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, onDisabledRequest, history, remoteAgent, sender, agentRuntimeRefs }: PluginParams
+  { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs }: PluginParams
 ): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
   registerChips(agentKey, chips);
@@ -475,15 +483,14 @@ function connectToAI(
   const runtimePlugins = plugins?.map((plugin) => injectPluginRuntimeContext(plugin, runtimeContext));
   const effectivePlugins = context.applyPluginEnabledOverrides(runtimePlugins);
   const requestGuard = {
-    isDisabled: () => context.disabled,
-    ...(onDisabledRequest ? { onDisabledRequest } : {}),
+    disabledHandler,
   };
 
   if (context.agentMap.has(agentKey)) {
     // 已注册：直接从现有 agent 实例上取 history 返回，不重复初始化
     const existingAgent = context.agentMap.get(agentKey)!;
     context.aiQueue.setRequestGuard(existingAgent, requestGuard);
-    return { history: existingAgent.getHistory(), isRemoteAgent: !!remoteAgent };
+    return { history: existingAgent.getHistory(), disabledHandler, isRemoteAgent: !!remoteAgent };
   }
 
   let agentRef: CodeAgent | undefined;
@@ -701,8 +708,7 @@ function connectToAI(
       workspaceId: remoteAgent.workspaceId,
       agentId: remoteAgent.agentId,
     }, {
-      disabled: () => context.disabled,
-      ...(onDisabledRequest ? { onDisabledRequest } : {}),
+      disabledHandler,
       ...(disabledModes ? { disabledModes } : {}),
       browserTools,
       hooks,
@@ -717,7 +723,7 @@ function connectToAI(
     const workspaceReady = agent.files.bindSandbox(sandbox);
     context.agentMap.set(agentKey, agent);
     context.registerAgentComId(comId);
-    return { history: agent.getHistory(), isRemoteAgent: true, workspaceReady };
+    return { history: agent.getHistory(), disabledHandler, isRemoteAgent: true, workspaceReady };
   }
 
   const agent = new CodeAgent({
@@ -784,5 +790,5 @@ function connectToAI(
   context.agentMap.set(agentKey, agent);
   context.registerAgentComId(comId);
 
-  return { history: agent.getHistory(), isRemoteAgent: false };
+  return { history: agent.getHistory(), disabledHandler, isRemoteAgent: false };
 }

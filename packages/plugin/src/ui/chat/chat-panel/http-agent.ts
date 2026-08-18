@@ -20,6 +20,7 @@ import { context } from "../../../context";
 import type { BrowserToolRequest } from "./workspace-bridge";
 import { WorkspaceBridge } from "./workspace-bridge";
 import { HTTP_AGENT_SESSION_STAGE } from "./session-status";
+import type { DisabledHandler } from "../../../disabled-handler";
 
 export type {
   BrowserToolRequest,
@@ -66,13 +67,8 @@ export interface HttpAgentOptions {
 }
 
 interface HttpAgentRuntimeOptions {
-  /** 返回当前 Agent 是否禁用；未提供时默认启用。 */
-  disabled?: () => boolean;
-  /**
-   * 禁用状态下仍尝试执行 Agent / 清空历史 / 写入版本时的回调。
-   * 典型用途：由宿主弹出 toast 提示当前不可操作。
-   */
-  onDisabledRequest?: () => void;
+  /** 当前 Agent 所属 plugin 的 key，用于读取对应的 disabledHandler。 */
+  pluginKey?: string;
   /** 禁用的运行模式；与本地 CodeAgent.disabledModes 语义一致。 */
   disabledModes?: AgentMode[];
   /** 注册到浏览器端执行的工具。服务端可通过 SSE browser:task 按 name 调用。 */
@@ -140,8 +136,7 @@ export class HttpAgent {
   readonly agentId: string;
   readonly key: string;
   readonly historyManager: HistoryManager;
-  private readonly disabled: () => boolean;
-  private readonly onDisabledRequest?: () => void;
+  private readonly pluginKey: string;
   private readonly disabledModes: AgentMode[];
   private readonly hooks?: AgentHooks;
   private readonly workspaceBridge: WorkspaceBridge<HttpAgent>;
@@ -172,8 +167,7 @@ export class HttpAgent {
     this.workspaceId = options.workspaceId;
     this.agentId = options.agentId ?? DEFAULT_AGENT_ID;
     this.key = `http:${this.baseUrl}:${this.workspaceId}:${this.agentId}`;
-    this.disabled = runtime.disabled ?? (() => false);
-    this.onDisabledRequest = runtime.onDisabledRequest;
+    this.pluginKey = runtime.pluginKey ?? "";
     this.disabledModes = runtime.disabledModes ?? [];
     this.hooks = runtime.hooks;
     this.workspaceBridge = new WorkspaceBridge<HttpAgent>({
@@ -541,20 +535,16 @@ export class HttpAgent {
   }
 
   private isDisabled(): boolean {
-    return this.disabled();
+    return context.getDisabledHandler(this.pluginKey)?.isDisabled() ?? false;
   }
 
   /**
-   * 用户侧写操作入口：禁用时触发 onDisabledRequest 并返回 true。
+   * 用户侧写操作入口：禁用时提示宿主并返回 true。
    * 中途轮询 / Browser Tool 能力判断等静默路径请继续用 isDisabled()。
    */
   private blockIfDisabled(): boolean {
     if (!this.isDisabled()) return false;
-    try {
-      this.onDisabledRequest?.();
-    } catch (error) {
-      console.warn("[plugin-ai] onDisabledRequest failed", error);
-    }
+    context.getDisabledHandler(this.pluginKey)?.message("当前没有操作权限");
     return true;
   }
 

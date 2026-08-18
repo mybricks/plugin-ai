@@ -1,4 +1,5 @@
 import { AbortError } from "./../../../agent/src/errors";
+import type { DisabledHandler } from "../disabled-handler";
 import {
   createAgentRuntime,
   type AgentRuntime,
@@ -34,9 +35,7 @@ export interface AgentQueueState {
 
 /** 按 Agent 实例绑定的发送校验（支持多 plugin 实例各自配置回调）。 */
 export interface AgentRequestGuard {
-  isDisabled: () => boolean;
-  /** 禁用状态下仍尝试发送时回调，典型用途：宿主弹 toast。 */
-  onDisabledRequest?: () => void;
+  disabledHandler: DisabledHandler;
 }
 
 interface QueueEntry {
@@ -121,12 +120,8 @@ export class AgentQueue {
 
   private blockIfDisabled(agent: RuntimeAgent): boolean {
     const guard = this.requestGuards.get(agent);
-    if (!guard?.isDisabled()) return false;
-    try {
-      guard.onDisabledRequest?.();
-    } catch (error) {
-      console.warn("[plugin-ai] onDisabledRequest failed", error);
-    }
+    if (!guard?.disabledHandler.isDisabled()) return false;
+    guard.disabledHandler.message("当前没有操作权限");
     return true;
   }
 

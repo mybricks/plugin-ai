@@ -7,6 +7,7 @@ import type { ProviderConfig, RequestAsStreamFn } from "../../request/src";
 import { ChatPanel } from "../../plugin/src/ui/chat";
 import type { ChatPanelRef } from "../../plugin/src/ui/chat/chat-panel";
 import { context as pluginContext } from "../../plugin/src/context";
+import { DisabledHandler, type DisabledRequestHandler } from "../../plugin/src/disabled-handler";
 import { chipRegistry } from "../../plugin/src/sandbox/setup";
 
 import type {
@@ -71,8 +72,9 @@ export interface PluginLowCodeAIParams {
   /**
    * 插件处于 disabled 时若仍尝试 requestAI / retry，会调用此回调。
    * 典型用途：由宿主弹出 toast / message 提示用户当前不可发送。
+   * 参数支持字符串，或 `{ type: 'info' | 'warn', content }`。
    */
-  onDisabledRequest?: () => void;
+  onDisabledRequest?: DisabledRequestHandler;
   llm?: {
     providers?: ProviderConfig[];
   };
@@ -203,6 +205,10 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
   const copilot = { name };
   let agentRef: CodeAgent | undefined;
   let disabled = false;
+  const disabledHandler = new DisabledHandler({
+    getDisabled: () => disabled,
+    onDisabledRequest,
+  });
   const viewListeners = new Set<() => void>();
 
   const notifyView = () => viewListeners.forEach((listener) => listener());
@@ -250,8 +256,7 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
       compact: { enabled: false },
     } as any);
     pluginContext.aiQueue.setRequestGuard(agentRef, {
-      isDisabled: () => disabled,
-      ...(onDisabledRequest ? { onDisabledRequest } : {}),
+      disabledHandler,
     });
     pluginContext.agentMap.set(agentKey, agentRef);
     notifyView();

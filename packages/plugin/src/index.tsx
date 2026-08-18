@@ -26,12 +26,14 @@ import type { MentionProvider } from "./ui/components/types";
 export { Agent, IDBHistory, IDBSandbox, Tools } from "../../agent/src";
 export { CodeAgent } from "./compat-code-agent";
 export type { CompatibleCodeAgentOptions } from "./compat-code-agent";
+export { DisabledHandler } from "./disabled-handler";
+export type { DisabledMessage, DisabledRequestHandler } from "./disabled-handler";
 export type { AdditionalDirectory, AgentEventMap, AgentsMdConfig, CodeAgentPlugin, SkillFile, UnifiedFile } from "../../agent/src";
 export { createRequestAsStream, createOnUpload } from "../../request/src";
 export type { RequestAsStreamFn } from "../../request/src";
 export { openSetting, closeSetting, SettingModal } from "./ui/setting";
 export type { SettingModalProps } from "./ui/setting";
-export type { AgentRuntimeConfig, RemoteAgentConfig, Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams, PluginGetUserContextMessage, VirtualFilesRuntimeContext, ChatChipRemoveHandler, SandboxChipConfig, SandboxChipRecordConfig, SandboxChipsConfig } from "./sandbox";
+export type { AgentRuntimeConfig, RemoteAgentConfig, ConnectToAIResult, Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams, PluginGetUserContextMessage, VirtualFilesRuntimeContext, ChatChipRemoveHandler, SandboxChipConfig, SandboxChipRecordConfig, SandboxChipsConfig } from "./sandbox";
 export type { MentionProvider, MentionMenuItem } from "./ui/components/types";
 // ProviderConfig / ModelConfig 已由 request 包导出，此处仅导出 plugin 专属类型
 export type { SettingValue } from "./ui/setting";
@@ -145,8 +147,9 @@ export interface PluginAIParams {
   /**
    * 插件处于 disabled 时若仍尝试发送消息、清空历史或写入版本，会调用此回调。
    * 典型用途：由宿主弹出 toast / message 提示用户当前不可操作。
+   * 参数支持字符串，或 `{ type: 'info' | 'warn', content }`。
    */
-  onDisabledRequest?: () => void;
+  onDisabledRequest?: import("./disabled-handler").DisabledRequestHandler;
   codingConfig?: {
     availableLibraries?: any[];
     themes?: any[];
