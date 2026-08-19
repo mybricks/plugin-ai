@@ -57,6 +57,7 @@ import {
   retrySuccessCase,
   maxStepsCase,
 } from "./edge-cases";
+import { interruptedTurnRetryCase } from "./interrupted-retry";
 import {
   compactTriggerCase,
   compactWithToolsCase,
@@ -175,6 +176,7 @@ export const ALL_CASES: TestCase[] = [
   initProjectThirdCallWarnLargeCase,
   suggestionsDisplayCase,
   abortThenNextTurnAwarenessCase,
+  interruptedTurnRetryCase,
   customToolRendererErrorBoundaryCase,
   askQuestionsCase,
   historyCollapseRestoreCase,

@@ -436,7 +436,7 @@ export interface History {
     before?: string;
     limit?: number;
   }): Promise<{ turns: TurnRecord[]; hasMore: boolean }>;
-  /** 追加一轮记录（完成后调用，避免每帧存储） */
+  /** 追加一轮记录（turn 开始时调用一次；后续完整 iter 与终态通过 update 更新） */
   append(key: string, record: TurnRecord): Promise<void>;
   /**
    * 更新已有记录的部分字段（如异步写入 summary）。

@@ -79,6 +79,7 @@ const DEFAULT_SUMMARY = { enabled: true as const };
 const DEFAULT_HANDOFF = { enabled: false as const };
 /** 默认 compact 配置 */
 const DEFAULT_COMPACT = { enabled: true as const, maxTurns: 15 };
+const INTERRUPTED_TURN_MESSAGE = "任务异常中断，可点击重试继续";
 
 /**
  * 工具输出内容的粗略 token 上限（所有工具统一限制，包含自定义工具）。
@@ -592,10 +593,26 @@ export class Agent {
   private async ensureHistoryReady(): Promise<void> {
     const result = await this.historyManager.ensureLoaded();
     if (result === null) return; // 无 storage 或已 ready，无需处理
+    const loadedTurns = [...result.turns];
+    const lastLoadedTurn = loadedTurns[loadedTurns.length - 1];
+    if (
+      lastLoadedTurn &&
+      lastLoadedTurn.status === "success" &&
+      lastLoadedTurn.endTime == null
+    ) {
+      // 新 CodeAgent 实例加载到未结束 turn，说明原执行进程已经不在当前实例中。
+      // 仅派生内存错误态以提供 UI 重试入口，不回写 History；retry 仍根据
+      // 无 endTime + 已完成 iter 决定续跑，零 iter 则从头生成。
+      loadedTurns[loadedTurns.length - 1] = {
+        ...lastLoadedTurn,
+        status: "error",
+        error: INTERRUPTED_TURN_MESSAGE,
+      };
+    }
     // 合并：保留面板已产生但尚未持久化的 turn（仅在 loadHistory 之前发起的请求才可能出现）
-    const loadedIds = new Set(result.turns.map((turn) => turn.id));
+    const loadedIds = new Set(loadedTurns.map((turn) => turn.id));
     const localTurns = this.turns.filter((turn) => !loadedIds.has(turn.id));
-    this.turns = [...result.turns, ...localTurns];
+    this.turns = [...loadedTurns, ...localTurns];
     this.compactRecord = result.compactRecord;
     // turns 已写好，再通知订阅者，保证 UI 调 getTurns() 时数据已就绪
     this.historyManager.markReady();
@@ -665,8 +682,8 @@ export class Agent {
   /**
    * 重试最后一轮对话。
    *
-   * - error 且已有 LLM iter：从失败点继续执行
-   * - success/abort 或第一步失败：清空 AI 响应，复用用户输入重新生成
+   * - error / 异常中断（无 endTime）且已有 LLM iter：从最后一个完整 iter 继续执行
+   * - 正常结束、主动取消或一个完整 iter 都没有：清空 AI 响应重新生成
    */
   async retry(turnId: string): Promise<void> {
     await this.ensureHistoryReady();
@@ -675,17 +692,20 @@ export class Agent {
       return;
     }
 
-    const shouldRegenerate = turn.status !== "error" || getLLMIterations(turn.iterations).length === 0;
+    const hasCompletedLLMIteration = getLLMIterations(turn.iterations).length > 0;
+    const isInterrupted = turn.endTime == null;
+    const canResume = hasCompletedLLMIteration && (turn.status === "error" || isInterrupted);
+    const shouldRegenerate = !canResume;
     if (shouldRegenerate) {
       turn.iterations = [];
-      turn.status = "success";
-      turn.error = undefined;
-      turn.endTime = undefined;
       turn.summary = undefined;
       turn.handoff = undefined;
       turn.suggestions = undefined;
       turn.suggestionsDismissed = undefined;
     }
+    turn.status = "success";
+    turn.error = undefined;
+    turn.endTime = undefined;
 
     this.events.emit("turn:resume", { turnId: turn.id });
 
@@ -764,7 +784,7 @@ export class Agent {
     userParams: { message: string; attachments?: any[]; meta?: any; extra?: Record<string, any> };
     /** 透传给 callLLM 的其余参数（aiRole 等） */
     llmRest?: Record<string, any>;
-    /** 本次执行对持久化层的写入语义：新 turn 首次保存 append，retry 复用旧 turn update */
+    /** 本次执行对持久化层的写入语义；新 turn 已在进入执行循环前 append，循环内使用 update */
     persistMode: TurnPersistMode;
   }): Promise<void> {
     const { messageSnapshot, turn, userParams, llmRest = {}, persistMode } = opts;
@@ -988,6 +1008,8 @@ export class Agent {
         tail.push(assistantMsg);
 
         if (shouldContinueForLength) {
+          // length 截断但本 iter 已完整结束；崩溃后可从下一 iter 续跑。
+          await this._saveTurnRecord(turn, "update");
           continue;
         }
 
@@ -1148,6 +1170,9 @@ export class Agent {
           return;
         }
 
+        // 仅在本 iter 的全部工具都执行完成后落盘。若工具执行中进程崩溃，
+        // 当前 iter 不会进入历史，retry 会从上一个完整 iter 重新执行。
+        await this._saveTurnRecord(turn, "update");
         tail.push(...toolResultMessages);
       }
 
@@ -1298,13 +1323,15 @@ export class Agent {
       ...(formattedParams.message !== userMessage ? { userFormattedText: formattedParams.message } : {}),
     });
 
-    // 将 turn 加入内存（_runTurn 内的消息快照需要排除它，_saveTurnRecord 会更新它）
+    // 先 append 一次空 turn。后续每个完整 iter 和终态统一使用 update，
+    // 避免 iter 级 checkpoint 重复插入同一个 turn。
     this.turns.push(turn);
+    await this._saveTurnRecord(turn, "append");
 
     await this._runTurn(turn, {
       userParams: { message: userMessage, attachments: formattedParams.attachments ?? attachments, meta: formattedMeta, extra: formattedExtra },
       llmRest: rest,
-      persistMode: "append",
+      persistMode: "update",
     });
   }
 

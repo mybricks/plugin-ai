@@ -138,6 +138,7 @@ interface HttpAgentRetryOptions {
 const DEFAULT_BASE_URL = "http://localhost:3001/agents/api";
 const DEFAULT_AGENT_ID = "default";
 const DEFAULT_TURNS_PAGE_SIZE = 20;
+const INTERRUPTED_TURN_MESSAGE = "任务异常中断，可点击重试继续";
 
 export class HttpAgent {
   readonly kind = "http";
@@ -493,6 +494,8 @@ export class HttpAgent {
       onEvent: (event: RemoteAgentEvent) => void;
       onError?: (error: Event | Error) => void;
       onClose?: () => void;
+      /** /connect 返回 204，表示服务端确认当前没有活跃 turn。 */
+      onIdle?: () => void;
     }): (() => void) => {
       const controller = new AbortController();
       void this.requestEventStream(
@@ -503,6 +506,7 @@ export class HttpAgent {
           onEvent: params.onEvent,
           onError: params.onError,
           onClose: params.onClose,
+          onNoContent: params.onIdle,
         },
       ).catch(() => {
         // requestEventStream 已通过 onError 报告连接错误。
@@ -646,7 +650,28 @@ export class HttpAgent {
         this.setSessionState({ running: false, error });
         console.error("[plugin-ai] remote agent replay failed", error);
       },
+      onIdle: () => {
+        this.markLastUnfinishedTurnInterrupted();
+      },
     });
+  }
+
+  /**
+   * 历史中的 success + 无 endTime 表示该 turn 曾启动但没有正常落终态。
+   * /connect 返回 204 后才能确认它已不在其他实例执行；这里只派生本地错误 UI，
+   * 不回写远端 History，retry 仍可据无 endTime 判断为断点续跑。
+   */
+  private markLastUnfinishedTurnInterrupted(): void {
+    const turn = this.turns[this.turns.length - 1];
+    if (!turn || turn.status !== "success" || turn.endTime != null) return;
+
+    turn.status = "error";
+    turn.error = INTERRUPTED_TURN_MESSAGE;
+    turn.endTime = Date.now();
+    this.setSessionState({ running: false });
+    // 即使初始化期间还没有事件订阅者，重新发布 History 快照也能刷新 UI。
+    this.historyManager.markReady({ hasMore: this.turnsPage.hasMore });
+    this.events.emit("turn:error", { error: new Error(INTERRUPTED_TURN_MESSAGE) });
   }
 
   /**
@@ -1218,6 +1243,7 @@ export class HttpAgent {
       onError?: (error: Event | Error) => void;
       onOpen?: () => void;
       onClose?: () => void;
+      onNoContent?: () => void;
     } = {},
   ): Promise<void> {
     try {
@@ -1238,6 +1264,7 @@ export class HttpAgent {
       }
       if (response.status === 204) {
         params.onOpen?.();
+        params.onNoContent?.();
         params.onClose?.();
         return;
       }
