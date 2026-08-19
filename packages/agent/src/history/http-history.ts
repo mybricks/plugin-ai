@@ -16,6 +16,7 @@ import type { CompactRecord, History, TurnRecord, VersionFile, VersionRecord } f
  *   GET    /versions/<versionId>/files?key=<key>      → { files: VersionFile[] }
  */
 export class HTTPHistory implements History {
+  readonly persistMode = "turn" as const;
   private baseUrl: string;
   private headers: Record<string, string>;
 

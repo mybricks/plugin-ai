@@ -1,4 +1,4 @@
-import type { BoundHistory, CompactRecord, History, TurnRecord } from "../types";
+import type { BoundHistory, CompactRecord, History, HistoryPersistMode, TurnRecord } from "../types";
 import { bindHistory } from "../types";
 
 export type HistoryStatus = "idle" | "loading" | "ready" | "error";
@@ -35,6 +35,11 @@ export class HistoryManager {
 
   hasStorage(): boolean {
     return Boolean(this.options.history && this.options.key);
+  }
+
+  /** History 未声明时默认按 turn 粒度持久化。 */
+  get persistMode(): HistoryPersistMode {
+    return this.options.history?.persistMode ?? "turn";
   }
 
   getSnapshot(): HistoryManagerSnapshot {

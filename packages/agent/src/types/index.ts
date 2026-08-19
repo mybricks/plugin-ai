@@ -420,7 +420,15 @@ export interface CompactRecord {
 
 // ─── History 接口 ─────────────────────────────────────────────────────────────
 
+export type HistoryPersistMode = "turn" | "iter";
+
 export interface History {
+  /**
+   * 历史记录的持久化粒度。
+   * 未声明时默认为 turn：只在 turn 结束时保存；iter 模式会保存完整 iter checkpoint。
+   */
+  readonly persistMode?: HistoryPersistMode;
+
   // ── 对话记录 ──────────────────────────────────────────────────────────────
 
   /** 加载历史调用记录列表 */
@@ -436,7 +444,11 @@ export interface History {
     before?: string;
     limit?: number;
   }): Promise<{ turns: TurnRecord[]; hasMore: boolean }>;
-  /** 追加一轮记录（turn 开始时调用一次；后续完整 iter 与终态通过 update 更新） */
+  /**
+   * 追加一轮记录。
+   * 默认在 turn 结束时调用；开启 iter checkpoint 时在 turn 开始时调用，
+   * 后续完整 iter 与终态通过 update 更新。
+   */
   append(key: string, record: TurnRecord): Promise<void>;
   /**
    * 更新已有记录的部分字段（如异步写入 summary）。

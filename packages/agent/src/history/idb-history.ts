@@ -2,6 +2,7 @@ import type { CompactRecord, History, TurnRecord, VersionFile, VersionRecord } f
 
 /** 基于 IndexedDB 的调用历史持久化（存储 TurnRecord[]） */
 export class IDBHistory implements History {
+  readonly persistMode = "turn" as const;
   private dbName: string;
   private db: IDBDatabase | null = null;
   private readonly storeName = "turns";

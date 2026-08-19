@@ -1,4 +1,4 @@
-import type { History, TurnRecord, CompactRecord, VersionRecord, VersionFile } from "@agent/types";
+import type { History, HistoryPersistMode, TurnRecord, CompactRecord, VersionRecord, VersionFile } from "@agent/types";
 
 /**
  * 内存版 History 实现，供 playground 使用。
@@ -6,6 +6,7 @@ import type { History, TurnRecord, CompactRecord, VersionRecord, VersionFile } f
  * 每次 case 切换时 new 一个新实例即可重置。
  */
 export class MockHistory implements History {
+  readonly persistMode: HistoryPersistMode;
   private turns: TurnRecord[];
   private compact: CompactRecord | null;
   private loadDelayMs: number;
@@ -16,8 +17,15 @@ export class MockHistory implements History {
   constructor(
     initialTurns: TurnRecord[] = [],
     compact: CompactRecord | null = null,
-    opts?: { loadDelayMs?: number; loadError?: boolean; pageDelayMs?: number; supportsPagination?: boolean }
+    opts?: {
+      loadDelayMs?: number;
+      loadError?: boolean;
+      pageDelayMs?: number;
+      supportsPagination?: boolean;
+      persistMode?: HistoryPersistMode;
+    }
   ) {
+    this.persistMode = opts?.persistMode ?? "turn";
     this.turns = [...initialTurns];
     this.compact = compact;
     this.loadDelayMs = opts?.loadDelayMs ?? 0;

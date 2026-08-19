@@ -8,7 +8,7 @@ export { ChipRegistry, fileChipDef, FILE_CHIP_TYPE } from "./chip";
 export type { ChatChipDef, ChatChipFormatContext, ChatChipInstance, FileChipData } from "./chip";
 
 export type { AgentEventMap } from "./events";
-export type { Message, History, Tool, TurnRecord, TurnSender, ToolCallRecord, ToolResult, VersionFile, VersionRecord, BoundHistory, Attachment, IterationTrace } from "./types";
+export type { Message, History, HistoryPersistMode, Tool, TurnRecord, TurnSender, ToolCallRecord, ToolResult, VersionFile, VersionRecord, BoundHistory, Attachment, IterationTrace } from "./types";
 export { ToolValidationError, bindHistory } from "./types";
 
 export { AGENT_INTERNAL_FILE_EXCLUDE, CodeAgent, isFileExcluded } from "./code-agent";

@@ -12,6 +12,7 @@ import type {
   ForkAgentOptions,
   FormatUserMessageResult,
   History,
+  HistoryPersistMode,
   LLMCallResult,
   Message,
   MessageSection,
@@ -37,7 +38,7 @@ import { TOOL_OUTPUT_MAX_TOKENS } from "./content-limits";
 import { kv } from "./kv";
 
 export { AgentEvents };
-export type { AgentMode, Message, History, Tool, TurnRecord, ToolCallRecord, WarmupIter };
+export type { AgentMode, Message, History, HistoryPersistMode, Tool, TurnRecord, ToolCallRecord, WarmupIter };
 export type {
   AgentOptions,
   AgentsMdConfig,
@@ -784,7 +785,7 @@ export class Agent {
     userParams: { message: string; attachments?: any[]; meta?: any; extra?: Record<string, any> };
     /** 透传给 callLLM 的其余参数（aiRole 等） */
     llmRest?: Record<string, any>;
-    /** 本次执行对持久化层的写入语义；新 turn 已在进入执行循环前 append，循环内使用 update */
+    /** 本次执行对持久化层的写入语义；新 turn 与 retry 的写入动作不同 */
     persistMode: TurnPersistMode;
   }): Promise<void> {
     const { messageSnapshot, turn, userParams, llmRest = {}, persistMode } = opts;
@@ -1009,7 +1010,9 @@ export class Agent {
 
         if (shouldContinueForLength) {
           // length 截断但本 iter 已完整结束；崩溃后可从下一 iter 续跑。
-          await this._saveTurnRecord(turn, "update");
+          if (this.historyManager.persistMode === "iter") {
+            await this._saveTurnRecord(turn, "update");
+          }
           continue;
         }
 
@@ -1172,7 +1175,9 @@ export class Agent {
 
         // 仅在本 iter 的全部工具都执行完成后落盘。若工具执行中进程崩溃，
         // 当前 iter 不会进入历史，retry 会从上一个完整 iter 重新执行。
-        await this._saveTurnRecord(turn, "update");
+        if (this.historyManager.persistMode === "iter") {
+          await this._saveTurnRecord(turn, "update");
+        }
         tail.push(...toolResultMessages);
       }
 
@@ -1323,15 +1328,18 @@ export class Agent {
       ...(formattedParams.message !== userMessage ? { userFormattedText: formattedParams.message } : {}),
     });
 
-    // 先 append 一次空 turn。后续每个完整 iter 和终态统一使用 update，
-    // 避免 iter 级 checkpoint 重复插入同一个 turn。
+    // History 为 iter 模式时先 append 空 turn，后续完整 iter 与终态统一 update；
+    // 默认 turn 模式保持仅在终态 append 的写入方式。
+    const isIterPersistence = this.historyManager.persistMode === "iter";
     this.turns.push(turn);
-    await this._saveTurnRecord(turn, "append");
+    if (isIterPersistence) {
+      await this._saveTurnRecord(turn, "append");
+    }
 
     await this._runTurn(turn, {
       userParams: { message: userMessage, attachments: formattedParams.attachments ?? attachments, meta: formattedMeta, extra: formattedExtra },
       llmRest: rest,
-      persistMode: "update",
+      persistMode: isIterPersistence ? "update" : "append",
     });
   }
 

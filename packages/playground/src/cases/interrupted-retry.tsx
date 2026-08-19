@@ -71,7 +71,7 @@ function getFirstSnapshotAssertion(
 
 export const interruptedTurnRetryCase: TestCase = {
   id: "code-agent-interrupted-turn-retry",
-  name: "CodeAgent 异常中断恢复",
+  name: "HttpAgent 服务端异常中断恢复",
   group: "异常检测",
   priority: "P0",
   description:
@@ -79,6 +79,8 @@ export const interruptedTurnRetryCase: TestCase = {
   expectedBehavior:
     "进入后消息区自动显示“任务异常中断”和重试按钮；点击消息内的“重试”，同一 turn 保留 Iter 1 并从 Step 2 继续，最终显示恢复成功。",
   initialTurns: [interruptedTurn],
+  // playground 直接运行服务端使用的 CodeAgent，因此让 History 显式声明 checkpoint 模式。
+  historyOptions: { persistMode: "iter" },
   request: interruptedRetryRequest,
   compactOptions: { enabled: false },
   summaryOptions: { enabled: false },
