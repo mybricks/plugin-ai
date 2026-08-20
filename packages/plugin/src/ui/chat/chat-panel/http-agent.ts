@@ -141,8 +141,12 @@ const DEFAULT_BASE_URL = "http://localhost:3001/agents/api";
 const DEFAULT_AGENT_ID = "default";
 const DEFAULT_TURNS_PAGE_SIZE = 20;
 const INTERRUPTED_TURN_MESSAGE = "任务异常中断，可点击重试继续";
-/** 服务端 SSE 约每 3s 写 `: ping`。10s 收不到任何字节即视为对端已死。 */
-const SSE_IDLE_TIMEOUT_MS = 10_000;
+/**
+ * TODO: 服务端支持 Agent 探活和 turn 终态确认后，改用服务端状态判断任务是否结束。
+ * 当前仍保留客户端超时作为兜底，但需要容忍代理缓冲和服务端背压。
+ */
+const ENABLE_SSE_IDLE_WATCHDOG = true;
+const SSE_IDLE_TIMEOUT_MS = 5 * 60_000;
 
 export class HttpAgent {
   readonly kind = "http";
@@ -1285,11 +1289,13 @@ export class HttpAgent {
       onNoContent?: () => void;
     } = {},
   ): Promise<void> {
-    const watchdog = createSseIdleWatchdog(SSE_IDLE_TIMEOUT_MS, params.signal);
+    const watchdog = ENABLE_SSE_IDLE_WATCHDOG
+      ? createSseIdleWatchdog(SSE_IDLE_TIMEOUT_MS, params.signal)
+      : undefined;
     try {
       const response = await fetch(`${this.baseUrl}${path}`, {
         ...init,
-        signal: watchdog.signal,
+        signal: watchdog?.signal ?? params.signal,
         headers: {
           accept: "text/event-stream",
           ...(init.body ? { "content-type": "application/json" } : {}),
@@ -1318,7 +1324,7 @@ export class HttpAgent {
       let buffer = "";
       while (true) {
         const { value, done } = await reader.read();
-        if (value?.byteLength) watchdog.touch();
+        if (value?.byteLength) watchdog?.touch();
         buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
         let boundary = buffer.indexOf("\n\n");
         while (boundary !== -1) {
@@ -1332,7 +1338,7 @@ export class HttpAgent {
       if (buffer.trim()) dispatchSseChunk(buffer, params.onEvent);
       params.onClose?.();
     } catch (error) {
-      if (watchdog.didTimeout()) {
+      if (watchdog?.didTimeout()) {
         const disconnected = new SseDisconnectedError(INTERRUPTED_TURN_MESSAGE);
         params.onError?.(disconnected);
         throw disconnected;
@@ -1344,7 +1350,7 @@ export class HttpAgent {
       params.onError?.(error as Error);
       throw error;
     } finally {
-      watchdog.dispose();
+      watchdog?.dispose();
     }
   }
 }
