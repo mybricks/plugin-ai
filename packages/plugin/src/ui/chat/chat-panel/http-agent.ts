@@ -129,6 +129,8 @@ export type HttpAgentRequestAIParams =
 
 interface HttpAgentRetryOptions {
   turnId: string;
+  providerId?: string;
+  modelId?: string;
   signal?: AbortSignal;
   onError?: (error: Event | Error) => void;
   onClose?: () => void;
@@ -139,6 +141,8 @@ const DEFAULT_BASE_URL = "http://localhost:3001/agents/api";
 const DEFAULT_AGENT_ID = "default";
 const DEFAULT_TURNS_PAGE_SIZE = 20;
 const INTERRUPTED_TURN_MESSAGE = "任务异常中断，可点击重试继续";
+/** 服务端 SSE 约每 3s 写 `: ping`。10s 收不到任何字节即视为对端已死。 */
+const SSE_IDLE_TIMEOUT_MS = 10_000;
 
 export class HttpAgent {
   readonly kind = "http";
@@ -407,7 +411,11 @@ export class HttpAgent {
     });
     try {
       await this.historyInitialization;
+      // retry 的 SSE 只下发本次 attempt，不再回放旧事件：先用服务端快照校准
+      // 本地该 turn，避免本地状态与服务端不一致。
+      await this.calibrateLastTurn(turnId);
       const turn = this.findTurn(turnId);
+      if (turn?.endTime != null) return;
       await this.hooks?.beforeTurn?.({
         message: turn?.userText ?? "",
         formattedMessage: turn?.userFormattedText ?? turn?.userText ?? "",
@@ -419,9 +427,20 @@ export class HttpAgent {
         console.warn("[plugin-ai] browser tool connection failed", error);
       });
       this.startedHookTurns.add(turnId);
+      const { providerId, modelId } = this.resolveModelSelection(
+        params.providerId,
+        params.modelId,
+      );
       await this.consumeRunStream(
         this.sessionPath("retry"),
-        { method: "POST", body: jsonStringifySafe({ turnId }) },
+        {
+          method: "POST",
+          body: jsonStringifySafe({
+            turnId,
+            ...(providerId ? { providerId } : {}),
+            ...(modelId ? { modelId } : {}),
+          }),
+        },
         { signal: params.signal },
       );
     } catch (error) {
@@ -494,6 +513,7 @@ export class HttpAgent {
       onEvent: (event: RemoteAgentEvent) => void;
       onError?: (error: Event | Error) => void;
       onClose?: () => void;
+      /** 服务端关闭前给出的确定结论。 */
       /** /connect 返回 204，表示服务端确认当前没有活跃 turn。 */
       onIdle?: () => void;
     }): (() => void) => {
@@ -628,6 +648,7 @@ export class HttpAgent {
   }
 
   private connectEventReplay(): void {
+    let terminalSeen = false;
     this.session.subscribe({
       onEvent: (event) => {
         if (event.event === "session:error") {
@@ -644,11 +665,18 @@ export class HttpAgent {
         if (event.event === "session:locked") {
           this.startReplayHookLifecycle(event);
         }
+        if (isTerminalRemoteEvent(event)) terminalSeen = true;
+        if (event.event === "turn:resume" || event.event === "turn:start") {
+          terminalSeen = false;
+        }
         this.handleRemoteEvent(event);
       },
       onError: (error) => {
         this.setSessionState({ running: false, error });
         console.error("[plugin-ai] remote agent replay failed", error);
+      },
+      onClose: () => {
+        if (!terminalSeen) this.markLastUnfinishedTurnInterrupted();
       },
       onIdle: () => {
         this.markLastUnfinishedTurnInterrupted();
@@ -860,6 +888,8 @@ export class HttpAgent {
     if (!turn) return;
 
     if (event.event === "turn:resume") {
+      if (turn.status === "success") return;
+      this.completedHookTurns.delete(turnId);
       this.completedSummaryHookTurns.delete(turnId);
       turn.status = "success";
       delete turn.error;
@@ -1045,6 +1075,23 @@ export class HttpAgent {
     return this.turns.find((turn) => turn.id === turnId);
   }
 
+  /**
+   * 用服务端最新记录覆盖本地待重试的 turn。
+   * retry 的 SSE 不回放旧 attempt，一致性由这份快照保证。
+   */
+  private async calibrateLastTurn(turnId: string): Promise<void> {
+    try {
+      const page = await this.session.getTurns({ limit: 1 });
+      const remote = (page.turns ?? []).find((turn) => turn.id === turnId);
+      if (!remote) return;
+      this.turns = mergeTurnRecords(this.turns, [remote]);
+      this.historyManager.markReady({ hasMore: this.turnsPage.hasMore });
+    } catch (error) {
+      // 校准失败不阻塞 retry：服务端仍会校验 turnId 必须是最后一个 turn。
+      console.warn("[HttpAgent] calibrate turn before retry failed:", error);
+    }
+  }
+
   private findLLMIteration(turn: TurnRecord, iterId: string) {
     return turn.iterations.find(
       (iter) => !("type" in iter) && iter.iterId === iterId,
@@ -1208,8 +1255,6 @@ export class HttpAgent {
           this.handleRemoteEvent(event, { allowBrowserTasks: true });
           if (!isTerminalRemoteEvent(event)) return;
           terminalSeen = true;
-          // `turn:complete` 已经完成 UI 生命周期；SSE 读取器继续在后台等待
-          // `turn:summary`，但 requestAI 不再等待它。
           resolve();
         },
       })
@@ -1218,17 +1263,11 @@ export class HttpAgent {
             if (!terminalSeen) resolve();
             return;
           }
-          reject(new SseDisconnectedError("SSE closed before a terminal event"));
+          reject(new SseDisconnectedError(INTERRUPTED_TURN_MESSAGE));
         })
         .catch((error) => {
-          if (options.signal?.aborted) {
-            resolve();
-            return;
-          }
-          if (!terminalSeen) {
-            reject(error);
-            return;
-          }
+          if (options.signal?.aborted) { resolve(); return; }
+          if (!terminalSeen) { reject(error); return; }
           console.warn("[HttpAgent] post-turn SSE closed before summary:", error);
         });
     });
@@ -1246,10 +1285,11 @@ export class HttpAgent {
       onNoContent?: () => void;
     } = {},
   ): Promise<void> {
+    const watchdog = createSseIdleWatchdog(SSE_IDLE_TIMEOUT_MS, params.signal);
     try {
       const response = await fetch(`${this.baseUrl}${path}`, {
         ...init,
-        signal: params.signal,
+        signal: watchdog.signal,
         headers: {
           accept: "text/event-stream",
           ...(init.body ? { "content-type": "application/json" } : {}),
@@ -1278,6 +1318,7 @@ export class HttpAgent {
       let buffer = "";
       while (true) {
         const { value, done } = await reader.read();
+        if (value?.byteLength) watchdog.touch();
         buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
         let boundary = buffer.indexOf("\n\n");
         while (boundary !== -1) {
@@ -1291,12 +1332,19 @@ export class HttpAgent {
       if (buffer.trim()) dispatchSseChunk(buffer, params.onEvent);
       params.onClose?.();
     } catch (error) {
+      if (watchdog.didTimeout()) {
+        const disconnected = new SseDisconnectedError(INTERRUPTED_TURN_MESSAGE);
+        params.onError?.(disconnected);
+        throw disconnected;
+      }
       if ((error as Error)?.name === "AbortError") {
         params.onClose?.();
         return;
       }
       params.onError?.(error as Error);
       throw error;
+    } finally {
+      watchdog.dispose();
     }
   }
 }
@@ -1382,7 +1430,6 @@ function dispatchSseChunk(
   chunk: string,
   onEvent?: (event: RemoteAgentEvent) => void,
 ) {
-  if (!onEvent) return;
   const data: string[] = [];
   for (const line of chunk.split(/\r?\n/)) {
     if (!line || line.startsWith(":")) continue;
@@ -1390,9 +1437,12 @@ function dispatchSseChunk(
       data.push(line.slice(5).trimStart());
     }
   }
-  if (!data.length) return;
-  const event = JSON.parse(data.join("\n")) as RemoteAgentEvent;
-  onEvent(event);
+  if (!data.length || !onEvent) return;
+  try {
+    onEvent(JSON.parse(data.join("\n")) as RemoteAgentEvent);
+  } catch (error) {
+    console.warn("[HttpAgent] malformed SSE frame ignored:", error);
+  }
 }
 
 function trimRight(value: string, char: string): string {
@@ -1403,6 +1453,36 @@ function trimRight(value: string, char: string): string {
 
 function createTurnId(): string {
   return `turn-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function createSseIdleWatchdog(timeoutMs: number, external?: AbortSignal) {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let timedOut = false;
+  const abortFromExternal = () => controller.abort();
+
+  if (external?.aborted) controller.abort();
+  else external?.addEventListener("abort", abortFromExternal);
+
+  const touch = () => {
+    if (timer) clearTimeout(timer);
+    if (controller.signal.aborted) return;
+    timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+  };
+  touch();
+
+  return {
+    signal: controller.signal,
+    touch,
+    didTimeout: () => timedOut,
+    dispose: () => {
+      if (timer) clearTimeout(timer);
+      external?.removeEventListener("abort", abortFromExternal);
+    },
+  };
 }
 
 class RemoteSessionError extends Error {}

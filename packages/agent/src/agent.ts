@@ -591,7 +591,7 @@ export class Agent {
     this.compactRecord = null;
   }
 
-  private async ensureHistoryReady(): Promise<void> {
+  async ensureHistoryReady(): Promise<void> {
     const result = await this.historyManager.ensureLoaded();
     if (result === null) return; // 无 storage 或已 ready，无需处理
     const loadedTurns = [...result.turns];
@@ -689,12 +689,20 @@ export class Agent {
   async retry(turnId: string): Promise<void> {
     await this.ensureHistoryReady();
     const turn = this.turns[this.turns.length - 1];
-    if (!turn || turn.id !== turnId) {
-      return;
+    if (!turn) {
+      throw new Error(
+        `Session has no turns loaded, cannot retry ${turnId}.`,
+      );
+    }
+    if (turn.id !== turnId) {
+      throw new Error(
+        `Turn ${turnId} is not the last turn, cannot retry.`,
+      );
     }
 
     const hasCompletedLLMIteration = getLLMIterations(turn.iterations).length > 0;
     const isInterrupted = turn.endTime == null;
+    this.setMode(getTurnMode(turn), "retry");
     const canResume = hasCompletedLLMIteration && (turn.status === "error" || isInterrupted);
     const shouldRegenerate = !canResume;
     if (shouldRegenerate) {
