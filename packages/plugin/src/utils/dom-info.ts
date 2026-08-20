@@ -317,7 +317,7 @@ function getElementByPath(root: Element, path: number[]): Element | null {
   let node: Element | null = root;
   for (const index of path) {
     const child: Element | undefined = node.children[index];
-    if (!(child instanceof Element)) return null;
+    if (!isDomElement(child)) return null;
     node = child;
   }
   return node;
@@ -602,6 +602,18 @@ function normalizeDomChipSpacing(text: string): string {
 }
 
 function getChipElement(chip: ChatChipInstance): Element | undefined {
-  if (typeof Element === "undefined") return undefined;
-  return chip.data?.ele instanceof Element ? chip.data.ele : undefined;
+  const ele = chip.data?.ele;
+  return isDomElement(ele) ? ele : undefined;
+}
+
+/**
+ * `instanceof Element` 只能在同一个 Window 中生效，使用元素所属的
+ * window，确保 iframe 中创建的 chip 元素也能通过判断。
+ */
+function isDomElement(value: unknown): value is Element {
+  if (!value || typeof value !== "object") return false;
+
+  const ownerDocument = (value as { ownerDocument?: Document }).ownerDocument;
+  const ElementConstructor = ownerDocument?.defaultView?.Element;
+  return typeof ElementConstructor === "function" && value instanceof ElementConstructor;
 }

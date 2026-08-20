@@ -29,6 +29,8 @@ export interface PromptSectionsAgent {
 export interface PromptSectionsDevelopeGuide {
   /** 总体开发规则、画布宽度、页面/弹窗拆分等基础规范 */
   firstOfAll?: string;
+  /** 系统注入的环境变量说明 */
+  environmentVariablesSection?: string;
   /** 图标与图片资源的使用规范 */
   assetsUsageSection?: string;
   /** 项目目录结构、jsx/less/store 等文件编写规范 */
