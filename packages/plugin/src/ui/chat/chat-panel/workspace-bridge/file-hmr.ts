@@ -131,6 +131,7 @@ export class FileHmr {
   }
 
   private async doSyncSnapshot(sandbox: Sandbox): Promise<void> {
+    const normalizePath = (path: string) => path.replace(/\\/g, "/").replace(/^\/+/, "");
     const manifest = await this.options.requestJson<FileManifestResponse>(
       this.workspacePath("files"),
     );
@@ -165,6 +166,25 @@ export class FileHmr {
         hash: await sha256(file.content),
       }));
       for (const file of hashes) this.localHashMap.set(file.path, file.hash);
+    }
+
+    // 只有服务端明确返回 files 字段时才按快照删除；空数组仍表示远端 workspace 为空。
+    if (manifest?.files !== undefined) {
+      const remotePaths = new Set(
+        manifest.files
+          .filter((file) => !!file?.path)
+          .map((file) => normalizePath(file.path)),
+      );
+      const pathsToDelete = localFiles
+        .filter((file) => {
+          // 本地 virtualFiles、skills 和只读扩展文件不属于远端快照的删除范围。
+          return !remotePaths.has(normalizePath(file.path)) && file.permissions?.delete !== false;
+        })
+        .map((file) => file.path);
+      if (pathsToDelete.length) {
+        await sandbox.deleteFiles(pathsToDelete);
+        for (const path of pathsToDelete) this.localHashMap.delete(path);
+      }
     }
 
     this.initialized = true;

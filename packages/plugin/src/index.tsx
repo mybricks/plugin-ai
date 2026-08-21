@@ -170,6 +170,12 @@ export interface PluginAIParams {
    * ```
    */
   virtualFiles?: (context: import("./sandbox").VirtualFilesRuntimeContext) => Promise<import("../../agent/src").UnifiedFile[]>;
+  /**
+   * 本地 CodeAgent 的初始化文件快照。仅非空数组生效：首次请求前会与当前 sandbox 做 diff，
+   * 更新新增/变更文件，并删除本地可删除但不在快照中的文件；空数组不会清空工程。
+   * 注意：导入或默认赋值时可能传入空数组，它不代表初始化内容一定为空，因此会被视为未提供。
+   */
+  initialFiles?: Array<{ path: string; content: string }>;
   /** 技能文件列表，挂载为虚拟 .agent/skills/ 目录，LLM 通过 use_skill 工具按需加载 */
   skills?: SkillFile[];
   /** 插件列表，会将内部 skills / agents / tools / additionalDirectories 合并进 CodeAgent 顶层配置 */
@@ -241,6 +247,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     onDisabledRequest,
     codingConfig,
     virtualFiles,
+    initialFiles,
     skills,
     plugins,
     promptSections,
@@ -337,6 +344,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     requestAsStream,
     llmPluginKey: pluginKey,
     virtualFiles,
+    initialFiles,
     skills: mergedSkills,
     plugins,
     promptSections,

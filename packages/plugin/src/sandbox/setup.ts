@@ -19,6 +19,7 @@ import { context } from "../context";
 import { ensureAIPanelOpen, ensureFocusComId } from "../utils/ensure-ai-panel-open";
 import { createDomChip } from "../utils/dom-info";
 import { registerChipRemoveHandlers } from "./chip-remove";
+import { attachFiles, hasInitialFiles } from "./initial-files";
 
 // ─── 类型定义 ─────────────────────────────────────────────────────────────────
 
@@ -193,9 +194,8 @@ export interface ConnectToAIResult {
   /** 当前 History 是否由 remote Agent 的 workspace API 提供。 */
   isRemoteAgent: boolean;
   /**
-   * remote Agent 首次把服务端 workspace 快照同步到 sandbox 后兑现。
-   * 宿主可用它阻止依赖 data.files 的 Runtime 在空数据阶段先挂载。
-   * 本地 Agent 不需要远端同步，因此不提供该字段。
+   * 文件初始化完成后兑现，是 Runtime 和首个 Agent 请求的共同前置条件。
+   * remote Agent 优先同步服务端 workspace，失败后可回退 initialFiles；本地 Agent 按 initialFiles 同步。
    */
   workspaceReady?: Promise<void>;
 }
@@ -244,6 +244,8 @@ export interface SetupSandboxParams {
    * 同路径下 virtualFiles 优先级高于 designer.getFiles() 返回的真实文件。
    */
   virtualFiles?: (context: VirtualFilesRuntimeContext) => Promise<UnifiedFile[]>;
+  /** 本地 CodeAgent 的初始化文件快照；首次请求前会执行 diff/update/delete。 */
+  initialFiles?: Array<Pick<UnifiedFile, "path" | "content">>;
   skills?: SkillFile[];
   plugins?: CodeAgentPlugin[];
   promptSections?: PromptSections;
@@ -288,7 +290,7 @@ export interface SetupSandboxParams {
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
 export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController {
-  const { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, onDisabledRequest, history, remoteAgent, sender } = params;
+  const { requestAsStream, llmPluginKey, virtualFiles, initialFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, onDisabledRequest, history, remoteAgent, sender } = params;
   const disabledHandler = new DisabledHandler({
     getDisabled: () => context.disabled,
     onDisabledRequest,
@@ -297,7 +299,7 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
 
   window._sandbox_ = {
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
-      return connectToAI(comId, config, { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs });
+      return connectToAI(comId, config, { requestAsStream, llmPluginKey, virtualFiles, initialFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs });
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
@@ -379,6 +381,8 @@ interface PluginParams {
   llmPluginKey?: string;
   /** 注入到根工程虚拟 FS 的文件（每个 turn 调用一次） */
   virtualFiles?: (context: VirtualFilesRuntimeContext) => Promise<UnifiedFile[]>;
+  /** 本地 CodeAgent 的初始化文件快照；首次请求前会执行 diff/update/delete。 */
+  initialFiles?: Array<Pick<UnifiedFile, "path" | "content">>;
   skills?: SkillFile[];
   plugins?: CodeAgentPlugin[];
   promptSections?: PromptSections;
@@ -459,7 +463,7 @@ function formatLibraryDocs(libraries: Array<{ name: string; version?: string; us
 function connectToAI(
   comId: string,
   { designer, hooks, chips }: RegistSandBoxConfig,
-  { requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs }: PluginParams
+  { requestAsStream, llmPluginKey, virtualFiles, initialFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs }: PluginParams
 ): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
   registerChips(agentKey, chips);
@@ -719,8 +723,14 @@ function connectToAI(
       context.createLLMRequest(llmPluginKey, agent.key);
     }
     context.aiQueue.setRequestGuard(agent, requestGuard);
-    // 首次远端文件快照必须在 Runtime 首次渲染前完成；由宿主按需 await。
-    const workspaceReady = agent.files.bindSandbox(sandbox);
+    // 只有非空 initialFiles 才可作为 workspace 快照失败时的回退。
+    const workspaceReady = !hasInitialFiles(initialFiles)
+      ? agent.files.bindSandbox(sandbox)
+      : attachFiles(agent, {
+        sandbox,
+        initialFiles,
+        syncWorkspace: () => agent.files.bindSandbox(sandbox),
+      });
     context.agentMap.set(agentKey, agent);
     context.registerAgentComId(comId);
     return { history: agent.getHistory(), disabledHandler, isRemoteAgent: true, workspaceReady };
@@ -764,6 +774,7 @@ function connectToAI(
       };
     },
   });
+  const workspaceReady = attachFiles(agent, { sandbox, initialFiles });
   context.aiQueue.setRequestGuard(agent, requestGuard);
   agentRef = agent;
 
@@ -790,5 +801,5 @@ function connectToAI(
   context.agentMap.set(agentKey, agent);
   context.registerAgentComId(comId);
 
-  return { history: agent.getHistory(), disabledHandler, isRemoteAgent: false };
+  return { history: agent.getHistory(), disabledHandler, isRemoteAgent: false, workspaceReady };
 }
