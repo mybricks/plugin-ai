@@ -53,7 +53,6 @@ export interface RemoteAgentEvent {
     | "session:agent-configured"
     | "session:start"
     | "workspace:file-change"
-    | "turn:summary"
     | "browser:task";
   data: any;
   createdAt: number;
@@ -183,6 +182,8 @@ export class HttpAgent {
   private readonly completedHookTurns = new Set<string>();
   /** 已消费的异步摘要，避免 run/connect 重放或重复摘要订阅触发两次。 */
   private readonly completedSummaryHookTurns = new Set<string>();
+  /** 已消费的后台收口，避免 run/connect 重放触发两次。 */
+  private readonly completedSettledHookTurns = new Set<string>();
 
   constructor(options: HttpAgentOptions, runtime: HttpAgentRuntimeOptions = {}) {
     this.baseUrl = trimRight(options.baseUrl ?? DEFAULT_BASE_URL, "/");
@@ -753,8 +754,14 @@ export class HttpAgent {
         String(event.data?.message ?? "Remote agent session failed"),
       );
     }
-    if (event.event === "turn:summary") {
+    if (
+      event.event === "turn:summary" ||
+      event.event === "turn:summary:error"
+    ) {
       this.triggerAfterTurnSummary(event);
+    }
+    if (event.event === "turn:settled") {
+      this.triggerAfterTurnSettled(event);
     }
     this.applyTurnEvent(event);
     const shouldUpdateSessionState =
@@ -895,6 +902,7 @@ export class HttpAgent {
       if (turn.status === "success") return;
       this.completedHookTurns.delete(turnId);
       this.completedSummaryHookTurns.delete(turnId);
+      this.completedSettledHookTurns.delete(turnId);
       turn.status = "success";
       delete turn.error;
       delete turn.endTime;
@@ -1173,13 +1181,13 @@ export class HttpAgent {
       });
   }
 
-  /** 服务端已落库的摘要事件；客户端仅更新展示，不再写 history。 */
+  /** 服务端已结束的摘要任务；客户端仅触发 hook，不再写 history。 */
   private triggerAfterTurnSummary(event: RemoteAgentEvent): void {
     const turnId = this.eventTurnId(event);
     const summary = event.data?.summary;
     if (
       !turnId ||
-      typeof summary !== "string" ||
+      (event.event === "turn:summary" && typeof summary !== "string") ||
       this.completedSummaryHookTurns.has(turnId)
     ) {
       return;
@@ -1188,11 +1196,35 @@ export class HttpAgent {
     const turn =
       this.findTurn(turnId) ??
       ({ id: turnId, status: "success" } as TurnRecord);
-    void Promise.resolve(this.hooks?.afterTurnSummary?.(turn, summary)).catch(
+    const result =
+      event.event === "turn:summary:error"
+        ? { status: "error" as const, error: event.data?.error }
+        : {
+            status: "success" as const,
+            ...(typeof event.data?.versionId === "string"
+              ? { versionId: event.data.versionId }
+              : {}),
+          };
+    void Promise.resolve(
+      this.hooks?.afterTurnSummary?.(turn, summary ?? "", result),
+    ).catch(
       (error) => {
         console.warn("[HttpAgent] hooks.afterTurnSummary failed:", error);
       },
     );
+  }
+
+  /** 服务端后台任务已收口；不改变已由 turn:complete 结束的 UI loading。 */
+  private triggerAfterTurnSettled(event: RemoteAgentEvent): void {
+    const turnId = this.eventTurnId(event);
+    if (!turnId || this.completedSettledHookTurns.has(turnId)) return;
+    this.completedSettledHookTurns.add(turnId);
+    const turn =
+      this.findTurn(turnId) ??
+      ({ id: turnId, status: "success" } as TurnRecord);
+    void Promise.resolve(this.hooks?.afterTurnSettled?.(turn)).catch((error) => {
+      console.warn("[HttpAgent] hooks.afterTurnSettled failed:", error);
+    });
   }
 
   async requestJson<T = unknown>(path: string, init?: RequestInit): Promise<T> {

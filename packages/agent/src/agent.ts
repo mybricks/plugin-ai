@@ -1456,32 +1456,68 @@ export class Agent {
 
   /**
    * turn 结束后的统一后处理（fire-and-forget）。
-   * 在所有出口（success / abort / error）调用，失败只 log，不影响主流程。
    *
    * - hooks.afterTurn：全出口触发
-   * - summary / compact：仅 success 触发
+   * - summary / compact / settled：仅 success 触发
    */
   private _onTurnEnd(turn: TurnRecord): void {
-    // 用户 hook：全出口触发
-    void Promise.resolve(this.options.hooks?.afterTurn?.(turn)).catch((e) => {
+    // 先同步调用 hook，保证远端可立即登记版本任务，供随后 summary 复用。
+    let afterTurnTask: Promise<void>;
+    try {
+      afterTurnTask = Promise.resolve(this.options.hooks?.afterTurn?.(turn));
+    } catch (e) {
+      console.warn("[Agent] hooks.afterTurn failed:", e);
+      afterTurnTask = Promise.resolve();
+    }
+    afterTurnTask = afterTurnTask.catch((e) => {
       console.warn("[Agent] hooks.afterTurn failed:", e);
     });
 
     if (turn.status !== "success") return;
 
+    void this._runPostTurnTasks(turn, afterTurnTask);
+  }
+
+  /** 成功 turn 的后台收口：所有自动任务结束后统一发出 settled。 */
+  private async _runPostTurnTasks(
+    turn: TurnRecord,
+    afterTurnTask: Promise<void>,
+  ): Promise<void> {
+    const tasks: Promise<unknown>[] = [afterTurnTask];
+
     const { summary, compact } = this.options;
 
     if (summary?.enabled && !hasNoToolCalls(turn.iterations)) {
-      void this._runAutoSummary(turn).catch((e) => {
+      tasks.push(this._runAutoSummary(turn).catch(async (e) => {
+        try {
+          await this.options.hooks?.afterTurnSummary?.(
+            turn,
+            "",
+            { status: "error", error: e },
+          );
+        } catch (hookError) {
+          console.warn("[Agent] hooks.afterTurnSummary failed:", hookError);
+        }
+        this.events.emit("turn:summary:error", { turnId: turn.id, error: e });
         console.warn("[Agent] summary failed:", e);
-      });
+      }));
     }
 
     if (compact != null && compact.enabled !== false) {
       if (this._shouldAutoCompact()) {
-        void this._runAutoCompact();
+        tasks.push(this._runAutoCompact().catch((e) => {
+          console.warn("[Agent] autoCompact failed:", e);
+        }));
       }
     }
+
+    await Promise.all(tasks);
+    try {
+      await this.options.hooks?.afterTurnSettled?.(turn);
+    } catch (e) {
+      console.warn("[Agent] hooks.afterTurnSettled failed:", e);
+    }
+    this.events.emit("turn:settled", { turnId: turn.id });
   }
 
   // ─── autoSummary ─────────────────────────────────────────────────────────
@@ -1672,8 +1708,6 @@ IMPORTANT: 不要调用工具！
       fork.events.removeAllListeners();
     }
 
-    if (!lastContent) return;
-
     // 解析 <summary>...</summary>
     const summaryMatch = lastContent.match(/<summary>([\s\S]*?)<\/summary>/);
     const summaryText = summaryMatch?.[1].trim() ?? "";
@@ -1688,20 +1722,27 @@ IMPORTANT: 不要调用工具！
       if (suggestions) emitSuggestionsOnce(suggestions);
     }
 
-    if (!summaryText && !handoffText && !suggestionsResult) return;
-
     if (summaryText) turn.summary = summaryText;
     if (handoffText) turn.handoff = handoffText;
     if (suggestionsResult) turn.suggestions = suggestionsResult;
 
-    await this.historyManager.update(turn.id, {
-      ...(summaryText ? { summary: summaryText } : {}),
-      ...(handoffText ? { handoff: handoffText } : {}),
-      ...(suggestionsResult ? { suggestions: suggestionsResult } : {}),
-    });
+    if (summaryText || handoffText || suggestionsResult) {
+      await this.historyManager.update(turn.id, {
+        ...(summaryText ? { summary: summaryText } : {}),
+        ...(handoffText ? { handoff: handoffText } : {}),
+        ...(suggestionsResult ? { suggestions: suggestionsResult } : {}),
+      });
+    }
 
-    void Promise.resolve(this.options.hooks?.afterTurnSummary?.(turn, summaryText)).catch((e) => {
-      console.warn("[Agent] hooks.afterTurnSummary failed:", e);
+    // 等待 hook 完成，确保远端的 `turn:summary` 只会在版本记录已落库后下发。
+    await this.options.hooks?.afterTurnSummary?.(
+      turn,
+      summaryText,
+      { status: "success" },
+    );
+    this.events.emit("turn:summary", {
+      turnId: turn.id,
+      summary: summaryText,
     });
   }
 

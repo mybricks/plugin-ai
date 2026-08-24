@@ -55,6 +55,32 @@ export type AgentEventMap = {
   };
 
   /**
+   * 本轮自动摘要已生成并完成持久化。
+   * 本地 Agent 直接发出；远端 Agent 会在服务端版本记录更新完成后再转发同名事件。
+   */
+  "turn:summary": {
+    turnId: string;
+    summary: string;
+  };
+
+  /**
+   * 本轮自动摘要生成或持久化失败；不改变主 turn 已完成的结果。
+   */
+  "turn:summary:error": {
+    turnId: string;
+    error: unknown;
+  };
+
+  /**
+   * 本轮成功后的自动后处理已全部结束。
+   * 包含版本落库、自动摘要（无论成功或失败）和可能的后置上下文压缩；
+   * 不代表新的 UI loading，供远端流与后台消费者收口。
+   */
+  "turn:settled": {
+    turnId: string;
+  };
+
+  /**
    * autoSummary 生成的建议选项写入完成后触发（异步，turn:complete 之后）。
    * 仅当 AgentOptions.summary.suggestions 为 true 且 LLM 输出了 <ask> 块时触发。
    * UI 侧收到后将 suggestions 写入对应 MessageRecord，只在最后一条 turn 展示。

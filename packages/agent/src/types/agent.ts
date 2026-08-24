@@ -74,6 +74,11 @@ export interface ToolExecutionContext {
 
 // ─── AgentHooks ──────────────────────────────────────────────────────────────
 
+/** 自动摘要任务的最终结果。 */
+export type TurnSummaryResult =
+  | { status: "success"; versionId?: string }
+  | { status: "error"; error: unknown };
+
 export interface AgentHooks {
   /**
    * 用户发送消息后、一轮 turn 开始时的钩子，在构建 turn 级消息快照之前调用。
@@ -103,9 +108,22 @@ export interface AgentHooks {
    */
   afterTurn?: (turn: TurnRecord) => Promise<void> | void;
   /**
-   * 本轮 turn 的 summary 生成完成后的钩子（仅 summary.enabled=true 且成功生成时触发）。
+   * 本轮 turn 的 summary 任务结束后的钩子（仅 summary.enabled=true 时触发）。
+   *
+   * 前两个参数保持既有兼容性：成功但无可解析摘要时 summary 为空字符串。
+   * 第三个参数用于区分成功与失败；远端成功事件可额外携带 versionId。
+   * 失败时 summary 为空字符串。
    */
-  afterTurnSummary?: (turn: TurnRecord, summary: string) => Promise<void> | void;
+  afterTurnSummary?: (
+    turn: TurnRecord,
+    summary: string,
+    result?: TurnSummaryResult,
+  ) => Promise<void> | void;
+  /**
+   * 成功 turn 的全部后台后处理结束后的钩子。
+   * 此时 summary / compact 均已完成（无论 summary 成功或失败）。
+   */
+  afterTurnSettled?: (turn: TurnRecord) => Promise<void> | void;
 }
 
 // ─── MessageSection ───────────────────────────────────────────────────────────
