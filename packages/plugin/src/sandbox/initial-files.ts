@@ -9,6 +9,45 @@ export function hasInitialFiles(
   return !!initialFiles?.length;
 }
 
+const normalizePath = (path: string) => path.replace(/\\/g, "/").replace(/^\/+/, "");
+const DIRTY_EMPTY_APP_FILES = ["index.jsx", "README.md", "store.js"];
+
+/**
+ * 空数组不代表要清空工程；某些应用产生的 App 空文件组合也不是可用于还原工程的真实快照。
+ * 两种情况都不应同步给 CodeAgent，也不能作为远程 workspace 同步失败时的回退。
+ */
+export function getSyncableInitialFiles(
+  initialFiles?: InitialFile[],
+): InitialFile[] | undefined {
+  if (!hasInitialFiles(initialFiles)) return undefined;
+
+  return hasDirtyAppSnapshot(initialFiles) ? undefined : initialFiles;
+}
+
+/** 判断一组已读取文件是否命中某些应用产生的 App 空文件组合脏数据。 */
+export function hasDirtyAppSnapshot(files: InitialFile[]): boolean {
+  return hasDirtyAppPaths(
+    files.filter((file) => file.content === "").map((file) => file.path),
+  );
+}
+
+/** 判断路径集合中是否包含某些应用产生的 App 空文件组合。 */
+export function hasDirtyAppPaths(paths: Iterable<string>): boolean {
+  return getDirtyAppDirectories(paths).size > 0;
+}
+
+/** 返回路径集合中命中某些应用产生的空文件组合的 App 目录。 */
+export function getDirtyAppDirectories(paths: Iterable<string>): Set<string> {
+  const normalizedPaths = new Set(Array.from(paths, normalizePath));
+  return new Set(Array.from(normalizedPaths).flatMap((path) => {
+    const appDirectory = path.match(/^(App\d*)\/index\.jsx$/)?.[1];
+    return appDirectory != null
+      && DIRTY_EMPTY_APP_FILES.every((file) => normalizedPaths.has(`${appDirectory}/${file}`))
+      ? [appDirectory]
+      : [];
+  }));
+}
+
 /**
  * 将 plugin-ai 提供的初始化文件快照同步到宿主 sandbox。
  * 只更新新增/内容变化的文件，并删除本地可删除但不在快照中的文件。
@@ -18,7 +57,6 @@ export async function syncInitialFiles(
   sandbox: Sandbox,
   initialFiles: InitialFile[],
 ): Promise<void> {
-  const normalizePath = (path: string) => path.replace(/\\/g, "/").replace(/^\/+/, "");
   const currentFiles = await sandbox.getFiles();
   const desiredByPath = new Map<string, InitialFile>();
 

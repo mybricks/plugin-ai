@@ -19,7 +19,7 @@ import { context } from "../context";
 import { ensureAIPanelOpen, ensureFocusComId } from "../utils/ensure-ai-panel-open";
 import { createDomChip } from "../utils/dom-info";
 import { registerChipRemoveHandlers } from "./chip-remove";
-import { attachFiles, hasInitialFiles } from "./initial-files";
+import { attachFiles, getSyncableInitialFiles, hasInitialFiles } from "./initial-files";
 
 // ─── 类型定义 ─────────────────────────────────────────────────────────────────
 
@@ -291,6 +291,8 @@ export interface SetupSandboxParams {
  */
 export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController {
   const { requestAsStream, llmPluginKey, virtualFiles, initialFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, onDisabledRequest, history, remoteAgent, sender } = params;
+  // 空数组与某些应用产生的 App 空文件组合都视为无效快照，本地与远程 Agent 均不读取。
+  const syncableInitialFiles = getSyncableInitialFiles(initialFiles);
   const disabledHandler = new DisabledHandler({
     getDisabled: () => context.disabled,
     onDisabledRequest,
@@ -299,7 +301,7 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
 
   window._sandbox_ = {
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
-      return connectToAI(comId, config, { requestAsStream, llmPluginKey, virtualFiles, initialFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs });
+      return connectToAI(comId, config, { requestAsStream, llmPluginKey, virtualFiles, initialFiles: syncableInitialFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs });
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
