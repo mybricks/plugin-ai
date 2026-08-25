@@ -1,8 +1,5 @@
 export type { MybricksPromptSections } from "./mybricks";
-export {
-  MYBRICKS_DOCS_PROMPT_SECTIONS,
-  type MybricksDocsPromptSections,
-} from "./mybricks-docs";
+
 export {
   buildDevelopmentGuideContext,
   buildExtraProjectInfoSection,
