@@ -3,13 +3,29 @@
  * 供 built-ins/ 下各渲染文件引用。
  */
 import React, { useEffect, useState } from "react";
-import { RightOutlined } from "@ant-design/icons";
 import { Success, Loading, ErrorIcon } from "../../../components/icons";
 import { TextShimmer } from "../../../components/text-shimmer";
 import { ElapsedTime } from "../../../components/elapsed-time";
 import type { ToolRecord } from "./index";
 import { useChatPanel } from "../../chat-panel/context";
 import css from "./render.less";
+
+const ChevronRightIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    width="1em"
+    height="1em"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="m9 6 6 6-6 6" />
+  </svg>
+);
 
 // ─── 状态图标 ─────────────────────────────────────────────────────────────────
 
@@ -79,7 +95,9 @@ export const DefaultToolRenderer = ({ tool }: { tool: ToolRecord }) => {
         <Duration tool={tool} />
         {canExpand ? (
           <span className={css["code-card-toggle"]}>
-            <RightOutlined style={{ transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.2s" }} />
+            <span style={{ display: "inline-flex", transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>
+              <ChevronRightIcon />
+            </span>
           </span>
         ) : null}
       </div>

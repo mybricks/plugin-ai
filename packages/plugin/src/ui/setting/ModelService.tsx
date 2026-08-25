@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { DeleteOutlined } from "@ant-design/icons";
 import {
   ALL_CHANNEL_TYPES,
   ChannelType,
@@ -87,6 +86,12 @@ const EyeIcon: React.FC<{ visible: boolean }> = ({ visible }: { visible: boolean
       <line x1="1" y1="1" x2="23" y2="23" />
     </svg>
   );
+
+const DeleteIcon = () => (
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M4 7h16M10 11v6M14 11v6M9 7V4h6v3M6 7l1 13h10l1-13" />
+  </svg>
+);
 
 const PasswordInput: React.FC<{ placeholder?: string; value: string; onChange: (val: string) => void }> = ({
   placeholder,
@@ -617,7 +622,7 @@ export const ModelService: React.FC<ModelServiceProps> = ({ value, onChange, onS
                           requestDeleteProvider(provider.key);
                         }}
                       >
-                        <DeleteOutlined />
+                        <DeleteIcon />
                       </button>
                     )}
                   </div>
