@@ -1,4 +1,5 @@
 import type { Sandbox } from "../../../../../../agent/src/code-agent";
+import { hasDirtyAppPaths } from "../../../../sandbox/initial-files";
 
 interface FileManifestItem {
   path: string;
@@ -136,6 +137,14 @@ export class FileHmr {
       this.workspacePath("files"),
     );
     this.version = Number(manifest?.version ?? 0);
+    if (hasDirtyAppPaths(
+      (manifest.files ?? [])
+        .filter((file) => !!file?.path && file.size === 0)
+        .map((file) => file.path),
+    )) {
+      // 非法快照从源头丢弃，后续读取、更新和删除均不会看到它。
+      manifest.files = undefined;
+    }
 
     const localFiles = await sandbox.getFiles();
     const localEntries = await mapWithConcurrency(localFiles, 4, async (file) => ({
