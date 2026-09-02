@@ -1,7 +1,7 @@
 import type { Tool, ToolResult } from "../../../types";
 import type { ToolExecutionContext } from "../../../types";
 import { ToolValidationError } from "../../../types";
-import type { Sandbox } from "../../index";
+import type { AgentSandbox } from "../../../agent-sandbox";
 import { checkMultiEditFilePermission } from "../../../mode-manager";
 import { READ_TOOL_NAME } from "../read";
 import { WRITE_TOOL_NAME } from "../write";
@@ -58,7 +58,7 @@ function appendActionHint(
   return `${message} Same old_str has failed ${prev + 1} time(s). Further edits may cause significant errors. Use \`${WRITE_TOOL_NAME}\` to rewrite the entire file instead.`;
 }
 
-export function createMultiEditTool(adapter: Sandbox): Tool {
+export function createMultiEditTool(sandbox: AgentSandbox): Tool {
   return {
     name: MULTI_EDIT_TOOL_NAME,
     limits: { maxToken: false },
@@ -128,9 +128,9 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
       params: { edits: Array<{ path: string; old_str: string; new_str: string; replace_all?: boolean }> },
       ctx?: ToolExecutionContext,
     ): Promise<ToolResult> {
-      // 批量读取所有文件
-      const files = await adapter.getFiles();
-      const fileMap = new Map(files.map((f) => [f.path, f.content]));
+      const fileMap = new Map((await sandbox.files.readFiles(
+        Array.from(new Set(params.edits.map((edit) => edit.path)))
+      )).map((file) => [file.path, file.content] as const));
 
       // 对每个编辑操作执行替换
       // 用 Map 存储，确保同一路径只保留最终版本
@@ -166,7 +166,7 @@ export function createMultiEditTool(adapter: Sandbox): Tool {
       if (updates.size > 0) {
         const filesToWrite = Array.from(updates.entries()).map(([path, content]) => ({ path, content }));
         try {
-          await adapter.updateFiles(filesToWrite);
+          await sandbox.files.writeFiles(filesToWrite);
         } catch (err) {
           throw new ToolValidationError(
             `Failed to apply edits: ${err instanceof Error ? err.message : String(err)}`

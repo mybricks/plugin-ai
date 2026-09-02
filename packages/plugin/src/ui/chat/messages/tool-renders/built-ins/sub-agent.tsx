@@ -24,10 +24,19 @@ const DefaultSubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
 
   const agentType: string = tool.args?.type ?? "";
   const taskName = tool.args?.name ?? "";
-  const isPending = tool.status === "pending";
-  const isError = tool.status === "error";
-
   const progress = tool.progress;
+  const isAsync = tool.result?.metadata?.async === true;
+  const asyncStatus = isAsync ? progress?.status : undefined;
+  const isAsyncRunning = asyncStatus === "running";
+  const isAsyncError = asyncStatus === "error" || asyncStatus === "aborted";
+  // async 调用会立刻完成原始 function-call；卡片状态则跟随后台任务的 progress。
+  const displayTool: ToolRecord = isAsyncRunning
+    ? { ...tool, status: "pending" }
+    : isAsyncError
+      ? { ...tool, status: "error" }
+      : tool;
+  const isPending = displayTool.status === "pending";
+  const isError = displayTool.status === "error";
   const streamingContent = progress?.content ?? "";
   const files = progress?.files ?? [];
 
@@ -46,7 +55,7 @@ const DefaultSubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
   // 显示内容：执行中显示流式内容，完成后显示最终结果
   const displayContent: string = isPending
     ? streamingContent
-    : (tool.result?.output ?? "");
+    : (isAsync ? progress?.output ?? tool.result?.output ?? "" : tool.result?.output ?? "");
 
   const lineCount = displayContent ? displayContent.split("\n").length : 0;
 
@@ -61,8 +70,8 @@ const DefaultSubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
         onClick={() => canToggle && setCollapsed((c: boolean) => !c)}
         style={canToggle ? undefined : { cursor: "default" }}
       >
-        <span className={css["code-card-icon"]}>
-          <StatusIcon tool={tool} />
+          <span className={css["code-card-icon"]}>
+          <StatusIcon tool={displayTool} />
         </span>
 
         <span className={css["code-card-filename"]}>
@@ -73,7 +82,7 @@ const DefaultSubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
           <span className={css["code-card-lines"]}>{lineCount} 行</span>
         )}
 
-        <Duration tool={tool} />
+        <Duration tool={displayTool} />
 
         {canToggle && (
           <span className={css["code-card-toggle"]}>{isCollapsed ? "▶" : "▼"}</span>

@@ -2,14 +2,11 @@ export type { MybricksPromptSections } from "./mybricks";
 
 export {
   buildDevelopmentGuideContext,
-  buildExtraProjectInfoSection,
+  buildDirectoryInfoSection,
   buildProjectInfoSection,
-  parseAgentMdFrontmatter,
-  type AgentMdFrontmatter,
   type BuildDevelopmentGuideContextOptions,
-  type BuildExtraProjectInfoSectionOptions,
+  type BuildProjectInfoSectionOptions,
   type DevelopmentGuideLibrary,
-  type ExtraProjectInfo,
   type ProjectInfoFile,
 } from "./sections";
 

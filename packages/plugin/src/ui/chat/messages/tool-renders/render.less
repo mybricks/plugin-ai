@@ -330,6 +330,46 @@
   }
 }
 
+// ── Bash 卡片：命令本身是核心信息，始终以可换行的独立区域展示 ───────────────
+
+.bash-card-command {
+  padding: 7px 10px;
+  color: var(--mybricks-text-color-main, #333);
+  background: color-mix(in srgb, var(--mybricks-bg-color-main, #fff) 45%, transparent);
+  font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: var(--chat-font-size-sm, 12px);
+  line-height: 1.6;
+  user-select: text;
+
+  code {
+    display: block;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+}
+
+.bash-card-command-with-output {
+  border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+}
+
+.bash-card-status {
+  flex: none;
+  color: var(--mybricks-text-color-main, #333);
+  font-size: var(--chat-caption-font-size, 11px);
+  opacity: .52;
+}
+
+.bash-card-status-pending {
+  color: var(--mybricks-color-primary, #FA6400);
+  opacity: .82;
+}
+
+.bash-card-status-error {
+  color: var(--mybricks-color-danger, #E5484D);
+  opacity: .9;
+}
+
 // ── diff 行样式 ────────────────────────────────────────────────────────────────
 
 // 每行：relative 容器，左侧留 14px 给符号占位

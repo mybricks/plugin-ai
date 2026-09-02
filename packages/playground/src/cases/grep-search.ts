@@ -1,5 +1,11 @@
 import type { TestCase } from "./types";
 import { GREP_TOOL_NAME } from "@agent/index";
+import type {
+  AgentSandbox,
+  AgentSandboxGrepInput,
+  AgentSandboxGrepMatch,
+  AgentSandboxGrepResult,
+} from "@agent/index";
 import { makeScriptedRequest } from "../lib/scripted-request";
 import type { FsFile } from "../lib/mem-fs";
 
@@ -74,6 +80,136 @@ React + TypeScript playground fixture.`,
   },
 ];
 
+const agentSandboxGrepStats = { commandCalls: 0, fileListCalls: 0 };
+
+function matchGrepGlob(glob: string, path: string): boolean {
+  const target = glob.includes("/") ? path : path.split("/").pop() ?? path;
+  const pattern = glob.includes("/") ? glob : glob;
+  const regex = pattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*")
+    .replace(/\?/g, ".");
+  return new RegExp(`^${regex}$`).test(target);
+}
+
+/** Native playground transport: grep reads its indexed files, never files.list(). */
+function createNativeGrepSandbox(fs: import("../lib/mem-fs").MemFS): AgentSandbox {
+  agentSandboxGrepStats.commandCalls = 0;
+  agentSandboxGrepStats.fileListCalls = 0;
+  const files = new Map(fs.snapshot().map((file) => [file.path, { ...file }]));
+
+  return {
+    files: {
+      async list(path = "") {
+        agentSandboxGrepStats.fileListCalls++;
+        const normalizedPath = path.replace(/^\/+|\/+$/g, "");
+        const direct = new Map<string, { path: string; type?: "file" | "directory" }>();
+        for (const file of files.values()) {
+          const relative = normalizedPath
+            ? file.path.startsWith(`${normalizedPath}/`) ? file.path.slice(normalizedPath.length + 1) : ""
+            : file.path;
+          if (!relative) continue;
+          const [name, ...rest] = relative.split("/");
+          const entryPath = normalizedPath ? `${normalizedPath}/${name}` : name;
+          direct.set(entryPath, { path: entryPath, ...(rest.length ? { type: "directory" } : { type: "file" }) });
+        }
+        return Array.from(direct.values());
+      },
+      async read(path) {
+        const file = files.get(path);
+        return file ? { ...file } : null;
+      },
+      async readFiles(paths) {
+        return paths.flatMap((path) => {
+          const file = files.get(path);
+          return file ? [{ ...file }] : [];
+        });
+      },
+      async write(file) {
+        await fs.updateFiles([file]);
+        files.set(file.path, { ...files.get(file.path), ...file });
+      },
+      async writeFiles(updatedFiles) {
+        await fs.updateFiles(updatedFiles);
+        for (const file of updatedFiles) {
+          files.set(file.path, { ...files.get(file.path), ...file });
+        }
+      },
+      async remove(path) {
+        await fs.deleteFiles([path]);
+        files.delete(path);
+      },
+      async removeFiles(paths) {
+        await fs.deleteFiles(paths);
+        paths.forEach((path) => files.delete(path));
+      },
+    },
+    commands: {
+      async execute(command) {
+        return { stdout: `Unsupported command: ${command}`, exitCode: 127 };
+      },
+      proxies: [{
+      command: "find",
+      async execute(request) {
+      agentSandboxGrepStats.commandCalls++;
+      if (typeof request === "string") return { stdout: `Unsupported command: ${request}`, exitCode: 127 };
+      if (request.name === "find") {
+        return {
+          stdout: "",
+          exitCode: 0,
+          structured: {
+            type: "find",
+            entries: Array.from(files.values()).map(({ content: _content, ...file }) => ({ ...file, type: "file" as const })),
+          },
+        };
+      }
+      return { stdout: `Unsupported command: ${request.name}`, exitCode: 127 };
+      },
+    }, {
+      command: "grep",
+      async execute(request) {
+      agentSandboxGrepStats.commandCalls++;
+      if (typeof request === "string") return { stdout: `Unsupported command: ${request}`, exitCode: 127 };
+
+      const input = request.input as AgentSandboxGrepInput;
+      let regex: RegExp;
+      try {
+        regex = new RegExp(input.pattern, input.caseInsensitive ? "i" : "");
+      } catch {
+        return { stdout: `Invalid regex pattern: ${input.pattern}`, exitCode: 2 };
+      }
+
+      const matches: AgentSandboxGrepMatch[] = [];
+      for (const file of files.values()) {
+        if (input.glob && !matchGrepGlob(input.glob, file.path)) continue;
+        const lines = file.content.split("\n");
+        const matchedLines = lines.flatMap((content, index) => regex.test(content)
+          ? [{ lineNumber: index + 1, content }]
+          : []);
+        if (!matchedLines.length) continue;
+        if (input.outputMode === "files_with_matches") matches.push({ path: file.path });
+        else if (input.outputMode === "content") matches.push({ path: file.path, lines: matchedLines });
+        else matches.push({ path: file.path, count: matchedLines.length });
+      }
+
+      const paged = matches.slice(input.offset, input.offset + input.headLimit);
+      const structured: AgentSandboxGrepResult = {
+        type: "grep",
+        pattern: input.pattern,
+        outputMode: input.outputMode,
+        matches: paged,
+        totalCount: matches.length,
+        offset: input.offset,
+        returned: paged.length,
+        hasMore: input.offset + input.headLimit < matches.length,
+      };
+      return { stdout: "", exitCode: 0, structured };
+      },
+      }],
+    },
+  };
+}
+
 export const grepDefaultFilesCase: TestCase = {
   id: "grep-default-files",
   name: "grep_search 默认文件列表",
@@ -82,6 +218,7 @@ export const grepDefaultFilesCase: TestCase = {
   expectedBehavior:
     "工具卡片绿色，输出以 Found N files 开头，并列出包含 export 的文件路径。",
   initialTurns: [],
+  sandboxKind: "v1",
   initialFiles: GREP_TEST_FILES,
   request: makeScriptedRequest([
     {
@@ -100,6 +237,74 @@ export const grepDefaultFilesCase: TestCase = {
       chunkDelayMs: 50,
     },
   ], { loop: true }),
+  assertions: [
+    {
+      name: "Sandbox V1 grep 保持兼容输出",
+      run: ({ agent }) => {
+        const lastTurn = (agent as any)?.turns?.at?.(-1);
+        if (!lastTurn) return null;
+        const toolCall = lastTurn.iterations
+          ?.flatMap((iteration: any) => iteration.toolCalls ?? [])
+          ?.find((tool: any) => tool.name === GREP_TOOL_NAME);
+        if (!toolCall) return null;
+        const output = toolCall.result?.output ?? "";
+        const pass = toolCall.status === "success" && output.startsWith("Found 4 files");
+        return { pass, message: pass ? "V1 grep 输出未变化" : `当前输出: ${output}` };
+      },
+    },
+  ],
+};
+
+export const grepCommandsCase: TestCase = {
+  id: "grep-commands",
+  name: "grep_search AgentSandbox commands",
+  group: "Grep搜索",
+  description: "通过 AgentSandbox.commands 的结构化 grep 结果完成搜索，不让工具直接枚举文件。",
+  expectedBehavior:
+    "工具卡片绿色，输出与 V1 默认 grep 一致；自动断言确认唯一 grep 工具通过 AgentSandbox.commands 执行。",
+  initialTurns: [],
+  initialFiles: GREP_TEST_FILES,
+  sandboxKind: "agent",
+  agentSandboxFactory: createNativeGrepSandbox,
+  request: makeScriptedRequest([
+    {
+      type: "tool_calls",
+      calls: [{
+        id: "call_grep_agent_sandbox_001",
+        name: GREP_TOOL_NAME,
+        args: { pattern: "export" },
+      }],
+      delayMs: 300,
+    },
+    {
+      type: "content",
+      chunks: ["AgentSandbox 路径通过 commands 返回结构化 grep 结果。"],
+      ttftMs: 250,
+      chunkDelayMs: 50,
+    },
+  ], { loop: true }),
+  assertions: [
+    {
+      name: "AgentSandbox grep 使用 commands 路径",
+      run: ({ agent }) => {
+        const lastTurn = (agent as any)?.turns?.at?.(-1);
+        if (!lastTurn) return null;
+        const toolCall = lastTurn.iterations
+          ?.flatMap((iteration: any) => iteration.toolCalls ?? [])
+          ?.find((tool: any) => tool.name === GREP_TOOL_NAME);
+        if (!toolCall) return null;
+        const output = toolCall.result?.output ?? "";
+        const pass = toolCall.status === "success" && output.startsWith("Found 4 files") &&
+          agentSandboxGrepStats.commandCalls === 1 && agentSandboxGrepStats.fileListCalls === 0;
+        return {
+          pass,
+          message: pass
+            ? "AgentSandbox grep 通过 commands 执行，未调用 files.list"
+            : `当前输出: ${output}; commands=${agentSandboxGrepStats.commandCalls}; list=${agentSandboxGrepStats.fileListCalls}`,
+        };
+      },
+    },
+  ],
 };
 
 export const grepContentGlobCase: TestCase = {

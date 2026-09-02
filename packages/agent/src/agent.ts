@@ -6,7 +6,6 @@ import type {
   AgentMode,
   FormatUserMessageParams,
   AgentOptions,
-  AgentsMdConfig,
   BoundHistory,
   CompactRecord,
   ForkAgentOptions,
@@ -41,8 +40,6 @@ export { AgentEvents };
 export type { AgentMode, Message, History, HistoryPersistMode, Tool, TurnRecord, ToolCallRecord, WarmupIter };
 export type {
   AgentOptions,
-  AgentsMdConfig,
-  AgentsMdConfigResolver,
   AgentHooks,
   CompactRecord,
   ForkAgentOptions,
@@ -117,7 +114,6 @@ function normalizeAllowedAgentMode(mode: any, options: AgentOptions): AgentMode 
 /**
  * 构建 turn 级消息快照（在 turn 开始时调用一次）：
  *   [snapshot.historyTurns]              历史 turns 快照
- *   [snapshot.agentsMdMessage]           agents.md 上下文（仅获取一次）
  *   [snapshot.stableContextMessages]     静态背景上下文（getStableContextMessages，仅获取一次）
  *   [snapshot.attachmentContextMessages] 随消息携带的动态上下文（getAttachmentContextMessages，仅获取一次）
  *
@@ -130,8 +126,6 @@ async function buildTurnMessageSnapshot(
   mode: AgentMode,
   previousMode?: AgentMode | null
 ): Promise<TurnMessageSnapshot> {
-  const agentsMdMessage = await buildAgentsMdMessage(options.agentsMdConfig);
-
   const stableContextMessages: Message[] = options.getStableContextMessages
     ? await options.getStableContextMessages()
     : [];
@@ -142,48 +136,16 @@ async function buildTurnMessageSnapshot(
 
   return {
     historyTurns,
-    agentsMdMessage,
     stableContextMessages,
     attachmentContextMessages,
     mode,
   };
 }
 
-function formatAgentsMdEntry(entry: AgentsMdConfig): string {
-  const escapeAttr = (value: string) => value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-  return `<agents-md path="${escapeAttr(entry.path)}">\n${entry.content}\n</agents-md>`;
-}
-
-async function buildAgentsMdMessage(
-  agentsMdConfig: AgentOptions["agentsMdConfig"]
-): Promise<Message | null> {
-  const entries = (agentsMdConfig ? await agentsMdConfig() : [])
-    .map((entry) => ({
-      ...entry,
-      content: entry.content?.trim() ?? "",
-    }))
-    .filter((entry) => entry.content);
-
-  if (!entries.length) return null;
-
-  const content = `# agents.md\n\n${entries.map(formatAgentsMdEntry).join("\n\n")}\n\n`;
-
-  return {
-    role: "user",
-    content:
-      `<system-reminder>\n` +
-      `As you answer the user's questions, you can use the following context:\n` +
-      content +
-      `IMPORTANT: this context may or may not be relevant to your tasks. You should not respond to this context unless it is highly relevant to your task.\n` +
-      `</system-reminder>`,
-  };
-}
-
 /**
  * 构建单次 iter 请求的基础 messages（每个 iter 请求前调用一次）：
  *   [0]       system message（仅包含内置系统提示词）
- *   [1]       agentsMd user message（仅当 agentsMd 非空时存在）
- *   [2..A]    turn 级动态上下文（snapshot.contextMessages）
+ *   [1..A]    turn 级动态上下文（snapshot.contextMessages）
  *   [A..B]    compact 摘要消息（仅当当前 compactRecord 非空时存在）
  *   [B..N]    历史对话（从 snapshot.historyTurns 重建，compact 游标后的部分）
  *
@@ -198,7 +160,7 @@ function buildIterationBaseMessages(
   compactRecord?: CompactRecord | null
 ): { baseMessages: Message[]; historyStartIndex: number } {
   const { system } = options;
-  const { historyTurns, agentsMdMessage, stableContextMessages } = snapshot;
+  const { historyTurns, stableContextMessages } = snapshot;
 
   const systemMessage: Message | null = system
     ? { role: "system", content: system }
@@ -225,9 +187,8 @@ function buildIterationBaseMessages(
     ? { ...systemMessage, cache: true }
     : null;
 
-  // 断点 2：agentsMd + stableContext + compact 最后一条打 cache
+  // 断点 2：stableContext + compact 最后一条打 cache
   const staticRest: Message[] = [
-    ...(agentsMdMessage ? [agentsMdMessage] : []),
     ...stableContextMessages,
     ...compactMessages,
   ];
@@ -248,9 +209,9 @@ function buildIterationBaseMessages(
     ...historyMessages,
   ];
 
-  // historyStartIndex：assembled 数组中，静态前缀（system/agentsMd/stableContext/compact）之后的起始索引
+  // historyStartIndex：assembled 数组中，静态前缀（system/stableContext/compact）之后的起始索引
   // mask 时只对 index >= historyStartIndex 的消息做遮蔽，前缀不受影响
-  const historyStartIndex = (systemMessage ? 1 : 0) + (agentsMdMessage ? 1 : 0) + stableContextMessages.length + compactMessages.length;
+  const historyStartIndex = (systemMessage ? 1 : 0) + stableContextMessages.length + compactMessages.length;
 
   return { baseMessages, historyStartIndex };
 }
@@ -769,7 +730,12 @@ export class Agent {
     const previousMode = getLastRecordedMode(historyTurns);
     let messageSnapshot: TurnMessageSnapshot;
     try {
-      messageSnapshot = await buildTurnMessageSnapshot(this.options, historyTurns, turnStartMode, previousMode);
+      messageSnapshot = await buildTurnMessageSnapshot(
+        this.options,
+        historyTurns,
+        turnStartMode,
+        previousMode,
+      );
     } catch (e) {
       turn.endTime = Date.now();
       turn.status = "error";
@@ -1070,6 +1036,7 @@ export class Agent {
               turnAiRole = aiRole || undefined;
             },
             mode: this.getMode(),
+            signal,
             getMode: () => this.getMode(),
             setMode: (mode: AgentMode, reason?: string) => {
               this.setMode(mode, reason);
@@ -1437,8 +1404,8 @@ export class Agent {
    * 创建一个 SubAgent 实例（基于 fork 机制）。
    *
    * 与 createFork 的差异：
-   *   - 强制 maxSteps: 1（不允许多次 ReAct 轮询）
-   *   - 强制 tools: []（不允许工具调用）
+   *   - 默认继承父 Agent 工具；如在 config.tools 中传入白名单则只使用该白名单
+   *   - 始终移除 call-sub-agent，避免子 Agent 无限递归派发
    *   - 支持通过 ForkAgentOptions 覆盖 system / tools / aiRole
    *   - 全量继承父 turns 历史
    */

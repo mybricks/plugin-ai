@@ -63,6 +63,8 @@ class Context {
    * agent 在 plugin 侧统一管理，保证按 comId 复用
    */
   agentMap = new Map<string, any>();
+  /** Host-owned V1 sandbox façades used by plugin UI integrations. */
+  sandboxMap = new Map<string, any>();
 
   /** 已注册过 Agent 的 comId，用于无画布 focus 时兜底打开对话面板。 */
   private _agentComIds: string[] = [];

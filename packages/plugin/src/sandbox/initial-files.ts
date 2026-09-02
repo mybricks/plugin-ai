@@ -25,7 +25,7 @@ export function getSyncableInitialFiles(
 }
 
 /** 判断一组已读取文件是否命中某些应用产生的 App 空文件组合脏数据。 */
-export function hasDirtyAppSnapshot(files: InitialFile[]): boolean {
+function hasDirtyAppSnapshot(files: InitialFile[]): boolean {
   return hasDirtyAppPaths(
     files.filter((file) => file.content === "").map((file) => file.path),
   );
@@ -37,7 +37,7 @@ export function hasDirtyAppPaths(paths: Iterable<string>): boolean {
 }
 
 /** 返回路径集合中命中某些应用产生的空文件组合的 App 目录。 */
-export function getDirtyAppDirectories(paths: Iterable<string>): Set<string> {
+function getDirtyAppDirectories(paths: Iterable<string>): Set<string> {
   const normalizedPaths = new Set(Array.from(paths, normalizePath));
   return new Set(Array.from(normalizedPaths).flatMap((path) => {
     const appDirectory = path.match(/^(App\d*)\/index\.jsx$/)?.[1];

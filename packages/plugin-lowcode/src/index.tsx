@@ -231,9 +231,6 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
         const sections = [buildLowCodeStableContext(runtime)].filter(Boolean);
         return sections.length ? sections.join("\n\n") : null;
       },
-      getSandboxMetaSection: async () => {
-        return runtime.api ? "<canvas-info>\n当前在设计器画布中，只能通过 lowcode_generate_page、lowcode_clear_page 修改设计器画布中的内容。\n </canvas-info>" : null;
-      },
     };
 
     agentRef = new CodeAgent({
@@ -245,8 +242,8 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
       promptOptions: lowCodePromptOptions,
       system,
       getAttachmentContextMessages: async () => {
-        const sections = [await getUserContextMessage?.()].filter(Boolean) as string[];
-        return sections;
+        const canvasInfo = runtime.api ? "<canvas-info>\n当前在设计器画布中，只能通过 lowcode_generate_page、lowcode_clear_page 修改设计器画布中的内容。\n </canvas-info>" : null;
+        return [canvasInfo, await getUserContextMessage?.()].filter(Boolean) as string[];
       },
       tools: [...createLowCodeTools({ runtime, onOperatorActions, enableRenderingOptimization }), ...(tools ?? [])],
       ...(skills?.length ? { skills } : {}),

@@ -1,7 +1,7 @@
 import type { Tool, ToolResult } from "../../../types";
 import type { ToolExecutionContext } from "../../../types";
 import { ToolValidationError } from "../../../types";
-import type { Sandbox } from "../../index";
+import type { AgentSandbox } from "../../../agent-sandbox";
 import { checkMultiWriteFilePermission } from "../../../mode-manager";
 import { WRITE_TOOL_NAME } from "../write";
 import { EDIT_TOOL_NAME } from "../edit";
@@ -9,7 +9,7 @@ import { MULTI_EDIT_TOOL_NAME } from "../multi-edit";
 
 export const MULTI_WRITE_TOOL_NAME = "multi_write";
 
-export function createMultiWriteTool(adapter: Sandbox): Tool {
+export function createMultiWriteTool(sandbox: AgentSandbox): Tool {
   return {
     name: MULTI_WRITE_TOOL_NAME,
     limits: { maxToken: false },
@@ -62,7 +62,7 @@ IMPORTANT: All string values must use raw Unicode characters. Never escape any c
     },
     async execute(params: { files: Array<{ path: string; content: string }> }): Promise<ToolResult> {
       try {
-        await adapter.updateFiles(params.files);
+        await sandbox.files.writeFiles(params.files);
       } catch (err) {
         throw new ToolValidationError(
           `Failed to write files: ${err instanceof Error ? err.message : String(err)}`

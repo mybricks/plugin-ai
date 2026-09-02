@@ -4,6 +4,7 @@ import type { ProviderConfig } from "@request/providers";
 import type { Tool } from "@agent/types";
 import type { CodeAgent } from "@agent/code-agent";
 import type { SkillFile } from "@agent/code-agent";
+import type { AgentSandbox } from "@agent/agent-sandbox";
 import type { ChatPanelProps } from "@plugin/ui/chat";
 import type { MentionProvider } from "@plugin/index";
 import type { AttachProcessor } from "@plugin/content-limits";
@@ -41,6 +42,10 @@ export interface TestCase {
   initialTurns: TurnRecord[];
   /** 预设文件系统（不传则使用 DEFAULT_FILES） */
   initialFiles?: FsFile[];
+  /** 选择 CodeAgent 的 sandbox 路径；默认保持 V1。 */
+  sandboxKind?: "v1" | "agent";
+  /** 为 AgentSandbox 用例提供原生实现，用于覆盖命令 transport 等能力。 */
+  agentSandboxFactory?: (fs: import("../lib/mem-fs").MemFS) => AgentSandbox;
   request: RequestAsStreamFn;
   /** 预设 LLM 配置，用于测试模型选择器和模型切换 */
   llm?: {
@@ -98,7 +103,7 @@ export interface TestCase {
    * 特殊 playground 展示布局。
    * 默认走原始调试布局；chat-panel-skin 只展示皮肤预览用 ChatPanel。
    */
-  playgroundLayout?: "chat-panel-skin";
+  playgroundLayout?: "chat-panel-skin" | "tool-contract";
   /** ChatPanel 皮肤预览模式；default 不注入变量，custom 注入 demo 变量。 */
   chatPanelSkin?: "default" | "custom";
   /** ChatPanel 超长历史折叠配置 */

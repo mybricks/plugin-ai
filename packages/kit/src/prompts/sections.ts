@@ -19,23 +19,15 @@ export interface ProjectInfoFile {
   content: string;
 }
 
-export interface AgentMdFrontmatter {
-  title?: string;
-  description?: string;
-  permissions?: string[];
-  body: string;
+export interface BuildProjectInfoSectionOptions {
+  /**
+   * Directories hidden from the project snapshot and empty-project check.
+   * This affects prompt presentation only; it never changes sandbox files.
+   */
+  ignoredDirectories?: readonly string[];
 }
 
-export interface ExtraProjectInfo {
-  path: string;
-  files: ProjectInfoFile[];
-}
-
-export interface BuildExtraProjectInfoSectionOptions {
-  directories: ExtraProjectInfo[];
-  files: ProjectInfoFile[];
-  globToolName: string;
-}
+const DEFAULT_PROJECT_INFO_IGNORED_DIRECTORIES = [".agent", ".lingchuang"] as const;
 
 function wrapRules(tag: string, value?: string): string {
   const content = value?.trim();
@@ -52,6 +44,11 @@ function normalizePath(path: string): string {
   return path.replace(/^\/+/, "");
 }
 
+function isInIgnoredDirectory(path: string, ignoredDirectories: readonly string[]): boolean {
+  const ignored = new Set(ignoredDirectories.map((directory) => directory.replace(/^\/+|\/+$/g, "")));
+  return normalizePath(path).split("/").some((segment) => ignored.has(segment));
+}
+
 function summarizeFiles(files: ProjectInfoFile[]): string {
   const suffixMap: Record<string, number> = {};
   for (const file of files) {
@@ -64,43 +61,33 @@ function summarizeFiles(files: ProjectInfoFile[]): string {
     .join("、");
 }
 
-/** 解析 .agent/agent.md 的 frontmatter 与正文。 */
-export function parseAgentMdFrontmatter(content: string): AgentMdFrontmatter {
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
-  if (!match) return { body: content };
-  const frontmatter = match[1] ?? "";
-  const getValue = (key: string): string | undefined =>
-    frontmatter.match(new RegExp(`^${key}:\\s*(.+)$`, "m"))?.[1]?.trim().replace(/^["']|["']$/g, "");
-  const inlinePermissions = frontmatter.match(/^permissions:\s*\[([^\]]+)\]/m)?.[1];
-  const commaSeparatedPermissions = frontmatter.match(/^permissions:\s*([^\[\n][^\n]*)$/m)?.[1];
-  const permissionsValue = inlinePermissions ?? commaSeparatedPermissions;
-
-  return {
-    title: getValue("title"),
-    description: getValue("description"),
-    permissions: permissionsValue
-      ? permissionsValue.split(",").map((item) => item.trim().replace(/^["']|["']$/g, "")).filter(Boolean)
-      : undefined,
-    body: (match[2] ?? "").trimEnd(),
-  };
-}
-
-/** 构建主工程文件清单；扩展工程信息需通过 buildExtraProjectInfoSection 单独追加。 */
-export function buildProjectInfoSection(files: ProjectInfoFile[]): string {
+/**
+ * 构建主工程文件清单。
+ *
+ * 给线上版本用。默认隐藏 `.agent` / `.lingchuang`：线上 Agent 暂时不需要理解
+ * `.lingchuang` 文件夹，内部规则也不应刷进全量文件列表。这是故意的，与
+ * `buildDirectoryInfoSection` 不隐藏目录名的行为不同。
+ */
+export function buildProjectInfoSection(
+  files: ProjectInfoFile[],
+  options: BuildProjectInfoSectionOptions = {},
+): string {
+  const ignoredDirectories = options.ignoredDirectories ?? DEFAULT_PROJECT_INFO_IGNORED_DIRECTORIES;
+  const projectFiles = files.filter((file) => !isInIgnoredDirectory(file.path, ignoredDirectories));
   const sections = ["这是发送这条消息时的项目空间快照，并不会实时更新。", "# 项目空间"];
 
-  if (files.length === 0) {
+  if (projectFiles.length === 0) {
     sections.push([
       "## 项目工程",
       "权限：读取、写入",
       "当前没有任何代码文件。可以使用类似 `index.tsx` 的路径来操作文件。建议使用初始化来同时生成多份文件。",
     ].join("\n"));
   } else {
-    const fileList = files.map((file) => `- ${normalizePath(file.path)} (${file.content.split("\n").length} lines)`).join("\n");
+    const fileList = projectFiles.map((file) => `- ${normalizePath(file.path)} (${file.content.split("\n").length} lines)`).join("\n");
     sections.push([
       "## 项目工程",
       "权限：读取、写入",
-      `总计：${files.length} 个文件（${summarizeFiles(files)}）`,
+      `总计：${projectFiles.length} 个文件（${summarizeFiles(projectFiles)}）`,
       "文件：",
       fileList,
     ].join("\n"));
@@ -109,31 +96,16 @@ export function buildProjectInfoSection(files: ProjectInfoFile[]): string {
   return `<project-info>\n${sections.join("\n\n")}\n</project-info>`;
 }
 
-/** 构建扩展工程信息，不会自动包含在 project-info 中。 */
-export function buildExtraProjectInfoSection(options: BuildExtraProjectInfoSectionOptions): string | null {
-  const { directories, files, globToolName } = options;
-  if (!directories.length) return null;
-
-  const permissionLabels: Record<string, string> = { read: "读取", write: "写入", bash: "执行 bash 命令" };
-  const sections = directories.map(({ path, files: directoryFiles }, index) => {
-    const normalizedDirectoryPath = normalizePath(path).replace(/\/$/, "");
-    const agentMd = files.find((file) => normalizePath(file.path) === `${normalizedDirectoryPath}/.agent/agent.md`);
-    const metadata = agentMd ? parseAgentMdFrontmatter(agentMd.content) : undefined;
-    const permissions = metadata?.permissions?.map((permission) => permissionLabels[permission] ?? permission) ?? [];
-    const countDescription = directoryFiles.length === 0
-      ? "当前没有任何代码文件。"
-      : `总计：${directoryFiles.length} 个文件（${summarizeFiles(directoryFiles)}）。当前不展开文件列表，可使用 ${globToolName} 工具（如 \`${normalizedDirectoryPath}/**/*\`）查询文件列表，再按需读取具体文件。`;
-
-    return [
-      `工程${index + 1}「${metadata?.title ?? path}」，虚拟目录为\`${normalizedDirectoryPath}\``,
-      metadata?.description ? `说明：${metadata.description}` : undefined,
-      permissions.length ? `权限：${permissions.join("、")}` : undefined,
-      countDescription,
-      `可以使用类似 \`${normalizedDirectoryPath}/src/index.ts\` 的完整路径来读取或修改文件。`,
-    ].filter(Boolean).join("\n");
-  });
-
-  return `<extra-project-info>\n## 扩展工程（${directories.length}个）\n${sections.join("\n\n")}\n</extra-project-info>`;
+/**
+ * 构建目录级快照；不递归也不读取文件内容。
+ *
+ * 给可进入真实目录树的场景用。故意不隐藏 `.agent` / `.lingchuang`：只展示
+ * 当前目录的一层名字，模型需要看见这些目录才能决定要不要进去。线上全量
+ * 文件快照的隐藏由 `buildProjectInfoSection` 负责。
+ */
+export function buildDirectoryInfoSection(options: { workingDirectory?: string; entries: string[] }): string {
+  const entries = options.entries.length ? options.entries.join("\n") : "（空目录）";
+  return `<project-info>\n当前工作目录：${options.workingDirectory ?? "."}\n \n 命令行默认在此目录下执行，无需进入目录。 \n \n根目录树\n${entries}\n</project-info>`;
 }
 
 export function buildDevelopmentGuideContext(options: BuildDevelopmentGuideContextOptions): string | null {

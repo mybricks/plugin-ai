@@ -436,6 +436,21 @@
   flex-wrap: wrap;
   gap: 4px;
 }
+
+.tool-contract-lab { width: 100%; padding: 20px; overflow: auto; }
+.tool-contract-controls { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+.tool-contract-controls label { display: flex; gap: 6px; align-items: center; font-size: 12px; }
+.tool-contract-controls select, .tool-contract-controls button, .tool-contract-controls textarea { font: inherit; }
+.tool-contract-controls button { padding: 5px 10px; cursor: pointer; }
+.tool-contract-suite { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 16px; font-size: 12px; }
+.tool-contract-suite button { border: 0; background: transparent; cursor: pointer; }
+.tool-contract-grid { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(260px, 1fr) minmax(320px, 1.2fr); gap: 12px; }
+.tool-contract-grid section { min-width: 0; border: 1px solid var(--border-color, #e5e7eb); border-radius: 8px; padding: 10px; }
+.tool-contract-grid h3 { margin: 0 0 8px; font-size: 13px; }
+.tool-contract-grid textarea { width: 100%; min-height: 280px; resize: vertical; font: 12px/1.5 monospace; }
+.tool-contract-grid pre { margin: 0; max-height: 420px; overflow: auto; font: 11px/1.5 monospace; white-space: pre-wrap; }
+.contract-pass, .contract-fail { margin-left: 8px; font-size: 11px; }
+.contract-pass { color: #16a34a; }.contract-fail { color: #dc2626; }
 .pg-assertion {
   display: inline-flex;
   align-items: center;

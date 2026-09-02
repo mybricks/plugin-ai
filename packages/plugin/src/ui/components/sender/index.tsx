@@ -10,6 +10,7 @@ import { ChatMode, type ChatModeType } from "../chat-mode";
 import { ModelSelector } from "../model-selector";
 import type { ModelSelectorProps } from "../model-selector";
 import type { QueueItem } from "../../../context/queue";
+import { context } from "../../../context";
 import type { ModelSelection } from "../../../../../request/src/providers";
 import type { SendToAgentParams } from "../../../sandbox";
 import { triggerChipRemove } from "../../../sandbox/chip-remove";
@@ -831,7 +832,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   }, [appendInput, attachments, insertChip, disabled, clearEditorContent, replaceFocusContent]);
 
   const resolvePendingFileChips = async (chips: ChatChipInstance[]): Promise<ChatChipInstance[] | null> => {
-    const sandbox = agent instanceof CodeAgent ? agent.getSandbox() : undefined;
+    const sandbox = agent instanceof CodeAgent ? context.sandboxMap.get(agent.key) : undefined;
     const nextChips: ChatChipInstance[] = [];
 
     for (const chip of chips) {

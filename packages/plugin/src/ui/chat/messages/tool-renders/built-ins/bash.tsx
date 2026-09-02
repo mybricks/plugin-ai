@@ -1,41 +1,30 @@
 import React, { useState } from "react";
 import { Code } from "../../../../components/icons";
 import type { ToolRecord } from "../index";
-import { StatusIcon, Duration, LineToolRenderer } from "../shared";
-import { useChatPanel } from "../../../chat-panel/context";
+import { StatusIcon, Duration } from "../shared";
 import css from "../render.less";
 
 export const BashRenderer = ({ tool }: { tool: ToolRecord }) => {
-  const { messagesRenderVariant } = useChatPanel();
   const [collapsed, setCollapsed] = useState(true);
 
   const command: string = tool.args?.command ?? "";
   const description: string = tool.args?.description ?? "";
-
-  // 提取命令的第一个词（verb）
-  const verb = command.trimStart().split(/\s+/)[0] ?? "bash";
-  const title = description || command || "执行命令";
-
   const isPending = tool.status === "pending";
-  const output: string = tool.result?.output ?? "";
-  const hasOutput = tool.status === "success" && !!output;
+  const exitCode = tool.result?.metadata?.exitCode;
+  const isCommandError = tool.status === "error" || (typeof exitCode === "number" && exitCode !== 0);
+  const statusText = isPending ? "执行中" : isCommandError ? "执行失败" : "已完成";
+  const title = description || "执行命令";
+  const output: string = tool.status === "error"
+    ? tool.error ?? tool.result?.output ?? ""
+    : tool.result?.output ?? "";
+  const hasOutput = !!output;
   const canToggle = hasOutput;
-
-  if (messagesRenderVariant === "line") {
-    return (
-      <LineToolRenderer
-        tool={tool}
-        icon={<Code />}
-        title={isPending ? `${title}...` : title}
-        meta={verb !== "bash" ? verb : undefined}
-      />
-    );
-  }
+  const headerHasDivider = !!command || hasOutput;
 
   return (
-    <div className={css["code-card"]}>
+    <div className={`${css["code-card"]} ${css["bash-card"]}`}>
       <div
-        className={`${css["code-card-header"]}${hasOutput ? ` ${css["code-card-header-with-body"]}` : ""}`}
+        className={`${css["code-card-header"]}${headerHasDivider ? ` ${css["code-card-header-with-body"]}` : ""}`}
         onClick={() => canToggle && setCollapsed((c) => !c)}
         style={canToggle ? undefined : { cursor: "default" }}
       >
@@ -43,22 +32,21 @@ export const BashRenderer = ({ tool }: { tool: ToolRecord }) => {
           <StatusIcon tool={tool} icon={<Code />} />
         </span>
         <span className={css["code-card-filename"]}>
-          {isPending ? (
-            <span style={{ opacity: 0.7 }}>{title}</span>
-          ) : (
-            title
-          )}
+          {isPending ? <span style={{ opacity: 0.7 }}>{title}</span> : title}
         </span>
-        {command && (
-          <span className={css["code-card-lines"]} style={{ fontFamily: "monospace", opacity: 0.6, flexShrink: 0 }}>
-            {verb}
-          </span>
-        )}
+        <span className={`${css["bash-card-status"]}${isPending ? ` ${css["bash-card-status-pending"]}` : isCommandError ? ` ${css["bash-card-status-error"]}` : ""}`}>
+          {statusText}
+        </span>
         <Duration tool={tool} />
         {canToggle && (
           <span className={css["code-card-toggle"]}>{collapsed ? "▶" : "▼"}</span>
         )}
       </div>
+      {command && (
+        <div className={`${css["bash-card-command"]}${hasOutput && !collapsed ? ` ${css["bash-card-command-with-output"]}` : ""}`}>
+          <code>{command}</code>
+        </div>
+      )}
       {hasOutput && !collapsed && (
         <pre className={css["code-card-body"]}>
           <code>{output}</code>

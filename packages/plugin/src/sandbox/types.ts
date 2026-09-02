@@ -39,6 +39,7 @@ export interface Designer {
 }
 
 import type { AgentHooks, ChatChipDef, ChatChipInstance } from "../../../agent/src";
+import type { AgentSandbox } from "../../../agent/src";
 
 /** 沙箱 hooks，即 AgentHooks */
 export type Hooks = AgentHooks;
@@ -73,7 +74,17 @@ export type SandboxChipsConfig = SandboxChipConfig[] | Record<string, SandboxChi
  * window._registSandBox_ 的第二个参数。
  */
 export interface RegistSandBoxConfig {
-  designer: Designer;
+  /**
+   * Legacy Designer FS contract. Existing component libraries may keep using
+   * this property without changing their integration.
+   */
+  designer?: Designer;
+  /**
+   * New AgentSandbox contract. When supplied, CodeAgent uses its commands
+   * (including structured grep) while the host continues to provide its
+   * virtual-file and additional-directory overlays.
+   */
+  agentSandbox?: AgentSandbox;
   hooks?: Hooks;
   /**
    * 注册 chip 相关能力，支持自定义 chip 定义和内置/自定义 chip 的 remove 回调。

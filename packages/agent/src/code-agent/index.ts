@@ -1,4 +1,4 @@
-import { Agent, type AgentOptions } from "../agent";
+import { Agent, type AgentHooks, type AgentOptions } from "../agent";
 import type { Message, Tool } from "../types";
 import {
   createReadTool,
@@ -8,6 +8,7 @@ import {
   createDeleteTool,
   createGrepTool,
   createBashTool,
+  createHistoryReadTool,
   createSkillTool,
   READ_TOOL_NAME,
   WRITE_TOOL_NAME,
@@ -16,12 +17,24 @@ import {
   DELETE_TOOL_NAME,
   GREP_TOOL_NAME,
   BASH_TOOL_NAME,
+  HISTORY_READ_TOOL_NAME,
   USE_SKILL_TOOL_NAME,
 } from "./tools";
+import { createAgentSandboxOverlay, createAgentSandboxRuntime } from "../agent-sandbox";
+import type { BashToolOptions } from "./tools/bash";
+import {
+  createAgentSandboxFromV1,
+  isAgentSandbox,
+  type AgentSandbox,
+  type AgentSandboxFileEntry,
+  type AgentSandboxFindResult,
+} from "../agent-sandbox";
 import { buildModeSection, getActivePlanFile, type ActivePlanFile } from "../mode-manager";
 import { splitFrontmatter } from "../utils/frontmatter";
 import { getCodeAgentSystemPrompt, type CodeAgentPromptOptions } from "./prompt";
+import { createAgentsMdContextMessage } from "./agents-md";
 export type { CodeAgentPromptOptions };
+export type { BashToolOptions } from "./tools/bash";
 import {
   type SkillFile,
   type SkillActivation,
@@ -34,10 +47,11 @@ import {
 import {
   createSubAgentTool,
   resolveSubAgentMeta,
+  SubAgentTaskManager,
   type SubAgentConfig,
   CALL_SUB_AGENT_TOOL_NAME,
 } from "../sub-agent";
-export type { SubAgentConfig };
+export type { SubAgentConfig, CompletedSubAgentTask } from "../sub-agent";
 
 export type { SkillActivation, SkillFile, SkillMeta };
 export { resolveSkillMeta, USE_SKILL_TOOL_NAME };
@@ -104,55 +118,13 @@ export const isFileExcluded = (file: UnifiedFile, exclude?: GetFilesOptions["exc
 // ─── Plugin 配置 ─────────────────────────────────────────────────────────────
 
 /**
- * CodeAgent 插件挂载的额外目录。
- *
- * 目录通过虚拟路径前缀暴露给 CodeAgent 的文件工具；读写删除仍由宿主侧
- * sandbox 适配层路由到对应 API。
- */
-export interface AdditionalDirectory {
-  /**
-   * 虚拟路径前缀，末尾必须带斜杠，例如 ".specs/" 或 "knowledge/"。
-   * 所有 path.startsWith(dir.path) 的文件操作都会路由到此目录。
-   */
-  path: string;
-  /**
-   * 该目录的虚拟文件（路径相对 dir.path）。
-   *
-   * 典型用途：在此目录下放一个 `.agent/agent.md`，作为 LLM 可读的规则文档：
-   * ```ts
-   * virtualFiles: async () => [{
-   *   path: ".agent/agent.md",
-   *   content: "该工程的开发规范...",
-   * }]
-   * ```
-   *
-   * - 路径会被自动拼接 dir.path 前缀（setup 层负责）
-   * - 同路径下 virtualFiles 优先级高于 getFiles 返回的真实文件
-   * - 未填 permissions 时默认只读（write/delete 必须显式开启）
-   */
-  virtualFiles?: () => Promise<UnifiedFile[]>;
-  /** 读取该目录下的文件列表（返回带权限的统一文件模型） */
-  getFiles: () => Promise<UnifiedFile[]>;
-  /**
-   * 写入文件（可选）。
-   * 不传则视为只读目录，LLM 尝试写入时框架抛出错误。
-   */
-  updateFiles?: (files: Array<{ path: string; content: string }>) => Promise<void>;
-  /**
-   * 删除文件（可选）。
-   * 不传则视为不支持删除，操作时框架抛出错误。
-   */
-  deleteFiles?: (paths: string[]) => Promise<void>;
-}
-
-/**
  * CodeAgent 插件配置。
  *
  * 对标 Claude Code plugin 的组件聚合语义：
  *   - skills 使用 SkillFile 声明
  *   - agents 使用 SubAgentConfig 声明（md 文件驱动），合并到顶层 subAgents
  *   - tools 使用 Tool 声明，并合并到顶层 tools
- *   - additionalDirectories 使用 AdditionalDirectory 声明，挂载额外文件目录
+ *   - hooks 使用 AgentHooks 声明，仅在插件启用时参与执行
  *
  * name 命名规范：
  *   - 仅允许小写英文字母、数字、中划线、下划线
@@ -163,7 +135,7 @@ export interface AdditionalDirectory {
 export interface CodeAgentPlugin {
   /**
    * 插件唯一标识（必填）。
-   * 用作 enablePlugin / disablePlugin 的查找键，以及工具命名空间前缀。
+   * 用作 enablePlugin / disablePlugin 的查找键。
    * 命名规范：[a-z0-9][a-z0-9_-]*
    */
   name: string;
@@ -183,16 +155,13 @@ export interface CodeAgentPlugin {
    * 每个 SubAgentConfig 通过 `${name}.md` 文件定义配置和系统提示词。
    */
   agents?: SubAgentConfig[];
-  /** 插件内置工具，合并到顶层 tools（工具名自动加 pluginName_ 前缀） */
+  /** 插件内置工具，使用原始工具名合并到顶层 tools */
   tools?: Tool[];
   /**
-   * 插件额外挂载目录（异步工厂函数）。
-   * 仅在插件启用时参与文件读取、写入、删除和 user context 注入。
-   *
-   * 每个 turn 开始时调用，可根据运行时状态动态决定挂载哪些目录。
-   * 返回空数组表示本轮不挂载任何额外目录。
+   * 插件生命周期 hooks，与 AgentOptions.hooks 的定义和行为一致。
+   * 仅在插件启用时参与执行；多个插件按 plugins 数组顺序依次执行。
    */
-  additionalDirectories?: () => Promise<AdditionalDirectory[]>;
+  hooks?: AgentHooks;
 }
 
 export type CodeAgentBuiltinToolName =
@@ -202,7 +171,8 @@ export type CodeAgentBuiltinToolName =
   | typeof MULTI_EDIT_TOOL_NAME
   | typeof DELETE_TOOL_NAME
   | typeof GREP_TOOL_NAME
-  | typeof BASH_TOOL_NAME;
+  | typeof BASH_TOOL_NAME
+  | typeof HISTORY_READ_TOOL_NAME;
 
 const DEFAULT_BUILTIN_TOOLS: CodeAgentBuiltinToolName[] = [
   READ_TOOL_NAME,
@@ -214,16 +184,21 @@ const DEFAULT_BUILTIN_TOOLS: CodeAgentBuiltinToolName[] = [
   BASH_TOOL_NAME,
 ];
 
-// ─── 沙箱接口 ─────────────────────────────────────────────────────────────────
+// ─── Sandbox V1 兼容接口 ──────────────────────────────────────────────────────
 
 /**
- * 沙箱接口，由调用方通过 window._registSandBox_ 注入。
- * CodeAgent 通过此接口操作文件系统（读取、写入文件）。
- * 额外的设计器状态、日志等能力通过 tools 参数注入，CodeAgent 本身不感知。
+ * 旧版 Sandbox V1 兼容接口。
+ *
+ * 新宿主应直接提供 `AgentSandbox`（原子 `files` + `commands`）；CodeAgent
+ * 在入口将此 V1 接口转换为 AgentSandbox，因此保留它不会影响旧调用方。
+ * V1 的 `getFiles()` 会返回全部文件内容，仅作为兼容层实现；新工具不直接依赖它。
+ * 额外的设计器状态、日志等能力仍应通过 tools 参数注入。
+ *
+ * @deprecated 请改为提供 `AgentSandbox`。
  */
 export interface Sandbox {
   /**
-   * 获取文件列表（统一文件模型，包含所有来源的文件）。
+   * 旧版：获取全部文件及其内容。
    * @param options.exclude 可选过滤规则，命中的文件会被排除。
    *   典型用途：`exclude: /(^|\/)\.agent(\/|$)/` 过滤任意层级内部文件，用于向用户展示的文件列表。
    */
@@ -241,22 +216,19 @@ export interface Sandbox {
    * 返回的文本内容会通过 getStableContextMessages 注入到 LLM 上下文中。
    */
   getContext?: () => Promise<string | null>;
-  /**
-   * 获取项目空间元信息（主工程文件列表、扩展工程说明等）。
-   * 返回的文本会通过 getAttachmentContextMessages 注入到 LLM 上下文中，
-   * 放置在用户消息之前。
-   */
-  getSandboxMetaSection?: () => Promise<string | null>;
 }
 
 // ─── CodeAgentOptions ────────────────────────────────────────────────────────
 
 export interface CodeAgentOptions extends Omit<AgentOptions, "system"> {
   /**
-   * 沙箱，提供文件读写工具的底层实现。
-   * 通常由 plugin 侧通过 window._registSandBox_ 注入。
+   * 推荐传入 AgentSandbox。为兼容既有宿主也接受 Sandbox V1，并在入口适配。
+   * CodeAgent 内部只使用 AgentSandbox：文件工具走 files，grep 等结构化工具走 commands。
+   * plugin 集成可通过 window._registSandBox_ 注入任一种契约。
    */
-  sandbox: Sandbox;
+  sandbox: Sandbox | AgentSandbox;
+  /** Restrict the bash tool to a host-approved command set. */
+  bash?: BashToolOptions;
   /**
    * 系统提示词定制选项（可覆盖内置默认值）。
    * 传 false 则跳过所有内置段落，由 system 字段完全掌控系统提示词。
@@ -295,10 +267,10 @@ export interface CodeAgentOptions extends Omit<AgentOptions, "system"> {
    */
   plugins?: CodeAgentPlugin[];
   /**
-   * 控制 CodeAgent 内置文件工具。
+   * 控制 CodeAgent 内置工具。
    *
-   * - undefined：启用默认内置工具
-   * - false / []：不启用任何内置文件工具
+   * - undefined：启用默认内置工具（不包含 history_read）
+   * - false / []：不启用任何内置工具
    * - 指定工具名数组：只启用这些内置文件工具
    *
    * `tools` 仍然表示额外追加的自定义工具，不承担禁用内置工具的语义。
@@ -314,11 +286,91 @@ const SKILLS_PREFIX = `${AGENT_PREFIX}skills/`;
 /** 插件 name 命名规范校验 */
 const PLUGIN_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
-function prefixPluginToolName(pluginName: string, tool: Tool): Tool {
-  return {
-    ...tool,
-    name: `${pluginName}_${tool.name}`,
+function composePluginHooks(
+  baseHooks: AgentHooks | undefined,
+  plugins: CodeAgentPlugin[],
+  enabledNamesRef: { current: Set<string> },
+): AgentHooks | undefined {
+  const hasPluginHooks = plugins.some((plugin) => plugin.hooks);
+  if (!baseHooks && !hasPluginHooks) return undefined;
+
+  const getActiveHooks = (): Array<{ source: string; hooks: AgentHooks }> => [
+    ...(baseHooks ? [{ source: "AgentOptions", hooks: baseHooks }] : []),
+    ...plugins
+      .filter((plugin) => enabledNamesRef.current.has(plugin.name))
+      .flatMap((plugin) => plugin.hooks
+        ? [{ source: `plugin "${plugin.name}"`, hooks: plugin.hooks }]
+        : []),
+  ];
+
+  const runHook = async <T>(
+    source: string,
+    hookName: keyof AgentHooks,
+    callback: () => T | Promise<T>,
+  ): Promise<T | undefined> => {
+    try {
+      return await callback();
+    } catch (error) {
+      console.warn(`[CodeAgent] ${source}.hooks.${hookName} failed:`, error);
+      return undefined;
+    }
   };
+
+  const hooks: AgentHooks = {
+    async beforeTurn(params) {
+      for (const { source, hooks: activeHooks } of getActiveHooks()) {
+        if (activeHooks.beforeTurn) {
+          await runHook(source, "beforeTurn", () => activeHooks.beforeTurn!(params));
+        }
+      }
+    },
+    async beforeRequest(params) {
+      const additionalMessages: Message[] = [];
+      for (const { source, hooks: activeHooks } of getActiveHooks()) {
+        if (!activeHooks.beforeRequest) continue;
+        const result = await runHook(
+          source,
+          "beforeRequest",
+          () => activeHooks.beforeRequest!(params),
+        );
+        if (result?.additionalMessages?.length) {
+          additionalMessages.push(...result.additionalMessages);
+        }
+      }
+      return additionalMessages.length ? { additionalMessages } : undefined;
+    },
+    async afterTurn(turn) {
+      for (const { source, hooks: activeHooks } of getActiveHooks()) {
+        if (activeHooks.afterTurn) {
+          await runHook(source, "afterTurn", () => activeHooks.afterTurn!(turn));
+        }
+      }
+    },
+    async afterTurnSummary(turn, summary, result) {
+      for (const { source, hooks: activeHooks } of getActiveHooks()) {
+        if (activeHooks.afterTurnSummary) {
+          await runHook(
+            source,
+            "afterTurnSummary",
+            () => activeHooks.afterTurnSummary!(turn, summary, result),
+          );
+        }
+      }
+    },
+    async afterTurnSettled(turn) {
+      for (const { source, hooks: activeHooks } of getActiveHooks()) {
+        if (activeHooks.afterTurnSettled) {
+          await runHook(
+            source,
+            "afterTurnSettled",
+            () => activeHooks.afterTurnSettled!(turn),
+          );
+        }
+      }
+    },
+  };
+
+  return hooks;
 }
 
 // ─── 构建环境信息 ──────────────────────────────────────────────────────────────
@@ -415,8 +467,16 @@ async function buildAlwaysLoadedSkillsSection(skills: SkillFile[]): Promise<stri
  *   - `virtualFiles` — 只读文件（如根工程 `.agent/agent.md` 规则文档），由 Sandbox.virtualFiles 承载，合并进统一文件模型
  *   - `skills`    — 技能文件列表，挂载为 .agent/skills/ 目录（只读），LLM 按需读取
  *   - `subAgents` — 子 Agent 配置列表，注册 call-sub-agent 工具
- *   - `plugins`   — 插件列表（仅支持 skills / agents / tools / additionalDirectories）
+ *   - `plugins`   — 插件列表（仅支持 skills / agents / tools / hooks）
  */
+
+async function fetchPlanFiles(sandbox: AgentSandbox): Promise<Array<{ path: string; content: string }>> {
+  const result = await sandbox.commands.execute({ name: "find", input: { path: ".agent/plans" } });
+  const entries = ((result.structured as AgentSandboxFindResult<AgentSandboxFileEntry> | undefined)?.entries ?? [])
+    .filter((e) => e.type !== "directory");
+  return sandbox.files.readFiles(entries.map((e) => e.path));
+}
+
 export class CodeAgent extends Agent {
   /** 全量插件列表（构造时传入，不变） */
   private _plugins: CodeAgentPlugin[];
@@ -426,13 +486,15 @@ export class CodeAgent extends Agent {
    * enablePlugin / disablePlugin 调用时即时更新，下一个 turn 生效。
    */
   private _enabledPluginNames: Set<string>;
-  /** sandbox 实例，供 getPlanFile 等实例方法使用 */
-  private _sandbox: Sandbox;
+  /** CodeAgent 内部只使用归一化后的 AgentSandbox。 */
+  private _sandbox: AgentSandbox;
   /**
    * 顶层基础资源（来自 options.skills / options.subAgents / options.tools，不含 plugin 部分）。
    * 不参与动态重算，始终全量参与每次 turn 的资源合并。
    */
   private _base: { skills: SkillFile[]; subAgents: SubAgentConfig[]; tools: Tool[] };
+  /** 运行中的异步 SubAgent 的完成结果，会在下一次 LLM 请求前注入。 */
+  private _subAgentTaskManager: SubAgentTaskManager;
 
   constructor(options: CodeAgentOptions) {
     const {
@@ -442,8 +504,13 @@ export class CodeAgent extends Agent {
       subAgents,
       plugins = [],
       builtinTools,
+      bash,
       ...agentOptions
     } = options;
+
+    const agentSandbox: AgentSandbox = isAgentSandbox(sandbox)
+      ? sandbox
+      : createAgentSandboxFromV1(sandbox, { allowedCommands: bash?.allowedCommands });
 
     for (const plugin of plugins) {
       if (!PLUGIN_NAME_PATTERN.test(plugin.name)) {
@@ -457,13 +524,20 @@ export class CodeAgent extends Agent {
     const baseSkills = skills ?? [];
     const baseSubAgents = subAgents ?? [];
     const baseUserTools = agentOptions.tools ?? [];
+    const subAgentTaskManager = new SubAgentTaskManager();
 
-    // super() 调用前 this 不可用，先用 enabledNamesRef 供 wrappedSandbox 闭包读取。
+    // super() 调用前 this 不可用，先用 enabledNamesRef 供 sandbox 闭包读取。
     // super() 之后再把它同步到真实的 this._enabledPluginNames 引用。
     const enabledNamesRef = { current: new Set<string>() };
-
-    // 虚拟路径判断辅助
-    const normPath = (p: string) => p.replace(/^\/+/, '');
+    const hooks = composePluginHooks({
+      ...agentOptions.hooks,
+      async beforeRequest(params) {
+        const messages = subAgentTaskManager.takeCompletedMessages();
+        const base = await agentOptions.hooks?.beforeRequest?.(params);
+        const additionalMessages = [...(base?.additionalMessages ?? []), ...messages];
+        return additionalMessages.length ? { additionalMessages } : undefined;
+      },
+    }, plugins, enabledNamesRef);
 
     // 收集 skills 文件（只读，不可列出）
     const collectSkillFiles = (): UnifiedFile[] => {
@@ -480,86 +554,48 @@ export class CodeAgent extends Agent {
       );
     };
 
-    // 全量文件（sandbox.getFiles 已包含真实文件 + 只读文件）+ skills 文件并入一张 map
-    // 覆盖顺序：sandbox.getFiles 结果 < skills（skills 最优先）
-    const getAllFiles = async (): Promise<UnifiedFile[]> => {
-      const baseFiles = await sandbox.getFiles();
-      const skillFiles = collectSkillFiles();
-      if (!skillFiles.length) return baseFiles;
-      const merged = new Map<string, UnifiedFile>(
-        baseFiles.map(f => [normPath(f.path), f])
-      );
-      skillFiles.forEach(f => {
-        merged.set(normPath(f.path), f);
-      });
-      return Array.from(merged.values());
-    };
-
-    const wrappedSandbox: Sandbox = {
-      getFiles: async (options?) => {
-        const all = await getAllFiles();
-        return options?.exclude ? all.filter(f => !isFileExcluded(f, options.exclude)) : all;
-      },
-
-      updateFiles: async (files) => {
-        const allFiles = await getAllFiles();
-        const fileMap = new Map<string, UnifiedFile>(
-          allFiles.map(f => [normPath(f.path), f])
-        );
-        for (const file of files) {
-          const existing = fileMap.get(normPath(file.path));
-          if (existing?.permissions && !existing.permissions.write) {
-            throw new Error(`${file.path} is read-only`);
-          }
-        }
-        return sandbox.updateFiles(files);
-      },
-
-      deleteFiles: async (paths) => {
-        const allFiles = await getAllFiles();
-        const fileMap = new Map<string, UnifiedFile>(
-          allFiles.map(f => [normPath(f.path), f])
-        );
-        for (const p of paths) {
-          const existing = fileMap.get(normPath(p));
-          if (existing?.permissions && !existing.permissions.delete) {
-            throw new Error(`${p} cannot be deleted`);
-          }
-        }
-        return sandbox.deleteFiles(paths);
-      },
-
-      ...(sandbox.getContext ? { getContext: sandbox.getContext.bind(sandbox) } : {}),
-      ...(sandbox.getSandboxMetaSection ? { getSandboxMetaSection: sandbox.getSandboxMetaSection.bind(sandbox) } : {}),
-    };
-
     const enabledBuiltinToolNames = builtinTools === false
       ? []
       : builtinTools ?? DEFAULT_BUILTIN_TOOLS;
     const enabledBuiltinToolNameSet = new Set(enabledBuiltinToolNames);
-    const allSandboxTools: Array<[CodeAgentBuiltinToolName, Tool]> = [
-      [READ_TOOL_NAME, createReadTool(wrappedSandbox)],
-      [WRITE_TOOL_NAME, createWriteTool(wrappedSandbox)],
-      [EDIT_TOOL_NAME, createEditTool(wrappedSandbox)],
-      [MULTI_EDIT_TOOL_NAME, createMultiEditTool(wrappedSandbox)],
-      [DELETE_TOOL_NAME, createDeleteTool(wrappedSandbox)],
-      [GREP_TOOL_NAME, createGrepTool(wrappedSandbox)],
-      [BASH_TOOL_NAME, createBashTool(wrappedSandbox)],
+    const runtimeSandbox = createAgentSandboxRuntime(agentSandbox);
+    const { sandbox: toolSandbox } = createAgentSandboxOverlay(
+      runtimeSandbox,
+      collectSkillFiles,
+    );
+    const getPlanFiles = () => fetchPlanFiles(toolSandbox);
+    const allBuiltinTools: Array<[CodeAgentBuiltinToolName, Tool]> = [
+      [READ_TOOL_NAME, createReadTool(toolSandbox)],
+      [WRITE_TOOL_NAME, createWriteTool(toolSandbox)],
+      [EDIT_TOOL_NAME, createEditTool(toolSandbox)],
+      [MULTI_EDIT_TOOL_NAME, createMultiEditTool(toolSandbox)],
+      [DELETE_TOOL_NAME, createDeleteTool(toolSandbox)],
+      [GREP_TOOL_NAME, createGrepTool(toolSandbox)],
+      [BASH_TOOL_NAME, createBashTool(toolSandbox.commands, {
+        ...bash,
+        allowedCommands: bash?.allowedCommands ?? agentSandbox.commands.allowedCommands,
+      })],
+      [HISTORY_READ_TOOL_NAME, createHistoryReadTool()],
     ];
-    const sandboxTools: Tool[] = allSandboxTools
+    const builtinToolInstances: Tool[] = allBuiltinTools
       .filter(([name]) => enabledBuiltinToolNameSet.has(name))
       .map(([, tool]) => tool);
 
     const base = {
       skills: baseSkills,
       subAgents: baseSubAgents,
-      tools: [...sandboxTools, ...baseUserTools],
+      tools: [...builtinToolInstances, ...baseUserTools],
     };
 
     const getStableContextMessages = async (): Promise<Message[]> => {
-      const ctx = (await wrappedSandbox?.getContext?.()) ?? null;
-      if (!ctx) return [];
-      return [{ role: "user", content: ctx }];
+      const [agentsMdMessage, ctx] = await Promise.all([
+        createAgentsMdContextMessage(toolSandbox),
+        toolSandbox.getContext?.() ?? null,
+      ]);
+      return [
+        ...(agentsMdMessage ? [agentsMdMessage] : []),
+        ...(ctx ? [{ role: "user" as const, content: ctx }] : []),
+      ];
     };
 
     const builtinSystem = options.promptOptions === false
@@ -571,6 +607,7 @@ ${system}` : builtinSystem;
 
     super({
       ...agentOptions,
+      hooks,
       system: finalSystem,
       getStableContextMessages,
       getAttachmentContextMessages: async (ctx) => {
@@ -587,16 +624,12 @@ ${system}` : builtinSystem;
           mode: ctx.mode,
           previousMode: ctx.previousMode,
           disabledModes: agentOptions.disabledModes,
-          getFiles: wrappedSandbox.getFiles.bind(wrappedSandbox),
+          getFiles: getPlanFiles,
         });
         const envText = [baseSection, alwaysSkillsSection, modeSection].filter(Boolean).join("\n\n");
         if (envText) sections.push(envText);
 
-        // 2. 项目空间元信息（文件列表等）
-        const meta = await wrappedSandbox?.getSandboxMetaSection?.();
-        if (meta) sections.push(meta);
-
-        // 3. 外部传入的扩展内容（CodeAgentOptions.getAttachmentContextMessages）
+        // 2. 外部传入的扩展内容（CodeAgentOptions.getAttachmentContextMessages）
         const extra = await agentOptions.getAttachmentContextMessages?.(ctx);
         if (extra?.length) sections.push(...extra);
 
@@ -607,7 +640,8 @@ ${system}` : builtinSystem;
 
     this._plugins = plugins;
     this._base = base;
-    this._sandbox = sandbox;
+    this._sandbox = toolSandbox;
+    this._subAgentTaskManager = subAgentTaskManager;
     this._enabledPluginNames = new Set(
       plugins.filter((p) => p.enabled !== false).map((p) => p.name)
     );
@@ -622,19 +656,12 @@ ${system}` : builtinSystem;
    * 若不存在活跃计划则返回 null。
    */
   async getPlanFile(): Promise<ActivePlanFile | null> {
-    return getActivePlanFile(this._sandbox.getFiles.bind(this._sandbox));
-  }
-
-  /**
-   * 获取当前 CodeAgent 使用的沙箱实例。
-   */
-  getSandbox(): Sandbox {
-    return this._sandbox;
+    return getActivePlanFile(() => fetchPlanFiles(this._sandbox));
   }
 
   /**
    * 将指定计划文件的 status 改为 abandoned（废弃）。
-   * 修改 frontmatter 中的 status 字段后，通过 sandbox.updateFiles 写回。
+   * 修改 frontmatter 中的 status 字段后，通过 AgentSandbox.files.write 写回。
    */
   async abandonPlan(path: string, content: string): Promise<void> {
     const { fmText, body } = splitFrontmatter(content);
@@ -649,7 +676,7 @@ ${system}` : builtinSystem;
     }
 
     const newContent = `---\n${newFmText}\n---\n${body}`;
-    await this._sandbox.updateFiles([{ path, content: newContent }]);
+    await this._sandbox.files.write({ path, content: newContent });
   }
 
   private _getEnabledResources(): {
@@ -669,9 +696,7 @@ ${system}` : builtinSystem;
       ...this._base.subAgents,
       ...enabledPlugins.flatMap((p) => p.agents ?? []),
     ];
-    const pluginTools = enabledPlugins.flatMap((p) =>
-      (p.tools ?? []).map((t) => prefixPluginToolName(p.name, t))
-    );
+    const pluginTools = enabledPlugins.flatMap((p) => p.tools ?? []);
     const tools = [...this._base.tools, ...pluginTools];
 
     return { skills, subAgents, tools };
@@ -691,6 +716,7 @@ ${system}` : builtinSystem;
           () => this,
           subAgents,
           skills.length ? skills : undefined,
+          this._subAgentTaskManager,
         )
       : null;
 

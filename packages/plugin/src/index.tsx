@@ -14,7 +14,7 @@ import { DEFAULT_PLUGIN_SKILLS } from "./skills/default";
 import { context } from "./context";
 import { setupSandbox } from "./sandbox";
 import { chipRegistry } from "./sandbox/setup";
-import type { AgentRuntimeConfig, RemoteAgentConfig, Designer, Hooks, RegistSandBoxConfig, PluginGetUserContextMessage, SendToAgentParams } from "./sandbox";
+import type { AgentRuntimeConfig, RemoteAgentConfig, Designer, Hooks, RegistSandBoxConfig, PluginGetUserContextMessage, ProjectContext, SendToAgentParams } from "./sandbox";
 import { ChatPanelList } from "./ui/chat/chat-panel-list";
 import { ComChatFocusView } from "./ui/chat/chat-focus-view";
 import { ensureAIPanelOpen, ensureFocusComId } from "./utils/ensure-ai-panel-open";
@@ -26,14 +26,27 @@ import type { MentionProvider } from "./ui/components/types";
 export { Agent, IDBHistory, IDBSandbox, Tools } from "../../agent/src";
 export { CodeAgent } from "./compat-code-agent";
 export type { CompatibleCodeAgentOptions } from "./compat-code-agent";
+export { createAgentSandboxFromV1, isAgentSandbox } from "../../agent/src";
+export type {
+  AgentSandbox,
+  AgentSandboxCommandNext,
+  AgentSandboxCommandProxy,
+  AgentSandboxCommandRequest,
+  AgentSandboxCommandResult,
+  AgentSandboxCommandTransport,
+  AgentSandboxCommands,
+  AgentSandboxFiles,
+  CreateAgentSandboxFromV1Options,
+  SandboxV1,
+} from "../../agent/src";
 export { DisabledHandler } from "./disabled-handler";
 export type { DisabledMessage, DisabledRequestHandler } from "./disabled-handler";
-export type { AdditionalDirectory, AgentEventMap, AgentsMdConfig, CodeAgentPlugin, SkillFile, UnifiedFile } from "../../agent/src";
+export type { AgentEventMap, CodeAgentPlugin, SkillFile, UnifiedFile } from "../../agent/src";
 export { createRequestAsStream, createOnUpload } from "../../request/src";
 export type { RequestAsStreamFn } from "../../request/src";
 export { openSetting, closeSetting, SettingModal } from "./ui/setting";
 export type { SettingModalProps } from "./ui/setting";
-export type { AgentRuntimeConfig, RemoteAgentConfig, ConnectToAIResult, Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams, PluginGetUserContextMessage, VirtualFilesRuntimeContext, ChatChipRemoveHandler, SandboxChipConfig, SandboxChipRecordConfig, SandboxChipsConfig } from "./sandbox";
+export type { AgentRuntimeConfig, RemoteAgentConfig, ConnectToAIResult, Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams, PluginGetUserContextMessage, ProjectContext, VirtualFilesRuntimeContext, ChatChipRemoveHandler, SandboxChipConfig, SandboxChipRecordConfig, SandboxChipsConfig } from "./sandbox";
 export type { MentionProvider, MentionMenuItem } from "./ui/components/types";
 // ProviderConfig / ModelConfig 已由 request 包导出，此处仅导出 plugin 专属类型
 export type { SettingValue } from "./ui/setting";
@@ -178,7 +191,7 @@ export interface PluginAIParams {
   initialFiles?: Array<{ path: string; content: string }>;
   /** 技能文件列表，挂载为虚拟 .agent/skills/ 目录，LLM 通过 use_skill 工具按需加载 */
   skills?: SkillFile[];
-  /** 插件列表，会将内部 skills / agents / tools / additionalDirectories 合并进 CodeAgent 顶层配置 */
+  /** 插件列表，会将内部 skills / agents / tools / hooks 合并进 CodeAgent 顶层配置 */
   plugins?: CodeAgentPlugin[];
   /** 覆盖内置系统提示词各节，按 key 深度合并，未提供的 key 保留 MYBRICKS_PROMPT_SECTIONS 默认值 */
   promptSections?: PromptSections;
@@ -189,6 +202,8 @@ export interface PluginAIParams {
    * 返回内容会拼接到内置项目空间上下文后，作为 user context 注入给 CodeAgent。
    */
   getUserContextMessage?: PluginGetUserContextMessage;
+  /** 项目空间上下文；默认项目级。目录级须传入当前工作目录展示名。 */
+  projectContext?: ProjectContext;
   /**
    * 外部自定义用户消息格式化函数。入参是经过 plugin sandbox 标准处理后的参数
    * （例如已追加 focus 信息、focus meta、sender），返回值会作为最终发给 CodeAgent 的用户消息。
@@ -253,6 +268,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     promptSections,
     tools,
     getUserContextMessage,
+    projectContext,
     formatUserMessage,
     disabledModes,
     componentRuntime,
@@ -350,6 +366,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     promptSections,
     tools,
     getUserContextMessage,
+    projectContext,
     formatUserMessage,
     disabledModes,
     onDisabledRequest,

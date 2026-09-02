@@ -17,17 +17,6 @@ import type {
   WarmupIter,
 } from "./index";
 
-type MaybePromise<T> = T | Promise<T>;
-
-export interface AgentsMdConfig {
-  /** agents.md 虚拟路径，用于多份规则合并展示时区分来源 */
-  path: string;
-  /** agents.md 文件内容 */
-  content: string;
-}
-
-export type AgentsMdConfigResolver = () => MaybePromise<AgentsMdConfig[]>;
-
 // ─── ToolExecutionContext ─────────────────────────────────────────────────────
 
 /**
@@ -55,6 +44,8 @@ export interface ToolExecutionContext {
   setAiRole: (aiRole?: string) => void;
   /** 当前工具执行时的 Agent 模式 */
   mode: AgentMode;
+  /** 当前 turn 的取消信号；可传给可取消的外部操作。 */
+  signal: AbortSignal;
   /** 读取 Agent 当前模式 */
   getMode: () => AgentMode;
   /** 切换 Agent 当前模式 */
@@ -148,18 +139,6 @@ export interface AgentOptions {
   mode?: AgentMode;
   /** 禁用的运行模式；当只剩一种可用模式时不会注册模式切换工具。 */
   disabledModes?: AgentMode[];
-  /**
-   * agents.md：项目规范/规则文档。
-   *
-   * 对标 claude-code 的 CLAUDE.md 机制：
-   *   - claude-code 从文件系统遍历加载 CLAUDE.md，通过 prependUserContext 以
-   *     第一条 user 消息（包裹在 <system-reminder> 中）注入到每轮对话。
-   *   - 此处采用相同方式：agentsMd 不追加到 system prompt，而是作为独立的
-   *     user 消息插在历史记录之前，LLM 会将其视为背景上下文而非强制指令。
-   *
-   * 由调用方传入带路径和内容的 agents.md 配置。
-   */
-  agentsMdConfig?: AgentsMdConfigResolver;
   /**
    * 静态背景上下文注入（异步）。
    * 每个 turn 开始时获取一次，返回的消息列表插入到历史对话之前（静态前缀层），
@@ -395,8 +374,6 @@ export type TurnPersistMode = "append" | "update";
 export interface TurnMessageSnapshot {
   /** 当前 turn 可见的历史 turns 快照 */
   historyTurns: TurnRecord[];
-  /** 项目级 agents.md 规则文档，每轮开始时获取一次 */
-  agentsMdMessage: Message | null;
   /** 静态背景上下文：每轮开始时获取一次，后续 iter 复用（位于历史对话之前的静态前缀层） */
   stableContextMessages: Message[];
   /** 随消息携带的动态上下文：每轮开始时获取一次，拼接为一条 user 消息插在当前用户消息之前 */

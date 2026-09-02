@@ -92,8 +92,10 @@ import { modelSwitchCase } from "./model-switch";
 import { requestAIButtonsCase } from "./request-ai-buttons";
 import { disabledModesPlanCase } from "./disabled-modes";
 import { planWriteGeneratedFileCase } from "./plan-write-file";
+import { toolContractCase } from "./tool-contract";
 import {
   grepDefaultFilesCase,
+  grepCommandsCase,
   grepContentGlobCase,
   grepCountPaginationCase,
   grepNoMatchCase,
@@ -168,6 +170,7 @@ export const ALL_CASES: TestCase[] = [
   multiEditPartialSuccessCase,
   skillUseThenContinueCase,
   planWriteGeneratedFileCase,
+  toolContractCase,
   initProjectSubAgentErrorCase,
   initProjectSubAgentImmediateErrorCase,
   initProjectMissingClosingFenceCase,
@@ -295,6 +298,7 @@ export const ALL_CASES: TestCase[] = [
   disabledModesPlanCase,
   // Grep 搜索
   grepDefaultFilesCase,
+  grepCommandsCase,
   grepContentGlobCase,
   grepCountPaginationCase,
   grepNoMatchCase,

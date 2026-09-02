@@ -780,8 +780,6 @@ export function turnsToMessages(
 export type {
   AgentHooks,
   AgentOptions,
-  AgentsMdConfig,
-  AgentsMdConfigResolver,
   ForkAgentOptions,
   ForkOptions,
   FormatUserMessageResult,

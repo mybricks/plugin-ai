@@ -8,6 +8,7 @@ import { usePlaygroundAgent } from "./lib/use-playground-agent";
 import { useRequestInspector, type RequestSnapshot } from "./lib/use-request-inspector";
 import type { MemFS } from "./lib/mem-fs";
 import { getWebFetchUrl, setWebFetchUrl, getDefaultUrlForCase } from "./lib/web-fetch-state";
+import { ToolContractLab } from "./tool-contract-lab";
 import "./app.css";
 import markdownSkinSpecial from "./markdown-skin-special.module.css";
 
@@ -334,14 +335,15 @@ export default function App() {
   const [activeCase] = useState<TestCase | null>(initialCase);
   const [webFetchUrl, setWebFetchUrlState] = useState(() => getDefaultUrlForCase(initialCase?.id ?? ""));
   const isChatPanelSkinLayout = activeCase?.playgroundLayout === "chat-panel-skin";
+  const isToolContractLayout = activeCase?.playgroundLayout === "tool-contract";
   const isDefaultChatPanelSkin = activeCase?.chatPanelSkin === "default";
 
   const { wrappedRequest, snapshots } = useRequestInspector(
-    isChatPanelSkinLayout ? null : activeCase?.request ?? null
+    isChatPanelSkinLayout || isToolContractLayout ? null : activeCase?.request ?? null
   );
 
   const { agent, memFS } = usePlaygroundAgent(
-    activeCase,
+    isToolContractLayout ? null : activeCase,
     isChatPanelSkinLayout ? null : wrappedRequest
   );
 
@@ -464,7 +466,9 @@ export default function App() {
           </div>
         )}
 
-        {isChatPanelSkinLayout ? (
+        {isToolContractLayout ? (
+          <div className="pg-content"><ToolContractLab initialFiles={activeCase?.initialFiles ?? []} /></div>
+        ) : isChatPanelSkinLayout ? (
           <div className="pg-content pg-chat-skin-content">
             <div className="pg-chat-skin-aside">
               <div className="pg-chat-skin-card">

@@ -331,20 +331,18 @@ ${joinSections([
 
 /**
  * 生成每轮注入的模式提示词段落（静态规则 + 动态活跃计划文件感知）。
- *
- * @param getFiles 获取全量文件列表（如 sandbox.getFiles）
  */
 export async function buildModeSection(params: {
   mode: AgentMode;
   previousMode?: AgentMode | null;
   disabledModes?: AgentMode[];
-  getFiles: () => Promise<Array<{ path: string; content: string }>>;
+  getFiles?: () => Promise<Array<{ path: string; content: string }>>;
 }): Promise<string> {
   const availableModes = getAvailableAgentModes(params);
   const hasPlanMode = availableModes.includes(AgentModeEnum.Plan);
   if (!hasPlanMode) return "";
   try {
-    const files = await params.getFiles();
+    const files = await (params.getFiles ?? (async () => []))();
     return buildModeReminder({
       mode: params.mode,
       previousMode: params.previousMode,

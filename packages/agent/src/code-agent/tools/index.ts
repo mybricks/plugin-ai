@@ -7,5 +7,16 @@ export { createDeleteTool, DELETE_TOOL_NAME } from "./delete";
 export { createGrepTool, GREP_TOOL_NAME } from "./grep";
 export { createGlobTool, GLOB_TOOL_NAME } from "./glob";
 export { createSkillTool, USE_SKILL_TOOL_NAME } from "./skill";
-export { createBashTool, BASH_TOOL_NAME } from "./bash";
+export { createBashTool, BASH_TOOL_NAME, DEFAULT_BASH_ALLOWED_COMMANDS } from "./bash";
+export type { BashToolOptions } from "./bash";
+export { createHistoryReadTool, HISTORY_READ_TOOL_NAME } from "./history-read";
+export type {
+  HistoryReadFilter,
+  HistoryReadMatch,
+  HistoryReadOutputLevel,
+  HistoryReadParams,
+  HistoryReadRecord,
+  HistoryReadRole,
+  HistoryReadTurnRange,
+} from "./history-read";
 export { createInitProjectTool, INIT_PROJECT_TOOL_NAME } from "./init-project";

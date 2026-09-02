@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "test:tool-contract": "node scripts/tool-contract-test.mjs"
   },
   "dependencies": {
     "@microlink/react-json-view": "^1.23.0",

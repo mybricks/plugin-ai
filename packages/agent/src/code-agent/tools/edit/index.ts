@@ -1,7 +1,7 @@
 import type { Tool, ToolResult } from "../../../types";
 import type { ToolExecutionContext } from "../../../types";
 import { ToolValidationError } from "../../../types";
-import type { Sandbox } from "../../index";
+import type { AgentSandbox } from "../../../agent-sandbox";
 import { checkEditFilePermission } from "../../../mode-manager";
 import { READ_TOOL_NAME } from "../read";
 import { WRITE_TOOL_NAME } from "../write";
@@ -68,7 +68,7 @@ function appendActionHint(
   return `${message} Same old_str has failed ${prev + 1} time(s). Further edits may cause significant errors. Use \`${WRITE_TOOL_NAME}\` to rewrite the entire file instead.`;
 }
 
-export function createEditTool(adapter: Sandbox): Tool {
+export function createEditTool(sandbox: AgentSandbox): Tool {
   return {
     name: EDIT_TOOL_NAME,
     limits: { maxToken: false },
@@ -119,8 +119,7 @@ export function createEditTool(adapter: Sandbox): Tool {
       params: { path: string; old_str: string; new_str: string; replace_all?: boolean },
       ctx?: ToolExecutionContext,
     ): Promise<ToolResult> {
-      const files = await adapter.getFiles();
-      const file = files.find((f) => f.path === params.path);
+      const file = await sandbox.files.read(params.path);
       if (!file) {
         throw new ToolValidationError(
           `File not found: ${params.path}. Use \`${READ_TOOL_NAME}\` to list available files.`
@@ -135,7 +134,7 @@ export function createEditTool(adapter: Sandbox): Tool {
       }
 
       try {
-        await adapter.updateFiles([{ path: params.path, content: result.newContent! }]);
+        await sandbox.files.write({ path: params.path, content: result.newContent! });
       } catch (err) {
         throw new ToolValidationError(`Failed to edit ${params.path}: ${err instanceof Error ? err.message : String(err)}`);
       }

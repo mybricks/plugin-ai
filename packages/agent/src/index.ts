@@ -1,5 +1,5 @@
 export { Agent, AgentEvents, ForkAgent } from "./agent";
-export type { AgentMode, AgentOptions, AgentHooks, RequestAIOptions, RequestAICommonOptions, MessageRequestAIOptions, DisplayModelRequestAIOptions, FormatUserMessageParams, MaskOptions, HandoffOptions, ForkOptions, ForkAgentOptions, CompactRecord, FormatUserMessageResult, AgentsMdConfig, AgentsMdConfigResolver } from "./agent";
+export type { AgentMode, AgentOptions, AgentHooks, RequestAIOptions, RequestAICommonOptions, MessageRequestAIOptions, DisplayModelRequestAIOptions, FormatUserMessageParams, MaskOptions, HandoffOptions, ForkOptions, ForkAgentOptions, CompactRecord, FormatUserMessageResult } from "./agent";
 export type { RequestAsStreamFn, RequestAsStreamParams, RequestAsStreamEmits, ToolDescriptor, ToolCallSpec, ToolCallStreamDelta } from "./types/request";
 export { maskMessages } from "./mask";
 export { computeHandoffTurnIds } from "./handoff";
@@ -12,10 +12,50 @@ export type { Message, History, HistoryPersistMode, Tool, TurnRecord, TurnSender
 export { ToolValidationError, bindHistory } from "./types";
 
 export { AGENT_INTERNAL_FILE_EXCLUDE, CodeAgent, isFileExcluded } from "./code-agent";
-export type { AdditionalDirectory, CodeAgentBuiltinToolName, CodeAgentOptions, CodeAgentPlugin, CodeAgentPromptOptions, FileExclude, GetFilesOptions, Sandbox, SkillActivation, SkillFile, SkillMeta, UnifiedFile } from "./code-agent";
+export type { BashToolOptions, CodeAgentBuiltinToolName, CodeAgentOptions, CodeAgentPlugin, CodeAgentPromptOptions, FileExclude, GetFilesOptions, Sandbox, SkillActivation, SkillFile, SkillMeta, UnifiedFile } from "./code-agent";
+export {
+  createAgentSandboxFromV1,
+  createAgentSandboxRuntime,
+  createFileSystemFindCommandProxy,
+  createFileSystemGrepCommandProxy,
+  createFileSystemGlobCommandProxy,
+  createMvCommandProxy,
+  createCpCommandProxy,
+  createRmCommandProxy,
+  createRenameCommandProxy,
+  createTouchCommandProxy,
+  createSedCommandProxy,
+  createHeadCommandProxy,
+  DEFAULT_BASH_ALLOWED_COMMANDS,
+  isAgentSandbox,
+} from "./agent-sandbox";
+export type {
+  AgentSandbox,
+  AgentSandboxCommandNext,
+  AgentSandboxCommandExecutionOptions,
+  AgentSandboxCommandErrorCode,
+  AgentSandboxCommandError,
+  AgentSandboxCommandProxy,
+  AgentSandboxCommandRequest,
+  AgentSandboxCommandResult,
+  AgentSandboxCommandTransport,
+  AgentSandboxCommands,
+  AgentSandboxFile,
+  AgentSandboxFileEntry,
+  AgentSandboxListOptions,
+  AgentSandboxFindInput,
+  AgentSandboxFindResult,
+  AgentSandboxFiles,
+  AgentSandboxGrepInput,
+  AgentSandboxGrepMatch,
+  AgentSandboxGrepResult,
+  CreateAgentSandboxFromV1Options,
+  SandboxV1,
+} from "./agent-sandbox";
 export { IDBSandbox } from "./code-agent/idb-sandbox";
 export type { IDBSandboxFileRecord, IDBSandboxOptions, IDBSandboxState } from "./code-agent/idb-sandbox";
-export { READ_TOOL_NAME, WRITE_TOOL_NAME, MULTI_WRITE_TOOL_NAME, EDIT_TOOL_NAME, MULTI_EDIT_TOOL_NAME, DELETE_TOOL_NAME, GREP_TOOL_NAME, GLOB_TOOL_NAME, USE_SKILL_TOOL_NAME, BASH_TOOL_NAME, INIT_PROJECT_TOOL_NAME, createInitProjectTool } from "./code-agent/tools";
+export { READ_TOOL_NAME, WRITE_TOOL_NAME, MULTI_WRITE_TOOL_NAME, EDIT_TOOL_NAME, MULTI_EDIT_TOOL_NAME, DELETE_TOOL_NAME, GREP_TOOL_NAME, GLOB_TOOL_NAME, USE_SKILL_TOOL_NAME, BASH_TOOL_NAME, HISTORY_READ_TOOL_NAME, INIT_PROJECT_TOOL_NAME, createHistoryReadTool, createInitProjectTool } from "./code-agent/tools";
+export type { HistoryReadFilter, HistoryReadMatch, HistoryReadOutputLevel, HistoryReadParams, HistoryReadRecord, HistoryReadRole, HistoryReadTurnRange } from "./code-agent/tools";
 export { SWITCH_MODE_TOOL_NAME, getAvailableAgentModes, AgentModeEnum } from "./mode-manager";
 export { kv } from "./kv";
 
@@ -25,7 +65,7 @@ export { HistoryManager } from "./history/manager";
 export type { HistoryManagerSnapshot, HistoryStatus } from "./history/manager";
 
 export { createSubAgentTool, resolveSubAgentMeta, CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
-export type { SubAgentConfig, SubAgentFile, SubAgentMeta } from "./sub-agent";
+export type { SubAgentConfig, SubAgentFile, SubAgentMeta, CompletedSubAgentTask } from "./sub-agent";
 
 export type { RetryOptions } from "./retry";
 export { AbortError, isAbortError } from "./errors";

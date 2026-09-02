@@ -1,6 +1,6 @@
 import type { Tool, ToolResult } from "../../../types";
 import { ToolValidationError } from "../../../types";
-import type { Sandbox } from "../../index";
+import type { AgentSandbox, AgentSandboxFileEntry, AgentSandboxFindResult } from "../../../agent-sandbox";
 
 export const READ_TOOL_NAME = "read_file";
 
@@ -36,7 +36,7 @@ function byteLength(str: string): number {
   return len;
 }
 
-export function createReadTool(adapter: Sandbox): Tool {
+export function createReadTool(sandbox: AgentSandbox): Tool {
   return {
     name: READ_TOOL_NAME,
 //     description: `读取项目中的文件内容，或列出所有文件路径。
@@ -92,17 +92,18 @@ export function createReadTool(adapter: Sandbox): Tool {
     async execute(
       params: { path?: string; startLine?: number; endLine?: number },
     ): Promise<ToolResult> {
-      const files = await adapter.getFiles();
-
       if (!params.path) {
-        const paths = files.map((f) => f.path);
+        const result = await sandbox.commands.execute({ name: "find" });
+        const entries = ((result.structured as AgentSandboxFindResult<AgentSandboxFileEntry> | undefined)?.entries ?? [])
+          .filter((e) => e.type !== "directory")
+          .map((e) => e.path);
         return {
-          output: paths.join("\n"),
-          metadata: { files: paths },
+          output: entries.join("\n"),
+          metadata: { files: entries },
         };
       }
 
-      const file = files.find((f) => f.path === params.path);
+      const file = await sandbox.files.read(params.path);
       if (!file) {
         throw new ToolValidationError(`File not found: ${params.path}. Use \`${READ_TOOL_NAME}\` to list available files.`);
       }

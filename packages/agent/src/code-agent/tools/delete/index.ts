@@ -1,7 +1,7 @@
 import type { Tool, ToolResult } from "../../../types";
 import type { ToolExecutionContext } from "../../../types";
 import { ToolValidationError } from "../../../types";
-import type { Sandbox } from "../../index";
+import type { AgentSandbox } from "../../../agent-sandbox";
 import { checkDeleteFilePermission } from "../../../mode-manager";
 
 export const DELETE_TOOL_NAME = "delete_file";
@@ -11,7 +11,7 @@ interface DeleteFailure {
   reason: string;
 }
 
-export function createDeleteTool(adapter: Sandbox): Tool {
+export function createDeleteTool(sandbox: AgentSandbox): Tool {
   return {
     name: DELETE_TOOL_NAME,
     description: `删除项目中的一个或多个文件。
@@ -49,10 +49,9 @@ export function createDeleteTool(adapter: Sandbox): Tool {
       checkDeleteFilePermission(params, ctx);
     },
     async execute(params: { paths: string[]; force?: boolean }): Promise<ToolResult> {
-      const files = await adapter.getFiles();
-      const fileMap = new Map(files.map((f) => [f.path, f]));
-
       const requestedPaths = Array.from(new Set(params.paths));
+      const fileMap = new Map((await sandbox.files.readFiles(requestedPaths))
+        .map((file) => [file.path, file] as const));
       const existingPaths = requestedPaths.filter((path) => fileMap.has(path));
       const missingPaths = requestedPaths.filter((path) => !fileMap.has(path));
       const permissionDeniedPaths = existingPaths.filter((path) => {
@@ -69,17 +68,17 @@ export function createDeleteTool(adapter: Sandbox): Tool {
 
       if (deletablePaths.length > 0) {
         try {
-          await adapter.deleteFiles(deletablePaths);
+          await sandbox.files.removeFiles(deletablePaths);
           deletedPaths.push(...deletablePaths);
         } catch (err) {
-          const afterBatchFiles = await adapter.getFiles();
-          const afterBatchFileSet = new Set(afterBatchFiles.map((f) => f.path));
+          const afterBatchFileSet = new Set((await sandbox.files.readFiles(deletablePaths))
+            .map((file) => file.path));
           const remainingPaths = deletablePaths.filter((path) => afterBatchFileSet.has(path));
           deletedPaths.push(...deletablePaths.filter((path) => !afterBatchFileSet.has(path)));
 
           for (const path of remainingPaths) {
             try {
-              await adapter.deleteFiles([path]);
+              await sandbox.files.remove(path);
               deletedPaths.push(path);
             } catch (singleErr) {
               failedPaths.push({

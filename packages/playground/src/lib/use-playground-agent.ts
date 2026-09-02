@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { CodeAgent } from "@agent/code-agent";
+import { CodeAgent, createAgentSandboxFromV1 } from "@agent/index";
 import type { RequestAsStreamFn } from "@request/types";
 import { MockHistory } from "./mock-history";
 import { MemFS } from "./mem-fs";
@@ -33,11 +33,16 @@ export function usePlaygroundAgent(
       ?? reqFn
       ?? testCase.request;
 
+    const sandbox = testCase.agentSandboxFactory
+      ? testCase.agentSandboxFactory(fs)
+      : testCase.sandboxKind === "agent"
+        ? createAgentSandboxFromV1(fs)
+        : fs;
     const newAgent = new CodeAgent({
       key: AGENT_KEY,
       history: mockHistory,
       request,
-      sandbox: fs,
+      sandbox,
       tools: testCase.tools ?? [],
       skills: testCase.skills,
       summary: testCase.summaryOptions ?? { enabled: false },
