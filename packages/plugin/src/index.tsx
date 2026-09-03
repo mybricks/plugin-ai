@@ -220,6 +220,7 @@ export interface PluginAIParams {
       /** 代码编辑器内复制回调 */
       onCodeEditorCopy: () => { filename: string; code: string; }
     }
+    mode?: string
   }
   /** 禁用调试环境列表 */
   disallowedDebugEnvs?: string[];
@@ -441,6 +442,18 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
               return <ComChatFocusView />;
             },
             focus(params: AiServiceFocusParams) {
+              if (componentRuntime?.mode === 'local-iframe') {
+                const ele = params?.focusArea?.ele
+                if (ele) {
+                  const testDocument = ele.ownerDocument
+                  // @ts-ignore
+                  window.__APP__.runTestEvents.emit('test', {
+                    document: testDocument,
+                    window: testDocument.defaultView
+                  })
+                }
+              }
+
               // TODO：没comId的，都是没用的聚焦，之前设计器出过一次bug，兼容下这种情况，不要写进去
               if (!params.comId && params.pageId) {
                 return
