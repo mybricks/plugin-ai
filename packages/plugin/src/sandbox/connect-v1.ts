@@ -60,11 +60,24 @@ export function connectToAIFromV1(
   const runtimePlugins = plugins?.map((plugin) => injectPluginRuntimeContext(plugin, runtimeContext));
   const effectivePlugins = context.applyPluginEnabledOverrides(runtimePlugins);
   const requestGuard = { disabledHandler };
+  const isRemoteAgent = Boolean(remoteAgent);
 
   if (context.agentMap.has(agentKey)) {
     const existingAgent = context.agentMap.get(agentKey)!;
     context.aiQueue.setRequestGuard(existingAgent, requestGuard);
-    return { history: existingAgent.getHistory(), disabledHandler, isRemoteAgent: !!remoteAgent };
+    if (isRemoteAgent) {
+      return {
+        history: existingAgent.getHistory(),
+        disabledHandler,
+        isRemoteAgent: true,
+        remoteFs: existingAgent.remoteFs,
+      };
+    }
+    return {
+      history: existingAgent.getHistory(),
+      disabledHandler,
+      isRemoteAgent: false,
+    };
   }
 
   const designerRef: { current: Designer | undefined } = { current: designer };
@@ -156,7 +169,13 @@ export function connectToAIFromV1(
     context.agentMap.set(agentKey, agent);
     context.sandboxMap.set(agentKey, sandbox);
     context.registerAgentComId(comId);
-    return { history: agent.getHistory(), disabledHandler, isRemoteAgent: true, workspaceReady };
+    return {
+      history: agent.getHistory(),
+      disabledHandler,
+      isRemoteAgent: true,
+      workspaceReady,
+      remoteFs: agent.remoteFs,
+    };
   }
 
   const agent = new CodeAgent({

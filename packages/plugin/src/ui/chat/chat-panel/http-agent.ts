@@ -25,6 +25,10 @@ import type { BrowserToolRequest } from "./workspace-bridge";
 import { WorkspaceBridge } from "./workspace-bridge";
 import { HTTP_AGENT_SESSION_STAGE } from "./session-status";
 import type { DisabledHandler } from "../../../disabled-handler";
+import type {
+  RemoteFileSystem,
+  RemoteFsOperationsResult,
+} from "../../../sandbox/connect-shared";
 
 export type {
   BrowserToolRequest,
@@ -552,6 +556,22 @@ export class HttpAgent {
     },
     disconnect: (): void => {
       this.workspaceBridge.disconnect();
+    },
+  };
+
+  /** 供宿主实时写入 remote workspace 的文件系统，不创建版本。 */
+  readonly remoteFs: RemoteFileSystem = {
+    applyOperations: async (operations) => {
+      if (this.blockIfDisabled()) {
+        throw new Error("Remote file system operations are disabled.");
+      }
+      return this.requestJson<RemoteFsOperationsResult>(
+        this.workspacePath("fs/operations"),
+        {
+          method: "POST",
+          body: JSON.stringify({ operations }),
+        },
+      );
     },
   };
 

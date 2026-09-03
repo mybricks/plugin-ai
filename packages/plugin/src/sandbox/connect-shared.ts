@@ -45,7 +45,43 @@ export interface AgentRuntimeRef {
   apply?: (config: AgentRuntimeConfig | undefined) => void;
 }
 
-export interface ConnectToAIResult {
+export type RemoteFsOperation =
+  | {
+      type: "write";
+      path: string;
+      content: string;
+      /** 省略时直接写入；null 表示要求文件不存在。 */
+      baseHash?: string | null;
+    }
+  | {
+      type: "delete";
+      path: string;
+      /** 省略时直接删除；null 表示要求文件不存在。 */
+      baseHash?: string | null;
+    };
+
+export interface RemoteFsConflict {
+  type: RemoteFsOperation["type"];
+  path: string;
+  baseHash: string | null;
+  current: { path: string; content: string } | null;
+  currentHash: string | null;
+}
+
+export interface RemoteFsOperationsResult {
+  workspaceId: string;
+  version: number;
+  applied: Array<{ type: "write" | "delete"; path: string }>;
+  conflicts: RemoteFsConflict[];
+}
+
+export interface RemoteFileSystem {
+  applyOperations(
+    operations: RemoteFsOperation[],
+  ): Promise<RemoteFsOperationsResult>;
+}
+
+interface ConnectToAIResultBase {
   /**
    * 该 comId 对应的、已绑定 agentKey 的 History 视图。
    * 总是从 agent 实例上取，保证与 Agent 内部共享同一个引用。
@@ -54,14 +90,25 @@ export interface ConnectToAIResult {
   history: BoundHistory | null;
   /** 统一的 disabled 判断与消息处理。 */
   disabledHandler: DisabledHandler;
-  /** 当前 History 是否由 remote Agent 的 workspace API 提供。 */
-  isRemoteAgent: boolean;
   /**
    * 文件初始化完成后兑现，是 Runtime 和首个 Agent 请求的共同前置条件。
    * remote Agent 优先同步服务端 workspace，失败后可回退 initialFiles；本地 Agent 按 initialFiles 同步。
    */
   workspaceReady?: Promise<void>;
 }
+
+/**
+ * remoteFs 与 isRemoteAgent 是同一能力的两面：本地 Agent 不会暴露 remoteFs。
+ */
+export type ConnectToAIResult =
+  | (ConnectToAIResultBase & {
+      isRemoteAgent: true;
+      remoteFs: RemoteFileSystem;
+    })
+  | (ConnectToAIResultBase & {
+      isRemoteAgent: false;
+      remoteFs?: never;
+    });
 
 export interface PluginParams {
   requestAsStream: RequestAsStreamFn;
