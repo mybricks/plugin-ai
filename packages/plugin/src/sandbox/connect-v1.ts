@@ -39,7 +39,7 @@ export function connectToAIFromV1(
   {
     requestAsStream, llmPluginKey, virtualFiles, initialFiles, skills, plugins, promptSections, tools,
     codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes,
-    disabledHandler, history, remoteAgent, sender, agentRuntimeRefs,
+    disabledHandler, history, remoteAgent, sender, agentRuntimeRefs, localAgent,
   }: PluginParams
 ): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
@@ -190,6 +190,7 @@ export function connectToAIFromV1(
     plugins: effectivePlugins,
     subAgents: [],
     disabledModes,
+    ...(localAgent ? { mask: { maxTurns: 20 } } : {}),
     getAttachmentContextMessages: async () => {
       const sections: string[] = [];
       const { files, directories } = await getProjectContextSnapshot();

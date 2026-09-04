@@ -393,7 +393,16 @@ function buildEnvironmentSection(skills?: SkillFile[], subAgents?: SubAgentConfi
     day: "numeric",
     weekday: "long",
   });
-  sections.push(`当前日期：${dateStr}`);
+  const timeStr = now.toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const tzOffset = -now.getTimezoneOffset() / 60;
+  const tzOffsetStr = `UTC${tzOffset >= 0 ? "+" : ""}${tzOffset}`;
+  sections.push(`当前时间：${dateStr} ${timeStr} (${tzOffsetStr}, ${tz})`);
 
   // ── Skills 目录 ───────────────────────────────────────────────────────────
   if (skills?.length) {

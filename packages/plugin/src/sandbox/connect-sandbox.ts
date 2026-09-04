@@ -79,7 +79,7 @@ export function connectToAIFromSandbox(
   {
     requestAsStream, llmPluginKey, virtualFiles, skills, plugins, promptSections, tools,
     getUserContextMessage, projectContext, formatUserMessage, disabledModes,
-    disabledHandler, history, sender, agentRuntimeRefs,
+    disabledHandler, history, sender, agentRuntimeRefs, localAgent,
   }: Omit<PluginParams, "initialFiles" | "codeRules" | "designRules" | "remoteAgent">
 ): ConnectToAIResult {
   const agentKey = context.getAgentKey(comId);
@@ -206,6 +206,7 @@ export function connectToAIFromSandbox(
     plugins: effectivePlugins,
     subAgents: [],
     disabledModes,
+    ...(localAgent ? { mask: { maxTurns: 20 } } : {}),
     getAttachmentContextMessages: async () => {
       const sections: string[] = [];
       const { files, directEntries } = await getProjectContextFiles();
