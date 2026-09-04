@@ -20,6 +20,7 @@ import { ComChatFocusView } from "./ui/chat/chat-focus-view";
 import { ensureAIPanelOpen, ensureFocusComId } from "./utils/ensure-ai-panel-open";
 import { createDomChip } from "./utils/dom-info";
 import type { MentionProvider } from "./ui/components/types";
+import type { AttachProcessor } from "./content-limits";
 
 // ─── 工具类型重导出 ────────────────────────────────────────────────────────────
 
@@ -48,6 +49,7 @@ export { openSetting, closeSetting, SettingModal } from "./ui/setting";
 export type { SettingModalProps } from "./ui/setting";
 export type { AgentRuntimeConfig, RemoteAgentConfig, ConnectToAIResult, Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams, PluginGetUserContextMessage, ProjectContext, VirtualFilesRuntimeContext, ChatChipRemoveHandler, SandboxChipConfig, SandboxChipRecordConfig, SandboxChipsConfig } from "./sandbox";
 export type { MentionProvider, MentionMenuItem } from "./ui/components/types";
+export type { AttachProcessor, FileContent, FileReference, LinkAttachment } from "./content-limits";
 // ProviderConfig / ModelConfig 已由 request 包导出，此处仅导出 plugin 专属类型
 export type { SettingValue } from "./ui/setting";
 export { ChatPanel } from "./ui/chat";
@@ -197,6 +199,8 @@ export interface PluginAIParams {
   promptSections?: PromptSections;
   /** 额外自定义工具，追加到内置工具（read_file / write_file 等）之后 */
   tools?: import("../../agent/src").Tool[];
+  /** 附件前置处理器，按文件名或链接 URL 匹配并在内置处理前执行。 */
+  attachProcessors?: AttachProcessor[];
   /**
    * 外部增量注入的用户上下文文本。每个 turn 开始时读取一次，
    * 返回内容会拼接到内置项目空间上下文后，作为 user context 注入给 CodeAgent。
@@ -268,6 +272,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     plugins,
     promptSections,
     tools,
+    attachProcessors,
     getUserContextMessage,
     projectContext,
     formatUserMessage,
@@ -309,7 +314,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
 
   context.name = name;
   (mentions ?? []).forEach((mention) => chipRegistry.register(mention.chip));
-  context.pluginParams = { name, user, onUpload: upload, onDownload: download, renderAttachmentSuffix, mentions };
+  context.pluginParams = { name, user, onUpload: upload, onDownload: download, renderAttachmentSuffix, attachProcessors, mentions };
 
   // ── 调试工具：导入历史记录 ─────────────────────────────────────────────────
 

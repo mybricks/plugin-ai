@@ -22,7 +22,7 @@ import { inferLanguage, getFileExt } from "./upload";
 export async function applyFileProcessors(
   file: File,
   processors: AttachProcessor[]
-): Promise<File | FileContent | FileReference | null> {
+): Promise<File | FileContent | FileReference | void | null> {
   const proc = processors.find(
     (p): p is Extract<AttachProcessor, { type: "file" }> =>
       p.type === "file" && p.match.test(file.name)

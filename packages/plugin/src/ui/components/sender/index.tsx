@@ -1123,8 +1123,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         if (!chipWrapperMapRef.current.has(id)) {
           continue;
         }
-        if (transformed === null) {
-          // 处理器内部已弹提示，移除 loading chip
+        if (transformed === undefined || transformed === null) {
           const wrapper = chipWrapperMapRef.current.get(id);
           if (wrapper) {
             unmountChipContainer(wrapper);
