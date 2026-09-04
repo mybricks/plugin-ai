@@ -16,6 +16,7 @@ import type { SendToAgentParams } from "../../../sandbox";
 import { triggerChipRemove } from "../../../sandbox/chip-remove";
 import type { AgentMode, ChatChipDef, ChatChipInstance } from "../../../../../agent/src";
 import { removeLeadingPlaceholderBreakBeforeChip } from "./utils";
+import { readMchipClipboard } from "./mchip-clipboard";
 import {
   unmountChipContainer,
   createChipContainer,
@@ -1411,6 +1412,12 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const onPaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
     event.preventDefault();
     if (disabled || uploading) {
+      return;
+    }
+
+    const mchip = readMchipClipboard(event.clipboardData);
+    if (mchip) {
+      appendInput(mchip);
       return;
     }
 

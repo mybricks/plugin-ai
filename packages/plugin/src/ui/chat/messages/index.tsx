@@ -332,7 +332,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
           )}
           {record.userText && (
             <ActionBar className={css["user-action-bar"]}>
-              <ActionBar.Copy key="copy" text={record.userText} />
+              <ActionBar.Copy key="copy" text={record.userText} meta={record.meta} />
             </ActionBar>
           )}
         </section>
