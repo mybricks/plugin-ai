@@ -462,7 +462,7 @@ function buildEnvironmentSection(skills?: SkillFile[], subAgents?: SubAgentConfi
   return `<system-reminder>\n${sections.join("\n\n")}\n</system-reminder>`;
 }
 
-async function buildAlwaysLoadedSkillsSection(skills: SkillFile[]): Promise<string> {
+async function buildAlwaysLoadedSkillsContent(skills: SkillFile[]): Promise<string> {
   const alwaysSkills = skills.filter(shouldAlwaysLoadSkill);
   if (!alwaysSkills.length) return "";
 
@@ -471,7 +471,7 @@ async function buildAlwaysLoadedSkillsSection(skills: SkillFile[]): Promise<stri
     blocks.push((await renderSkillContent(skill)).output);
   }
 
-  return `<system-reminder>\n以下 Skill 已默认打开，请直接遵照执行，无需再调用 ${USE_SKILL_TOOL_NAME} 工具：\n\n${blocks.join("\n\n---\n\n")}\n</system-reminder>`;
+  return `以下 Skill 已默认打开，请直接遵照执行，无需再调用 ${USE_SKILL_TOOL_NAME} 工具：\n\n${blocks.join("\n\n---\n\n")}`;
 }
 
 // ─── CodeAgent ────────────────────────────────────────────────────────────────
@@ -612,12 +612,18 @@ export class CodeAgent extends Agent {
     };
 
     const getStableContextMessages = async (): Promise<Message[]> => {
-      const [agentsMdMessage, ctx] = await Promise.all([
+      const { skills } = this._getEnabledResources();
+      const [agentsMdMessage, alwaysLoadedSkillsContent, ctx] = await Promise.all([
         createAgentsMdContextMessage(toolSandbox),
+        buildAlwaysLoadedSkillsContent(skills),
         toolSandbox.getContext?.() ?? null,
       ]);
       return [
         ...(agentsMdMessage ? [agentsMdMessage] : []),
+        ...(alwaysLoadedSkillsContent ? [{
+          role: "user" as const,
+          content: `<system-reminder>\n${alwaysLoadedSkillsContent}\n</system-reminder>`,
+        }] : []),
         ...(ctx ? [{ role: "user" as const, content: ctx }] : []),
       ];
     };
@@ -643,14 +649,13 @@ ${system}` : builtinSystem;
           skills.length ? skills : undefined,
           subAgents.length ? subAgents : undefined,
         );
-        const alwaysSkillsSection = await buildAlwaysLoadedSkillsSection(skills);
         const modeSection = await buildModeSection({
           mode: ctx.mode,
           previousMode: ctx.previousMode,
           disabledModes: agentOptions.disabledModes,
           getFiles: getPlanFiles,
         });
-        const envText = [baseSection, alwaysSkillsSection, modeSection].filter(Boolean).join("\n\n");
+        const envText = [baseSection, modeSection].filter(Boolean).join("\n\n");
         if (envText) sections.push(envText);
 
         // 2. 外部传入的扩展内容（CodeAgentOptions.getAttachmentContextMessages）
