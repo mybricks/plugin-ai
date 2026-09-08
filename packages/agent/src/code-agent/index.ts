@@ -563,12 +563,13 @@ export class CodeAgent extends Agent {
       },
     }, plugins, enabledNamesRef);
 
+    const getEnabledPluginSkills = (): SkillFile[] => plugins
+      .filter((plugin) => enabledNamesRef.current.has(plugin.name))
+      .flatMap((plugin) => plugin.skills ?? []);
+
     // 收集 skills 文件（只读，不可列出）
     const collectSkillFiles = (): UnifiedFile[] => {
-      const enabledPluginSkills = plugins
-        .filter((p) => enabledNamesRef.current.has(p.name))
-        .flatMap((p) => p.skills ?? []);
-      const allSkills = [...baseSkills, ...enabledPluginSkills];
+      const allSkills = [...baseSkills, ...getEnabledPluginSkills()];
       return allSkills.flatMap((s) =>
         s.files.map((f) => ({
           path: `${SKILLS_PREFIX}${s.name}/${f.path}`,
@@ -612,7 +613,7 @@ export class CodeAgent extends Agent {
     };
 
     const getStableContextMessages = async (): Promise<Message[]> => {
-      const { skills } = this._getEnabledResources();
+      const skills = [...baseSkills, ...getEnabledPluginSkills()];
       const [agentsMdMessage, alwaysLoadedSkillsContent, ctx] = await Promise.all([
         createAgentsMdContextMessage(toolSandbox),
         buildAlwaysLoadedSkillsContent(skills),
