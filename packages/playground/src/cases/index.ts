@@ -109,6 +109,7 @@ import {
   initProjectPartialUpdateFailureCase,
   initProjectSubAgentLengthContinueCase,
   initProjectThirdCallWarnLargeCase,
+  initProjectSlowAbortCase,
 } from "./init-project-error";
 import { chatPanelSkinHistoryCase, chatPanelDefaultSkinCase, chatPanelSkinEmptyCase } from "./chat-panel-skin";
 import { historyCollapseRestoreCase, historyCollapseGrowingCase, historyCollapseCustomMaxItersCase } from "./ui-history-collapse";
@@ -177,6 +178,7 @@ export const ALL_CASES: TestCase[] = [
   initProjectPartialUpdateFailureCase,
   initProjectSubAgentLengthContinueCase,
   initProjectThirdCallWarnLargeCase,
+  initProjectSlowAbortCase,
   suggestionsDisplayCase,
   abortThenNextTurnAwarenessCase,
   interruptedTurnRetryCase,

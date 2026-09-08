@@ -51,7 +51,7 @@ export interface TestCase {
   llm?: {
     providers?: ProviderConfig[];
   };
-  tools?: Tool[];
+  tools?: Tool[] | ((fs: import("../lib/mem-fs").MemFS) => Tool[]);
   /** 预设技能文件列表，传入 CodeAgent.skills */
   skills?: SkillFile[];
   maskOptions?: {

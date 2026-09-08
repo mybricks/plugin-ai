@@ -478,3 +478,96 @@ export const initProjectThirdCallWarnLargeCase: TestCase = {
     };
   })(),
 };
+
+/**
+ * 手动回归用例：可在 init-project 的任意流式阶段点击停止。
+ *
+ * 每个完整代码块之间刻意留出一段空档：前一个文件应已经写入，后一个文件尚未开始。
+ * 当前正在输出的代码块若还没有闭合，则不应写入。request 的 cancel 回调会停止后续 chunk，
+ * 因此此用例也可直接验证父 Agent 是否把取消信号传递给了 init-project 的 SubAgent。
+ */
+export const initProjectSlowAbortCase: TestCase = {
+  id: "init-project-slow-abort",
+  name: "慢速生成中取消（保留已写文件）",
+  group: "init-project",
+  priority: "P0",
+  description:
+    "init-project 的 SubAgent 以约 500ms/段缓慢生成 4 个文件。任意时刻点击停止，观察取消是否立即停止后续输出，以及已闭合代码块对应的文件是否保留。",
+  expectedBehavior:
+    "修复取消传递后：点击停止后 turn 应尽快变为已取消，不再出现后续文件；停止前已完整闭合的文件保留，正在输出且未闭合的文件不写入。当前若仍继续生成，说明 init-project 的 SubAgent 未收到父 Agent 的取消信号。",
+  initialTurns: [],
+  initialFiles: [],
+  tools: (fs) => [createInitProjectTool(fs)],
+  agentOptions: { retry: { maxRetries: 0 } },
+  request: (() => {
+    let callIndex = 0;
+
+    return async (params: Parameters<import("@request/types").RequestAsStreamFn>[0]) => {
+      const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+      const idx = callIndex++;
+
+      if (idx === 0) {
+        const args = { filesToGenerate: ["index.jsx", "App.jsx", "components/Status.jsx", "styles.css"] };
+        const argsChunk = JSON.stringify(args);
+
+        await delay(200);
+        params.emits.onToolCallStream?.({ index: 0, id: "call_init_slow_abort", name: INIT_PROJECT_TOOL_NAME, argsChunk: "" });
+        params.emits.onToolCallStream?.({ index: 0, argsChunk });
+        params.emits.onToolCalls?.([{ id: "call_init_slow_abort", name: INIT_PROJECT_TOOL_NAME, args }]);
+        params.emits.onFinishReason?.("tool_calls");
+        params.emits.complete?.("");
+        return;
+      }
+
+      if (idx === 1) {
+        let cancelled = false;
+        const pendingWaits = new Set<() => void>();
+        const wait = (ms: number) => new Promise<void>((resolve) => {
+          const finish = () => {
+            clearTimeout(timer);
+            pendingWaits.delete(finish);
+            resolve();
+          };
+          const timer = setTimeout(finish, ms);
+          pendingWaits.add(finish);
+        });
+        params.emits.cancel(() => {
+          cancelled = true;
+          pendingWaits.forEach((finish) => finish());
+        });
+
+        const writeSlowly = async (content: string) => {
+          for (let offset = 0; offset < content.length; offset += 18) {
+            if (cancelled) return false;
+            await wait(500);
+            if (cancelled) return false;
+            params.emits.write?.(content.slice(offset, offset + 18));
+          }
+          return true;
+        };
+
+        const files = [
+          "```index.jsx\nimport React from 'react';\nimport { createRoot } from 'react-dom/client';\nimport App from './App';\n\ncreateRoot(document.getElementById('root')).render(<App />);\n```",
+          "\n\n```App.jsx\nimport Status from './components/Status';\nimport './styles.css';\n\nexport default function App() {\n  return <main className=\"app\"><Status /></main>;\n}\n```",
+          "\n\n```components/Status.jsx\nexport default function Status() {\n  return <section className=\"status\">\n    正在初始化\n  </section>;\n}\n```",
+          "\n\n```styles.css\n:root { color: #222; }\n.app { padding: 24px; }\n.status { color: #1677ff; }\n```",
+        ];
+
+        for (const file of files) {
+          if (!(await writeSlowly(file))) return;
+          // 给完整代码块的异步落盘留出明显可观察的时间窗。
+          await wait(1_200);
+          if (cancelled) return;
+        }
+
+        params.emits.onFinishReason?.("stop");
+        params.emits.complete?.("");
+        return;
+      }
+
+      params.emits.write?.("慢速 init-project 已完成全部文件生成。");
+      params.emits.onFinishReason?.("stop");
+      params.emits.complete?.("");
+    };
+  })(),
+};

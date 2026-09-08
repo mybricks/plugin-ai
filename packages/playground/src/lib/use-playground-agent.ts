@@ -43,7 +43,7 @@ export function usePlaygroundAgent(
       history: mockHistory,
       request,
       sandbox,
-      tools: testCase.tools ?? [],
+      tools: typeof testCase.tools === "function" ? testCase.tools(fs) : (testCase.tools ?? []),
       skills: testCase.skills,
       summary: testCase.summaryOptions ?? { enabled: false },
       compact: testCase.compactOptions ?? { enabled: false },

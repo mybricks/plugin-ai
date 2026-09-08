@@ -123,7 +123,11 @@ async function executeSubAgent(
   parentAgent: Agent,
   forkOptions: { hasImage: boolean },
   prompt: string,
-  ctx: { emitProgress: (data: any) => void; getUserMessage: () => { message: string; attachments?: any[] } },
+  ctx: {
+    emitProgress: (data: any) => void;
+    getUserMessage: () => { message: string; attachments?: any[] };
+    signal: AbortSignal;
+  },
   sandbox: Sandbox,
   expectedFiles: string[],
   shouldWarnLargeGeneration = false
@@ -175,6 +179,12 @@ ${prompt}
       },
     },
   });
+  const abortSubAgent = () => subAgent.abort();
+  if (ctx.signal.aborted) {
+    abortSubAgent();
+  } else {
+    ctx.signal.addEventListener("abort", abortSubAgent, { once: true });
+  }
 
   // 节流 emitProgress，800ms 内最多触发一次（leading + trailing）
   let _emitTimer: ReturnType<typeof setTimeout> | null = null;
@@ -252,21 +262,33 @@ ${prompt}
   let requestError: Error | null = null;
 
   try {
-    // 传递完整消息和附件
     await subAgent.requestAI({
       message: fullPrompt,
     });
+    const turns = await subAgent.getTurns();
+    const lastTurn = turns[turns.length - 1];
+    if (ctx.signal.aborted || lastTurn?.status === "abort") {
+      requestError = new Error("用户已取消");
+    }
   } catch (err: any) {
     requestError = err instanceof Error ? err : new Error(String(err));
   } finally {
     unsubscribe();
     unsubFlush();
+    ctx.signal.removeEventListener("abort", abortSubAgent);
   }
 
-  // 请求中途出错：利用已有的 writtenFiles / progressState 构造中断 output
+  // 请求中途出错或用户取消：保留已写入文件，并把中断说明拼进 output。
   if (requestError) {
     const writtenList = Array.from(writtenFiles);
     const remainingFiles = expectedFiles.filter((f) => !writtenFiles.has(f));
+    const writtenFilesWithContent = parseFileBlocks(progressState.content)
+      .filter((file) => writtenFiles.has(file.path))
+      .map((file) => {
+        const ext = file.path.split(".").pop() || "";
+        return `- ${file.path}\n\`\`\`${ext}\n${file.content}\n\`\`\``;
+      })
+      .join("\n\n");
 
     const lines: string[] = [
       `生成过程中断（${requestError.message}）`,
@@ -276,6 +298,9 @@ ${prompt}
     } else {
       lines.push('无文件写入');
     }
+    if (writtenFilesWithContent) {
+      lines.push(`已写入文件：\n${writtenFilesWithContent}`);
+    }
     if (remainingFiles.length > 0) {
       lines.push(
         `以下文件未生成，可继续调用 init-project 工具生成：\n${remainingFiles.map((f) => `- ${f}`).join('\n')}`
@@ -283,6 +308,9 @@ ${prompt}
     }
     if (shouldWarnLargeGeneration) {
       lines.push(LARGE_GENERATION_WARNING);
+    }
+    if (requestError.message === "用户已取消") {
+      lines.push("[Request interrupted by user]");
     }
 
     const filesMetadataOnError = writtenList.map((p) => ({
@@ -461,6 +489,7 @@ export function createInitProjectTool(sandbox: Sandbox): Tool {
         {
           emitProgress: toolContext.emitProgress,
           getUserMessage: toolContext.getUserMessage,
+          signal: toolContext.signal,
         },
         sandbox,
         filesToGenerate,
