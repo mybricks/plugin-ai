@@ -42,7 +42,7 @@ export type {
 } from "../../agent/src";
 export { DisabledHandler } from "./disabled-handler";
 export type { DisabledMessage, DisabledRequestHandler } from "./disabled-handler";
-export type { AgentEventMap, CodeAgentPlugin, SkillFile, UnifiedFile } from "../../agent/src";
+export type { AgentEventMap, AgentHooks, CodeAgentPlugin, SkillFile, UnifiedFile } from "../../agent/src";
 export { createRequestAsStream, createOnUpload } from "../../request/src";
 export type { RequestAsStreamFn } from "../../request/src";
 export { openSetting, closeSetting, SettingModal } from "./ui/setting";

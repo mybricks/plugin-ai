@@ -955,6 +955,45 @@ export class Agent {
         const shouldContinue = shouldContinueWithTools || shouldContinueForLength;
         const modelFinished = !shouldContinue;
         if (modelFinished) {
+          // maxSteps 是 ReAct 循环的硬上限；最后一步不再允许 stop hook 续跑。
+          if (step < maxSteps) {
+            let stopHookMessages: Message[] = [];
+            try {
+              const hookResult = await this.options.hooks?.beforeTurnStop?.({
+                turn,
+                step,
+                finishReason,
+              });
+              stopHookMessages = hookResult?.additionalMessages ?? [];
+            } catch (e) {
+              // stop hook 是 best-effort。失败时接受模型停止，避免插件卡死整个 turn。
+              console.warn("[Agent] hooks.beforeTurnStop failed:", e);
+            }
+
+            if (stopHookMessages.length > 0) {
+              this.events.emit("llm:complete", {
+                step,
+                finishReason: llmResult.finishReason,
+                usage: llmResult.usage,
+                done: false,
+                endTime: iterEndTime,
+                iterId: currentIterId,
+              });
+              tail.push({
+                role: "assistant",
+                content: llmResult.content,
+                ...(llmResult.thinkingContent
+                  ? { reasoning_content: llmResult.thinkingContent }
+                  : {}),
+              });
+              tail.push(...stopHookMessages);
+              if (this.historyManager.persistMode === "iter") {
+                await this._saveTurnRecord(turn, "update");
+              }
+              continue;
+            }
+          }
+
           turn.endTime = iterEndTime;
           turn.status = "success";
           await this._saveTurnRecord(turn, persistMode);

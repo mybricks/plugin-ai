@@ -339,6 +339,21 @@ function composePluginHooks(
       }
       return additionalMessages.length ? { additionalMessages } : undefined;
     },
+    async beforeTurnStop(params) {
+      const additionalMessages: Message[] = [];
+      for (const { source, hooks: activeHooks } of getActiveHooks()) {
+        if (!activeHooks.beforeTurnStop) continue;
+        const result = await runHook(
+          source,
+          "beforeTurnStop",
+          () => activeHooks.beforeTurnStop!(params),
+        );
+        if (result?.additionalMessages?.length) {
+          additionalMessages.push(...result.additionalMessages);
+        }
+      }
+      return additionalMessages.length ? { additionalMessages } : undefined;
+    },
     async afterTurn(turn) {
       for (const { source, hooks: activeHooks } of getActiveHooks()) {
         if (activeHooks.afterTurn) {

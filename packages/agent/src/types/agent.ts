@@ -93,6 +93,20 @@ export interface AgentHooks {
     additionalMessages?: Message[];
   } | void> | { additionalMessages?: Message[] } | void;
   /**
+   * 模型准备正常停止当前 turn 时触发。
+   *
+   * 返回 `additionalMessages` 会拒绝本次停止：当前 assistant 回复会保留在 turn 中，
+   * 消息随后追加到上下文，并继续当前 turn 的下一次 LLM 请求。
+   * 用户取消、执行错误、doom loop 或达到 maxSteps 时不会触发。
+   */
+  beforeTurnStop?: (params: {
+    turn: TurnRecord;
+    step: number;
+    finishReason: string;
+  }) => Promise<{
+    additionalMessages?: Message[];
+  } | void> | { additionalMessages?: Message[] } | void;
+  /**
    * 每轮 turn 结束后的钩子（无论成功、取消还是错误）。
    * 在 turn:complete / turn:abort / turn:error 事件触发后同步调用。
    * 可用于记录日志、上报埋点等收尾工作。
