@@ -1,5 +1,6 @@
 import type { ToolCallRecord } from "../../../../../../agent/src";
 import type { ToolUIChannel } from "../../../../../../agent/src";
+import { getConfigDirNameFromAgent } from "../../../../../../agent/src";
 
 /**
  * UI 层工具调用视图，在持久化快照（ToolCallRecord）基础上叠加流式临时状态。
@@ -29,15 +30,21 @@ export interface ToolRendererContext {
   toolCallId: string;
   submit: (value: unknown) => boolean;
   cancel: () => boolean;
+  configDirName: string;
 }
 
 export type ToolRenderer = (tool: ToolRecord, ctx: ToolRendererContext) => React.ReactElement;
 
-export function createToolRendererContext(toolCallId: string, toolUI?: ToolUIChannel): ToolRendererContext {
+export function createToolRendererContext(
+  toolCallId: string,
+  toolUI?: ToolUIChannel,
+  agent?: object | null,
+): ToolRendererContext {
   return {
     toolCallId,
     submit: (value) => toolUI?.respond(toolCallId, value) ?? false,
     cancel: () => toolUI?.cancel(toolCallId) ?? false,
+    configDirName: getConfigDirNameFromAgent(agent),
   };
 }
 

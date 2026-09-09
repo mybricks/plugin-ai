@@ -205,6 +205,8 @@ export interface SetupSandboxParams {
    * 同路径下 virtualFiles 优先级高于 designer.getFiles() 返回的真实文件。
    */
   virtualFiles?: (context: VirtualFilesRuntimeContext) => Promise<UnifiedFile[]>;
+  /** Directory passed to local CodeAgent instances; defaults to `.agent`. */
+  configDirName?: string;
   /** 本地 CodeAgent 的初始化文件快照；首次请求前会执行 diff/update/delete。 */
   initialFiles?: Array<Pick<UnifiedFile, "path" | "content">>;
   skills?: SkillFile[];
@@ -253,7 +255,7 @@ export interface SetupSandboxParams {
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
 export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController {
-  const { requestAsStream, llmPluginKey, virtualFiles, initialFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, onDisabledRequest, history, remoteAgent, sender, localAgent } = params;
+  const { requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, onDisabledRequest, history, remoteAgent, sender, localAgent } = params;
   // 空数组与某些应用产生的 App 空文件组合都视为无效快照，本地与远程 Agent 均不读取。
   const syncableInitialFiles = getSyncableInitialFiles(initialFiles);
   const disabledHandler = new DisabledHandler({
@@ -263,7 +265,7 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
   const agentRuntimeRefs = new Map<string, AgentRuntimeRef>();
 
   const pluginParams: PluginParams = {
-    requestAsStream, llmPluginKey, virtualFiles, initialFiles: syncableInitialFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs, localAgent,
+    requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles: syncableInitialFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs, localAgent,
   };
 
   window._sandbox_ = {

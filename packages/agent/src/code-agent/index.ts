@@ -33,6 +33,7 @@ import { buildModeSection, getActivePlanFile, type ActivePlanFile } from "../mod
 import { splitFrontmatter } from "../utils/frontmatter";
 import { getCodeAgentSystemPrompt, type CodeAgentPromptOptions } from "./prompt";
 import { createAgentsMdContextMessage } from "./agents-md";
+import { getAgentInternalFileExclude, getPlanDir, getSkillsDir, normalizeConfigDirName } from "./config-dir";
 export type { CodeAgentPromptOptions };
 export type { BashToolOptions } from "./tools/bash";
 import {
@@ -54,7 +55,22 @@ import {
 export type { SubAgentConfig, CompletedSubAgentTask } from "../sub-agent";
 
 export type { SkillActivation, SkillFile, SkillMeta };
+export {
+  DEFAULT_CONFIG_DIR_NAME,
+  getAgentInternalFileExclude,
+  getAgentMdPath,
+  getConfigDirNameFromAgent,
+  getConfigDirPath,
+  getConfigDirPattern,
+  getPlanDir,
+  getSkillDir,
+  getSkillsDir,
+  normalizeConfigDirName,
+} from "./config-dir";
 export { resolveSkillMeta, USE_SKILL_TOOL_NAME };
+
+/** @deprecated Use getAgentInternalFileExclude(configDirName) for custom directories. */
+export const AGENT_INTERNAL_FILE_EXCLUDE = getAgentInternalFileExclude();
 
 // ─── UnifiedFile ────────────────────────────────────────────────────────────
 
@@ -91,8 +107,6 @@ export interface GetFilesOptions {
    */
   exclude?: FileExclude | FileExclude[];
 }
-
-export const AGENT_INTERNAL_FILE_EXCLUDE = /(^|\/)\.(agent|tmp)(\/|$)/;
 
 const normalizeFilePath = (path: string) => path.replace(/\\/g, '/').replace(/^\/+/, '');
 
@@ -200,7 +214,7 @@ export interface Sandbox {
   /**
    * 旧版：获取全部文件及其内容。
    * @param options.exclude 可选过滤规则，命中的文件会被排除。
-   *   典型用途：`exclude: /(^|\/)\.agent(\/|$)/` 过滤任意层级内部文件，用于向用户展示的文件列表。
+   *   典型用途：`exclude: getAgentInternalFileExclude(configDirName)` 过滤任意层级内部文件，用于向用户展示的文件列表。
    */
   getFiles(options?: GetFilesOptions): Promise<UnifiedFile[]>;
   /**
@@ -227,6 +241,12 @@ export interface CodeAgentOptions extends Omit<AgentOptions, "system"> {
    * plugin 集成可通过 window._registSandBox_ 注入任一种契约。
    */
   sandbox: Sandbox | AgentSandbox;
+  /**
+   * Directory used for CodeAgent-owned project resources. Defaults to `.agent`.
+   * Skills are exposed at `<configDirName>/skills/`, rules are read from
+   * `<configDirName>/agent.md`, and plans live in `<configDirName>/plans/`.
+   */
+  configDirName?: string;
   /** Restrict the bash tool to a host-approved command set. */
   bash?: BashToolOptions;
   /**
@@ -238,11 +258,11 @@ export interface CodeAgentOptions extends Omit<AgentOptions, "system"> {
    * 技能文件列表（Skills）。
    *
    * 对标 claude-code 的 .claude/skills/ 目录机制：
-   *   - 每个 SkillFile.name 作为虚拟目录名（.agent/skills/<name>/）
+   *   - 每个 SkillFile.name 作为虚拟目录名（<configDirName>/skills/<name>/）
    *   - SKILL.md 为必填入口文件
    *   - 技能目录（name + description）列出在环境消息中，随每轮 user 消息注入
    *   - LLM 通过 use_skill 工具按需加载 SKILL.md 内容
-   *   - 支持文件可通过 read_file 工具读取（.agent/skills/<name>/<path>）
+   *   - 支持文件可通过 read_file 工具读取（<configDirName>/skills/<name>/<path>）
    *   - 不全量注入，避免 token 浪费
    */
   skills?: SkillFile[];
@@ -277,11 +297,6 @@ export interface CodeAgentOptions extends Omit<AgentOptions, "system"> {
    */
   builtinTools?: false | CodeAgentBuiltinToolName[];
 }
-
-/** 虚拟 agent 资源路径前缀 */
-const AGENT_PREFIX = ".agent/";
-/** 虚拟 skills 路径前缀 */
-const SKILLS_PREFIX = `${AGENT_PREFIX}skills/`;
 
 /** 插件 name 命名规范校验 */
 const PLUGIN_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
@@ -462,13 +477,13 @@ function buildEnvironmentSection(skills?: SkillFile[], subAgents?: SubAgentConfi
   return `<system-reminder>\n${sections.join("\n\n")}\n</system-reminder>`;
 }
 
-async function buildAlwaysLoadedSkillsContent(skills: SkillFile[]): Promise<string> {
+async function buildAlwaysLoadedSkillsContent(skills: SkillFile[], configDirName: string): Promise<string> {
   const alwaysSkills = skills.filter(shouldAlwaysLoadSkill);
   if (!alwaysSkills.length) return "";
 
   const blocks: string[] = [];
   for (const skill of alwaysSkills) {
-    blocks.push((await renderSkillContent(skill)).output);
+    blocks.push((await renderSkillContent(skill, configDirName)).output);
   }
 
   return `以下 Skill 已默认打开，请直接遵照执行，无需再调用 ${USE_SKILL_TOOL_NAME} 工具：\n\n${blocks.join("\n\n---\n\n")}`;
@@ -488,14 +503,17 @@ async function buildAlwaysLoadedSkillsContent(skills: SkillFile[]): Promise<stri
  * 初始化时可传入：
  *   - `sandbox`   — 沙箱（文件读写）
  *   - `tools`     — 额外自定义工具（如 check_design_status）
- *   - `virtualFiles` — 只读文件（如根工程 `.agent/agent.md` 规则文档），由 Sandbox.virtualFiles 承载，合并进统一文件模型
- *   - `skills`    — 技能文件列表，挂载为 .agent/skills/ 目录（只读），LLM 按需读取
+ *   - `virtualFiles` — 只读文件（如根工程 `<configDirName>/agent.md` 规则文档），由 Sandbox.virtualFiles 承载，合并进统一文件模型
+ *   - `skills`    — 技能文件列表，挂载为 `<configDirName>/skills/` 目录（只读），LLM 按需读取
  *   - `subAgents` — 子 Agent 配置列表，注册 call-sub-agent 工具
  *   - `plugins`   — 插件列表（仅支持 skills / agents / tools / hooks）
  */
 
-async function fetchPlanFiles(sandbox: AgentSandbox): Promise<Array<{ path: string; content: string }>> {
-  const result = await sandbox.commands.execute({ name: "find", input: { path: ".agent/plans" } });
+async function fetchPlanFiles(
+  sandbox: AgentSandbox,
+  configDirName: string,
+): Promise<Array<{ path: string; content: string }>> {
+  const result = await sandbox.commands.execute({ name: "find", input: { path: getPlanDir(configDirName).slice(0, -1) } });
   const entries = ((result.structured as AgentSandboxFindResult<AgentSandboxFileEntry> | undefined)?.entries ?? [])
     .filter((e) => e.type !== "directory");
   return sandbox.files.readFiles(entries.map((e) => e.path));
@@ -512,6 +530,8 @@ export class CodeAgent extends Agent {
   private _enabledPluginNames: Set<string>;
   /** CodeAgent 内部只使用归一化后的 AgentSandbox。 */
   private _sandbox: AgentSandbox;
+  /** Normalized directory used by this CodeAgent for its virtual resources. */
+  readonly configDirName: string;
   /**
    * 顶层基础资源（来自 options.skills / options.subAgents / options.tools，不含 plugin 部分）。
    * 不参与动态重算，始终全量参与每次 turn 的资源合并。
@@ -523,6 +543,7 @@ export class CodeAgent extends Agent {
   constructor(options: CodeAgentOptions) {
     const {
       sandbox,
+      configDirName: configDirNameOption,
       skills,
       system,
       subAgents,
@@ -531,6 +552,8 @@ export class CodeAgent extends Agent {
       bash,
       ...agentOptions
     } = options;
+    const configDirName = normalizeConfigDirName(configDirNameOption);
+    const skillsPrefix = getSkillsDir(configDirName);
 
     const agentSandbox: AgentSandbox = isAgentSandbox(sandbox)
       ? sandbox
@@ -572,7 +595,7 @@ export class CodeAgent extends Agent {
       const allSkills = [...baseSkills, ...getEnabledPluginSkills()];
       return allSkills.flatMap((s) =>
         s.files.map((f) => ({
-          path: `${SKILLS_PREFIX}${s.name}/${f.path}`,
+          path: `${skillsPrefix}${s.name}/${f.path}`,
           content: f.content,
           permissions: { read: true, write: false, delete: false },
         }))
@@ -588,7 +611,7 @@ export class CodeAgent extends Agent {
       runtimeSandbox,
       collectSkillFiles,
     );
-    const getPlanFiles = () => fetchPlanFiles(toolSandbox);
+    const getPlanFiles = () => fetchPlanFiles(toolSandbox, configDirName);
     const allBuiltinTools: Array<[CodeAgentBuiltinToolName, Tool]> = [
       [READ_TOOL_NAME, createReadTool(toolSandbox)],
       [WRITE_TOOL_NAME, createWriteTool(toolSandbox)],
@@ -615,8 +638,8 @@ export class CodeAgent extends Agent {
     const getStableContextMessages = async (): Promise<Message[]> => {
       const skills = [...baseSkills, ...getEnabledPluginSkills()];
       const [agentsMdMessage, alwaysLoadedSkillsContent, ctx] = await Promise.all([
-        createAgentsMdContextMessage(toolSandbox),
-        buildAlwaysLoadedSkillsContent(skills),
+        createAgentsMdContextMessage(toolSandbox, configDirName),
+        buildAlwaysLoadedSkillsContent(skills, configDirName),
         toolSandbox.getContext?.() ?? null,
       ]);
       return [
@@ -655,6 +678,7 @@ ${system}` : builtinSystem;
           previousMode: ctx.previousMode,
           disabledModes: agentOptions.disabledModes,
           getFiles: getPlanFiles,
+          configDirName,
         });
         const envText = [baseSection, modeSection].filter(Boolean).join("\n\n");
         if (envText) sections.push(envText);
@@ -671,6 +695,7 @@ ${system}` : builtinSystem;
     this._plugins = plugins;
     this._base = base;
     this._sandbox = toolSandbox;
+    this.configDirName = configDirName;
     this._subAgentTaskManager = subAgentTaskManager;
     this._enabledPluginNames = new Set(
       plugins.filter((p) => p.enabled !== false).map((p) => p.name)
@@ -682,11 +707,11 @@ ${system}` : builtinSystem;
 
   /**
    * 获取当前活跃的计划文件（status: active）。
-   * 扫描 .agent/plans/ 目录，取日期最新的活跃计划文件。
+   * 扫描 `<configDirName>/plans/` 目录，取日期最新的活跃计划文件。
    * 若不存在活跃计划则返回 null。
    */
   async getPlanFile(): Promise<ActivePlanFile | null> {
-    return getActivePlanFile(() => fetchPlanFiles(this._sandbox));
+    return getActivePlanFile(() => fetchPlanFiles(this._sandbox, this.configDirName), this.configDirName);
   }
 
   /**
@@ -740,7 +765,7 @@ ${system}` : builtinSystem;
     const { skills, subAgents, tools } = this._getEnabledResources();
 
     const modelSkills = skills.filter(shouldExposeSkillToModel);
-    const skillTool = modelSkills.length ? createSkillTool(modelSkills) : null;
+    const skillTool = modelSkills.length ? createSkillTool(modelSkills, this.configDirName) : null;
     const subAgentTool = subAgents.length
       ? createSubAgentTool(
           () => this,

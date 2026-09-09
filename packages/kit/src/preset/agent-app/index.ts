@@ -23,7 +23,7 @@ export function agentAppPromptBuilder(): PluginAIPreset {
 
       return [
         {
-          path: ".agent/agent.md",
+          path: `${context.configDirName}/agent.md`,
           content: [
             agentAppPromptSection.root.metaSection,
             '# 开发宪章',

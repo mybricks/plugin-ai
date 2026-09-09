@@ -1,23 +1,11 @@
 import type { Message } from "../types";
 import { splitFrontmatter } from "../utils/frontmatter";
 import { scanProjectResources } from "./project-resources";
-
-const ROOT_RULE_PATHS = [".lingchuang/agent.md", ".agent/agent.md"] as const;
-
-function isAgentRulePath(path: string): boolean {
-  return path === ".lingchuang/agent.md"
-    || path.endsWith("/.lingchuang/agent.md")
-    || path === ".agent/agent.md"
-    || path.endsWith("/.agent/agent.md");
-}
+import { getAgentMdPath, isAgentRulePath } from "./config-dir";
 
 function compareAgentRulePaths(a: string, b: string): number {
   const depthDiff = a.split("/").length - b.split("/").length;
   if (depthDiff) return depthDiff;
-
-  const aIsLingchuang = a.endsWith("/.lingchuang/agent.md") || a === ".lingchuang/agent.md";
-  const bIsLingchuang = b.endsWith("/.lingchuang/agent.md") || b === ".lingchuang/agent.md";
-  if (aIsLingchuang !== bIsLingchuang) return aIsLingchuang ? -1 : 1;
   return a.localeCompare(b);
 }
 
@@ -27,10 +15,14 @@ function formatEntry(path: string, content: string): string {
 }
 
 /** Scans AgentSandbox project rules and returns a single agents.md string. */
-export async function scanAgentsMd(sandbox: import("../agent-sandbox").AgentSandbox): Promise<string> {
+export async function scanAgentsMd(
+  sandbox: import("../agent-sandbox").AgentSandbox,
+  configDirName?: string,
+): Promise<string> {
+  const agentMdPath = getAgentMdPath(configDirName);
   const files = await scanProjectResources(sandbox, {
-    candidates: ROOT_RULE_PATHS,
-    matches: isAgentRulePath,
+    candidates: [agentMdPath],
+    matches: (path) => isAgentRulePath(path, configDirName),
     compare: compareAgentRulePaths,
   });
   return files.flatMap((file) => {
@@ -40,8 +32,11 @@ export async function scanAgentsMd(sandbox: import("../agent-sandbox").AgentSand
 }
 
 /** Creates the stable context message consumed by CodeAgent on every turn. */
-export async function createAgentsMdContextMessage(sandbox: import("../agent-sandbox").AgentSandbox): Promise<Message | null> {
-  const content = await scanAgentsMd(sandbox);
+export async function createAgentsMdContextMessage(
+  sandbox: import("../agent-sandbox").AgentSandbox,
+  configDirName?: string,
+): Promise<Message | null> {
+  const content = await scanAgentsMd(sandbox, configDirName);
   if (!content) return null;
   return {
     role: "user",

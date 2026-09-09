@@ -12,7 +12,7 @@ import type {
 } from "../../../../../agent/src/types";
 import type { ToolUIChannel } from "../../../../../agent/src";
 import type { ChatAgent } from "../chat-panel/use-agent";
-import { AgentModeEnum } from "../../../../../agent/src";
+import { AgentModeEnum, getConfigDirNameFromAgent } from "../../../../../agent/src";
 import type { ActivePlanFile } from "../../../../../agent/src/mode-manager";
 import { WRITE_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/write";
 import { EDIT_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/edit";
@@ -228,7 +228,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
   onRetry?: (turnId: string) => void;
   onDelete?: (turnId: string) => void;
   isLast?: boolean;
-  agent?: MessageAgent;
+  agent?: ChatAgent;
   toolUI?: ToolUIChannel;
   stageText?: string;
   onExecutePlan?: (title: string) => void;
@@ -248,8 +248,8 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
     isPlanRecord;
   const planFile = useMemo(() => {
     if (!isCompletedPlanRecord) return null;
-    return getActivePlanFileFromRecord(record, activePlan);
-  }, [record, isCompletedPlanRecord, activePlan]);
+    return getActivePlanFileFromRecord(record, activePlan, getConfigDirNameFromAgent(agent));
+  }, [record, isCompletedPlanRecord, activePlan, agent]);
   const shouldShowPlanCard =
     isCompletedPlanRecord &&
     Boolean(planFile?.content?.trim());
@@ -470,7 +470,7 @@ const MessageIteration = React.memo(function MessageIteration({
   isPending: boolean;
   retryState: { attempt: number; maxRetries: number } | null;
   toolRendererMap: Map<string, ToolRenderer>;
-  agent?: MessageAgent;
+  agent?: ChatAgent;
   toolUI?: ToolUIChannel;
   stageText?: string;
 }) {
@@ -595,7 +595,11 @@ const UserMessageContent = ({ record }: { record: MessageRecord }) => {
   );
 };
 
-function getActivePlanFileFromRecord(record: MessageRecord, activePlan: ActivePlanFile | null): ActivePlanFile | null {
+function getActivePlanFileFromRecord(
+  record: MessageRecord,
+  activePlan: ActivePlanFile | null,
+  configDirName?: string,
+): ActivePlanFile | null {
   if (!activePlan || activePlan.status !== "active" || !activePlan.content.trim()) return null;
 
   const relatedPlanPaths = new Set<string>();
@@ -604,7 +608,7 @@ function getActivePlanFileFromRecord(record: MessageRecord, activePlan: ActivePl
     if (iter.type === "warmup") continue;
 
     for (const tool of iter.toolCalls) {
-      for (const path of getPlanPathsFromTool(tool)) {
+      for (const path of getPlanPathsFromTool(tool, configDirName)) {
         relatedPlanPaths.add(path);
       }
     }
@@ -613,11 +617,11 @@ function getActivePlanFileFromRecord(record: MessageRecord, activePlan: ActivePl
   return relatedPlanPaths.has(activePlan.path.replace(/^\/+/, "")) ? activePlan : null;
 }
 
-function getPlanPathsFromTool(tool: ToolCallRecord): string[] {
+function getPlanPathsFromTool(tool: ToolCallRecord, configDirName?: string): string[] {
   const normalizePlanPath = (path: unknown) => {
     if (typeof path !== "string" || !path) return null;
     const normalized = path.replace(/^\/+/, "");
-    return isPlanFilePath(normalized) ? normalized : null;
+    return isPlanFilePath(normalized, configDirName) ? normalized : null;
   };
 
   if (tool.name === WRITE_TOOL_NAME || tool.name === EDIT_TOOL_NAME) {
@@ -654,7 +658,7 @@ const ToolBubble = React.memo(function ToolBubble({
 }: {
   tool: ToolCallRecord;
   toolRendererMap: Map<string, ToolRenderer>;
-  agent?: MessageAgent;
+  agent?: ChatAgent;
   toolUI?: ToolUIChannel;
 }) {
   const uiTool: UIToolRecord = {
@@ -693,7 +697,7 @@ function renderToolWithErrorBoundary(
   renderer: ToolRenderer,
   tool: UIToolRecord,
   source: "custom" | "registry",
-  agent?: MessageAgent,
+  agent?: ChatAgent,
   toolUI?: ToolUIChannel,
 ) {
   return React.createElement(
@@ -716,12 +720,16 @@ const ToolRendererInvoker = ({
 }: {
   renderer: ToolRenderer;
   tool: ToolCallRecord;
-  agent?: MessageAgent;
+  agent?: ChatAgent;
   toolUI?: ToolUIChannel;
 }) => {
   return renderer(
     tool as any,
-    createToolRendererContext(tool.callId, toolUI ?? agent?.getToolUI()),
+    createToolRendererContext(
+      tool.callId,
+      toolUI ?? agent?.getToolUI(),
+      agent,
+    ),
   );
 };
 

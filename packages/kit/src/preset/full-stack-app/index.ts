@@ -35,7 +35,7 @@ export function fullStackAppPromptBuilder(options: FullStackAppPromptBuilderOpti
 
       return [
         {
-          path: ".agent/agent.md",
+          path: `${context.configDirName}/agent.md`,
           content: [
             fullStackAppPromptSection.root.metaSection,
             '## 开发宪章',
@@ -49,7 +49,7 @@ export function fullStackAppPromptBuilder(options: FullStackAppPromptBuilderOpti
           visible: false,
         },
         {
-          path: "frontend/.agent/agent.md",
+          path: `frontend/${context.configDirName}/agent.md`,
           content: [
             fullStackAppPromptSection.frontend.metaSection,
             '# 前端规范',
@@ -67,7 +67,7 @@ export function fullStackAppPromptBuilder(options: FullStackAppPromptBuilderOpti
           visible: false,
         },
         {
-          path: "backend/.agent/agent.md",
+          path: `backend/${context.configDirName}/agent.md`,
           content: [
             fullStackAppPromptSection.backend.metaSection,
             '# 服务端规范',

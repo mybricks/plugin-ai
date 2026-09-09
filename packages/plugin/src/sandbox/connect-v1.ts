@@ -1,4 +1,4 @@
-import { CodeAgent, IDBHistory, isFileExcluded } from "../../../agent/src";
+import { CodeAgent, DEFAULT_CONFIG_DIR_NAME, IDBHistory, isFileExcluded } from "../../../agent/src";
 import type { AgentOptions, Tool, CodeAgentPlugin, History, TurnSender, SkillFile, UnifiedFile } from "../../../agent/src";
 import { createInitProjectTool } from "../../../agent/src/code-agent/tools";
 import { getCodeAgentSystemPrompt } from "../../../agent/src/code-agent/prompt";
@@ -21,7 +21,7 @@ import {
   injectSkillRuntimeContext,
   injectPluginRuntimeContext,
   formatLibraryDocs,
-  PROJECT_CONTEXT_EXCLUDE,
+  getProjectContextExclude,
   registerChips,
 } from "./connect-shared";
 
@@ -37,11 +37,12 @@ export function connectToAIFromV1(
   comId: string,
   { designer, hooks, chips }: { designer: Designer; hooks?: Hooks; chips?: SandboxChipsConfig },
   {
-    requestAsStream, llmPluginKey, virtualFiles, initialFiles, skills, plugins, promptSections, tools,
+    requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles, skills, plugins, promptSections, tools,
     codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes,
     disabledHandler, history, remoteAgent, sender, agentRuntimeRefs, localAgent,
   }: PluginParams
 ): ConnectToAIResult {
+  const resolvedConfigDirName = configDirName ?? DEFAULT_CONFIG_DIR_NAME;
   const agentKey = context.getAgentKey(comId);
   registerChips(agentKey, chips);
   const runtimeRef: AgentRuntimeRef = agentRuntimeRefs.get(agentKey) ?? { current: undefined };
@@ -86,6 +87,7 @@ export function connectToAIFromV1(
     const fn = getRuntimeVirtualFiles();
     if (!fn) return [];
     return fn({
+      configDirName: resolvedConfigDirName,
       getEffectiveLibrariesSection: async (_options) => {
         const libraries = await designerRef.current?.getEffectiveLibraries() ?? [];
         return formatLibraryDocs(libraries);
@@ -129,7 +131,7 @@ export function connectToAIFromV1(
   };
 
   const getProjectContextSnapshot = async (): Promise<{ files: UnifiedFile[]; directories: string[] }> => {
-    const files = await sandbox.getFiles({ exclude: PROJECT_CONTEXT_EXCLUDE });
+    const files = await sandbox.getFiles({ exclude: getProjectContextExclude(resolvedConfigDirName) });
     if ((projectContext?.type ?? "project") === "project") return { files, directories: [] };
     const rootPrefix = "";
     const directories = new Set<string>();
@@ -183,6 +185,7 @@ export function connectToAIFromV1(
     history: history ?? new IDBHistory({ dbName: "@plugin-ai/plugin/messages" }),
     request: (llmPluginKey ? context.createLLMRequest(llmPluginKey, agentKey) : undefined) ?? requestAsStream,
     sandbox,
+    configDirName: resolvedConfigDirName,
     tools: [checkStatusTool, initProjectTool, ...(activeTools ?? [])],
     promptOptions,
     hooks,
@@ -199,7 +202,7 @@ export function connectToAIFromV1(
           workingDirectory: projectContext.directory,
           entries: [...directories.map((directory) => `${directory}/`), ...files.map((file) => file.path)].sort(),
         })
-        : buildProjectInfoSection(files);
+        : buildProjectInfoSection(files, { ignoredDirectories: [resolvedConfigDirName] });
       if (projectInfo) sections.push(projectInfo);
       const custom = await getUserContextMessage?.();
       if (custom) sections.push(custom);

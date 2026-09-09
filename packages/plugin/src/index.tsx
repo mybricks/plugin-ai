@@ -3,7 +3,7 @@ import React from "react";
 import pkg from "../../../package.json";
 console.log(`%c ${pkg.name} %c@${pkg.version}`, `color:#FFF;background:#fa6400`, ``, ``);
 
-import { IDBHistory } from "../../agent/src";
+import { IDBHistory, normalizeConfigDirName } from "../../agent/src";
 import type { AgentOptions, CodeAgentPlugin, SkillFile, TurnSender } from "../../agent/src";
 import { createRequestAsStream, createOnUpload } from "../../request/src";
 import type { RequestAsStreamFn, ProviderConfig } from "../../request/src";
@@ -172,14 +172,20 @@ export interface PluginAIParams {
     designRules?: string;
   };
   /**
+   * CodeAgent 的项目配置目录名，默认 `.agent`。
+   * Skills、规则文件和计划文件会分别使用 `<configDirName>/skills/`、
+   * `<configDirName>/agent.md` 和 `<configDirName>/plans/`。
+   */
+  configDirName?: string;
+  /**
    * 注入到根工程虚拟 FS 的文件（每个 turn 调用一次）。
-   * 典型用途：在根工程放 `.agent/agent.md` 提供项目规范，LLM 可通过 `read_file` 读取。
+   * 典型用途：在根工程放 `<configDirName>/agent.md` 提供项目规范，LLM 可通过 `read_file` 读取。
    * 同路径下 virtualFiles 优先级高于真实文件。
    *
    * @example
    * ```ts
-   * virtualFiles: async (context) => [{
-   *   path: ".agent/agent.md",
+    * virtualFiles: async (context) => [{
+    *   path: `${context.configDirName}/agent.md`,
    *   content: "# 项目规范\n...",
    * }]
    * ```
@@ -191,7 +197,7 @@ export interface PluginAIParams {
    * 注意：导入或默认赋值时可能传入空数组，它不代表初始化内容一定为空，因此会被视为未提供。
    */
   initialFiles?: Array<{ path: string; content: string }>;
-  /** 技能文件列表，挂载为虚拟 .agent/skills/ 目录，LLM 通过 use_skill 工具按需加载 */
+  /** 技能文件列表，挂载为虚拟 <configDirName>/skills/ 目录，LLM 通过 use_skill 工具按需加载 */
   skills?: SkillFile[];
   /** 插件列表，会将内部 skills / agents / tools / hooks 合并进 CodeAgent 顶层配置 */
   plugins?: CodeAgentPlugin[];
@@ -266,6 +272,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     onDownload,
     onDisabledRequest,
     codingConfig,
+    configDirName,
     virtualFiles,
     initialFiles,
     skills,
@@ -290,6 +297,8 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     renderAttachmentSuffix,
     mentions,
   } = params;
+
+  const resolvedConfigDirName = normalizeConfigDirName(configDirName);
 
   // 先设置 KV 命名空间，再恢复模型选择，避免读取到上一个 plugin 实例的状态。
   context.setPluginKey(pluginKey);
@@ -365,6 +374,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
   const agentRuntimeController = setupSandbox({
     requestAsStream,
     llmPluginKey: pluginKey,
+    configDirName: resolvedConfigDirName,
     virtualFiles,
     initialFiles,
     skills: mergedSkills,

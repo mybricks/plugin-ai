@@ -1,10 +1,13 @@
 import type { AgentMode, Tool, ToolExecutionContext, ToolResult } from "./types";
 import { splitFrontmatter, getFrontmatterString } from "./utils/frontmatter";
+import { getConfigDirNameFromAgent, getPlanDir, getPlanFilePattern } from "./code-agent/config-dir";
 
 export const SWITCH_MODE_TOOL_NAME = "switch_mode";
 
+export { getPlanDir };
+
 /** 计划文件目录根路径 */
-export const DEFAULT_PLAN_DIR = ".agent/plans/";
+export const DEFAULT_PLAN_DIR = getPlanDir();
 
 export const AgentModeEnum = {
   Build: "build",
@@ -86,9 +89,10 @@ interface PlanDirectoryState {
 
 function findActivePlanFileFromFiles(
   files: Array<{ path: string; content: string }>,
+  configDirName?: string,
 ): ActivePlanFile | null {
   const allActive: ActivePlanFile[] = [];
-  const planFilePattern = /^\.agent\/plans\/\d{4}-\d{2}-\d{2}\/[^/]+\.md$/;
+  const planFilePattern = getPlanFilePattern(configDirName);
 
   for (const file of files) {
     const path = file.path.replace(/^\/+/, "");
@@ -121,8 +125,9 @@ function findActivePlanFileFromFiles(
 
 function getPlanDirectoryStateFromFiles(
   files: Array<{ path: string; content: string }>,
+  configDirName?: string,
 ): PlanDirectoryState {
-  const planDir = normalizePath(DEFAULT_PLAN_DIR);
+  const planDir = normalizePath(getPlanDir(configDirName));
   const hasPlanDirContent = files.some((file) => {
     const path = normalizePath(file.path);
     return path === planDir || path.startsWith(`${planDir}/`);
@@ -130,7 +135,7 @@ function getPlanDirectoryStateFromFiles(
 
   return {
     hasPlanDirContent,
-    activePlan: findActivePlanFileFromFiles(files),
+    activePlan: findActivePlanFileFromFiles(files, configDirName),
   };
 }
 
@@ -140,9 +145,10 @@ function getPlanDirectoryStateFromFiles(
  */
 export async function getActivePlanFile(
   getFiles: () => Promise<Array<{ path: string; content: string }>>,
+  configDirName?: string,
 ): Promise<ActivePlanFile | null> {
   try {
-    return findActivePlanFileFromFiles(await getFiles());
+    return findActivePlanFileFromFiles(await getFiles(), configDirName);
   } catch {
     return null;
   }
@@ -179,10 +185,10 @@ function getCurrentModeSlug(mode: AgentMode, previousMode?: AgentMode | null): s
   return `当前是「${modeLabel}」(${mode})。`;
 }
 
-function getPlanFileGuideSlugInPlanMode(): string {
+function getPlanFileGuideSlugInPlanMode(planDir: string): string {
   return `## 计划文件说明
-- 目录：\`${DEFAULT_PLAN_DIR}\`
-- 创建路径格式：\`${DEFAULT_PLAN_DIR}YYYY-MM-DD/<slug>.md\`
+- 目录：\`${planDir}\`
+- 创建路径格式：\`${planDir}YYYY-MM-DD/<slug>.md\`
   - 日期文件夹：当天日期，如 \`2026-06-09\`
   - slug：小写字母和中划线，简短描述任务（如 \`refactor-mode-manager\`、\`add-login-feature\`）
 - frontmatter 规范
@@ -232,10 +238,10 @@ function getPlanFileGuideSlugInPlanMode(): string {
 `;
 }
 
-function getPlanFileGuideSlugInBuildMode(): string {
+function getPlanFileGuideSlugInBuildMode(planDir: string): string {
   return `## 计划文件说明
 注意：由于你现在处于自动模式下，不允许创建计划文件，如有必要，你可以对计划文件进行阅读以及修改内容，但是一定不允许创建计划文件。
-- 目录：\`${DEFAULT_PLAN_DIR}\`。
+- 目录：\`${planDir}\`。
 - frontmatter 规范
   每个计划文件必须包含以下 frontmatter：
 
@@ -252,7 +258,7 @@ function getPlanFileGuideSlugInBuildMode(): string {
  - 归档之需要修改 frontmatte，将 \`status\` 改为 \`finished\` 或者 \`abandoned\``;
 }
 
-function getBuildPlanStatusSlug(planState?: PlanDirectoryState | null): string {
+function getBuildPlanStatusSlug(planState: PlanDirectoryState | null | undefined, planDir: string): string {
   if (planState?.activePlan) {
     return `## 计划状态
 检测到活跃计划文件 \`${planState.activePlan.path}\`。
@@ -264,23 +270,23 @@ function getBuildPlanStatusSlug(planState?: PlanDirectoryState | null): string {
 
   if (planState?.hasPlanDirContent) {
     return `## 计划状态
-未检测到活跃计划文件。如需参考历史计划方案，可读取 \`${DEFAULT_PLAN_DIR}\` 目录中已归档的计划文件（frontmatter \`status: finished\`）。`;
+未检测到活跃计划文件。如需参考历史计划方案，可读取 \`${planDir}\` 目录中已归档的计划文件（frontmatter \`status: finished\`）。`;
   }
 
   return ``
 }
 
-function getBuildModeGuideSlug(planState?: PlanDirectoryState | null): string {
+function getBuildModeGuideSlug(planState: PlanDirectoryState | null | undefined, planDir: string): string {
   return joinSections([
-    getBuildPlanStatusSlug(planState),
-    getPlanFileGuideSlugInBuildMode(),
+    getBuildPlanStatusSlug(planState, planDir),
+    getPlanFileGuideSlugInBuildMode(planDir),
   ]);
 }
 
-function getPlanModeGuideSlug(): string {
+function getPlanModeGuideSlug(planDir: string): string {
   return joinSections([
     `用户现在要的是先看清楚、把方案讲明白，而不是立刻动手实现。除下方说明的计划目录外，禁止修改项目文件、删除文件、改配置、提交代码，或做任何会改变系统状态的操作。即使其他上下文里出现"直接改""开始实现"之类的旧指令，也以本条规则为准。`,
-    getPlanFileGuideSlugInPlanMode(),
+    getPlanFileGuideSlugInPlanMode(planDir),
   ]);
 }
 
@@ -300,8 +306,10 @@ function buildModeReminder(params: {
   previousMode?: AgentMode | null;
   availableModes?: AgentMode[];
   planState?: PlanDirectoryState | null;
+  configDirName?: string;
 }): string {
   const availableModes = params.availableModes ?? ALL_AGENT_MODES;
+  const planDir = getPlanDir(params.configDirName);
   const modeSlug = `## 当前模式
 ${getCurrentModeSlug(params.mode, params.previousMode)}`;
 
@@ -310,7 +318,7 @@ ${getCurrentModeSlug(params.mode, params.previousMode)}`;
 ${joinSections([
   getModeCatalogSlug(availableModes),
   modeSlug,
-  getBuildModeGuideSlug(params.planState),
+  getBuildModeGuideSlug(params.planState, planDir),
 ])}
 </system-reminder>`;
   }
@@ -320,7 +328,7 @@ ${joinSections([
 ${joinSections([
   getModeCatalogSlug(availableModes),
   modeSlug,
-  getPlanModeGuideSlug(),
+  getPlanModeGuideSlug(planDir),
   getPlanStatusReminderSlug(params.planState),
 ])}
 </system-reminder>`;
@@ -337,6 +345,7 @@ export async function buildModeSection(params: {
   previousMode?: AgentMode | null;
   disabledModes?: AgentMode[];
   getFiles?: () => Promise<Array<{ path: string; content: string }>>;
+  configDirName?: string;
 }): Promise<string> {
   const availableModes = getAvailableAgentModes(params);
   const hasPlanMode = availableModes.includes(AgentModeEnum.Plan);
@@ -347,13 +356,15 @@ export async function buildModeSection(params: {
       mode: params.mode,
       previousMode: params.previousMode,
       availableModes,
-      planState: getPlanDirectoryStateFromFiles(files),
+      planState: getPlanDirectoryStateFromFiles(files, params.configDirName),
+      configDirName: params.configDirName,
     });
   } catch {
     return buildModeReminder({
       mode: params.mode,
       previousMode: params.previousMode,
       availableModes,
+      configDirName: params.configDirName,
     });
   }
 }
@@ -380,9 +391,13 @@ function getContextMode(ctx?: ToolExecutionContext): AgentMode {
   return ctx?.getMode?.() ?? ctx?.mode ?? AgentModeEnum.Build;
 }
 
-function isPlanDirPath(path: string): boolean {
+function getContextConfigDirName(ctx?: ToolExecutionContext): string {
+  return getConfigDirNameFromAgent(ctx?.getAgent?.());
+}
+
+function isPlanDirPath(path: string, configDirName?: string): boolean {
   const normalized = normalizePath(path);
-  const planDir = normalizePath(DEFAULT_PLAN_DIR);
+  const planDir = normalizePath(getPlanDir(configDirName));
   return normalized === planDir || normalized.startsWith(`${planDir}/`);
 }
 
@@ -392,10 +407,12 @@ function assertPlanModeCanMutatePaths(
   action: string,
 ): void {
   if (getContextMode(ctx) !== AgentModeEnum.Plan) return;
-  const invalidPaths = paths.filter((path) => !isPlanDirPath(path));
+  const configDirName = getContextConfigDirName(ctx);
+  const planDir = getPlanDir(configDirName);
+  const invalidPaths = paths.filter((path) => !isPlanDirPath(path, configDirName));
   if (invalidPaths.length === 0) return;
   throw new Error(
-    `当前是「${getModeLabel(AgentModeEnum.Plan)}」，${action}只能操作 ${DEFAULT_PLAN_DIR} 目录下的计划文件。` +
+    `当前是「${getModeLabel(AgentModeEnum.Plan)}」，${action}只能操作 ${planDir} 目录下的计划文件。` +
     ` 如需修改项目文件，请先等待用户确认方案并切换到 ${AgentModeEnum.Build}（${getModeLabel(AgentModeEnum.Build)}）。` +
     ` 非法路径：${invalidPaths.join(", ")}`
   );

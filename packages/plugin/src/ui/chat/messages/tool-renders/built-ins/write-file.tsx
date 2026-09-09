@@ -7,11 +7,11 @@ import {
 import { PlanToolCard } from "../../action-cards/plan-card";
 import { isPlanFilePath, renderPlanMarkdownHtml } from "../../../../components/plan";
 
-export const WriteFileRenderer = ({ tool }: { tool: ToolRecord }) => {
+export const WriteFileRenderer = ({ tool, configDirName }: { tool: ToolRecord; configDirName?: string }) => {
   const path: string = tool.args?.path ?? "";
   const content: string = tool.args?.content ?? "";
 
-  if (isPlanFilePath(path)) {
+  if (isPlanFilePath(path, configDirName)) {
     const isPending = tool.status === "pending";
     return (
       <PlanToolCard

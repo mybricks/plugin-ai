@@ -4,7 +4,7 @@
  * 单个技能描述。
  *
  * 对标 claude-code 的 `<skill-name>/SKILL.md` 目录结构：
- *   - `name`    ：技能名称，同时作为虚拟目录名 `.agent/skills/<name>/`
+ *   - `name`    ：技能名称，同时作为虚拟目录名 `<configDirName>/skills/<name>/`
  *   - `files`   ：技能目录内的文件列表，SKILL.md 为必填项
  *
  * SKILL.md 支持的 YAML frontmatter 字段（对标 claude-code FrontmatterData）：
@@ -30,7 +30,7 @@
  * }
  */
 export interface SkillFile {
-  /** 技能名称，作为虚拟目录名：.agent/skills/<name>/ */
+  /** 技能名称，作为虚拟目录名：<configDirName>/skills/<name>/ */
   name: string;
   /** 展示给用户看的技能名称；不影响工具调用和虚拟目录名 */
   displayName?: string;
@@ -51,6 +51,7 @@ export interface SkillFile {
 // ─── 元信息解析 ───────────────────────────────────────────────────────────────
 
 import { splitFrontmatter, getFrontmatterString } from "../utils/frontmatter";
+import { getSkillDir } from "./config-dir";
 
 /**
  * Skill 触发策略。
@@ -150,10 +151,14 @@ export function shouldAlwaysLoadSkill(skill: SkillFile): boolean {
   return activation === "always";
 }
 
-export async function renderSkillContent(skill: SkillFile): Promise<{
+export async function renderSkillContent(
+  skill: SkillFile,
+  configDirName?: string,
+): Promise<{
   output: string;
   hasSupportFiles: boolean;
 }> {
+  const skillDir = getSkillDir(skill.name, configDirName);
   await skill.updateContent?.();
 
   const skillMd = skill.files.find((f) => f.path === "SKILL.md");
@@ -167,11 +172,11 @@ ${skillMd.content}
 
   const supportFiles = skill.files.filter((f) => f.path !== "SKILL.md");
   if (supportFiles.length > 0) {
-    output += `\n\n---\n\nSkill directory tree:\n.agent/skills/${skill.name}/`;
+    output += `\n\n---\n\nSkill directory tree:\n${skillDir}`;
     for (const f of skill.files) {
       output += `\n  ${f.path}`;
     }
-    output += `\n\nSupport files can be read using the read_file tool with paths like .agent/skills/${skill.name}/<path>`;
+    output += `\n\nSupport files can be read using the read_file tool with paths like ${skillDir}<path>`;
   }
 
   return { output, hasSupportFiles: supportFiles.length > 0 };

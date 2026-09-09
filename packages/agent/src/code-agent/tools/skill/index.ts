@@ -1,6 +1,7 @@
 import type { Tool, ToolResult } from "../../../types";
 import { ToolValidationError } from "../../../types";
 import { type SkillFile, renderSkillContent } from "../../skills";
+import { getSkillDir, getSkillsDir } from "../../config-dir";
 
 /** 与 `createSkillTool` 注册的 `name` 一致，供 UI 等侧注册渲染器使用 */
 export const USE_SKILL_TOOL_NAME = "use_skill";
@@ -17,7 +18,11 @@ export const USE_SKILL_TOOL_NAME = "use_skill";
  *
  * @param skills  技能文件列表（在 CodeAgent 构造函数中传入）
  */
-export function createSkillTool(skills: SkillFile[]): Tool {
+export function createSkillTool(
+  skills: SkillFile[],
+  configDirName?: string,
+): Tool {
+  const skillsDir = getSkillsDir(configDirName);
   const skillNames = skills.map((s) => s.name);
 
   return {
@@ -29,7 +34,7 @@ export function createSkillTool(skills: SkillFile[]): Tool {
 用法：
 - 传入 skill name 调用指定 Skill
 - 返回内容包括：SKILL.md 完整内容（由 <skill> 标签包裹）、目录树（如有可读取的文件）
-- 可读取的文件可通过 read_file 工具读取（路径格式：.agent/skills/<name>/<path>）`,
+- 可读取的文件可通过 read_file 工具读取（路径格式：${skillsDir}<name>/<path>）`,
     parameters: {
       type: "object",
       properties: {
@@ -62,14 +67,14 @@ export function createSkillTool(skills: SkillFile[]): Tool {
         throw new ToolValidationError(`SKILL.md not found in skill "${skill.name}". This skill is misconfigured.`);
       }
 
-      const { output, hasSupportFiles } = await renderSkillContent(skill);
+      const { output, hasSupportFiles } = await renderSkillContent(skill, configDirName);
 
       return {
         output,
         metadata: {
           skillName: skill.name,
           displayName: skill.displayName ?? skill.name,
-          skillPath: `.agent/skills/${skill.name}/`,
+          skillPath: getSkillDir(skill.name, configDirName),
           hasSupportFiles,
         },
       };

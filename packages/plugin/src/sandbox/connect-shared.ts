@@ -1,4 +1,5 @@
 import type { AgentSandbox, AgentOptions, Tool, CodeAgentPlugin, History, TurnSender, SkillFile, UnifiedFile, BoundHistory } from "../../../agent/src";
+import { DEFAULT_CONFIG_DIR_NAME, getConfigDirPattern } from "../../../agent/src";
 import type { PromptSections } from "../../../kit/src";
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { DisabledHandler } from "../disabled-handler";
@@ -14,12 +15,14 @@ export type ProjectContext =
   | { type: "directory"; directory: string };
 
 /** Directories omitted from automatic project-space context, not from tools. */
-export const PROJECT_CONTEXT_EXCLUDE = [
-  /(^|\/)(\.(agent|claude|codex|git|tmp)|node_modules|_lore)(\/|$)/,
-] as const;
+export function getProjectContextExclude(configDirName = DEFAULT_CONFIG_DIR_NAME): RegExp[] {
+  return [new RegExp(`(^|/)(?:${getConfigDirPattern(configDirName)}|\\.(?:claude|codex|git|tmp)|node_modules|_lore)(/|$)`)];
+}
 
 export interface VirtualFilesRuntimeContext {
   getEffectiveLibrariesSection: (options?: { path?: string; moduleKey?: string }) => Promise<string>;
+  /** The normalized CodeAgent configuration directory for this plugin instance. */
+  configDirName: string;
 }
 
 /** 服务端 Agent 的初始化配置。传给 pluginAI 的 remoteAgent 时会创建 HTTP Agent。 */
@@ -115,6 +118,8 @@ export interface PluginParams {
   llmPluginKey?: string;
   /** 注入到根工程虚拟 FS 的文件（每个 turn 调用一次） */
   virtualFiles?: (context: VirtualFilesRuntimeContext) => Promise<UnifiedFile[]>;
+  /** Directory passed to local CodeAgent instances; defaults to `.agent`. */
+  configDirName?: string;
   /** 本地 CodeAgent 的初始化文件快照；首次请求前会执行 diff/update/delete。 */
   initialFiles?: Array<Pick<UnifiedFile, "path" | "content">>;
   skills?: SkillFile[];
