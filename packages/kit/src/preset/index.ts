@@ -1,4 +1,5 @@
 export * from "./agent-app";
+export * from "./cli-pde";
 
 export { copilotAgentOptionBuilder, copilotAppPromptBuilder } from "./copilot";
 export type {

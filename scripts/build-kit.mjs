@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { rmSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import babel from "@rollup/plugin-babel";
@@ -14,8 +14,21 @@ const entry = path.resolve(kitRoot, "src/index.ts");
 
 rmSync(outDir, { recursive: true, force: true });
 
+const markdown = () => ({
+  name: "markdown",
+  transform(code, id) {
+    if (!id.endsWith(".md")) return null;
+    return { code: `export default ${JSON.stringify(code)};`, map: null };
+  },
+  load(id) {
+    if (!id.endsWith(".md")) return null;
+    return readFileSync(id, "utf8");
+  },
+});
+
 const createPlugins = (targets) => [
-  resolve({ extensions: [".ts", ".js", ".json"] }),
+  resolve({ extensions: [".ts", ".js", ".json", ".md"] }),
+  markdown(),
   babel({
     babelHelpers: "bundled",
     extensions: [".ts", ".js"],
