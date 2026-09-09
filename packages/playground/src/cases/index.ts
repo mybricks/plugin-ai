@@ -102,6 +102,7 @@ import {
   grepValidationCase,
 } from "./grep-search";
 import { skillUseThenContinueCase } from "./skill";
+import { promptTemplateMbsCase } from "./prompt-template";
 import {
   initProjectSubAgentErrorCase,
   initProjectSubAgentImmediateErrorCase,
@@ -170,6 +171,7 @@ export const ALL_CASES: TestCase[] = [
   compactMidTurnErrorRetryCase,
   multiEditPartialSuccessCase,
   skillUseThenContinueCase,
+  promptTemplateMbsCase,
   planWriteGeneratedFileCase,
   toolContractCase,
   initProjectSubAgentErrorCase,

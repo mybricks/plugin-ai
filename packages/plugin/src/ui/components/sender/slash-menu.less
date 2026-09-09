@@ -1,0 +1,42 @@
+.menu {
+  width: 320px;
+  max-width: calc(100vw - 16px);
+  max-height: 216px;
+  padding: 4px;
+  overflow: auto;
+  color: var(--mybricks-text-color-main, #333);
+}
+
+.item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+
+  &:hover,
+  &.highlighted {
+    background: var(--mybricks-bg-color-hover, #F5F5F5);
+  }
+}
+
+.name {
+  flex: 0 0 auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--chat-font-size-sm, 12px);
+}
+
+.description {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.6;
+  font-size: var(--chat-font-size-sm, 12px);
+}

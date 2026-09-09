@@ -45,6 +45,7 @@ export function usePlaygroundAgent(
       sandbox,
       tools: typeof testCase.tools === "function" ? testCase.tools(fs) : (testCase.tools ?? []),
       skills: testCase.skills,
+      plugins: testCase.plugins,
       summary: testCase.summaryOptions ?? { enabled: false },
       compact: testCase.compactOptions ?? { enabled: false },
       ...(testCase.maskOptions ? { mask: testCase.maskOptions } : {}),

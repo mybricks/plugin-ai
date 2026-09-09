@@ -48,6 +48,8 @@ interface ChatPanelContextValue {
   disabled: boolean;
   /** 用户消息的自定义渲染函数 */
   renderUserMessage?: (record: MessageRecord) => React.ReactNode;
+  /** Active MBS template labels keyed by their durable marker name. */
+  mbsTemplateDisplayNames?: Record<string, string>;
   /**
    * Markdown 皮肤配置，允许外部覆盖消息 / plan 场景的皮肤 class。
    * 不传时使用内置默认皮肤。

@@ -45,6 +45,9 @@ import {
   shouldAlwaysLoadSkill,
   shouldExposeSkillToModel,
 } from "./skills";
+import type { PromptTemplateFile } from "./prompt-templates";
+import { collectPluginPromptTemplates, createMbsTemplates, expandMbsTemplateMessage } from "./mbs";
+import type { MbsTemplateDescriptor } from "./mbs";
 import {
   createSubAgentTool,
   resolveSubAgentMeta,
@@ -55,6 +58,9 @@ import {
 export type { SubAgentConfig, CompletedSubAgentTask } from "../sub-agent";
 
 export type { SkillActivation, SkillFile, SkillMeta };
+export type { PromptTemplateFile } from "./prompt-templates";
+export { parseMbsTemplateRecord } from "./mbs";
+export type { MbsTemplateRecord } from "./mbs";
 export {
   DEFAULT_CONFIG_DIR_NAME,
   getAgentInternalFileExclude,
@@ -164,6 +170,8 @@ export interface CodeAgentPlugin {
   enabled?: boolean;
   /** 插件内置 Skills，合并到顶层 skills */
   skills?: SkillFile[];
+  /** 插件级 Prompt Templates，随插件启用状态动态生效。 */
+  promptTemplates?: PromptTemplateFile[];
   /**
    * 插件内置 SubAgents，合并到顶层 subAgents。
    * 每个 SubAgentConfig 通过 `${name}.md` 文件定义配置和系统提示词。
@@ -590,6 +598,17 @@ export class CodeAgent extends Agent {
       .filter((plugin) => enabledNamesRef.current.has(plugin.name))
       .flatMap((plugin) => plugin.skills ?? []);
 
+    const formatUserMessage = async (params: Parameters<NonNullable<AgentOptions["formatUserMessage"]>>[0]) => {
+      const mbsMessage = expandMbsTemplateMessage(
+        params.message,
+        createMbsTemplates(collectPluginPromptTemplates(plugins, enabledNamesRef.current)),
+      );
+      const formattedParams = { ...params, message: mbsMessage ?? params.message };
+      return agentOptions.formatUserMessage
+        ? agentOptions.formatUserMessage(formattedParams)
+        : { message: formattedParams.message };
+    };
+
     // 收集 skills 文件（只读，不可列出）
     const collectSkillFiles = (): UnifiedFile[] => {
       const allSkills = [...baseSkills, ...getEnabledPluginSkills()];
@@ -662,6 +681,7 @@ ${system}` : builtinSystem;
     super({
       ...agentOptions,
       hooks,
+      formatUserMessage,
       system: finalSystem,
       getStableContextMessages,
       getAttachmentContextMessages: async (ctx) => {
@@ -712,6 +732,13 @@ ${system}` : builtinSystem;
    */
   async getPlanFile(): Promise<ActivePlanFile | null> {
     return getActivePlanFile(() => fetchPlanFiles(this._sandbox, this.configDirName), this.configDirName);
+  }
+
+  /** Active MBS templates. UI may present these through any interaction it owns. */
+  getMbsTemplates(): MbsTemplateDescriptor[] {
+    return createMbsTemplates(
+      collectPluginPromptTemplates(this._plugins, this._enabledPluginNames),
+    ).map((item) => item.descriptor);
   }
 
   /**

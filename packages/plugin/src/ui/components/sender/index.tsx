@@ -22,12 +22,14 @@ import {
   createChipContainer,
   updateChipContainer,
   updateChipWrapperSpacing,
-  serializeEditorContent,
   measureEditorContent,
-  getAdjacentChipAtCaret,
   removeChipFromEditor,
   fileChipDef,
 } from "./chip";
+import { getAdjacentSenderInlineToken, removeSenderInlineToken } from "./inline-token";
+import { focusEditorAtEnd, getEditorTextCaret } from "./editor-selection";
+import { insertSlashTemplateToken, readSlashMenuInput, selectSlashTemplateCommand } from "./slash-editor";
+import { serializeCopiedSenderContent, serializeSenderContent } from "./sender-serialization";
 import {
   isSupportedImageFile,
   readFileToBase64,
@@ -54,7 +56,10 @@ import {
   type MentionMenuEntry,
 } from "./mention";
 import type { AttachProcessor, FileContent } from "../../../content-limits";
-import { CodeAgent } from "../../../../../agent/src";
+import { CodeAgent, parseMbsTemplateRecord } from "../../../../../agent/src";
+import { useSlashMenu } from "./slash-menu";
+import type { SenderPromptTemplateSlashCommand, SenderSlashCommand } from "./slash-command";
+import { resolvePromptTemplateSlashCommand } from "./slash-protocol";
 import css from "./index.less"
 
 // ─── 全局鼠标位置追踪（模块级单例，供飞行动画读取起点）────────────────────────────
@@ -191,19 +196,6 @@ function getClipboardText(data: DataTransfer): string {
   return doc.body.innerText || doc.body.textContent || '';
 }
 
-function focusEditorAtEnd(editor: HTMLDivElement) {
-  editor.focus();
-
-  const selection = window.getSelection();
-  if (!selection) return;
-
-  const range = document.createRange();
-  range.selectNodeContents(editor);
-  range.collapse(false);
-  selection.removeAllRanges();
-  selection.addRange(range);
-}
-
 // ─── SenderProps ─────────────────────────────────────────────────────────────
 
 export interface SenderAbovePanel {
@@ -285,6 +277,8 @@ interface SenderProps {
    * - 选中后插入 ChatChipInstance，发送前由对应 ChatChipDef.format 转为模型上下文
    */
   mentions?: MentionProvider[];
+  /** Commands discovered by ChatPanel from the active CodeAgent plugins. */
+  slashCommands?: SenderSlashCommand[];
   /**
    * 判断当前输入是否是默认 focus 内容串。
    * Sender 不理解具体 prefix/chip 结构，只根据返回值决定 placeholder 是否后移展示。
@@ -357,6 +351,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     attachProcessors,
     agent,
     mentions: mentionProviders = [],
+    slashCommands = [],
   } = props;
 
   const isBubble = variant === 'bubble';
@@ -422,7 +417,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     const editor = inputEditorRef.current;
     removeLeadingPlaceholderBreakBeforeChip(editor);
     updateChipWrapperSpacing(editor);
-    const { message, chips } = serializeEditorContent(editor, chipMapRef.current);
+    const { message, chips } = serializeSenderContent(editor, chipMapRef.current);
     const nextIsDefaultFocusContent = !!message && !!matchDefaultFocusContent?.({ message, chips });
     setIsDefaultFocusContent(nextIsDefaultFocusContent);
     setInputContent(nextIsDefaultFocusContent ? null : message || null);
@@ -437,7 +432,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
     requestAnimationFrame(() => {
       if (!inputEditorRef.current) return;
-      const nextInput = serializeEditorContent(inputEditorRef.current, chipMapRef.current);
+      const nextInput = serializeSenderContent(inputEditorRef.current, chipMapRef.current);
       if (!nextInput.message || !matchDefaultFocusContent?.(nextInput)) {
         setIsDefaultFocusContent(false);
         setDefaultFocusContentSize(null);
@@ -713,38 +708,51 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const detectMentionTrigger = useCallback(() => {
     const editor = inputEditorRef.current;
     if (!editor || !hasCustomMentions || disabled) return;
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) {
+    const caret = getEditorTextCaret(editor);
+    if (!caret) {
       closeMentionMenu();
       return;
     }
-    const range = selection.getRangeAt(0);
-    if (!editor.contains(range.commonAncestorContainer)) {
-      closeMentionMenu();
-      return;
-    }
-    const node = range.startContainer;
-    if (node.nodeType !== Node.TEXT_NODE) {
-      closeMentionMenu();
-      return;
-    }
-    const text = node.textContent ?? "";
-    const beforeCaret = text.slice(0, range.startOffset);
-    const match = beforeCaret.match(/(^|\s)@([^\s@]*)$/);
+    const match = caret.before.match(/(^|\s)@([^\s@]*)$/);
     if (!match) {
       closeMentionMenu();
       return;
     }
 
     const query = match[2] ?? "";
-    const start = range.startOffset - query.length - 1;
+    const start = caret.offset - query.length - 1;
     const triggerRange = document.createRange();
-    triggerRange.setStart(node, start);
-    triggerRange.setEnd(node, range.startOffset);
+    triggerRange.setStart(caret.node, start);
+    triggerRange.setEnd(caret.node, caret.offset);
     mentionTriggerRangeRef.current = triggerRange;
     setMentionAnchorRect(measureRangeRect(triggerRange));
     void openTriggerMentionMenu(query);
   }, [closeMentionMenu, disabled, hasCustomMentions, measureRangeRect, openTriggerMentionMenu]);
+
+  const readSlashInput = useCallback(() => {
+    return readSlashMenuInput(inputEditorRef.current);
+  }, []);
+
+  const insertSlashTemplate = useCallback((command: SenderPromptTemplateSlashCommand, args = "") => {
+    const editor = inputEditorRef.current;
+    if (editor && insertSlashTemplateToken(editor, command, args)) syncInputContent();
+  }, [syncInputContent]);
+
+  const selectSlashCommand = useCallback((command: SenderSlashCommand) => {
+    if (command.kind === "action") {
+      void command.execute();
+      return;
+    }
+    const editor = inputEditorRef.current;
+    if (editor && selectSlashTemplateCommand(editor, command)) syncInputContent();
+  }, [syncInputContent]);
+
+  const slashMenu = useSlashMenu({
+    commands: slashCommands,
+    disabled,
+    readInput: readSlashInput,
+    onSelectCommand: selectSlashCommand,
+  });
 
   const insertMentionChip = useCallback((chip: ChatChipInstance, replaceRange?: Range | null) => {
     const editor = inputEditorRef.current;
@@ -815,7 +823,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           return { message: "", attachments: [...attachments], chips: [] };
         }
         updateChipWrapperSpacing(editor);
-        const { message, chips } = serializeEditorContent(editor, chipMapRef.current);
+        const { message, chips } = serializeSenderContent(editor, chipMapRef.current);
         return {
           message,
           attachments: [...attachments],
@@ -873,7 +881,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
   const send = async () => {
     const editor = inputEditorRef.current!;
-    const { message: serializedMessage, chips } = serializeEditorContent(editor, chipMapRef.current);
+    const { message: serializedMessage, chips } = serializeSenderContent(editor, chipMapRef.current);
     const hasUploadingAttachment = attachments.some((a) => a.uploading);
     if (serializedMessage && !disabled && !uploading && !hasLoadingChips && !hasUploadingAttachment && !processingSendRef.current) {
       processingSendRef.current = true;
@@ -918,6 +926,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const onInput = () => {
     syncInputContent();
     setTimeout(detectMentionTrigger, 0);
+    slashMenu.onInput();
   }
 
   const notifySelectedChipRemove = useCallback((editor: HTMLDivElement, range: Range) => {
@@ -1001,6 +1010,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   }, [handleMentionMenuKeyDown, mentionMenuOpen]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (slashMenu.onKeyDown(event)) {
+      return;
+    }
     if (handleMentionMenuKeyDown(event)) {
       return;
     }
@@ -1034,7 +1046,15 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     }
 
     if (event.key === 'Backspace') {
-      const chipEl = editor ? getAdjacentChipAtCaret(editor, range, "backward") : null;
+      const inlineToken = editor ? getAdjacentSenderInlineToken(editor, range, "backward") : null;
+      if (editor && inlineToken?.kind === "slash") {
+        event.preventDefault();
+        removeSenderInlineToken(editor, inlineToken.element);
+        syncInputContent();
+        return;
+      }
+
+      const chipEl = inlineToken?.kind === "chip" ? inlineToken.element : null;
       if (editor && chipEl) {
         event.preventDefault();
         const chipId = chipEl.dataset.chipId ?? "";
@@ -1047,7 +1067,15 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     }
 
     if (event.key === 'Delete') {
-      const chipEl = editor ? getAdjacentChipAtCaret(editor, range, "forward") : null;
+      const inlineToken = editor ? getAdjacentSenderInlineToken(editor, range, "forward") : null;
+      if (editor && inlineToken?.kind === "slash") {
+        event.preventDefault();
+        removeSenderInlineToken(editor, inlineToken.element);
+        syncInputContent();
+        return;
+      }
+
+      const chipEl = inlineToken?.kind === "chip" ? inlineToken.element : null;
       if (editor && chipEl) {
         event.preventDefault();
         const chipId = chipEl.dataset.chipId ?? "";
@@ -1409,6 +1437,19 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   }, [closeMentionMenu, insertMentionChip, mentionMenuMode, syncInputContent, toMentionEntries]);
   selectMentionEntryRef.current = selectMentionEntry;
 
+  const onCopy = useCallback((event: React.ClipboardEvent<HTMLDivElement>) => {
+    const editor = inputEditorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection?.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) return;
+
+    const copied = serializeCopiedSenderContent(range.cloneContents());
+    if (!copied.containsSlashToken) return;
+    event.preventDefault();
+    event.clipboardData.setData("text/plain", copied.text);
+  }, []);
+
   const onPaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
     event.preventDefault();
     if (disabled || uploading) {
@@ -1416,20 +1457,32 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     }
 
     const mchip = readMchipClipboard(event.clipboardData);
-    if (mchip) {
-      appendInput(mchip);
-      return;
-    }
-
-    const content = getClipboardText(event.clipboardData);
+    // Prefer the durable MBS protocol over the Sender-private clipboard
+    // payload. This makes copied text from any app round-trip as an inline
+    // slash token, while ordinary chips keep using the private payload below.
+    const content = mchip?.message || getClipboardText(event.clipboardData);
     if (content) {
-      const selection = window.getSelection();
-
-      if (!selection?.rangeCount) {
+      const mbsTemplate = parseMbsTemplateRecord(content);
+      if (mbsTemplate) {
+        insertSlashTemplate(
+          resolvePromptTemplateSlashCommand(
+            mbsTemplate.reference,
+            slashCommands.filter((command): command is SenderPromptTemplateSlashCommand => command.kind === "prompt-template"),
+          ),
+          mbsTemplate.args,
+        );
         return;
       }
 
+      if (mchip) {
+        appendInput(mchip);
+        return;
+      }
+
+      const selection = window.getSelection();
+      if (!selection?.rangeCount) return;
       const range = selection.getRangeAt(0);
+      if (!inputEditorRef.current?.contains(range.commonAncestorContainer)) return;
       range.deleteContents();
       const textNode = document.createTextNode(content);
       range.insertNode(textNode);
@@ -1567,9 +1620,25 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
               onCompositionStart={onCompositionStart}
               onCompositionEnd={onCompositionEnd}
               onInput={onInput}
+              onCopy={onCopy}
               onPaste={onPaste}
               onBlur={onBlur}
             ></div>
+            <Popup
+              open={slashMenu.open}
+              onOpenChange={(nextOpen) => {
+                if (!nextOpen) slashMenu.close();
+              }}
+              placement="top-start"
+              offset={8}
+              disabled
+              anchorRect={inputEditorRef.current?.getBoundingClientRect() ?? null}
+              className={css.slashPopupTrigger}
+              overlayClassName={css.slashPopup}
+              trigger={<span />}
+            >
+              {slashMenu.node}
+            </Popup>
             {!inputContent && (!isDefaultFocusContent || defaultFocusContentSize) && (
               <div className={css.inputPlaceholder}>
                 {defaultFocusContentSize ? (

@@ -552,9 +552,11 @@ interface CollapsibleUserMessageProps {
   text: string;
   /** 展开后渲染的完整内容，折叠时不调用，避免不必要的渲染开销 */
   renderFull: () => React.ReactNode;
+  /** 可选的折叠预览渲染，用于保留 MBS 等内联语义样式。 */
+  renderPreview?: () => React.ReactNode;
 }
 
-const CollapsibleUserMessage = ({ text, renderFull }: CollapsibleUserMessageProps) => {
+const CollapsibleUserMessage = ({ text, renderFull, renderPreview }: CollapsibleUserMessageProps) => {
   const needsCollapse = text.length > COLLAPSE_CHAR_THRESHOLD;
   const [collapsed, setCollapsed] = useState(true);
 
@@ -566,7 +568,7 @@ const CollapsibleUserMessage = ({ text, renderFull }: CollapsibleUserMessageProp
     <div className={css["collapsible-message"]}>
       <div className={classNames(css["collapsible-body"], collapsed && css["collapsible-body--collapsed"])}>
         {collapsed
-          ? <span className={css["collapsible-preview"]}>{text.slice(0, COLLAPSE_PREVIEW_CHARS)}</span>
+          ? renderPreview?.() ?? <span className={css["collapsible-preview"]}>{text.slice(0, COLLAPSE_PREVIEW_CHARS)}</span>
           : renderFull()
         }
       </div>
@@ -581,7 +583,10 @@ const CollapsibleUserMessage = ({ text, renderFull }: CollapsibleUserMessageProp
 };
 
 const UserMessageContent = ({ record }: { record: MessageRecord }) => {
-  const isMarkdown = !record.meta?.focus && !record.meta?.chips?.length && /!\[[^\]]*]\([^)]+\)/.test(record.userText);
+  const hasInlineTokens = !!record.meta?.chips?.length || record.userText.includes("[$mbs-template:");
+  const isMarkdown = !record.meta?.focus
+    && !hasInlineTokens
+    && /!\[[^\]]*]\([^)]+\)/.test(record.userText);
 
   return (
     <CollapsibleUserMessage
@@ -591,6 +596,9 @@ const UserMessageContent = ({ record }: { record: MessageRecord }) => {
           ? <MarkdownMessage message={record.userText} className={css["user-message-text"]} />
           : <DefaultUserMessage record={record} />
       }
+      renderPreview={hasInlineTokens ? () => (
+        <DefaultUserMessage record={{ ...record, userText: record.userText.slice(0, COLLAPSE_PREVIEW_CHARS) }} />
+      ) : undefined}
     />
   );
 };

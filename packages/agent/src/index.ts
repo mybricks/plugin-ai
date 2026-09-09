@@ -11,8 +11,8 @@ export type { AgentEventMap } from "./events";
 export type { Message, History, HistoryPersistMode, Tool, TurnRecord, TurnSender, ToolCallRecord, ToolResult, VersionFile, VersionRecord, BoundHistory, Attachment, IterationTrace } from "./types";
 export { ToolValidationError, bindHistory } from "./types";
 
-export { AGENT_INTERNAL_FILE_EXCLUDE, getAgentInternalFileExclude, CodeAgent, isFileExcluded, DEFAULT_CONFIG_DIR_NAME, getConfigDirPath, getPlanDir, getSkillsDir, getSkillDir, getAgentMdPath, getConfigDirNameFromAgent, getConfigDirPattern, normalizeConfigDirName } from "./code-agent";
-export type { BashToolOptions, CodeAgentBuiltinToolName, CodeAgentOptions, CodeAgentPlugin, CodeAgentPromptOptions, FileExclude, GetFilesOptions, Sandbox, SkillActivation, SkillFile, SkillMeta, UnifiedFile } from "./code-agent";
+export { AGENT_INTERNAL_FILE_EXCLUDE, getAgentInternalFileExclude, CodeAgent, isFileExcluded, DEFAULT_CONFIG_DIR_NAME, getConfigDirPath, getPlanDir, getSkillsDir, getSkillDir, getAgentMdPath, getConfigDirNameFromAgent, getConfigDirPattern, normalizeConfigDirName, parseMbsTemplateRecord } from "./code-agent";
+export type { BashToolOptions, CodeAgentBuiltinToolName, CodeAgentOptions, CodeAgentPlugin, CodeAgentPromptOptions, FileExclude, GetFilesOptions, Sandbox, SkillActivation, SkillFile, SkillMeta, PromptTemplateFile, MbsTemplateRecord, UnifiedFile } from "./code-agent";
 export {
   createAgentSandboxFromV1,
   createAgentSandboxRuntime,

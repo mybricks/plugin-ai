@@ -185,6 +185,7 @@ class Context {
     for (const agent of this.agentMap.values()) {
       agent.enablePlugin?.(name);
     }
+    this.events.emit("pluginState");
   }
 
   /**
@@ -195,6 +196,7 @@ class Context {
     for (const agent of this.agentMap.values()) {
       agent.disablePlugin?.(name);
     }
+    this.events.emit("pluginState");
   }
 }
 

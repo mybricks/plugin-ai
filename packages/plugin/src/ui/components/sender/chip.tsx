@@ -5,6 +5,7 @@ import type { ChatChipDef, ChatChipInstance } from "../../../../../agent/src";
 import { fileChipDef } from "../../../../../agent/src";
 export { fileChipDef };
 import { FILE_CHIP_TYPE } from "./upload";
+import { removeSenderInlineToken } from "./inline-token";
 import css from "./index.less";
 
 // ─── ChipRemoveBtn ────────────────────────────────────────────────────────────
@@ -152,29 +153,6 @@ export function updateChipWrapperSpacing(editor: HTMLDivElement) {
   });
 }
 
-// ─── 序列化 editor childNodes ─────────────────────────────────────────────────
-
-export function serializeEditorContent(
-  editor: HTMLDivElement,
-  chipMap: Map<string, ChatChipInstance>
-): { message: string; chips: ChatChipInstance[] } {
-  const instances: ChatChipInstance[] = [];
-  let msg = "";
-  editor.childNodes.forEach((child) => {
-    if (child.nodeType === Node.TEXT_NODE) {
-      msg += child.textContent ?? "";
-    } else if (child instanceof HTMLElement && child.dataset.chipId) {
-      const id = child.dataset.chipId;
-      const inst = chipMap.get(id);
-      if (inst) {
-        instances.push(inst);
-        msg += `[[chip:${id}]]`;
-      }
-    }
-  });
-  return { message: msg, chips: instances };
-}
-
 export function measureEditorContent(editor: HTMLDivElement): { width: number; height: number } | null {
   if (!editor.childNodes.length) return null;
 
@@ -187,33 +165,6 @@ export function measureEditorContent(editor: HTMLDivElement): { width: number; h
   return { width: rect.width, height: rect.height };
 }
 
-export function getAdjacentChipAtCaret(
-  editor: HTMLDivElement,
-  range: Range,
-  direction: "backward" | "forward"
-): HTMLSpanElement | null {
-  if (!range.collapsed) return null;
-
-  const container = direction === "backward" ? range.startContainer : range.endContainer;
-  const offset = direction === "backward" ? range.startOffset : range.endOffset;
-  let target: ChildNode | null = null;
-
-  if (container === editor) {
-    target =
-      direction === "backward" ? editor.childNodes[offset - 1] ?? null : editor.childNodes[offset] ?? null;
-  } else if (container.nodeType === Node.TEXT_NODE && container.parentNode === editor) {
-    const textLength = container.textContent?.length ?? 0;
-    if (direction === "backward" && offset === 0) {
-      target = container.previousSibling;
-    }
-    if (direction === "forward" && offset === textLength) {
-      target = container.nextSibling;
-    }
-  }
-
-  return target instanceof HTMLSpanElement && target.dataset.chipId ? target : null;
-}
-
 export function removeChipFromEditor(
   editor: HTMLDivElement,
   chipEl: HTMLSpanElement,
@@ -221,8 +172,7 @@ export function removeChipFromEditor(
 ) {
   const id = chipEl.dataset.chipId;
   unmountChipContainer(chipEl);
-  chipEl.parentNode?.removeChild(chipEl);
-  editor.normalize();
+  removeSenderInlineToken(editor, chipEl);
   if (id) chipMap.delete(id);
 }
 

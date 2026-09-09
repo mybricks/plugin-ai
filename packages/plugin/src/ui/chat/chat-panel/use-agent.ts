@@ -13,6 +13,7 @@ import {
   useSessionState,
   type UseSessionStateOptions,
 } from "./use-session-state";
+import type { SenderPromptTemplateSlashCommand, SenderSlashCommand } from "../../components/sender/slash-command";
 
 export type ChatAgent = CodeAgent | HttpAgent;
 
@@ -43,6 +44,7 @@ export interface ChatPanelAgentState {
   executePlan: (title: string) => void;
   setChatMode: (mode: AgentMode | null) => void;
   retry: (turnId: string) => void;
+  slashCommands: SenderSlashCommand[];
 }
 
 export interface UseAgentOptions {
@@ -81,6 +83,7 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
   const availableModes = agent?.getAvailableModes() ?? [AgentModeEnum.Build];
   const showChatMode = availableModes.length > 1;
   const [chatMode, setChatModeState] = useState<AgentMode>(() => agent?.getMode() ?? availableModes[0] ?? AgentModeEnum.Build);
+  const [pluginRevision, setPluginRevision] = useState(0);
 
   const modelSelection = context.getModelSelection(agent?.key);
   const hasModelSelection = !!(modelSelection && modelSelection.isValid());
@@ -118,6 +121,22 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
       },
     };
   }, [hasModelSelection, modelSelection, selectedModel]);
+
+  useEffect(() => context.events.on("pluginState", () => {
+    setPluginRevision((revision) => revision + 1);
+  }), []);
+
+  const mbsTemplateCommands = useMemo<SenderPromptTemplateSlashCommand[]>(() => {
+    if (!agent || isHttpAgent(agent)) return [];
+    return agent.getMbsTemplates().map((template) => ({
+      kind: "prompt-template",
+      name: template.name,
+      displayName: template.displayName,
+      description: template.description,
+      scope: template.scope,
+      reference: template.reference,
+    }));
+  }, [agent, pluginRevision]);
 
   useEffect(() => {
     if (!agent) return;
@@ -235,5 +254,6 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
     executePlan,
     retry,
     setChatMode,
+    slashCommands: mbsTemplateCommands,
   };
 }

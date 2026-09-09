@@ -283,6 +283,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       modelSelector={modelSelector}
       selectorRenderInTop={selectorRenderInTop}
       chipTypes={chipRegistry.getAll()}
+      slashCommands={chatAgent.slashCommands}
       mentions={mentions}
       matchDefaultFocusContent={matchDefaultFocusContent}
       attachProcessors={attachProcessors}
@@ -298,7 +299,18 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   ) : senderNode;
 
   return (
-    <ChatPanelProvider value={{ user, copilot, disabled: isDisabled, renderUserMessage, markdownSkin, markdownit, messagesRenderVariant }}>
+    <ChatPanelProvider value={{
+      user,
+      copilot,
+      disabled: isDisabled,
+      renderUserMessage,
+      mbsTemplateDisplayNames: Object.fromEntries(
+        chatAgent.slashCommands.map((command) => [command.name, command.displayName ?? command.name]),
+      ),
+      markdownSkin,
+      markdownit,
+      messagesRenderVariant,
+    }}>
       <div
         className={classNames(css["chat-panel"], css[`size-${size}`], className)}
         style={style}
