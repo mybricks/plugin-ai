@@ -21,6 +21,7 @@ import type {
 } from "../../../../../agent/src/mode-manager";
 import type { AgentRuntimeState } from "../../../context/agent-runtime";
 import { context } from "../../../context";
+import { jsonStringifySafe } from "../../../utils/json";
 import type { BrowserToolRequest } from "./workspace-bridge";
 import { WorkspaceBridge } from "./workspace-bridge";
 import { HTTP_AGENT_SESSION_STAGE } from "./session-status";
@@ -1554,15 +1555,6 @@ class HttpResponseError extends Error {
   ) {
     super(`${status} ${message}`);
   }
-}
-
-function jsonStringifySafe(value: unknown): string {
-  return JSON.stringify(value, (_key, val) => {
-    if (val !== null && typeof val === "object" && "nodeType" in val) {
-      return undefined;
-    }
-    return val;
-  });
 }
 
 function serializeError(error: unknown): { message: string; name?: string } {

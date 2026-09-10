@@ -144,7 +144,7 @@ export function createEditTool(sandbox: AgentSandbox): Tool {
       const oldStrLines = countLines(params.old_str);
       if (fileLines >= 3 && oldStrLines < 3 && params.old_str) {
         warnings.push(
-          `Warning: old_str has only ${oldStrLines} line(s) (recommended: 3+ lines). Make sure the replacement is accurate to avoid unintended changes.`
+          `Warning: old_str has only ${oldStrLines} line(s) (recommended: 3+ lines). 请读取文件验证下修改是否符合预期。`
         );
       }
 

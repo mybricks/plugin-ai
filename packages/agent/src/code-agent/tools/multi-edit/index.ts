@@ -209,7 +209,7 @@ export function createMultiEditTool(sandbox: AgentSandbox): Tool {
       }
 
       if (warnings.length > 0) {
-        lines.push(`Warning: ${warnings.join("; ")}. Make sure the replacement is accurate to avoid unintended changes.`);
+        lines.push(`Warning: ${warnings.join("; ")}. 请读取文件验证下修改是否符合预期。`);
       }
 
       const output = lines.join("\n");

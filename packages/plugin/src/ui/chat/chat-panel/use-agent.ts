@@ -14,6 +14,7 @@ import {
   type UseSessionStateOptions,
 } from "./use-session-state";
 import type { SenderPromptTemplateSlashCommand, SenderSlashCommand } from "../../components/sender/slash-command";
+import { jsonStringifySafe } from "../../../utils/json";
 
 export type ChatAgent = CodeAgent | HttpAgent;
 
@@ -196,7 +197,7 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
         compactRecord: agent.getCompactRecord?.() ?? null,
       };
       const name = `rxai-${Date.now()}.json`;
-      await context.pluginParams.onDownload({ name, content: JSON.stringify(content) });
+      await context.pluginParams.onDownload({ name, content: jsonStringifySafe(content) });
     } catch (error) {
       console.error("[plugin-ai] export history failed", error);
     }
