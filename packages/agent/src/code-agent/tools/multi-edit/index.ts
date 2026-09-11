@@ -6,20 +6,18 @@ import { checkMultiEditFilePermission } from "../../../mode-manager";
 import { READ_TOOL_NAME } from "../read";
 import { WRITE_TOOL_NAME } from "../write";
 import { EDIT_TOOL_NAME } from "../edit";
-import { replaceInContent } from "../edit/replace";
+import {
+  calculateLineChangeStats,
+  ENABLE_EDIT_CHANGE_STATS,
+  replaceInContent,
+} from "../edit/replace";
 
 export const MULTI_EDIT_TOOL_NAME = "multi_edit";
 
-/**
- * 计算字符串的行数（不含末尾空行）
- */
 function countLines(str: string): number {
   if (!str) return 0;
   const lines = str.split("\n");
-  if (lines.length > 0 && lines[lines.length - 1] === "") {
-    return lines.length - 1;
-  }
-  return lines.length;
+  return lines[lines.length - 1] === "" ? lines.length - 1 : lines.length;
 }
 
 function countPrevFailures(
@@ -131,11 +129,17 @@ export function createMultiEditTool(sandbox: AgentSandbox): Tool {
       const fileMap = new Map((await sandbox.files.readFiles(
         Array.from(new Set(params.edits.map((edit) => edit.path)))
       )).map((file) => [file.path, file.content] as const));
+      const originalFileMap = new Map(fileMap);
 
       // 对每个编辑操作执行替换
       // 用 Map 存储，确保同一路径只保留最终版本
       const updates = new Map<string, string>();
-      const results: Array<{ path: string; strategy?: string; error?: string }> = [];
+      const results: Array<{
+        path: string;
+        strategy?: string;
+        error?: string;
+        errorCode?: string;
+      }> = [];
 
       for (const edit of params.edits) {
         const content = fileMap.get(edit.path);
@@ -143,6 +147,7 @@ export function createMultiEditTool(sandbox: AgentSandbox): Tool {
           results.push({
             path: edit.path,
             error: `File not found: ${edit.path}. Use \`${READ_TOOL_NAME}\` to list available files.`,
+            errorCode: "FILE_NOT_FOUND",
           });
           continue;
         }
@@ -152,6 +157,7 @@ export function createMultiEditTool(sandbox: AgentSandbox): Tool {
           results.push({
             path: edit.path,
             error: appendActionHint(result.message ?? "Replace failed", ctx, edit.path, edit.old_str),
+            errorCode: result.error ?? "EDIT_FAILED",
           });
           continue;
         }
@@ -174,42 +180,64 @@ export function createMultiEditTool(sandbox: AgentSandbox): Tool {
         }
       }
 
-      // 检查每个 old_str 行数是否过少（仅对成功的编辑）
-      const warnings: string[] = [];
-      for (let i = 0; i < params.edits.length; i++) {
-        const edit = params.edits[i];
-        if (results[i]?.error) continue;
-        const fileContent = fileMap.get(edit.path);
-        if (fileContent && edit.old_str) {
-          const fileLines = countLines(fileContent);
-          const oldStrLines = countLines(edit.old_str);
-          if (fileLines >= 3 && oldStrLines < 3) {
-            warnings.push(`edits[${i}].old_str has only ${oldStrLines} line(s) (recommended: 3+ lines)`);
-          }
-        }
-      }
-
       const succeeded = results.filter((r) => !r.error);
       const errors = results.filter((r) => r.error);
+      const shortOldStrPaths = new Set<string>();
+      for (let index = 0; index < params.edits.length; index++) {
+        const edit = params.edits[index];
+        if (results[index]?.error || !edit.old_str) continue;
+        const fileContent = fileMap.get(edit.path);
+        if (fileContent && countLines(fileContent) >= 3 && countLines(edit.old_str) < 3) {
+          shortOldStrPaths.add(edit.path);
+        }
+      }
+
+      const succeededPaths = Array.from(new Set(succeeded.map((result) => result.path)));
+      const changeStatsByPath = new Map(
+        succeededPaths.map((path) => [
+          path,
+          calculateLineChangeStats(originalFileMap.get(path)!, fileMap.get(path)!),
+        ] as const)
+      );
+      const failedByPath = new Map<string, string[]>();
+      for (const result of errors) {
+        const messages = failedByPath.get(result.path) ?? [];
+        const message = result.error ?? "Edit failed";
+        if (!messages.includes(message)) messages.push(message);
+        failedByPath.set(result.path, messages);
+      }
 
       const lines: string[] = [];
-
-      if (succeeded.length > 0) {
-        lines.push("Succeeded:");
-        for (const r of succeeded) {
-          lines.push(r.path);
-        }
+      if (succeededPaths.length > 0 && errors.length === 0) {
+        lines.push("Success. Updated the following files:");
+      } else if (succeededPaths.length > 0) {
+        lines.push("Partial success. Updated:");
+      } else {
+        lines.push("No edits applied.");
       }
 
-      if (errors.length > 0) {
+      for (const path of succeededPaths) {
+        const stats = changeStatsByPath.get(path)!;
+        const changeSummary = ENABLE_EDIT_CHANGE_STATS
+          ? ` +${stats.added} -${stats.removed}`
+          : "";
+        lines.push(`M ${path}${changeSummary}`);
+      }
+
+      if (failedByPath.size > 0) {
         lines.push("Failed:");
-        for (const r of errors) {
-          lines.push(`${r.path}: ${r.error}`);
+        for (const [path, messages] of failedByPath) {
+          lines.push(`${path}: ${messages.join("; ")}`);
         }
       }
 
-      if (warnings.length > 0) {
-        lines.push(`Warning: ${warnings.join("; ")}. 请读取文件验证下修改是否符合预期。`);
+      const usedNonExactMatch = succeeded.some((result) => result.strategy && result.strategy !== "exact");
+      if (usedNonExactMatch) {
+        lines.push("Warning: non-exact matching was used. Please read the affected files to verify changes.");
+      }
+      if (shortOldStrPaths.size > 0) {
+        // 短上下文替换更容易误命中；必须要求模型重新读取受影响文件核验，勿删除此提示。
+        lines.push(`Warning: short old_str (<3 lines): ${Array.from(shortOldStrPaths).join(", ")}. Please read the affected files to verify changes.`);
       }
 
       const output = lines.join("\n");
@@ -217,7 +245,12 @@ export function createMultiEditTool(sandbox: AgentSandbox): Tool {
       return {
         output,
         metadata: {
-          edits: results.map((r) => ({ path: r.path, error: r.error })),
+          edits: results.map((r) => ({
+            path: r.path,
+            error: r.error,
+            errorCode: r.errorCode,
+            strategy: r.strategy,
+          })),
         },
       };
     },

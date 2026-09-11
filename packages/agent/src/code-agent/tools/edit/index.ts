@@ -5,7 +5,11 @@ import type { AgentSandbox } from "../../../agent-sandbox";
 import { checkEditFilePermission } from "../../../mode-manager";
 import { READ_TOOL_NAME } from "../read";
 import { WRITE_TOOL_NAME } from "../write";
-import { replaceInContent } from "./replace";
+import {
+  calculateLineChangeStats,
+  ENABLE_EDIT_CHANGE_STATS,
+  replaceInContent,
+} from "./replace";
 
 export const EDIT_TOOL_NAME = "edit_file";
 /** Used by countPrevFailures to identify multi_edit tool calls (avoids circular import) */
@@ -143,19 +147,36 @@ export function createEditTool(sandbox: AgentSandbox): Tool {
       const fileLines = countLines(file.content);
       const oldStrLines = countLines(params.old_str);
       if (fileLines >= 3 && oldStrLines < 3 && params.old_str) {
+        // 短上下文替换更容易误命中；必须要求模型重新读取受影响文件核验，勿删除此提示。
         warnings.push(
-          `Warning: old_str has only ${oldStrLines} line(s) (recommended: 3+ lines). 请读取文件验证下修改是否符合预期。`
+          `Warning: old_str has only ${oldStrLines} line(s) (recommended: 3+ lines). Please read the affected file to verify changes.`
         );
       }
+      if (result.strategy === "insert") {
+        warnings.push("Warning: whole-file replacement was used. Please read the affected file to verify changes.");
+      } else if (result.strategy !== "exact") {
+        warnings.push("Warning: non-exact matching was used. Please read the affected file to verify changes.");
+      }
 
-      let output = `File edited: ${params.path} (strategy: ${result.strategy})`;
+      const replacementSummary = result.replacementCount && result.replacementCount > 1
+        ? ` (${result.replacementCount} replacements)`
+        : "";
+      const changeStats = calculateLineChangeStats(file.content, result.newContent!);
+      const changeSummary = ENABLE_EDIT_CHANGE_STATS
+        ? ` +${changeStats.added} -${changeStats.removed}`
+        : "";
+      let output = `Success. Updated file:\nM ${params.path}${changeSummary}${replacementSummary}`;
       if (warnings.length > 0) {
         output = `${output}\n${warnings.join("\n")}`;
       }
 
       return {
         output,
-        metadata: { path: params.path, strategy: result.strategy, replaceAll: params.replace_all ?? false },
+        metadata: {
+          path: params.path,
+          strategy: result.strategy,
+          replaceAll: params.replace_all ?? false,
+        },
       };
     },
   };
