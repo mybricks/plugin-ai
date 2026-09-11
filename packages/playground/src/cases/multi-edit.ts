@@ -99,7 +99,7 @@ export const multiEditPartialSuccessCase: TestCase = {
   group: "工具调用",
   priority: "P0",
   description: "LLM 调用 multi_edit 对多个文件进行编辑，其中部分 old_str 匹配成功，部分匹配失败，模拟部分编辑成功的混合结果场景",
-  expectedBehavior: "工具卡片显示 Succeeded/Failed 混合结果，FS Viewer 中仅成功编辑的文件内容已更新，失败编辑的文件保持原样。LLM 后续可根据失败信息修正重试。",
+  expectedBehavior: "工具结果以精简的 Partial success、去重 M 成功文件列表和失败原因展示；FS Viewer 中仅成功编辑的文件内容已更新，失败编辑的文件保持原样。LLM 后续可根据失败信息修正重试。",
   initialFiles,
   initialTurns: [],
   request: makeScriptedRequest([
