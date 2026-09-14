@@ -74,31 +74,22 @@ const BACKUP_PROVIDER: CustomProviderConfig = {
 
 const buttonConfigs = [
   {
-    label: "Auto / junior",
-    title: "modelId=auto, aiRole=junior",
+    label: "Auto / fast",
+    title: "modelId=auto, aiRole=fast",
     request: {
-      message: "右侧按钮触发：走 auto provider，并用 junior 角色。",
+      message: "右侧按钮触发：走 auto provider，并用 fast 角色。",
       modelId: "auto",
-      aiRole: "junior",
-    },
-  },
-  {
-    label: "Auto / expert",
-    title: "modelId=auto, aiRole=expert",
-    request: {
-      message: "右侧按钮触发：仍走 auto provider，但切换 expert 角色。",
-      modelId: "auto",
-      aiRole: "expert",
+      aiRole: "fast",
     },
   },
   {
     label: "Custom Claude",
-    title: "providerId=custom, modelId=claude",
+    title: "providerId=custom, modelId=claude, aiRole=fast",
     request: {
-      message: "右侧按钮触发：显式指定 custom/claude。",
+      message: "右侧按钮触发：显式指定 custom/claude，并用 fast 角色。",
       providerId: "custom",
       modelId: "claude",
-      aiRole: "architect",
+      aiRole: "fast",
     },
   },
   {
@@ -127,7 +118,7 @@ const buttonConfigs = [
       message: "右侧按钮触发：计划模式下请求 custom/claude。",
       providerId: "custom",
       modelId: "claude",
-      aiRole: "architect",
+      aiRole: "fast",
       mode: AgentModeEnum.Plan,
     },
   },

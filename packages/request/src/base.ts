@@ -455,19 +455,9 @@ export const transfromExtendParams = (extendParams: { aiRole?: string; turnId?: 
       // model = "anthropic/claude-sonnet-4.6";
       role = "image";
       break;
-    case ["junior"].includes(aiRole):
+    case ["fast"].includes(aiRole):
       model = "moonshotai/kimi-k2.6";
-      role = "junior";
-      break;
-    case ["architect"].includes(aiRole):
-      model = "moonshotai/kimi-k2.6";
-      // model = "google/gemini-3.1-pro-preview";
-      role = "architect";
-      break;
-    case ["expert"].includes(aiRole):
-      model = "moonshotai/kimi-k2.6";
-      // model = "anthropic/claude-sonnet-4.6";
-      role = "expert";
+      role = "fast";
       break;
     default:
       role = "default";
