@@ -12,17 +12,19 @@ export const DEFAULT_PLAN_DIR = getPlanDir();
 export const AgentModeEnum = {
   Build: "build",
   Plan: "plan",
+  Ask: "ask",
 } as const;
 
-export const ALL_AGENT_MODES: AgentMode[] = [AgentModeEnum.Build, AgentModeEnum.Plan];
+export const ALL_AGENT_MODES: AgentMode[] = [AgentModeEnum.Build, AgentModeEnum.Plan, AgentModeEnum.Ask];
 
 export interface AgentModeAvailabilityOptions {
   disabledModes?: AgentMode[];
 }
 
 const AGENT_MODE_LABELS: Record<AgentMode, string> = {
-  [AgentModeEnum.Build]: "自动模式",
+  [AgentModeEnum.Build]: "智能体模式",
   [AgentModeEnum.Plan]: "计划模式",
+  [AgentModeEnum.Ask]: "询问模式",
 };
 
 export function getDisabledAgentModes(options?: AgentModeAvailabilityOptions): AgentMode[] {
@@ -168,12 +170,14 @@ function getModeCatalogSlug(availableModes: AgentMode[]): string {
   const descriptions: Record<AgentMode, string> = {
     [AgentModeEnum.Build]: "按用户需求直接执行修改项目文件",
     [AgentModeEnum.Plan]: `阅读、分析、维护计划文件，并向用户澄清问题，不改项目文件`,
+    [AgentModeEnum.Ask]: "只读地澄清、质询需求和方案，不创建计划或修改项目文件",
   };
 
   return `## 可用模式
 当前支持以下模式：
 ${availableModes.map((mode) => `- ${mode}（${getModeLabel(mode)}）：${descriptions[mode]}`).join(`
-`)}`;
+`)}
+注意：你无法自行改变当前模式，如需更换模式，请告知用户在左下角手动切换。`;
 }
 
 function getCurrentModeSlug(mode: AgentMode, previousMode?: AgentMode | null): string {
@@ -240,7 +244,7 @@ function getPlanFileGuideSlugInPlanMode(planDir: string): string {
 
 function getPlanFileGuideSlugInBuildMode(planDir: string): string {
   return `## 计划文件说明
-注意：由于你现在处于自动模式下，不允许创建计划文件，如有必要，你可以对计划文件进行阅读以及修改内容，但是一定不允许创建计划文件。
+注意：由于你现在处于智能体模式下，不允许创建计划文件，如有必要，你可以对计划文件进行阅读以及修改内容，但是一定不允许创建计划文件。
 - 目录：\`${planDir}\`。
 - frontmatter 规范
   每个计划文件必须包含以下 frontmatter：
@@ -290,6 +294,24 @@ function getPlanModeGuideSlug(planDir: string): string {
   ]);
 }
 
+function getAskModeGuideSlug(): string {
+  return `你现在处于「询问模式」。目标是回答用户的问题，与用户建立对需求、方案或决策的共同理解。
+
+## 行为边界
+- 只允许阅读、搜索和分析；禁止创建、修改或删除任何文件。
+- 代码、已有配置或工具能回答的事实，先自行查证，不要把可查的问题抛给用户。
+- 只有产品意图、优先级、取舍、边界条件等真正需要用户决定的问题才提问。
+- 提问优先通过提问类工具进行提问，否则请在回答中说明选项和你推荐的选项。
+
+## 讨论方式
+- 将尚未确定的事项当作决策树：先解决前置决策，再讨论依赖它的细节。
+- 每次只问一个最重要、且已具备回答前提的问题；说明它为什么重要，并给出你的推荐答案。
+- 收到回答后先吸收结论，再继续下一个未决问题；不要在用户尚未回答时假设答案。
+- 所有关键决策已经明确时，简要总结共同结论和仍需注意的风险，等待用户确认后再建议切换到计划或智能体模式。
+
+> 不要因「看起来已经足够」就自行开始实施；只有用户明确确认共同理解已经达成后，才结束这轮询问。`;
+}
+
 function getPlanStatusReminderSlug(planState?: PlanDirectoryState | null): string {
   if (!planState?.activePlan) return "";
 
@@ -334,6 +356,17 @@ ${joinSections([
 </system-reminder>`;
   }
 
+  if (params.mode === AgentModeEnum.Ask) {
+    return `<system-reminder>
+${joinSections([
+  getModeCatalogSlug(availableModes),
+  modeSlug,
+  getAskModeGuideSlug(),
+  getPlanStatusReminderSlug(params.planState),
+])}
+</system-reminder>`;
+  }
+
   return "";
 }
 
@@ -348,8 +381,7 @@ export async function buildModeSection(params: {
   configDirName?: string;
 }): Promise<string> {
   const availableModes = getAvailableAgentModes(params);
-  const hasPlanMode = availableModes.includes(AgentModeEnum.Plan);
-  if (!hasPlanMode) return "";
+  if (availableModes.length === 1 && availableModes[0] === AgentModeEnum.Build) return "";
   try {
     const files = await (params.getFiles ?? (async () => []))();
     return buildModeReminder({
@@ -406,7 +438,15 @@ function assertPlanModeCanMutatePaths(
   paths: string[],
   action: string,
 ): void {
-  if (getContextMode(ctx) !== AgentModeEnum.Plan) return;
+  const mode = getContextMode(ctx);
+  if (mode === AgentModeEnum.Build) return;
+  if (mode === AgentModeEnum.Ask) {
+    throw new Error(
+      `当前是「${getModeLabel(AgentModeEnum.Ask)}」，不允许${action}。` +
+      ` 如需创建计划，请切换到 ${AgentModeEnum.Plan}（${getModeLabel(AgentModeEnum.Plan)}）；` +
+      ` 如需修改项目文件，请切换到 ${AgentModeEnum.Build}（${getModeLabel(AgentModeEnum.Build)}）。`
+    );
+  }
   const configDirName = getContextConfigDirName(ctx);
   const planDir = getPlanDir(configDirName);
   const invalidPaths = paths.filter((path) => !isPlanDirPath(path, configDirName));
@@ -453,6 +493,15 @@ export function checkDeleteFilePermission(
   assertPlanModeCanMutatePaths(ctx, params.paths ?? [], "delete_file");
 }
 
+/** 询问模式不执行 bash，避免宿主命令绕过只读边界。 */
+export function checkBashPermission(ctx?: ToolExecutionContext): void {
+  if (getContextMode(ctx) !== AgentModeEnum.Ask) return;
+  throw new Error(
+    `当前是「${getModeLabel(AgentModeEnum.Ask)}」，不允许执行 bash。` +
+    ` 请使用 read、grep 等只读工具查证代码；如需执行命令，请先切换模式。`
+  );
+}
+
 // ─── switch_mode 工具 ─────────────────────────────────────────────────────────
 
 export function createSwitchModeTool(options?: AgentModeAvailabilityOptions): Tool {
@@ -460,14 +509,16 @@ export function createSwitchModeTool(options?: AgentModeAvailabilityOptions): To
   return {
     name: SWITCH_MODE_TOOL_NAME,
     title: "切换模式",
-    description: `在「计划模式(plan)」和「自动模式(build)」之间切换当前 Agent 的运行模式。
+    description: `在「询问模式(ask)」「计划模式(plan)」和「智能体模式(build)」之间切换当前 Agent 的运行模式。
 
 模式说明：
+- ask（询问模式）：只读地澄清和质询需求，不创建计划或修改项目。
 - plan（计划模式）：先阅读、分析、维护计划文件，不改项目；适合用户要求"先讨论/先规划/别直接改"。
-- build（自动模式）：按已确认目标直接执行修改；适合快速修改、简单直接任务，或用户已经批准方案。
+- build（智能体模式）：按已确认目标直接执行修改；适合快速修改、简单直接任务，或用户已经批准方案。
 
 使用时机：
-- 当用户要求进入计划、规划、评审方案，切到 plan。
+- 当用户要求先深入讨论、澄清或质询方案，切到 ask。
+- 当用户要求进入计划、规划，切到 plan。
 - 当用户确认方案或要求开始实现，切到 build。
 - 这个工具只改变后续行为；不会代替实际文件修改。`,
     parameters: {
@@ -476,7 +527,7 @@ export function createSwitchModeTool(options?: AgentModeAvailabilityOptions): To
         mode: {
           type: "string",
           enum: availableModes,
-          description: "目标模式。build=自动模式，plan=计划模式",
+          description: "目标模式。build=智能体模式，plan=计划模式，ask=询问模式",
         },
       },
       required: ["mode"],

@@ -4,8 +4,8 @@ import { Popup } from "../popup";
 import { AgentModeEnum } from "../../../../../agent/src";
 import css from "./index.less";
 
-// build = 智能体（默认执行）| plan = 计划（先规划再执行）
-export type ChatModeType = typeof AgentModeEnum.Build | typeof AgentModeEnum.Plan | null;
+// build = 智能体（默认执行）| plan = 计划（先规划再执行）| ask = 询问（先澄清再决定）
+export type ChatModeType = typeof AgentModeEnum.Build | typeof AgentModeEnum.Plan | typeof AgentModeEnum.Ask | null;
 
 const CHAT_MODE_MAP: Record<
   NonNullable<ChatModeType>,
@@ -20,6 +20,11 @@ const CHAT_MODE_MAP: Record<
     triggerTitle: "计划",
     title: "计划模式",
     description: "执行前先制定方案，再决定是否执行",
+  },
+  [AgentModeEnum.Ask]: {
+    triggerTitle: "询问",
+    title: "询问模式",
+    description: "先澄清并质询关键决策，不创建计划或修改项目",
   },
 };
 
@@ -52,8 +57,16 @@ const PlanIcon = () => (
   </svg>
 );
 
+/** 询问模式图标（对话气泡） */
+const AskIcon = () => (
+  <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M3 3.5h10v7H7l-3 2v-2H3v-7Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+    <path d="M5.5 6.75h.01M8 6.75h.01M10.5 6.75h.01" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+  </svg>
+);
+
 const ChatModeIcon = ({ mode }: { mode: NonNullable<ChatModeType> }) => (
-  mode === AgentModeEnum.Build ? <MobiusIcon /> : <PlanIcon />
+  mode === AgentModeEnum.Build ? <MobiusIcon /> : mode === AgentModeEnum.Plan ? <PlanIcon /> : <AskIcon />
 );
 
 interface ChatModeProps {

@@ -30,10 +30,11 @@ export interface IterationTrace {
 
 /**
  * Agent 运行模式。
- * - build：智能模式，允许直接修改，适合快速修改和简单直接的任务
+ * - build：智能体模式，允许直接修改，适合快速修改和简单直接的任务
  * - plan：计划模式，修改之前先制定方案，方案通过后再进行操作
+ * - ask：询问模式，只读地澄清和质询需求，不创建计划或修改项目
  */
-export type AgentMode = "build" | "plan";
+export type AgentMode = "build" | "plan" | "ask";
 
 // ─── Attachment（通用附件格式） ─────────────────────────────────────────────
 

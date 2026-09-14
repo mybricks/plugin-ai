@@ -7,6 +7,7 @@ import {
   type BashToolOptions,
   type FileSystemBashCommand,
 } from "../../../agent-sandbox/commands/helpers/file-access";
+import { checkBashPermission } from "../../../mode-manager";
 
 export const BASH_TOOL_NAME = "bash";
 export { DEFAULT_BASH_ALLOWED_COMMANDS };
@@ -67,13 +68,14 @@ export function createBashTool(commands: AgentSandboxCommands, options: BashTool
       },
       required: ["command"],
     },
-    validate(params: { command?: string; timeout_ms?: number }) {
+    validate(params: { command?: string; timeout_ms?: number }, context?: ToolExecutionContext) {
       if (!params.command || typeof params.command !== "string" || !params.command.trim()) {
         throw new ToolValidationError("command is required and must be a non-empty string");
       }
       if (params.timeout_ms !== undefined && (!Number.isFinite(params.timeout_ms) || params.timeout_ms <= 0)) {
         throw new ToolValidationError("timeout_ms must be a positive number");
       }
+      checkBashPermission(context);
     },
     async execute(
       params: { command: string; description?: string; timeout_ms?: number },

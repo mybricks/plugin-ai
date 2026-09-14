@@ -99,7 +99,8 @@ interface AgentTemporaryState {
 const AGENT_TEMPORARY_STATE_KEY_PREFIX = "plugin-ai:agent-temporary:";
 
 function normalizeAgentMode(mode: any): AgentMode {
-  return mode === AgentModeEnum.Plan ? AgentModeEnum.Plan : AgentModeEnum.Build;
+  if (mode === AgentModeEnum.Plan || mode === AgentModeEnum.Ask) return mode;
+  return AgentModeEnum.Build;
 }
 
 function normalizeAllowedAgentMode(mode: any, options: AgentOptions): AgentMode {
@@ -1350,8 +1351,8 @@ export class Agent {
       // hooks：不继承父 Agent hooks（避免 afterTurn 等重复执行）；
       // 通过 forkOptions.hooks 可显式注入新 hooks（如 SubAgent 的 beforeRequest）
       hooks: "hooks" in (forkOptions ?? {}) ? hooks : undefined,
-      // fork 是 worker agent，不需要计划模式
-      disabledModes: [AgentModeEnum.Plan],
+      // fork 是 worker agent，不需要计划或询问模式
+      disabledModes: [AgentModeEnum.Plan, AgentModeEnum.Ask],
       // fork 不注入随消息携带的动态上下文（模式说明、skills 等），getAttachmentContextMessages 是 CodeAgent 的箭头函数，this 永远指向父实例，无法感知 fork 的 disabledModes
       getAttachmentContextMessages: undefined,
       // fork 强制关闭 summary/compact，防止 summary fork / compact fork 再递归创建 fork。

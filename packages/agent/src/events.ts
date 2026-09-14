@@ -128,8 +128,9 @@ export type AgentEventMap = {
 
   /**
    * Agent 运行模式变更。
-   * - build：智能模式，允许直接修改
+   * - build：智能体模式，允许直接修改
    * - plan：计划模式，先制定方案，方案通过后再操作
+   * - ask：询问模式，只读地澄清和质询需求
    */
   "mode:change": {
     mode: AgentMode;

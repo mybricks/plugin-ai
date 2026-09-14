@@ -82,8 +82,9 @@ export interface AgentOptions {
   system?: string;
   /**
    * 初始运行模式。
-   * - build：智能模式，允许直接修改
+   * - build：智能体模式，允许直接修改
    * - plan：计划模式，先制定方案，方案通过后再操作
+   * - ask：询问模式，只读地澄清和质询需求
    */
   mode?: AgentMode;
   /** 禁用的运行模式；当只剩一种可用模式时不会注册模式切换工具。 */
@@ -257,7 +258,7 @@ export interface ForkOptions {
   /**
    * 覆盖运行模式。
    * - 不传：继承父 Agent 当前模式
-   * - build：智能模式，允许直接修改
+   * - build：智能体模式，允许直接修改
    * - plan：计划模式，先制定方案，方案通过后再操作
    */
   mode?: AgentMode;
