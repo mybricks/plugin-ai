@@ -21,7 +21,9 @@ export function createCheckStatusTool(designerRef: { current: Designer | undefin
     parameters: { type: "object", properties: {} },
     async execute(_params: any, toolContext: ToolExecutionContext) {
 
-      toolContext.setAiRole('default')
+      // check-status 只负责检查项目状态，不应在工具调用后改变后续请求的 aiRole。
+      // TODO: 后续删除此处 aiRole 切换逻辑。
+      // toolContext.setAiRole('default')
 
       const designer = designerRef.current;
       if (!designer) {
