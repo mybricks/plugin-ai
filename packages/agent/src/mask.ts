@@ -46,6 +46,9 @@ export interface MaskOptions {
 }
 
 /**
+ * @deprecated Ask / Plan turn 已整体跳过 mask，不再需要单独的附件保护集合；
+ * 保留此函数及原注释，以兼容既有调用方。
+ *
  * 计算需要豁免附件遮蔽的 turn id 集合（保护集合）。
  *
  * 当前保护策略：
@@ -89,14 +92,12 @@ const DEFAULT_ATTACHMENT_PLACEHOLDER = "[Old attachment cleared]";
  * @param messages              buildMessages 产出的完整消息列表
  * @param turns                 当前已有的 TurnRecord[]（不含本轮，用于判断遮蔽条件）
  * @param options               遮蔽配置
- * @param protectedTurnIds      附件豁免遮蔽的 turn id 集合（由调用方通过 buildProtectedAttachmentTurnIds 计算）
  * @returns                     遮蔽后的消息列表（浅拷贝，不修改原数组元素）
  */
 export function maskMessages(
   messages: Message[],
   turns: TurnRecord[],
   options: MaskOptions,
-  protectedTurnIds?: Set<string>
 ): Message[] {
   const {
     maxTurns = 4,
@@ -139,13 +140,13 @@ export function maskMessages(
 
     if (!shouldMask) continue;
 
+    // Ask / Plan 是工作记忆，直到 compact 生成摘要前均不参与 mask。
+    if (getTurnMode(turn) === "ask" || getTurnMode(turn) === "plan") continue;
+
     // 找到该 turn 在原始 turns 数组中的索引
     const originalIndex = turns.indexOf(turn);
 
-    // 附件保护：被保护的 turn 跳过用户附件遮蔽，但 tool 消息照常遮蔽
-    if (!protectedTurnIds?.has(turn.id)) {
-      maskedTurnIndices.add(originalIndex);
-    }
+    maskedTurnIndices.add(originalIndex);
 
     // 收集该 turn 所有迭代中的 toolCall id
     for (const iter of turn.iterations ?? []) {

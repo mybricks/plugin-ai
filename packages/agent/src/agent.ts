@@ -27,7 +27,7 @@ import type {
 import { createToolUIChannel, type ToolUIChannel } from "./tool-ui";
 import { turnsToMessages, getLLMIterations, hasNoToolCalls, serializeToolCallArgumentsFromIter, serializeToolCallArgumentsFromLLMResult, attachmentToMessagePart } from "./types";
 import { computeHandoffTurnIds } from "./handoff";
-import { maskMessages, buildProtectedAttachmentTurnIds, type MaskOptions } from "./mask";
+import { maskMessages, type MaskOptions } from "./mask";
 import { wrapRequestWithRetry, type RetryOptions } from "./retry";
 import { CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
 import { getTurnMode } from "./utils/core";
@@ -278,9 +278,7 @@ function assembleMessages(
     const maskOpts: MaskOptions = options.mask && typeof options.mask === "object" ? options.mask : {};
     const prefix = assembled.slice(0, historyStartIndex);
     const rest = assembled.slice(historyStartIndex);
-    // 计算附件保护集合：尾部连续 plan 轮的 user 附件不参与遮蔽
-    const protectedTurnIds = buildProtectedAttachmentTurnIds(turns);
-    const maskedRest = maskMessages(rest, turns, maskOpts, protectedTurnIds);
+    const maskedRest = maskMessages(rest, turns, maskOpts);
     return [...prefix, ...maskedRest];
   }
 
@@ -1190,17 +1188,16 @@ export class Agent {
     this.setMode(mode, "requestAI");
     const effectiveRequestMode = this.getMode();
     // 有图片附件时，自动将 aiRole 覆盖为 "image"，使请求层路由到支持视觉的模型。
-    // 扩展：当前是 build 模式且无图片，但连续前置 plan 轮中携带过图片时，
-    // 图片仍在历史 messages 里（受 buildProtectedAttachmentTurnIds 保护，未被 mask 清除），
+    // 扩展：当前是 build 模式且无图片，但历史 Ask / Plan 轮中携带过图片时，
+    // 图片仍在历史 messages 里（Ask / Plan 轮不参与 mask），
     // 此时也需要路由到视觉模型，否则普通模型无法处理 image_url。
     const hasPlanHistoryImage = !attachments?.length && effectiveRequestMode === AgentModeEnum.Build
       ? (() => {
           for (let i = this.turns.length - 1; i >= 0; i--) {
             const t = this.turns[i];
-            if (getTurnMode(t) === AgentModeEnum.Plan) {
+            const turnMode = getTurnMode(t);
+            if (turnMode === AgentModeEnum.Plan || turnMode === AgentModeEnum.Ask) {
               if (t.userAttachments?.some(a => a.type === "image")) return true;
-            } else {
-              break;
             }
           }
           return false;
