@@ -648,6 +648,16 @@
   svg { width: calc(var(--chat-icon-size, 12px) - 1px); height: calc(var(--chat-icon-size, 12px) - 1px); }
 }
 
+// 尚未开始生成的目标文件：保留列表位置，但不伪装成已生成文件。
+.init-project-file-pending {
+  width: 8px;
+  height: 8px;
+  box-sizing: border-box;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  opacity: 0.35;
+}
+
 .init-project-file-name {
   flex: 1;
   overflow: hidden;

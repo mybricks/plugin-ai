@@ -28,6 +28,8 @@ export type ToolRecord = ToolCallView;
  */
 export interface ToolRendererContext {
   toolCallId: string;
+  /** 所属消息 turn 的只读展示上下文。 */
+  turn?: { status: "pending" | "success" | "error" | "abort" };
   submit: (value: unknown) => boolean;
   cancel: () => boolean;
   configDirName: string;
@@ -39,9 +41,11 @@ export function createToolRendererContext(
   toolCallId: string,
   toolUI?: ToolUIChannel,
   agent?: object | null,
+  turn?: ToolRendererContext["turn"],
 ): ToolRendererContext {
   return {
     toolCallId,
+    turn,
     submit: (value) => toolUI?.respond(toolCallId, value) ?? false,
     cancel: () => toolUI?.cancel(toolCallId) ?? false,
     configDirName: getConfigDirNameFromAgent(agent),

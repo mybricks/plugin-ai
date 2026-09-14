@@ -35,6 +35,7 @@ import { getAvailableAgentModes, AgentModeEnum } from "./mode-manager";
 import { roughTokenCountEstimation } from "./content-limits";
 import { kv } from "./kv";
 import { executeToolCall, prepareToolCall, type PreparedToolCall } from "./tool-call";
+import { toolCallRecordToMessage } from "./message-utils";
 
 export { AgentEvents };
 export type { AgentMode, Message, History, HistoryPersistMode, Tool, TurnRecord, ToolCallRecord, WarmupIter };
@@ -776,11 +777,7 @@ export class Agent {
       };
       initialTail.push(assistantMsg);
       for (const tc of iter.toolCalls) {
-        initialTail.push({
-          role: "tool",
-          tool_call_id: tc.callId,
-          content: tc.status === "error" ? `Error: ${tc.error}` : tc.result?.output ?? "",
-        });
+        initialTail.push(toolCallRecordToMessage(tc, { isCancelled: turn.status === "abort" }));
       }
     }
     const startStep = llmItersOnEntry.length + 1;

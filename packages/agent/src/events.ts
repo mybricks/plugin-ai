@@ -1,4 +1,4 @@
-import type { AgentMode, TokenUsage, TurnSender } from "./types";
+import type { AgentMode, TokenUsage, ToolResult, TurnSender } from "./types";
 
 // ─── SSE 风格事件类型 ─────────────────────────────────────────────────────────
 //
@@ -269,7 +269,8 @@ export type AgentEventMap = {
    * 工具调用出错。
    *   - `callId`   对应 tool:call 的 callId
    *   - `name`     工具名称
-   *   - `error`    错误信息（已规范化为字符串，与 ToolCallRecord.error 一致）
+   *   - `error`    错误信息
+   *   - `result`   取消前已经返回的部分结果（仅用户取消且有结果时存在）
    *   - `errorType` 错误类型
    *   - `step`     所属 step 编号
    *   - `endTime`  工具结束执行的时间戳（Unix ms）
@@ -279,6 +280,7 @@ export type AgentEventMap = {
     name: string;
     error: string;
     errorType?: "invalid_args" | "normal";
+    result?: ToolResult;
     step: number;
     endTime: number;
     /** 所属 LLM iter 的唯一 ID，与 llm:start 对应 */

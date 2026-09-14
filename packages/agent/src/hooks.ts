@@ -85,7 +85,7 @@ export interface AgentHooks {
    * 仅处理 execute 的成功或失败，以下情况不触发：
    * - 工具不存在、参数解析失败、validate 未通过（不属于"执行结果"）
    * - 前置 beforeToolCall deny
-   * - 用户已取消（取消是不可覆盖的终态）
+   * - 用户手动取消（取消是不可覆盖的终态）
    *
    * 注意：返回的 output 仍会经过统一的 token 上限守卫，超限一样会被替换为报错。
    */

@@ -1,4 +1,5 @@
 import { formatHandoffMessageContent } from "../handoff";
+import { toolCallRecordToMessage } from "../message-utils";
 
 // ─── TokenUsage（通用 token 用量格式） ────────────────────────────────────────
 
@@ -747,18 +748,7 @@ export function turnsToMessages(
           messages.push(assistantMsg);
           // 每个工具调用对应一条 tool 消息
           for (const tc of completedToolCalls) {
-            const toolResult = tc.status === "error"
-              ? `Error: ${tc.error}`
-              : tc.result?.output ?? "";
-            messages.push({
-              role: "tool",
-              content: toolResult,
-              tool_call_id: tc.callId,
-              ...(tc.status !== "pending" ? { status: tc.status } : {}),
-              ...(tc.errorType ? { errorType: tc.errorType } : {}),
-              // 透传附件，由请求层按 capabilities 预处理
-              ...(tc.attachments?.length ? { attachments: tc.attachments } : {}),
-            });
+            messages.push(toolCallRecordToMessage(tc, { isCancelled: turn.status === "abort" }));
           }
         } else {
           // 纯文本回复（最后一轮或无工具调用的迭代）

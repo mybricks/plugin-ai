@@ -15,12 +15,12 @@ function formatAnswer(answer: string | string[]): string {
   return Array.isArray(answer) ? answer.join("、") : answer;
 }
 
-export function AskQuestionsRenderer(tool: ToolRecord, { submit, cancel }: ToolRendererContext) {
+export function AskQuestionsRenderer(tool: ToolRecord, { submit, cancel, turn }: ToolRendererContext) {
   const questions: AskQuestionsQuestion[] = Array.isArray(tool.args?.questions) ? tool.args.questions : [];
   const [drafts, setDrafts] = useState<Record<number, DraftAnswer>>({});
   const answers = useMemo(() => getAnswers(tool), [tool.result?.metadata]);
   const pending = tool.status === "pending";
-  const cancelled = tool.status === "error" && tool.error === "Error: 用户已取消";
+  const cancelled = tool.status === "error" && turn?.status === "abort";
   const title = "以下问题需要你确认一下";
 
   const getDraft = (index: number): DraftAnswer => drafts[index] ?? { selected: [], other: false, otherText: "" };

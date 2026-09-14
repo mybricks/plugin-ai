@@ -375,6 +375,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
                 iter={iter}
                 isLastItem={iterIdx === record.iterations.length - 1}
                 isPending={record.status === "pending"}
+                turn={record}
                 retryState={retryState}
                 toolRendererMap={toolRendererMap}
                 agent={agent}
@@ -459,6 +460,7 @@ const MessageIteration = React.memo(function MessageIteration({
   iter,
   isLastItem,
   isPending,
+  turn,
   retryState,
   toolRendererMap,
   agent,
@@ -468,6 +470,7 @@ const MessageIteration = React.memo(function MessageIteration({
   iter: MessageRecord["iterations"][number];
   isLastItem: boolean;
   isPending: boolean;
+  turn: MessageRecord,
   retryState: { attempt: number; maxRetries: number } | null;
   toolRendererMap: Map<string, ToolRenderer>;
   agent?: ChatAgent;
@@ -533,6 +536,7 @@ const MessageIteration = React.memo(function MessageIteration({
         <ToolBubble
           key={tool.callId}
           tool={tool}
+          turn={turn}
           toolRendererMap={toolRendererMap}
           agent={agent}
           toolUI={toolUI}
@@ -660,11 +664,13 @@ type UIToolRecord = Omit<ToolCallRecord, "status"> & { status: "pending" | "succ
  */
 const ToolBubble = React.memo(function ToolBubble({
   tool,
+  turn,
   toolRendererMap,
   agent,
   toolUI,
 }: {
   tool: ToolCallRecord;
+  turn: Pick<MessageRecord, "status">;
   toolRendererMap: Map<string, ToolRenderer>;
   agent?: ChatAgent;
   toolUI?: ToolUIChannel;
@@ -679,6 +685,7 @@ const ToolBubble = React.memo(function ToolBubble({
     return renderToolWithErrorBoundary(
       customRenderer,
       uiTool,
+      turn,
       "custom",
       agent,
       toolUI,
@@ -691,6 +698,7 @@ const ToolBubble = React.memo(function ToolBubble({
     return renderToolWithErrorBoundary(
       globalRenderer,
       uiTool,
+      turn,
       "registry",
       agent,
       toolUI,
@@ -704,6 +712,7 @@ const ToolBubble = React.memo(function ToolBubble({
 function renderToolWithErrorBoundary(
   renderer: ToolRenderer,
   tool: UIToolRecord,
+  turn: Pick<MessageRecord, "status">,
   source: "custom" | "registry",
   agent?: ChatAgent,
   toolUI?: ToolUIChannel,
@@ -714,6 +723,7 @@ function renderToolWithErrorBoundary(
     <ToolRendererInvoker
       renderer={renderer}
       tool={tool as any}
+      turn={turn}
       agent={agent}
       toolUI={toolUI}
     />
@@ -723,11 +733,13 @@ function renderToolWithErrorBoundary(
 const ToolRendererInvoker = ({
   renderer,
   tool,
+  turn,
   agent,
   toolUI,
 }: {
   renderer: ToolRenderer;
   tool: ToolCallRecord;
+  turn: Pick<MessageRecord, "status">;
   agent?: ChatAgent;
   toolUI?: ToolUIChannel;
 }) => {
@@ -737,6 +749,7 @@ const ToolRendererInvoker = ({
       tool.callId,
       toolUI ?? agent?.getToolUI(),
       agent,
+      turn,
     ),
   );
 };

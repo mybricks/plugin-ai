@@ -13,6 +13,7 @@ import {
   type AgentHooks,
 } from "./hooks";
 import { TOOL_OUTPUT_MAX_TOKENS, roughTokenCountEstimation } from "./content-limits";
+import { toolCallRecordToMessage } from "./message-utils";
 
 /** LLM 输出的单个工具调用。args 为 null 时由 argsRaw 提供未解析的原始串。 */
 type RawToolCall = { id: string; name: string; args: any; argsRaw?: string };
@@ -174,19 +175,21 @@ export async function executeToolCall(
     tool.validate?.(record.args, toolContext);
     executed = true;
     const result = await tool.execute(record.args, toolContext);
+    // 即使用户在 execute 期间取消，也保留工具已完成的部分结果。最终 message
+    // 会由统一 formatter 标为“部分结果 + 已取消”，而不会误判为完整成功。
+    record.result = { output: result.output, metadata: result.metadata };
     if (signal.aborted) {
       record.status = "error";
       record.errorType = "normal";
-      record.error = "Error: 用户已取消";
+      record.error = "Error: 用户已手动取消";
     } else {
       record.status = "success";
-      record.result = { output: result.output, metadata: result.metadata };
     }
   } catch (e) {
     record.status = "error";
     // ToolValidationError 或 validate 抛出的错误视为 invalid_args
     record.errorType = (e as any)?.name === "ToolValidationError" ? "invalid_args" : "normal";
-    record.error = signal.aborted ? "Error: 用户已取消" : String((e as any)?.message ?? e);
+    record.error = signal.aborted ? "Error: 用户已手动取消" : String((e as any)?.message ?? e);
   }
 
   record.execEndTime = Date.now();
@@ -204,14 +207,19 @@ export async function executeToolCall(
     }
   }
 
-  return finalize(record, tool, ctx);
+  return finalize(record, tool, ctx, { isCancelled: signal.aborted });
 }
 
 /**
  * 收口阶段：执行 output 守卫、发出事件、生成模型 tool message。
  * 所有分支（含 hook 改写后的结果）都必须经过这里，守卫不可被绕过。
  */
-function finalize(record: ToolCallRecord, tool: Tool | undefined, ctx: ToolCallContext): ToolCallResult {
+function finalize(
+  record: ToolCallRecord,
+  tool: Tool | undefined,
+  ctx: ToolCallContext,
+  options: { isCancelled?: boolean } = {},
+): ToolCallResult {
   const { step, iterId, events } = ctx;
   record.execEndTime ||= Date.now();
 
@@ -220,37 +228,45 @@ function finalize(record: ToolCallRecord, tool: Tool | undefined, ctx: ToolCallC
   // 引导模型缩小查询范围，而非把大量内容塞入上下文。
   // read 工具本身已有提前检查（在 execute 内部抛错），此处为兜底保护。
   // 注意：守卫排在 afterToolCall 之后，hook 改写出的超大 output 同样会被拦下。
-  if (record.status === "success" && record.result) {
+  let includePartialOutput = options.isCancelled === true;
+  if ((record.status === "success" || includePartialOutput) && record.result) {
     const maxOutputTokens = tool?.limits?.maxToken ?? TOOL_OUTPUT_MAX_TOKENS;
     const outputTokens = maxOutputTokens === false ? 0 : roughTokenCountEstimation(record.result.output);
     if (maxOutputTokens !== false && outputTokens > maxOutputTokens) {
-      // 只改写回传模型的状态，record.result 保留原始 output 供 UI 展示。
+      // 原始 output 不能留在持久化 record 中：历史重建时会根据 turn 的取消
+      // 状态格式化该 record，保留它会让超限内容重新进入模型上下文。metadata
+      // 仍可留下，供 init-project 这类工具展示安全的结构化结果。
+      const cancelled = includePartialOutput;
       record.status = "error";
       record.errorType = "normal";
-      record.error = `Error: Tool output exceeds the ${maxOutputTokens} token limit (estimated ~${outputTokens} tokens). Return less data or narrow your query.`;
+      record.result = record.result.metadata === undefined
+        ? undefined
+        : { output: "", metadata: record.result.metadata };
+      includePartialOutput = false;
+      record.error = `Error: Tool output exceeds the ${maxOutputTokens} token limit (estimated ~${outputTokens} tokens). Return less data or narrow your query.${cancelled ? "\n\nError: 用户已手动取消" : ""}`;
     }
   }
 
-  let content: string;
-  let status: "success" | "error";
-  if (record.status === "success" && record.result) {
-    status = "success";
-    content = record.result.output;
+  const message = toolCallRecordToMessage(record, { isCancelled: includePartialOutput });
+  if (message.status === "success") {
     events.emit("tool:result", { callId: record.callId, name: record.name, result: record.result, step, endTime: record.execEndTime, iterId });
   } else {
-    status = "error";
-    content = String(record.error ?? "Tool execution failed");
-    events.emit("tool:error", { callId: record.callId, name: record.name, error: content, errorType: record.errorType, step, endTime: record.execEndTime, iterId });
+    events.emit("tool:error", {
+      callId: record.callId,
+      name: record.name,
+      error: String(record.error ?? "Tool execution failed"),
+      errorType: record.errorType,
+      // 取消时 UI 仍可接收安全的 metadata；若 output 超限，上面的守卫已将
+      // output 清空，因此不会通过事件或持久化记录泄漏进后续上下文。
+      ...(options.isCancelled && record.result ? { result: record.result } : {}),
+      step,
+      endTime: record.execEndTime,
+      iterId,
+    });
   }
 
   return {
     record,
-    message: {
-      role: "tool",
-      tool_call_id: record.callId,
-      content,
-      status,
-      ...(record.errorType ? { errorType: record.errorType } : {}),
-    },
+    message,
   };
 }

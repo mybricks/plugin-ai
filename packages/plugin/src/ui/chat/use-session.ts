@@ -382,7 +382,7 @@ function useAgentEvents(
         commit();
       }),
 
-      a.events.on("tool:error", ({ iterId, callId, error, errorType, endTime }) => {
+      a.events.on("tool:error", ({ iterId, callId, error, errorType, result, endTime }) => {
         flushCommit();
         const turn = streamingRef.current;
         if (!turn) return;
@@ -390,7 +390,14 @@ function useAgentEvents(
         if (!iter) return;
         iter.toolCalls = iter.toolCalls.map((tool) =>
           tool.callId === callId
-            ? { ...tool, status: "error" as const, execEndTime: endTime, error, ...(errorType ? { errorType } : {}) }
+            ? {
+                ...tool,
+                status: "error" as const,
+                execEndTime: endTime,
+                error,
+                ...(errorType ? { errorType } : {}),
+                ...(result ? { result } : {}),
+              }
             : tool
         );
         commit();

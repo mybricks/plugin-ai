@@ -1011,6 +1011,7 @@ export class HttpAgent {
         call.status = "error";
         call.error = data.error;
         if (data.errorType) call.errorType = data.errorType;
+        if (data.result) call.result = data.result;
       }
       return;
     }

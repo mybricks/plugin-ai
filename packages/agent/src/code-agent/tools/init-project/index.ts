@@ -260,6 +260,8 @@ ${prompt}
   });
 
   let requestError: Error | null = null;
+  // 取消是控制流状态，不从 Error.message 反推，避免展示文案参与业务判断。
+  let wasCancelled = false;
 
   try {
     await subAgent.requestAI({
@@ -268,9 +270,11 @@ ${prompt}
     const turns = await subAgent.getTurns();
     const lastTurn = turns[turns.length - 1];
     if (ctx.signal.aborted || lastTurn?.status === "abort") {
-      requestError = new Error("用户已取消");
+      wasCancelled = true;
+      requestError = new Error("用户已手动取消");
     }
   } catch (err: any) {
+    wasCancelled = ctx.signal.aborted;
     requestError = err instanceof Error ? err : new Error(String(err));
   } finally {
     unsubscribe();
@@ -290,8 +294,12 @@ ${prompt}
       })
       .join("\n\n");
 
+    // 用户取消由通用 tool message formatter 在末尾统一标注；这里仅保留
+    // 部分完成的事实，避免同一结果重复出现多段“用户已手动取消”。
     const lines: string[] = [
-      `生成过程中断（${requestError.message}）`,
+      wasCancelled
+        ? "生成过程中断"
+        : `生成过程中断（${requestError.message}）`,
     ];
     if (writtenList.length > 0) {
       lines.push(`已成功写入 ${writtenList.length} 个文件：${writtenList.join(', ')}`);
@@ -309,10 +317,6 @@ ${prompt}
     if (shouldWarnLargeGeneration) {
       lines.push(LARGE_GENERATION_WARNING);
     }
-    if (requestError.message === "用户已取消") {
-      lines.push("[Request interrupted by user]");
-    }
-
     const filesMetadataOnError = writtenList.map((p) => ({
       path: p,
       lineCount: progressState.files.find((f) => f.path === p)?.lineCount ?? 0,

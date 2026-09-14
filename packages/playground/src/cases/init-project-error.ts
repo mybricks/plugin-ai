@@ -492,9 +492,9 @@ export const initProjectSlowAbortCase: TestCase = {
   group: "init-project",
   priority: "P0",
   description:
-    "init-project 的 SubAgent 以约 500ms/段缓慢生成 4 个文件。任意时刻点击停止，观察取消是否立即停止后续输出，以及已闭合代码块对应的文件是否保留。",
+    "init-project 的 SubAgent 以约 500ms/段缓慢生成 4 个文件。任意时刻点击停止，观察取消是否立即停止后续输出、已闭合代码块是否保留，以及工具卡片是否保留部分生成摘要。",
   expectedBehavior:
-    "修复取消传递后：点击停止后 turn 应尽快变为已取消，不再出现后续文件；停止前已完整闭合的文件保留，正在输出且未闭合的文件不写入。当前若仍继续生成，说明 init-project 的 SubAgent 未收到父 Agent 的取消信号。",
+    "点击停止后 turn 应尽快变为已取消，不再出现后续文件；停止前已完整闭合的文件保留，正在输出且未闭合的文件不写入。工具卡片保持 error 状态，并显示已写/未写文件摘要；取消提示沿用 turn 的全局展示。",
   initialTurns: [],
   initialFiles: [],
   tools: (fs) => [createInitProjectTool(fs)],
@@ -570,4 +570,28 @@ export const initProjectSlowAbortCase: TestCase = {
       params.emits.complete?.("");
     };
   })(),
+  assertions: [
+    {
+      name: "取消保留部分生成摘要",
+      run: ({ agent }) => {
+        const lastTurn = (agent as any)?.turns?.at?.(-1);
+        if (!lastTurn || lastTurn.status !== "abort") return null;
+        const toolCall = lastTurn.iterations
+          ?.flatMap((iteration: any) => iteration.toolCalls ?? [])
+          ?.find((tool: any) => tool.name === INIT_PROJECT_TOOL_NAME);
+        if (!toolCall) return null;
+
+        const output = String(toolCall.result?.output ?? "");
+        const pass = toolCall.status === "error"
+          && output.includes("生成过程中断")
+          && output.includes("以下文件未生成");
+        return {
+          pass,
+          message: pass
+            ? "已保留取消前的文件生成摘要"
+            : `当前工具记录: ${JSON.stringify({ status: toolCall.status, error: toolCall.error, output })}`,
+        };
+      },
+    },
+  ],
 };
