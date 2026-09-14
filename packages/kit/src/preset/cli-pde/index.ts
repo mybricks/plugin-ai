@@ -1,4 +1,4 @@
-import type { CodeAgentPlugin } from "../../../../agent/src";
+import { Tools, type CodeAgentPlugin, type Tool } from "../../../../agent/src";
 import type { PromptSections } from "../../prompts";
 import identitySection from "./identitySection.md";
 import taskGuide from "./taskGuide.md";
@@ -25,13 +25,16 @@ interface CliPdeAgentOptionBuilderOptions {
   configDirName?: string;
   promptSections?: PromptSections;
   plugins?: CodeAgentPlugin[];
+  /** 追加到 CLI PDE 的工具；ask_questions 始终由 preset 内置。 */
+  tools?: Tool[];
 }
 
 type CliPdeAgentOptionBuilderResult<T extends CliPdeAgentOptionBuilderOptions> =
-  Omit<T, "configDirName" | "promptSections" | "plugins"> & {
+  Omit<T, "configDirName" | "promptSections" | "plugins" | "tools"> & {
     configDirName: string;
     promptSections: PromptSections;
     plugins: CodeAgentPlugin[];
+    tools: Tool[];
   };
 
 /**
@@ -42,12 +45,19 @@ type CliPdeAgentOptionBuilderResult<T extends CliPdeAgentOptionBuilderOptions> =
 export function cliPdeAgentOptionBuilder<T extends CliPdeAgentOptionBuilderOptions>(
   options: T,
 ): CliPdeAgentOptionBuilderResult<T> {
-  const { configDirName, plugins, promptSections, ...restOptions } = options;
+  const { configDirName, plugins, promptSections, tools, ...restOptions } = options;
+  const askQuestionsTool = Tools.createAskQuestions();
 
   return {
     ...restOptions,
     configDirName: configDirName ?? CLI_PDE_CONFIG_DIR_NAME,
     promptSections: cliPdePromptSection,
     plugins: [...(plugins ?? [])],
+    // CLI PDE 必须能够在 Ask / Plan 模式中向用户收集决策；同名调用方工具去重，
+    // 以预设提供的交互实现为准，避免模型看到重复 function definition。
+    tools: [
+      askQuestionsTool,
+      ...(tools ?? []).filter((tool) => tool.name !== askQuestionsTool.name),
+    ],
   } as CliPdeAgentOptionBuilderResult<T>;
 }
