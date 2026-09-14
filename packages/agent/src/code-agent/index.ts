@@ -1,6 +1,12 @@
 import { Agent, type AgentHooks, type AgentOptions } from "../agent";
 import type { Message, Tool } from "../types";
 import {
+  createAfterToolCallParams,
+  createBeforeToolCallParams,
+  getToolCallOutcome,
+  withToolCallOutcome,
+} from "../hooks";
+import {
   createReadTool,
   createWriteTool,
   createEditTool,
@@ -361,6 +367,46 @@ function composePluginHooks(
         }
       }
       return additionalMessages.length ? { additionalMessages } : undefined;
+    },
+    async beforeToolCall(params) {
+      let args = params.toolCall.args;
+      let changed = false;
+      for (const { source, hooks: activeHooks } of getActiveHooks()) {
+        if (!activeHooks.beforeToolCall) continue;
+        const result = await runHook(
+          source,
+          "beforeToolCall",
+          () => activeHooks.beforeToolCall!(createBeforeToolCallParams({
+            ...params,
+            toolCall: { ...params.toolCall, args },
+          })),
+        );
+        if (!result) continue;
+        // 任一插件 deny 即短路，后续插件不再有机会改写参数。
+        if (result.decision === "deny") return result;
+        if (Object.prototype.hasOwnProperty.call(result, "args")) {
+          args = result.args;
+          changed = true;
+        }
+      }
+      return changed ? { args } : undefined;
+    },
+    async afterToolCall(params) {
+      // 逐个插件串联改写：后一个插件看到的是前一个插件改写后的结果。
+      let toolCall = params.toolCall;
+      let changed = false;
+      for (const { source, hooks: activeHooks } of getActiveHooks()) {
+        if (!activeHooks.afterToolCall) continue;
+        const result = await runHook(
+          source,
+          "afterToolCall",
+          () => activeHooks.afterToolCall!(createAfterToolCallParams({ ...params, toolCall })),
+        );
+        if (!result) continue;
+        toolCall = withToolCallOutcome(toolCall, result);
+        changed = true;
+      }
+      return changed ? getToolCallOutcome(toolCall) : undefined;
     },
     async beforeTurnStop(params) {
       const additionalMessages: Message[] = [];

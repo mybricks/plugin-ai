@@ -19,7 +19,6 @@ import type {
   TokenUsage,
   Tool,
   ToolCallRecord,
-  ToolExecutionContext,
   TurnMessageSnapshot,
   TurnPersistMode,
   TurnRecord,
@@ -33,8 +32,9 @@ import { wrapRequestWithRetry, type RetryOptions } from "./retry";
 import { CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
 import { getTurnMode } from "./utils/core";
 import { getAvailableAgentModes, AgentModeEnum } from "./mode-manager";
-import { TOOL_OUTPUT_MAX_TOKENS } from "./content-limits";
+import { roughTokenCountEstimation } from "./content-limits";
 import { kv } from "./kv";
+import { executeToolCall, prepareToolCall, type PreparedToolCall } from "./tool-call";
 
 export { AgentEvents };
 export type { AgentMode, Message, History, HistoryPersistMode, Tool, TurnRecord, ToolCallRecord, WarmupIter };
@@ -84,14 +84,10 @@ const INTERRUPTED_TURN_MESSAGE = "任务异常中断，可点击重试继续";
  *
  * 超限时将工具结果替换为错误提示，引导模型缩小查询范围或换用更精准的工具，
  * 而非把大量内容直接塞入上下文。
+ *
+ * 实现已下沉到 content-limits，此处再导出以保持既有引用路径。
  */
-
-export function roughTokenCountEstimation(
-  content: string,
-  bytesPerToken: number = 4,
-): number {
-  return Math.round(content.length / bytesPerToken);
-}
+export { roughTokenCountEstimation };
 
 type InternalAgentOptions = AgentOptions & { request: NonNullable<AgentOptions["request"]> };
 
@@ -1006,6 +1002,22 @@ export class Agent {
         // 仍需后续 step：工具调用或 length 截断续跑
         this.events.emit("llm:complete", { step, finishReason: llmResult.finishReason, usage: llmResult.usage, done: false, endTime: iterEndTime, iterId: currentIterId });
 
+        // 工具调用前置：解析参数 + beforeToolCall。
+        // 必须早于 assistant 消息构建 —— hook 改写后的参数要成为 tool_calls 的唯一
+        // 事实来源，否则模型本轮看到原始参数、历史回放时看到改写后的参数。
+        const toolCallCtx = { turn, step, iterId: currentIterId, signal, events: this.events };
+        const preparedToolCalls: PreparedToolCall[] = [];
+        if (shouldContinueWithTools) {
+          for (const tc of llmResult.toolCalls) {
+            preparedToolCalls.push(await prepareToolCall({
+              toolCall: tc,
+              tools: this.options.tools,
+              ctx: toolCallCtx,
+              hooks: this.options.hooks,
+            }));
+          }
+        }
+
         // 追加 assistant message 到 tail。length 续跑时不追加额外 user 提示。
         const assistantMsg: Message = {
           role: "assistant",
@@ -1034,125 +1046,43 @@ export class Agent {
         let doomLoopTriggered = false;
         let doomLoopInfo: { toolName: string; count: number } | null = null;
 
-        for (let tcIdx = 0; tcIdx < llmResult.toolCalls.length; tcIdx++) {
-          const tc = llmResult.toolCalls[tcIdx];
+        for (const prepared of preparedToolCalls) {
           if (signal.aborted) break;
 
-          const tool = this.options.tools?.find(t => t.name === tc.name);
-          const execStartTime = Date.now();
-          let argsParseError: unknown = null;
-          if (tc.argsRaw != null && tc.args === null) {
-            try {
-              tc.args = JSON.parse(tc.argsRaw);
-            } catch (e) {
-              argsParseError = e;
-              tc.args = { _argsRaw: tc.argsRaw };
-            }
-          }
-          const toolRecord: ToolCallRecord = {
-            callId: tc.id,
-            name: tc.name,
-            title: tool?.title,
-            args: tc.args,
-            status: "pending",
-            execStartTime,
-            execEndTime: 0,
-          };
-          iterToolCallRecords.push(toolRecord);
-          this.events.emit("tool:call", { callId: tc.id, name: tc.name, args: tc.args ?? undefined, step, startTime: execStartTime, iterId: currentIterId });
-
-          let toolResultContent: string;
-          const toolContext: ToolExecutionContext = {
-            turnId: turn.id,
-            iterations: turn.iterations,
-            getUserMessage: () => ({
-              message: userParams.message,
-              attachments: userParams.attachments,
+          const { message: toolResultMessage } = await executeToolCall(prepared, {
+            hooks: this.options.hooks,
+            // 执行前就挂进当前 iter，使执行期间的 pending 记录对工具和持久化可见
+            onRecordCreated: record => iterToolCallRecords.push(record),
+            createToolContext: ({ callId, name }) => ({
+              turnId: turn.id,
+              iterations: turn.iterations,
+              getUserMessage: () => ({
+                message: userParams.message,
+                attachments: userParams.attachments,
+              }),
+              getAgent: () => this,
+              getAiRole: () => turnAiRole,
+              setAiRole: (aiRole?: string) => {
+                turnAiRole = aiRole || undefined;
+              },
+              mode: this.getMode(),
+              signal,
+              getMode: () => this.getMode(),
+              setMode: (mode: AgentMode, reason?: string) => {
+                this.setMode(mode, reason);
+              },
+              emitProgress: (data: any) => {
+                this.events.emit("tool:progress", { callId, name, data, step, iterId: currentIterId });
+              },
+              waitUIRender: <T>() => this.toolUI.wait<T>(callId, { signal }),
             }),
-            getAgent: () => this,
-            getAiRole: () => turnAiRole,
-            setAiRole: (aiRole?: string) => {
-              turnAiRole = aiRole || undefined;
-            },
-            mode: this.getMode(),
-            signal,
-            getMode: () => this.getMode(),
-            setMode: (mode: AgentMode, reason?: string) => {
-              this.setMode(mode, reason);
-            },
-            emitProgress: (data: any) => {
-              this.events.emit("tool:progress", { callId: tc.id, name: tc.name, data, step, iterId: currentIterId });
-            },
-            waitUIRender: <T>() => this.toolUI.wait<T>(tc.id, { signal }),
-          };
-
-          try {
-            if (!tool) throw new Error(`Tool not found: ${tc.name}`);
-            if (argsParseError) {
-              toolRecord.errorType = "invalid_args";
-              throw argsParseError;
-            }
-            tool.validate?.(tc.args, toolContext);
-            const result = await tool.execute(tc.args, toolContext);
-            if (signal.aborted) {
-              toolRecord.status = "error";
-              toolRecord.errorType = "normal";
-              toolRecord.error = `Error: 用户已取消`;
-              toolResultContent = toolRecord.error
-              toolRecord.execEndTime = Date.now();
-              this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: toolRecord.error, errorType: toolRecord.errorType, step, endTime: toolRecord.execEndTime, iterId: currentIterId });
-            } else {
-              toolRecord.result = { output: result.output, metadata: result.metadata };
-              toolRecord.status = "success";
-              toolRecord.execEndTime = Date.now();
-
-              // ── 工具 output 大小守卫 ─────────────────────────────────────────
-              // 自定义工具可能返回超大内容；统一在此拦截，用报错替换真实 output，
-              // 引导模型缩小查询范围，而非把大量内容塞入上下文。
-              // read 工具本身已有提前检查（在 execute 内部抛错），此处为兜底保护。
-              const maxOutputTokens = tool?.limits?.maxToken ?? TOOL_OUTPUT_MAX_TOKENS;
-              const outputTokens = maxOutputTokens === false ? 0 : roughTokenCountEstimation(result.output);
-              if (maxOutputTokens !== false && outputTokens > maxOutputTokens) {
-                const overLimitMsg = `Error: Tool output exceeds the ${maxOutputTokens} token limit (estimated ~${outputTokens} tokens). Return less data or narrow your query.`;
-                toolRecord.status = "error";
-                toolRecord.errorType = "normal";
-                toolRecord.error = overLimitMsg;
-                toolResultContent = overLimitMsg;
-                toolRecord.execEndTime = Date.now();
-                this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: overLimitMsg, errorType: toolRecord.errorType, step, endTime: toolRecord.execEndTime, iterId: currentIterId });
-              } else {
-                toolResultContent = result.output;
-                this.events.emit("tool:result", { callId: tc.id, name: tc.name, result: toolRecord.result, step, endTime: toolRecord.execEndTime, iterId: currentIterId });
-              }
-            }
-          } catch (e) {
-            toolRecord.status = "error";
-            if (!toolRecord.errorType) {
-              // ToolValidationError 或 validate 抛出的错误视为 invalid_args
-              toolRecord.errorType = (e as any)?.name === "ToolValidationError" ? "invalid_args" : "normal";
-            }
-            toolRecord.error = signal.aborted ? "Error: 用户已取消" : String((e as any)?.message ?? e);
-
-            if (argsParseError && tc?.args?._argsRaw) {
-              toolRecord.error += `\nrawContent: ${tc.args._argsRaw}`
-            }
-
-            toolResultContent = toolRecord.error;
-            toolRecord.execEndTime = Date.now();
-            this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: toolRecord.error, errorType: toolRecord.errorType, step, endTime: toolRecord.execEndTime, iterId: currentIterId });
-          }
-
-          toolResultMessages.push({
-            role: "tool",
-            tool_call_id: tc.id,
-            content: toolResultContent,
-            status: toolRecord.status,
-            ...(toolRecord.errorType ? { errorType: toolRecord.errorType } : {}),
           });
 
+          toolResultMessages.push(toolResultMessage);
         }
 
-        // Doom loop 检测：以本次 iter 的全部 tool calls 为单位，在所有工具执行完后检测
+        // Doom loop 检测：以本次 iter 的全部 tool calls 为单位，在所有工具执行完后检测。
+        // args 取前置阶段的最终结果，与 assistant 消息、实际执行保持同一份。
         const currentIterKey = llmResult.toolCalls
           .map(tc => `${tc.name}:${JSON.stringify(tc.args)}`)
           .join("|");

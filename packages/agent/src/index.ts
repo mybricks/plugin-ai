@@ -1,4 +1,12 @@
 export { Agent, AgentEvents, ForkAgent } from "./agent";
+export type {
+  AfterToolCallParams,
+  BeforeToolCallParams,
+  BeforeToolCallResult,
+  ToolCallDecision,
+  ToolCallOutcome,
+  TurnSummaryResult,
+} from "./hooks";
 export type { AgentMode, AgentOptions, AgentHooks, RequestAIOptions, RequestAICommonOptions, MessageRequestAIOptions, DisplayModelRequestAIOptions, FormatUserMessageParams, MaskOptions, HandoffOptions, ForkOptions, ForkAgentOptions, CompactRecord, FormatUserMessageResult } from "./agent";
 export type { RequestAsStreamFn, RequestAsStreamParams, RequestAsStreamEmits, ToolDescriptor, ToolCallSpec, ToolCallStreamDelta } from "./types/request";
 export { maskMessages } from "./mask";
