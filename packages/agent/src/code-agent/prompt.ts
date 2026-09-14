@@ -80,7 +80,7 @@ function getUsingToolsSection(usingTools?: string): string {
 function getToneAndStyleSection(): string {
   return `# 输出风格
 - 永远使用简体中文来告知、回答用户、输出总结；
-- 禁止使用emoji、表情符号；
+- 除非用户明确要求，否则禁止使用emoji、表情符号；
 - 在调用工具之前，务必用一句简洁明了的句子告诉用户你要做什么。这有助于他们理解你的操作及其原因。
 
 > 注意：用户是非研发用户，不懂编程机制和专业术语，如果需要使用专业术语回复用户，可以优先考虑使用通俗中文、生活化的比喻来进行说明。
@@ -94,5 +94,5 @@ function getToneAndStyleSection(): string {
 //  - 直接给出答案或行动，而非铺垫和推理过程。跳过填充词、前言和不必要的过渡语。不要重复用户说过的话，直接做；
 //  - 回答要简短直接；
 //  - 禁止使用 Unicode 转义序列；
-//  - 禁止使用emoji、表情符号。`;
+//  - 除非用户明确要求，否则禁止使用emoji、表情符号。`;
 // }
