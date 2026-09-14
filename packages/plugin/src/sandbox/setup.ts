@@ -18,6 +18,7 @@ import { getSyncableInitialFiles } from "./initial-files";
 import { chipRegistry } from "./chip-registry";
 import { connectToAIFromV1 } from "./connect-v1";
 import { connectToAIFromSandbox } from "./connect-sandbox";
+import { designerPlugin } from "./prompt-templates";
 import type {
   ConnectToAIResult,
   AgentRuntimeConfig,
@@ -265,7 +266,7 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
   const agentRuntimeRefs = new Map<string, AgentRuntimeRef>();
 
   const pluginParams: PluginParams = {
-    requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles: syncableInitialFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs, localAgent,
+    requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles: syncableInitialFiles, skills, plugins: [designerPlugin, ...(plugins ?? [])], promptSections, tools, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs, localAgent,
   };
 
   window._sandbox_ = {

@@ -105,7 +105,12 @@ export function expandMbsTemplateMessage(input: string, templates: MbsTemplate[]
   const marker = findMbsTemplateMarker(input);
   if (!marker) return null;
   const template = templates.find((item) => item.descriptor.reference === marker.reference);
-  if (!template) return null;
+  // A copied MBS record may outlive the plugin/template that created it. Do
+  // not expose an unresolved control marker to the model; retain the user's
+  // actual text that follows it instead.
+  if (!template) {
+    return `${input.slice(0, marker.index)}${input.slice(marker.index + marker.length)}`;
+  }
 
   const afterMarker = input.slice(marker.index + marker.length);
   const userQueryClose = afterMarker.indexOf("</user_query>");
