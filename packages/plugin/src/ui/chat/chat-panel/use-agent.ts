@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, createElement } from "react";
 import { context } from "../../../context";
 import { chipRegistry } from "../../../sandbox/setup";
 import type { QueueItem } from "../../../context/queue";
 import type { SenderProps } from "../../components/sender";
 import type { AgentMode, CodeAgent } from "../../../../../agent/src";
-import { AgentModeEnum } from "../../../../../agent/src";
+import { AgentModeEnum, getAgentModeMetadata } from "../../../../../agent/src";
 import type { HistoryStatus } from "../../../../../agent/src";
 import type { ModelSelection } from "../../../../../request/src/providers";
 import { useSession } from "../use-session";
@@ -13,8 +13,10 @@ import {
   useSessionState,
   type UseSessionStateOptions,
 } from "./use-session-state";
-import type { SenderPromptTemplateSlashCommand, SenderSlashCommand } from "../../components/sender/slash-command";
+import type { SenderActionSlashCommand, SenderPromptTemplateSlashCommand, SenderSlashCommand } from "../../components/sender/slash-command";
 import { jsonStringifySafe } from "../../../utils/json";
+import { ChatModeIcon } from "../../components/chat-mode";
+import { Skill } from "../../components/icons";
 
 export type ChatAgent = CodeAgent | HttpAgent;
 
@@ -136,8 +138,33 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
       description: template.description,
       scope: template.scope,
       reference: template.reference,
+      icon: createElement(Skill),
     }));
   }, [agent, pluginRevision]);
+
+  const modeSlashCommands = useMemo<SenderActionSlashCommand[]>(() => {
+    if (!agent) return [];
+    const currentMode = chatMode ?? agent.getMode();
+    return agent.getAvailableModes()
+      .filter((mode) => mode !== currentMode)
+      .map((mode) => {
+        const metadata = getAgentModeMetadata(mode);
+        return {
+          kind: "action",
+          name: mode,
+          displayName: metadata.slash.displayName,
+          description: metadata.slash.description,
+          scope: "builtin",
+          icon: createElement(ChatModeIcon, { mode }),
+          execute: () => agent.setMode(mode, "slash-command"),
+        } satisfies SenderActionSlashCommand;
+      });
+  }, [agent, chatMode, pluginRevision]);
+
+  const slashCommands = useMemo<SenderSlashCommand[]>(
+    () => [...mbsTemplateCommands, ...modeSlashCommands],
+    [mbsTemplateCommands, modeSlashCommands],
+  );
 
   useEffect(() => {
     if (!agent) return;
@@ -255,6 +282,6 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
     executePlan,
     retry,
     setChatMode,
-    slashCommands: mbsTemplateCommands,
+    slashCommands,
   };
 }

@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 /** Where a slash command was contributed. This is not its behavior. */
 export type SlashCommandScope = "config" | "plugin" | "project" | "builtin";
 
@@ -8,6 +10,8 @@ interface SenderSlashCommandBase {
   displayName?: string;
   description: string;
   scope: SlashCommandScope;
+  /** Leading icon shown in the slash menu; falls back to a kind-based default when omitted. */
+  icon?: ReactNode;
 }
 
 /**
