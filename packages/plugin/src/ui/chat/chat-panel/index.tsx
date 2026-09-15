@@ -201,6 +201,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     pendingQueue,
     showChatMode,
     chatMode,
+    availableModes,
     modelSelector,
     isDisabled,
     canExecutePlan,
@@ -270,6 +271,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       disabled={isDisabled}
       mode="mention"
       chatMode={showChatMode ? chatMode : null}
+      availableChatModes={availableModes}
       onSend={chatAgent.send}
       onChatModeChange={(nextMode: AgentMode | null) => {
         chatAgent.setChatMode(nextMode);

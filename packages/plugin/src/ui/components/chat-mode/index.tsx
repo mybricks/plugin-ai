@@ -29,7 +29,7 @@ const CHAT_MODE_MAP: Record<
   },
 };
 
-const CHAT_MODE_OPTIONS = Object.keys(CHAT_MODE_MAP) as NonNullable<ChatModeType>[];
+const ALL_CHAT_MODE_OPTIONS = Object.keys(CHAT_MODE_MAP) as NonNullable<ChatModeType>[];
 
 /** 莫比乌斯环图标（∞，横着的8），线条流动动画 */
 const MobiusIcon = () => (
@@ -75,11 +75,16 @@ export const ChatModeIcon = ({ mode }: { mode: NonNullable<ChatModeType> }) => (
 interface ChatModeProps {
   disabled?: boolean;
   chatMode: ChatModeType;
+  /** 当前 agent 实际可用的模式集合；缺省时展示全部内置模式。 */
+  availableModes?: NonNullable<ChatModeType>[];
   onChange?: (chatMode: ChatModeType) => void;
 }
 
 const ChatMode = (props: ChatModeProps) => {
-  const { chatMode, disabled, onChange } = props;
+  const { chatMode, disabled, availableModes, onChange } = props;
+  const options = availableModes && availableModes.length > 0
+    ? ALL_CHAT_MODE_OPTIONS.filter((mode) => availableModes.includes(mode))
+    : ALL_CHAT_MODE_OPTIONS;
   const [open, setOpen] = useState(false);
   const [highlightedMode, setHighlightedMode] = useState<NonNullable<ChatModeType>>(chatMode ?? AgentModeEnum.Build);
   const highlightedModeRef = useRef(highlightedMode);
@@ -105,11 +110,11 @@ const ChatMode = (props: ChatModeProps) => {
     const onKeyDown = (event: KeyboardEvent) => {
       handleListNavigationKeyDown(event, {
         open,
-        items: CHAT_MODE_OPTIONS,
+        items: options,
         highlightedIndex: highlightedModeRef.current,
         onMoveHighlight: (step, itemCount) => {
-          const currentIndex = Math.max(0, CHAT_MODE_OPTIONS.indexOf(highlightedModeRef.current));
-          updateHighlightedMode(CHAT_MODE_OPTIONS[(currentIndex + step + itemCount) % itemCount]);
+          const currentIndex = Math.max(0, options.indexOf(highlightedModeRef.current));
+          updateHighlightedMode(options[(currentIndex + step + itemCount) % itemCount]);
         },
         onSelect: selectMode,
         onClose: () => setOpen(false),
@@ -118,7 +123,7 @@ const ChatMode = (props: ChatModeProps) => {
 
     document.addEventListener("keydown", onKeyDown, true);
     return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [chatMode, open, selectMode, updateHighlightedMode]);
+  }, [chatMode, open, options, selectMode, updateHighlightedMode]);
 
   if (!chatMode) {
     return null;
@@ -150,7 +155,7 @@ const ChatMode = (props: ChatModeProps) => {
       }
     >
       <div className={css.menu} role="listbox" aria-label="选择模式">
-        {CHAT_MODE_OPTIONS.map((key) => {
+        {options.map((key) => {
           const item = CHAT_MODE_MAP[key];
           const isSelected = chatMode === key;
           return (

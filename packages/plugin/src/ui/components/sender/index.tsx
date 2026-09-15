@@ -239,6 +239,8 @@ interface SenderProps {
   onBlur?: () => void;
   mode?: "mention"
   chatMode?: ChatModeType;
+  /** 当前 agent 实际可用的模式集合；缺省时下拉会展示全部内置模式。 */
+  availableChatModes?: NonNullable<ChatModeType>[];
   onChatModeChange?: (chatMode: ChatModeType) => void;
   /** 输入框风格：compact（紧凑，默认）| loose（松散，padding 更大）| bubble（悬浮气泡，最紧凑，无附件按钮）*/
   variant?: 'compact' | 'loose' | 'bubble';
@@ -344,7 +346,7 @@ interface SenderRef {
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const {
     loading, placeholder = "请输入", defaultFocusPlaceholder, disabled,
-    onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange,
+    onBlur, attachmentsPrompt, mode, chatMode, availableChatModes, onChatModeChange,
     variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue,
     renderFocus, abovePanels, renderActionPrefix, renderAttachmentSuffix,
     modelSelector, className, chipTypes = [], matchDefaultFocusContent,
@@ -1586,7 +1588,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         ) : null}
         {selectorRenderInTop && (chatMode || (modelSelector && modelSelector.models.length > 0)) ? (
           <div className={css.selectorsAboveInput}>
-            {chatMode ? <ChatMode disabled={disabled || loading} chatMode={chatMode} onChange={onChatModeChange} /> : null}
+            {chatMode ? <ChatMode disabled={disabled || loading} chatMode={chatMode} availableModes={availableChatModes} onChange={onChatModeChange} /> : null}
             {modelSelector && modelSelector.models.length > 0 && (
               <ModelSelector modelSelector={modelSelector} disabled={disabled || uploading || loading} />
             )}
@@ -1679,7 +1681,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
               {mentionMenuNode}
             </Popup>
             {renderAttachmentSuffix?.()}
-            {!selectorRenderInTop && chatMode ? <ChatMode disabled={disabled || loading} chatMode={chatMode} onChange={onChatModeChange} /> : null}
+            {!selectorRenderInTop && chatMode ? <ChatMode disabled={disabled || loading} chatMode={chatMode} availableModes={availableChatModes} onChange={onChatModeChange} /> : null}
           </div>
           <div className={css.rightArea}>
             {renderActionPrefix?.({
