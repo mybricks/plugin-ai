@@ -177,7 +177,7 @@ export async function executeToolCall(
     const result = await tool.execute(record.args, toolContext);
     // 即使用户在 execute 期间取消，也保留工具已完成的部分结果。最终 message
     // 会由统一 formatter 标为“部分结果 + 已取消”，而不会误判为完整成功。
-    record.result = { output: result.output, metadata: result.metadata };
+    record.result = result;
     if (signal.aborted) {
       record.status = "error";
       record.errorType = "normal";
@@ -239,9 +239,13 @@ function finalize(
       const cancelled = includePartialOutput;
       record.status = "error";
       record.errorType = "normal";
-      record.result = record.result.metadata === undefined
+      record.result = record.result.metadata === undefined && !record.result.attachments?.length
         ? undefined
-        : { output: "", metadata: record.result.metadata };
+        : {
+            output: "",
+            ...(record.result.metadata === undefined ? {} : { metadata: record.result.metadata }),
+            ...(record.result.attachments?.length ? { attachments: record.result.attachments } : {}),
+          };
       includePartialOutput = false;
       record.error = `Error: Tool output exceeds the ${maxOutputTokens} token limit (estimated ~${outputTokens} tokens). Return less data or narrow your query.${cancelled ? "\n\nError: 用户已手动取消" : ""}`;
     }

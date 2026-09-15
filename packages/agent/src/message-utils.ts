@@ -57,6 +57,6 @@ export function toolCallRecordToMessage(
     content: getToolCallMessageContent(record, options),
     ...(status ? { status } : {}),
     ...(record.errorType ? { errorType: record.errorType } : {}),
-    ...(record.attachments?.length ? { attachments: record.attachments } : {}),
+    ...(record.result?.attachments?.length ? { attachments: record.result.attachments } : {}),
   };
 }

@@ -187,7 +187,7 @@ function summarizeToolCalls(iter) {
     } else {
       resultChars += textSize(toolCall.result?.output);
     }
-    resultChars += textSize(toolCall.attachments);
+    resultChars += textSize(toolCall.result?.attachments);
   }
 
   return {

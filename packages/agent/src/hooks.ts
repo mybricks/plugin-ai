@@ -148,6 +148,7 @@ function cloneToolCallRecord(toolCall: Readonly<ToolCallRecord>): ToolCallRecord
           result: {
             output: toolCall.result.output,
             ...(toolCall.result.metadata ? { metadata: cloneHookData(toolCall.result.metadata) } : {}),
+            ...(toolCall.result.attachments ? { attachments: cloneHookData(toolCall.result.attachments) } : {}),
           },
         }
       : {}),
@@ -168,7 +169,10 @@ export function createAfterToolCallParams(params: AfterToolCallParams): AfterToo
 
 export function getToolCallOutcome(toolCall: Readonly<ToolCallRecord>): ToolCallOutcome {
   if (toolCall.status === "success" && toolCall.result) {
-    return { status: "success", result: toolCall.result };
+    return {
+      status: "success",
+      result: toolCall.result,
+    };
   }
   return { status: "error", error: String(toolCall.error ?? "Tool execution failed") };
 }

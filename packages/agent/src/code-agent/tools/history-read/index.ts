@@ -253,13 +253,19 @@ function renderToolCall(toolCall: ToolCallRecord, level: HistoryReadOutputLevel)
     ...(toolCall.result?.metadata !== undefined ? { metadata: toolCall.result.metadata } : {}),
   };
   if (level === "standard") return standard;
+  const result = toolCall.result
+    ? {
+        output: toolCall.result.output,
+        ...(toolCall.result.metadata !== undefined ? { metadata: toolCall.result.metadata } : {}),
+        ...(toolCall.result.attachments?.length ? { attachments: attachmentMetadata(toolCall.result.attachments) } : {}),
+      }
+    : undefined;
   return {
     ...standard,
     callId: toolCall.callId,
     execStartTime: toolCall.execStartTime,
     execEndTime: toolCall.execEndTime,
-    ...(toolCall.result ? { result: toolCall.result } : {}),
-    ...(toolCall.attachments?.length ? { attachments: attachmentMetadata(toolCall.attachments) } : {}),
+    ...(result ? { result } : {}),
   };
 }
 

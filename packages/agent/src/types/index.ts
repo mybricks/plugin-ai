@@ -41,7 +41,7 @@ export type AgentMode = "build" | "plan" | "ask";
 /**
  * 通用附件格式，贯穿整个附件数据流：
  *   requestAI({ attachments }) → TurnRecord.userAttachments
- *   → ToolCallRecord.attachments → Message.attachments
+ *   → ToolCallRecord.result.attachments → Message.attachments
  *
  * type    附件类型，如 "image"、"pdf"
  * content 可以是 data URL 或普通 URL；url 可显式传普通 URL。
@@ -151,7 +151,7 @@ export interface Message {
   errorType?: "invalid_args" | "normal";
   /**
    * 工具调用结果携带的附件（仅 role === "tool" 时有意义）。
-   * 由 assembleMessages 从 ToolCallRecord.attachments 透传而来。
+   * 由 assembleMessages 从 ToolCallRecord.result.attachments 透传而来。
    * 在请求层按 model capabilities 预处理（内嵌或提取为合成 user 消息），
    * sanitizeMessages 发送前会将此字段移除（不裸发到 API）。
    */
@@ -213,8 +213,8 @@ export interface ToolCallRecord {
   /** 工具标题（可选），用于 UI 展示。来源于 Tool.title。 */
   title?: string;
   args: any;
-  /** 工具执行结果（包含 output 和 metadata） */
-  result?: { output: string; metadata?: any };
+  /** 工具执行结果（包含 output、metadata 和附件） */
+  result?: ToolResult;
   error?: any;
   status: "pending" | "success" | "error";
   /**
@@ -227,13 +227,6 @@ export interface ToolCallRecord {
   execStartTime: number;
   /** 工具执行完成的时间（Unix ms），执行中为 0 */
   execEndTime: number;
-  /**
-   * 工具执行产出的附件（图片、PDF 等）。
-   * Agent 层只做数据透传，不做任何能力判断。
-   * assembleMessages 时携带到 Message.attachments，
-   * 由请求层按 model capabilities 做分流处理。
-   */
-  attachments?: Attachment[];
 }
 
 /**
@@ -564,10 +557,12 @@ export class ToolValidationError extends Error {
  *   - title    工具卡片展示标题（简短，如文件名）
  *   - output   发给 LLM 的文本内容（function call result）
  *   - metadata 持久化元数据，前端渲染可用（如路径、行数、策略等）
+ *   - attachments 工具产出的媒体附件，由 Agent 写入 tool message 后交给请求层按模型能力发送
  */
 export interface ToolResult {
   output: string;
   metadata?: Record<string, any>;
+  attachments?: Attachment[];
 }
 
 /**
