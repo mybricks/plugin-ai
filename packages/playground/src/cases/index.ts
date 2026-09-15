@@ -91,6 +91,7 @@ import { settingCase } from "./setting";
 import { modelSwitchCase } from "./model-switch";
 import { requestAIButtonsCase } from "./request-ai-buttons";
 import { disabledModesPlanCase } from "./disabled-modes";
+import { slashModeCase } from "./slash-mode";
 import { planWriteGeneratedFileCase } from "./plan-write-file";
 import { toolContractCase } from "./tool-contract";
 import {
@@ -300,6 +301,7 @@ export const ALL_CASES: TestCase[] = [
   modelSwitchCase,
   requestAIButtonsCase,
   disabledModesPlanCase,
+  slashModeCase,
   // Grep 搜索
   grepDefaultFilesCase,
   grepCommandsCase,

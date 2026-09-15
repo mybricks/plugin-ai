@@ -15,16 +15,52 @@ export const AgentModeEnum = {
   Ask: "ask",
 } as const;
 
-export const ALL_AGENT_MODES: AgentMode[] = [AgentModeEnum.Build, AgentModeEnum.Plan, AgentModeEnum.Ask];
+/**
+ * 默认内置的可选模式列表。Ask 模式的能力仍然完整保留（元数据、提示词、
+ * setMode 校验均支持），只是暂不作为默认可选项对外暴露；调用方仍可通过
+ * agent.setMode(AgentModeEnum.Ask, ...) 显式启用。
+ */
+export const ALL_AGENT_MODES: AgentMode[] = [AgentModeEnum.Build, AgentModeEnum.Plan];
 
 export interface AgentModeAvailabilityOptions {
   disabledModes?: AgentMode[];
 }
 
-const AGENT_MODE_LABELS: Record<AgentMode, string> = {
-  [AgentModeEnum.Build]: "智能体模式",
-  [AgentModeEnum.Plan]: "计划模式",
-  [AgentModeEnum.Ask]: "询问模式",
+export interface AgentModeMetadata {
+  label: string;
+  description: string;
+  slash: {
+    displayName: string;
+    description: string;
+  };
+}
+
+/** 每种模式的用户可见元数据；模式选择器、提示词和 slash action 共用此定义。 */
+export const AGENT_MODE_METADATA: Record<AgentMode, AgentModeMetadata> = {
+  [AgentModeEnum.Build]: {
+    label: "智能体模式",
+    description: "按用户需求直接执行修改项目文件",
+    slash: {
+      displayName: "智能体",
+      description: "切换到智能体模式，直接执行任务",
+    },
+  },
+  [AgentModeEnum.Plan]: {
+    label: "计划模式",
+    description: "阅读、分析、维护计划文件，并向用户澄清问题，不改项目文件",
+    slash: {
+      displayName: "计划",
+      description: "切换到计划模式，先制定可执行方案",
+    },
+  },
+  [AgentModeEnum.Ask]: {
+    label: "询问模式",
+    description: "只读地澄清、质询需求和方案，不创建计划或修改项目文件",
+    slash: {
+      displayName: "询问",
+      description: "切换到询问模式，",
+    },
+  },
 };
 
 export function getDisabledAgentModes(options?: AgentModeAvailabilityOptions): AgentMode[] {
@@ -42,7 +78,11 @@ export function shouldEnableModeSwitchTool(options?: AgentModeAvailabilityOption
 }
 
 export function getModeLabel(mode: AgentMode): string {
-  return AGENT_MODE_LABELS[mode];
+  return AGENT_MODE_METADATA[mode].label;
+}
+
+export function getAgentModeMetadata(mode: AgentMode): AgentModeMetadata {
+  return AGENT_MODE_METADATA[mode];
 }
 
 // ─── Plan 文件状态感知 ─────────────────────────────────────────────────────────
@@ -167,15 +207,9 @@ function joinSections(sections: Array<string | undefined | null | false>): strin
 function getModeCatalogSlug(availableModes: AgentMode[]): string {
   if (availableModes.length === 1 && availableModes[0] === AgentModeEnum.Build) return "";
 
-  const descriptions: Record<AgentMode, string> = {
-    [AgentModeEnum.Build]: "按用户需求直接执行修改项目文件",
-    [AgentModeEnum.Plan]: `阅读、分析、维护计划文件，并向用户澄清问题，不改项目文件`,
-    [AgentModeEnum.Ask]: "只读地澄清、质询需求和方案，不创建计划或修改项目文件",
-  };
-
   return `## 可用模式
 当前支持以下模式：
-${availableModes.map((mode) => `- ${mode}（${getModeLabel(mode)}）：${descriptions[mode]}`).join(`
+${availableModes.map((mode) => `- ${mode}（${getModeLabel(mode)}）：${getAgentModeMetadata(mode).description}`).join(`
 `)}
 注意：你无法自行改变当前模式，如需更换模式，请告知用户在左下角手动切换。`;
 }
