@@ -69,3 +69,20 @@ export function selectSlashTemplateCommand(editor: HTMLDivElement, command: Send
   selection?.addRange(trigger.range);
   return insertSlashTemplateToken(editor, command);
 }
+
+/**
+ * Remove the `/query` trigger text without inserting anything. Used by
+ * UI-owned action commands (e.g. mode switch), which execute immediately
+ * and never turn into an editor token.
+ */
+export function clearSlashTrigger(editor: HTMLDivElement): boolean {
+  const trigger = getSlashTriggerAtCaret(editor);
+  if (!trigger) return false;
+
+  trigger.range.deleteContents();
+  trigger.range.collapse(true);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(trigger.range);
+  return true;
+}

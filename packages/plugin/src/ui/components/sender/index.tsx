@@ -28,7 +28,7 @@ import {
 } from "./chip";
 import { getAdjacentSenderInlineToken, removeSenderInlineToken } from "./inline-token";
 import { focusEditorAtEnd, getEditorTextCaret } from "./editor-selection";
-import { insertSlashTemplateToken, readSlashMenuInput, selectSlashTemplateCommand } from "./slash-editor";
+import { insertSlashTemplateToken, readSlashMenuInput, selectSlashTemplateCommand, clearSlashTrigger } from "./slash-editor";
 import { serializeCopiedSenderContent, serializeSenderContent } from "./sender-serialization";
 import {
   isSupportedImageFile,
@@ -60,6 +60,7 @@ import { CodeAgent, parseMbsTemplateRecord } from "../../../../../agent/src";
 import { useSlashMenu } from "./slash-menu";
 import type { SenderPromptTemplateSlashCommand, SenderSlashCommand } from "./slash-command";
 import { resolvePromptTemplateSlashCommand } from "./slash-protocol";
+import { handleListNavigationKeyDown } from "../menu-keyboard";
 import css from "./index.less"
 
 // ─── 全局鼠标位置追踪（模块级单例，供飞行动画读取起点）────────────────────────────
@@ -740,6 +741,8 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
   const selectSlashCommand = useCallback((command: SenderSlashCommand) => {
     if (command.kind === "action") {
+      const editor = inputEditorRef.current;
+      if (editor && clearSlashTrigger(editor)) syncInputContent();
       void command.execute();
       return;
     }
@@ -956,64 +959,44 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   }, [notifyChipRemove]);
 
   const handleMentionMenuKeyDown = useCallback((event: Pick<KeyboardEvent | React.KeyboardEvent, "key" | "preventDefault">): boolean => {
-    if (!mentionMenuOpen) return false;
-
-    if (event.key === "Escape") {
-      event.preventDefault();
-      closeMentionMenu();
-      return true;
-    }
-
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      if (mentionMenuEntries.length > 0) {
-        const step = event.key === "ArrowDown" ? 1 : -1;
-        setMentionHighlightIndex((prev) => (prev + step + mentionMenuEntries.length) % mentionMenuEntries.length);
-      }
-      return true;
-    }
-
-    if (event.key === "Enter" || event.key === "Tab") {
-      event.preventDefault();
-      const entry = mentionMenuEntries[mentionHighlightIndex];
-      if (entry) void selectMentionEntryRef.current(entry);
-      return true;
-    }
-
-    if (event.key === "ArrowRight") {
-      const entry = mentionMenuEntries[mentionHighlightIndex];
-      if (entry?.children) {
-        event.preventDefault();
-        void selectMentionEntryRef.current(entry);
-      }
-      return true;
-    }
-
-    if ((event.key === "ArrowLeft" || event.key === "Backspace") && mentionMenuCanBack) {
-      event.preventDefault();
-      backToRootMentionMenu();
-      return true;
-    }
+    if (handleListNavigationKeyDown(event, {
+      open: mentionMenuOpen,
+      items: mentionMenuEntries,
+      highlightedIndex: mentionHighlightIndex,
+      onMoveHighlight: (step, itemCount) => {
+        setMentionHighlightIndex((previous) => (previous + step + itemCount) % itemCount);
+      },
+      onSelect: (entry) => selectMentionEntryRef.current(entry),
+      onClose: closeMentionMenu,
+      onEnterChild: (entry) => selectMentionEntryRef.current(entry),
+      canEnterChild: (entry) => !!entry.children,
+      onLeaveChild: mentionMenuCanBack ? backToRootMentionMenu : undefined,
+    })) return true;
 
     return false;
   }, [backToRootMentionMenu, closeMentionMenu, mentionHighlightIndex, mentionMenuCanBack, mentionMenuEntries, mentionMenuOpen]);
 
+  /**
+   * 所有输入浮层共用的热键入口。顺序即优先级；新增浮层时只需在此注册
+   * 自己的 handler，编辑器和浮层外的 document capture 会自动保持一致。
+   */
+  const handleOverlayKeyDown = useCallback((event: Pick<KeyboardEvent | React.KeyboardEvent, "key" | "preventDefault">): boolean => {
+    return slashMenu.onKeyDown(event) || handleMentionMenuKeyDown(event);
+  }, [handleMentionMenuKeyDown, slashMenu]);
+
   useEffect(() => {
-    if (!mentionMenuOpen) return;
+    if (!mentionMenuOpen && !slashMenu.open) return;
     const onDocumentKeyDown = (event: KeyboardEvent) => {
       const editor = inputEditorRef.current;
       if (editor?.contains(event.target as Node)) return;
-      handleMentionMenuKeyDown(event);
+      handleOverlayKeyDown(event);
     };
     document.addEventListener("keydown", onDocumentKeyDown, true);
     return () => document.removeEventListener("keydown", onDocumentKeyDown, true);
-  }, [handleMentionMenuKeyDown, mentionMenuOpen]);
+  }, [handleOverlayKeyDown, mentionMenuOpen, slashMenu.open]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (slashMenu.onKeyDown(event)) {
-      return;
-    }
-    if (handleMentionMenuKeyDown(event)) {
+    if (handleOverlayKeyDown(event)) {
       return;
     }
 

@@ -78,14 +78,22 @@
 
 .item {
   display: flex;
+  width: 100%;
   align-items: center;
   padding: var(--chat-menu-item-padding, 6px 10px);
+  border: 0;
+  background: transparent;
   cursor: pointer;
   transition: background 0.15s;
   color: var(--mybricks-text-color-main, #333333);
+  text-align: left;
 
   &:hover {
     background: var(--mybricks-bg-color-secondary, #f5f5f5);
+  }
+
+  &.highlighted {
+    background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 7%, transparent);
   }
 
   &.selected {

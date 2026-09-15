@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import classNames from "classnames";
 import { Popup } from "../popup";
+import { handleListNavigationKeyDown } from "../menu-keyboard";
 import { AgentModeEnum } from "../../../../../agent/src";
 import css from "./index.less";
 
@@ -27,6 +28,8 @@ const CHAT_MODE_MAP: Record<
     description: "先澄清并质询关键决策，不创建计划或修改项目",
   },
 };
+
+const CHAT_MODE_OPTIONS = Object.keys(CHAT_MODE_MAP) as NonNullable<ChatModeType>[];
 
 /** 莫比乌斯环图标（∞，横着的8），线条流动动画 */
 const MobiusIcon = () => (
@@ -65,7 +68,7 @@ const AskIcon = () => (
   </svg>
 );
 
-const ChatModeIcon = ({ mode }: { mode: NonNullable<ChatModeType> }) => (
+export const ChatModeIcon = ({ mode }: { mode: NonNullable<ChatModeType> }) => (
   mode === AgentModeEnum.Build ? <MobiusIcon /> : mode === AgentModeEnum.Plan ? <PlanIcon /> : <AskIcon />
 );
 
@@ -78,6 +81,44 @@ interface ChatModeProps {
 const ChatMode = (props: ChatModeProps) => {
   const { chatMode, disabled, onChange } = props;
   const [open, setOpen] = useState(false);
+  const [highlightedMode, setHighlightedMode] = useState<NonNullable<ChatModeType>>(chatMode ?? AgentModeEnum.Build);
+  const highlightedModeRef = useRef(highlightedMode);
+
+  const updateHighlightedMode = useCallback((mode: NonNullable<ChatModeType>) => {
+    highlightedModeRef.current = mode;
+    setHighlightedMode(mode);
+  }, []);
+
+  const selectMode = useCallback((mode: NonNullable<ChatModeType>) => {
+    onChange?.(mode);
+    setOpen(false);
+  }, [onChange]);
+
+  const handleOpenChange = useCallback((nextOpen: boolean) => {
+    if (nextOpen && chatMode) updateHighlightedMode(chatMode);
+    setOpen(nextOpen);
+  }, [chatMode, updateHighlightedMode]);
+
+  useEffect(() => {
+    if (!open || !chatMode) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      handleListNavigationKeyDown(event, {
+        open,
+        items: CHAT_MODE_OPTIONS,
+        highlightedIndex: highlightedModeRef.current,
+        onMoveHighlight: (step, itemCount) => {
+          const currentIndex = Math.max(0, CHAT_MODE_OPTIONS.indexOf(highlightedModeRef.current));
+          updateHighlightedMode(CHAT_MODE_OPTIONS[(currentIndex + step + itemCount) % itemCount]);
+        },
+        onSelect: selectMode,
+        onClose: () => setOpen(false),
+      });
+    };
+
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [chatMode, open, selectMode, updateHighlightedMode]);
 
   if (!chatMode) {
     return null;
@@ -88,7 +129,7 @@ const ChatMode = (props: ChatModeProps) => {
   return (
     <Popup
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={handleOpenChange}
       disabled={disabled}
       placement="top-start"
       trigger={
@@ -108,18 +149,22 @@ const ChatMode = (props: ChatModeProps) => {
         </div>
       }
     >
-      <div className={css.menu}>
-        {(Object.keys(CHAT_MODE_MAP) as NonNullable<ChatModeType>[]).map((key) => {
+      <div className={css.menu} role="listbox" aria-label="选择模式">
+        {CHAT_MODE_OPTIONS.map((key) => {
           const item = CHAT_MODE_MAP[key];
           const isSelected = chatMode === key;
           return (
-            <div
+            <button
               key={key}
-              className={classNames(css.item, { [css.selected]: isSelected })}
-              onClick={() => {
-                onChange?.(key);
-                setOpen(false);
-              }}
+              type="button"
+              role="option"
+              aria-selected={isSelected}
+              className={classNames(css.item, {
+                [css.selected]: isSelected,
+                [css.highlighted]: highlightedMode === key,
+              })}
+              onMouseMove={() => updateHighlightedMode(key)}
+              onClick={() => selectMode(key)}
             >
               <div className={css.itemContent}>
                 <div className={css.itemTitle}>
@@ -130,7 +175,7 @@ const ChatMode = (props: ChatModeProps) => {
                 </div>
                 <div className={css.itemDesc}>{item.description}</div>
               </div>
-            </div>
+            </button>
           );
         })}
       </div>

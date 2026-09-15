@@ -915,9 +915,12 @@
   text-align: left;
   cursor: pointer;
 
-  &:hover,
-  &.highlighted {
+  &:hover {
     background: var(--mybricks-bg-color-hover, #F5F5F5);
+  }
+
+  &.highlighted {
+    background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 7%, transparent);
   }
 }
 

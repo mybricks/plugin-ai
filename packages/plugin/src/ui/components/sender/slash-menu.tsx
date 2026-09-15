@@ -1,5 +1,7 @@
 import React, { useCallback, useMemo, useState } from "react";
 import classNames from "classnames";
+import { handleListNavigationKeyDown } from "../menu-keyboard";
+import { Skill, Code } from "../icons";
 import type { SenderSlashCommand } from "./slash-command";
 import type { SlashMenuInput } from "./slash-editor";
 import css from "./slash-menu.less";
@@ -62,44 +64,42 @@ export function useSlashMenu({ commands, disabled = false, readInput, onSelectCo
   }, [close, commands, disabled, readInput]);
 
   const onKeyDown = useCallback((event: Pick<KeyboardEvent | React.KeyboardEvent, "key" | "preventDefault">): boolean => {
-    if (!open) return false;
-    if (event.key === "Escape") {
-      event.preventDefault();
-      close();
-      return true;
-    }
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      if (matches.length) {
-        const step = event.key === "ArrowDown" ? 1 : -1;
-        setHighlightIndex((previous) => (previous + step + matches.length) % matches.length);
-      }
-      return true;
-    }
-    if (event.key === "Enter" || event.key === "Tab") {
-      const command = matches[highlightIndex];
-      if (!command) return false;
-      event.preventDefault();
-      select(command);
-      return true;
-    }
-    return false;
+    return handleListNavigationKeyDown(event, {
+      open,
+      items: matches,
+      highlightedIndex: highlightIndex,
+      onMoveHighlight: (step, itemCount) => {
+        setHighlightIndex((previous) => (previous + step + itemCount) % itemCount);
+      },
+      onSelect: select,
+      onClose: close,
+    });
   }, [close, highlightIndex, matches, open, select]);
 
   const node = open ? (
     <div className={css.menu} onMouseDown={(event) => event.preventDefault()}>
-      {matches.map((command, index) => (
-        <button
-          key={`${command.scope}:${command.kind}:${command.name}`}
-          type="button"
-          className={classNames(css.item, { [css.highlighted]: index === highlightIndex })}
-          onMouseMove={() => setHighlightIndex(index)}
-          onClick={() => select(command)}
-        >
-          <span className={css.name}>/{command.displayName ?? command.name}</span>
-          <span className={css.description}>{command.description}</span>
-        </button>
-      ))}
+      {matches.map((command, index) => {
+        const startsActionGroup = index > 0 && command.kind === "action" && matches[index - 1]?.kind !== "action";
+        return (
+          <React.Fragment key={`${command.scope}:${command.kind}:${command.name}`}>
+            {startsActionGroup ? (
+              <div className={css.groupDivider} role="separator" />
+            ) : null}
+            <button
+              type="button"
+              className={classNames(css.item, { [css.highlighted]: index === highlightIndex })}
+              onMouseMove={() => setHighlightIndex(index)}
+              onClick={() => select(command)}
+            >
+              <span className={css.icon}>
+                {command.icon ?? (command.kind === "prompt-template" ? <Skill /> : <Code />)}
+              </span>
+              <span className={css.name}>{command.displayName ?? command.name}</span>
+              <span className={css.description}>{command.description}</span>
+            </button>
+          </React.Fragment>
+        );
+      })}
     </div>
   ) : null;
 
