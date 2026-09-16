@@ -330,7 +330,7 @@ function prefixPluginToolName(pluginName: string, tool: Tool): Tool {
  * 用 <system-reminder>环境信息</system-reminder> 包裹，返回字符串。
  * 如果无任何内容则返回空字符串。
  */
-function buildEnvironmentSection(skills?: SkillFile[], subAgents?: SubAgentConfig[]): string {
+export function buildEnvironmentSection(skills?: SkillFile[], subAgents?: SubAgentConfig[]): string {
   const sections: string[] = [];
 
   // ── 当前日期 ──────────────────────────────────────────────────────────────
@@ -386,7 +386,7 @@ function buildEnvironmentSection(skills?: SkillFile[], subAgents?: SubAgentConfi
   return `<system-reminder>\n${sections.join("\n\n")}\n</system-reminder>`;
 }
 
-async function buildAlwaysLoadedSkillsSection(skills: SkillFile[]): Promise<string> {
+export async function buildAlwaysLoadedSkillsSection(skills: SkillFile[]): Promise<string> {
   const alwaysSkills = skills.filter(shouldAlwaysLoadSkill);
   if (!alwaysSkills.length) return "";
 

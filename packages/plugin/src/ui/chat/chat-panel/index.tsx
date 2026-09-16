@@ -348,6 +348,11 @@ export { useAgent } from "./use-agent";
 export { useSessionState } from "./use-session-state";
 export type { SessionState, UseSessionStateOptions } from "./use-session-state";
 export { HttpAgent, isHttpAgent } from "./http-agent";
+export { WebSocketAgent, isWebSocketAgent } from "./websocket-agent";
+export type {
+  WebSocketAgentOptions,
+  WebSocketAgentRuntimeOptions,
+} from "./websocket-agent";
 export type { ChatAgent, ChatPanelAgentState } from "./use-agent";
 export type {
   BrowserToolRequest,

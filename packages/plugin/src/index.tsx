@@ -38,7 +38,7 @@ export type { MentionProvider, MentionMenuItem } from "./ui/components/types";
 // ProviderConfig / ModelConfig 已由 request 包导出，此处仅导出 plugin 专属类型
 export type { SettingValue } from "./ui/setting";
 export { ChatPanel } from "./ui/chat";
-export { HttpAgent } from "./ui/chat";
+export { HttpAgent, WebSocketAgent } from "./ui/chat";
 export type {
   BrowserToolRequest,
   BrowserToolResult,
@@ -48,6 +48,8 @@ export type {
   HttpAgentOptions,
   HttpAgentRequestAIParams,
   MessageHttpAgentRequestAIParams,
+  WebSocketAgentOptions,
+  WebSocketAgentRuntimeOptions,
 } from "./ui/chat";
 export * from "../../kit/src/preset";
 export { default as pluginLowCodeAI } from "../../plugin-lowcode/src";

@@ -9,15 +9,16 @@ import type { HistoryStatus } from "../../../../../agent/src";
 import type { ModelSelection } from "../../../../../request/src/providers";
 import { useSession } from "../use-session";
 import { isHttpAgent, type HttpAgent } from "./http-agent";
+import { isWebSocketAgent, type WebSocketAgent } from "./websocket-agent";
 import {
   useSessionState,
   type UseSessionStateOptions,
 } from "./use-session-state";
 
-export type ChatAgent = CodeAgent | HttpAgent;
+export type ChatAgent = CodeAgent | HttpAgent | WebSocketAgent;
 
 export interface ChatPanelAgentState {
-  source: "local" | "http";
+  source: "local" | "http" | "websocket";
   agent?: ChatAgent;
   messages: ReturnType<typeof useSession>["messages"];
   historyStatus: HistoryStatus;
@@ -209,7 +210,7 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
   }, [agent]);
 
   return {
-    source: isHttpAgent(agent) ? "http" : "local",
+    source: isWebSocketAgent(agent) ? "websocket" : isHttpAgent(agent) ? "http" : "local",
     agent,
     messages,
     historyStatus,

@@ -19,6 +19,12 @@ export type SessionStageTextResolver = (
   stage: AgentRuntimeStage | undefined,
 ) => string | undefined;
 
+/** WebSocketAgent 暴露给 UI 的阶段 key。 */
+export const WEBSOCKET_AGENT_SESSION_STAGE = {
+  PREPARING: "websocket:preparing",
+  AWAITING_MODEL: "websocket:awaiting-model",
+} as const;
+
 /** 内置文案仅是默认展示；Agent 层不再保存展示字符串。 */
 export function getDefaultSessionStageText(
   stage: AgentRuntimeStage | undefined,
@@ -27,11 +33,14 @@ export function getDefaultSessionStageText(
     case CODE_AGENT_SESSION_STAGE.AWAITING_MODEL:
       return "模型响应中...";
     case HTTP_AGENT_SESSION_STAGE.PREPARING:
+    case WEBSOCKET_AGENT_SESSION_STAGE.PREPARING:
       return "准备中...";
     case HTTP_AGENT_SESSION_STAGE.SYNCING_FILES:
       return "获取最新文件...";
     case HTTP_AGENT_SESSION_STAGE.CONFIGURING:
       return "获取配置...";
+    case WEBSOCKET_AGENT_SESSION_STAGE.AWAITING_MODEL:
+      return "模型响应中...";
     default:
       return "等待模型响应...";
   }

@@ -3,7 +3,23 @@ import { AGENT_INTERNAL_FILE_EXCLUDE, CodeAgent, IDBHistory, isFileExcluded } fr
 import { DisabledHandler, type DisabledRequestHandler } from "../disabled-handler";
 import { ChipRegistry } from "../../../agent/src";
 import { splitFrontmatter, getFrontmatterString, getFrontmatterStringArray } from "../../../agent/src/utils/frontmatter";
-import { GLOB_TOOL_NAME, createInitProjectTool } from "../../../agent/src/code-agent/tools";
+import {
+  GLOB_TOOL_NAME,
+  INIT_PROJECT_TOOL_NAME,
+  createInitProjectTool,
+  createReadTool,
+  createWriteTool,
+  createMultiWriteTool,
+  createEditTool,
+  createMultiEditTool,
+  createDeleteTool,
+  createGrepTool,
+  createBashTool,
+  createSkillTool,
+} from "../../../agent/src/code-agent/tools";
+import { buildEnvironmentSection, buildAlwaysLoadedSkillsSection } from "../../../agent/src/code-agent";
+import { buildModeSection } from "../../../agent/src/mode-manager";
+import { AgentModeEnum } from "../../../agent/src";
 import { getCodeAgentSystemPrompt } from "../../../agent/src/code-agent/prompt";
 import type { Tool, Sandbox, CodeAgentPlugin, History, BoundHistory, TurnSender, AdditionalDirectory, AgentsMdConfig, SkillFile, UnifiedFile, AgentOptions, AgentMode, ChatChipInstance } from "../../../agent/src";
 import type { PromptSections } from "../../../kit/src";
@@ -13,6 +29,7 @@ import type { Designer, RegistSandBoxConfig, SandboxChipConfig, SandboxChipsConf
 import { createCheckStatusTool } from "./tools/check-status";
 import { LoadingView, type ComChatStartViewProps, type LoadingViewProps } from "../ui/chat";
 import { HttpAgent } from "../ui/chat/chat-panel/http-agent";
+import { WebSocketAgent } from "../ui/chat/chat-panel/websocket-agent";
 import type { PrdRenderProps } from "../ui/renders/prd-render";
 import { LoadingViewWithStyles, ComChatStartViewWithStyles, PrdRenderWithStyles } from "../ui/renders/register";
 import { context } from "../context";
@@ -157,14 +174,28 @@ export interface AgentRuntimeConfig {
   componentRuntime?: any;
 }
 
-/** 服务端 Agent 的初始化配置。传给 pluginAI 的 remoteAgent 时会创建 HTTP Agent。 */
+/** 服务端 Agent 的初始化配置。传给 pluginAI 的 remoteAgent 时会创建 HTTP Agent 或 WebSocket Agent。 */
 export interface RemoteAgentConfig {
-  /** 方舟测试环境默认值：http://localhost:3001/agents/api */
+  /** Agent 类型：'http' 使用现有 HTTP/SSE 方式，'websocket' 使用新的 WebSocket + MCP 方式 */
+  type?: 'http' | 'websocket';
+  /** 方舟测试环境默认值：http://localhost:3001/agents/api（http 类型）或 http://112.17.139.222:8106（websocket 类型） */
   baseUrl?: string;
   /** 服务端 workspaceId；通常对应平台 conversation id。 */
   workspaceId: string;
-  /** 服务端 agentId。未传时使用 workspace 的 default agent。 */
+  /** 服务端 agentId。未传时使用 workspace 的 default agent（仅 http 类型）。 */
   agentId?: string;
+  /** API Key，用于鉴权（仅 websocket 类型）。 */
+  apiKey?: string;
+  /** 智能体代码（仅 websocket 类型）。 */
+  agentCode?: string;
+  /** 项目 ID（仅 websocket 类型），随 /chat/stream 的 variables 发送。 */
+  projectId?: string | number;
+  /** 用户 ID（仅 websocket 类型），随 /chat/stream 的 variables 发送。 */
+  userId?: string | number;
+  /** 客户端类型标识（仅 websocket 类型）。 */
+  clientType?: string;
+  /** 业务元数据（仅 websocket 类型）。 */
+  meta?: Record<string, any>;
 }
 
 /** @internal 由 pluginAI controller 使用的运行配置管理器。 */
@@ -709,6 +740,107 @@ function connectToAI(
   });
 
   if (remoteAgent) {
+    const agentType = remoteAgent.type ?? 'http';
+
+    if (agentType === 'websocket') {
+      // 创建 WebSocket Agent（新的 MCP 方式）
+      if (!remoteAgent.apiKey) {
+        throw new Error('[plugin-ai] WebSocket agent requires apiKey');
+      }
+
+      // 远程智能体通过 WS 通道调用的工具由本插件在本地 sandbox 上执行。
+      // 与 CodeAgent 一致，用当前 sandbox 现造文件工具集，使 write_file/read_file/... 落到本地虚拟 FS。
+      const skillTool = runtimeSkills?.length ? createSkillTool(runtimeSkills) : null;
+      // WS 无本地推理循环，本地 init-project（依赖 createFork）不可用；
+      // 从 browserTools 里剔除本地 init-project，稍后换成走平台子智能体的远程版。
+      const browserToolsWithoutInit = browserTools.filter(
+        (tool) => tool.name !== INIT_PROJECT_TOOL_NAME,
+      );
+      const localExecTools: Tool[] = [
+        createReadTool(sandbox),
+        createWriteTool(sandbox),
+        createMultiWriteTool(sandbox),
+        createEditTool(sandbox),
+        createMultiEditTool(sandbox),
+        createDeleteTool(sandbox),
+        createGrepTool(sandbox),
+        createBashTool(sandbox),
+        ...(skillTool ? [skillTool] : []),
+        ...browserToolsWithoutInit,
+      ];
+
+      const wsHistory = history ?? new IDBHistory({ dbName: "@plugin-ai/plugin/messages" });
+      // seed 对应 prompt.js 中 system 之后、用户输入之前的两条动态 user 内容（系统提示词由平台侧固定配置，不重复注入）：
+      //   user[1] = 前端开发指南（getContext），本地 CodeAgent 由 getStableContextMessages 注入；
+      //   user[2] = 环境信息(skills/日期/模式) + 项目空间元信息，本地由 getAttachmentContextMessages 注入。
+      // 这里在无 history 的新会话首轮之前，用同一套 builder 复刻这两条并追加到远程会话。
+      const buildSeedMessages = async (): Promise<string[]> => {
+        const messages: string[] = [];
+        // 第一条：开发指南
+        try {
+          const guide = await sandbox.getContext?.();
+          if (guide) messages.push(guide);
+        } catch (error) {
+          console.warn("[plugin-ai] build dev guide seed failed", error);
+        }
+        // 第二条：环境信息 + 项目空间元信息，拼接顺序与本地 CodeAgent 的 getAttachmentContextMessages 对齐。
+        try {
+          const sections: string[] = [];
+          const seedSkills = getRuntimeSkills() ?? [];
+          const seedSubAgents = effectivePlugins?.flatMap((p) => (p.enabled !== false ? p.agents ?? [] : [])) ?? [];
+          const envSection = buildEnvironmentSection(
+            seedSkills.length ? seedSkills : undefined,
+            seedSubAgents.length ? seedSubAgents : undefined,
+          );
+          const alwaysSkillsSection = await buildAlwaysLoadedSkillsSection(seedSkills);
+          const modeSection = await buildModeSection({
+            mode: AgentModeEnum.Build,
+            disabledModes,
+            getFiles: () => sandbox.getFiles(),
+          });
+          const envText = [envSection, alwaysSkillsSection, modeSection].filter(Boolean).join("\n\n");
+          if (envText) sections.push(envText);
+          const meta = await sandbox.getSandboxMetaSection?.();
+          if (meta) sections.push(meta);
+          if (sections.length) messages.push(sections.join("\n\n"));
+        } catch (error) {
+          console.warn("[plugin-ai] build project info seed failed", error);
+        }
+        return messages;
+      };
+      const agent = new WebSocketAgent({
+        baseUrl: remoteAgent.baseUrl ?? 'http://112.17.139.222:8106',
+        apiKey: remoteAgent.apiKey,
+        workspaceId: remoteAgent.workspaceId,
+        agentCode: remoteAgent.agentCode,
+        projectId: remoteAgent.projectId,
+        userId: remoteAgent.userId,
+        clientType: remoteAgent.clientType,
+        meta: remoteAgent.meta,
+      }, {
+        // disabled 状态由统一的 DisabledHandler 判断，与 HttpAgent / CodeAgent 保持一致。
+        disabled: () => disabledHandler.isDisabled(),
+        onDisabledRequest: () => disabledHandler.message("当前没有操作权限"),
+        ...(disabledModes ? { disabledModes } : {}),
+        tools: localExecTools,
+        // 计划模式下 getPlanFile / abandonPlan 需要读写本地 sandbox 的 .agent/plans/
+        sandbox,
+        hooks,
+        history: wsHistory,
+        historyKey: agentKey,
+        getSeedMessages: buildSeedMessages,
+      });
+
+      if (llmPluginKey) {
+        context.createLLMRequest(llmPluginKey, agent.key);
+      }
+      context.aiQueue.setRequestGuard(agent, requestGuard);
+      context.agentMap.set(agentKey, agent);
+      context.registerAgentComId(comId);
+      return { history: agent.getHistory(), disabledHandler, isRemoteAgent: true };
+    }
+
+    // 创建 HTTP Agent（原有方式）
     const agent = new HttpAgent({
       baseUrl: remoteAgent.baseUrl,
       workspaceId: remoteAgent.workspaceId,
