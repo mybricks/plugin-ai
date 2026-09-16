@@ -1,3 +1,9 @@
+import type { AgentHooks, ChatChipDef, ChatChipInstance } from "../../../agent/src";
+import type { AgentSandbox } from "../../../agent/src";
+import type { MentionProvider } from "../ui/components/types";
+
+export type { MentionProvider, MentionMenuItem } from "../ui/components/types";
+
 /**
  * Designer 接口：由组件库通过 window._registSandBox_ 注入。
  * 同时提供文件系统操作和设计器实时状态能力。
@@ -38,8 +44,17 @@ export interface Designer {
 
 }
 
-import type { AgentHooks, ChatChipDef, ChatChipInstance } from "../../../agent/src";
-import type { AgentSandbox } from "../../../agent/src";
+/**
+ * 自定义 mention 注册源。
+ * - 可以通过 `PluginAIParams.mentions` 全局注册（对所有组件生效）。
+ * - 也可以通过 `connectToAI(comId, { mentions })` 按 comId 注册（仅对该组件生效），
+ *   与 `chips` 是同级机制，便于组件库随 connectToAI 一起声明自己支持的 @能力。
+ * `menu`/`search` 支持函数形式，每次唤起菜单/输入 @ 都会重新调用，天然支持动态数据。
+ *
+ * 类型定义在 `ui/components/types.ts`（它是 Sender 菜单渲染用的 UI 概念，
+ * 含 icon/children 等字段）；这里只做 type-only 引用，sandbox 层本身
+ * 不解析 MentionProvider 内部结构，只负责透传注册。
+ */
 
 /** 沙箱 hooks，即 AgentHooks */
 export type Hooks = AgentHooks;
@@ -90,4 +105,10 @@ export interface RegistSandBoxConfig {
    * 注册 chip 相关能力，支持自定义 chip 定义和内置/自定义 chip 的 remove 回调。
    */
   chips?: SandboxChipsConfig;
+  /**
+   * 注册该 comId 专属的自定义 mention 注册源，与 chips 同级。
+   * 与全局 `PluginAIParams.mentions` 合并展示（当前 comId 的 Sender 里 + 菜单 / 输入 @ 均可见），
+   * 仅在该 comId 对应的对话面板生效；组件运行时状态变化时 menu/search 函数每次调用都会读到最新数据。
+   */
+  mentions?: MentionProvider[];
 }

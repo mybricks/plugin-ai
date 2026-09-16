@@ -16,6 +16,7 @@ import type { SendToAgentParams } from "../../../sandbox";
 import { triggerChipRemove } from "../../../sandbox/chip-remove";
 import type { AgentMode, ChatChipDef, ChatChipInstance } from "../../../../../agent/src";
 import { removeLeadingPlaceholderBreakBeforeChip } from "./utils";
+import { createChatChipId } from "../../../utils/chip-id";
 import { readMchipClipboard } from "./mchip-clipboard";
 import {
   unmountChipContainer,
@@ -358,6 +359,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   } = props;
 
   const isBubble = variant === 'bubble';
+  const containerRef = useRef<HTMLDivElement>(null);
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [inputContent, setInputContent] = useState<string | null>(null);
@@ -371,6 +373,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const [mentionMenuCanBack, setMentionMenuCanBack] = useState(false);
   const [mentionMenuMode, setMentionMenuMode] = useState<"plus" | "trigger">("plus");
   const [mentionAnchorRect, setMentionAnchorRect] = useState<DOMRect | null>(null);
+  const [mentionMenuMaxWidth, setMentionMenuMaxWidth] = useState<number | undefined>(undefined);
   const [mentionHighlightIndex, setMentionHighlightIndex] = useState(0);
   /** 防止 dragLeave 在子元素之间移动时误触发，通过计数器追踪真正的进出 */
   const dragCounterRef = useRef(0);
@@ -612,9 +615,27 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     syncInputContent();
   }, [syncInputContent, notifyChipRemove]);
 
+  /**
+   * 每次唤起 @ 菜单时同步测量一次 Sender 容器宽度，用于撑开 mention 菜单的最大宽度。
+   * 不引入 ResizeObserver / resize 监听：菜单本来就是"每次打开都重新计算候选项"，
+   * 顺手在打开的这一刻测量一次即可，容器宽度变化只会在下次打开时生效。
+   */
+  const measureMentionMenuMaxWidth = useCallback(() => {
+    const containerWidth = containerRef.current?.getBoundingClientRect().width;
+    if (!containerWidth) {
+      setMentionMenuMaxWidth(undefined);
+      return;
+    }
+    const MIN_WIDTH = 180;
+    const MAX_WIDTH = 360;
+    const clamped = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(containerWidth)));
+    setMentionMenuMaxWidth(clamped);
+  }, []);
+
   const openRootMentionMenu = useCallback(async (nextMode: "plus" | "trigger") => {
     if (disabled || uploading) return;
     const requestId = ++mentionMenuRequestRef.current;
+    measureMentionMenuMaxWidth();
     if (nextMode === "plus") {
       mentionTriggerRangeRef.current = null;
       setMentionAnchorRect(null);
@@ -631,7 +652,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     setMentionMenuEntries(entries);
     setMentionHighlightIndex(0);
     setMentionMenuLoading(false);
-  }, [disabled, mentionProviders, uploading]);
+  }, [disabled, mentionProviders, uploading, measureMentionMenuMaxWidth]);
 
   const openPlusMentionMenu = useCallback(async () => {
     if (!hasCustomMentions) {
@@ -644,6 +665,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const openTriggerMentionMenu = useCallback(async (query: string) => {
     if (disabled) return;
     const requestId = ++mentionMenuRequestRef.current;
+    measureMentionMenuMaxWidth();
     setMentionMenuMode("trigger");
     setMentionMenuTitle(query ? `@${query}` : "@");
     setMentionMenuCanBack(false);
@@ -1111,7 +1133,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     const processors = attachProcessors ?? [];
 
     for (const rawFile of nonImageFiles) {
-      const id = Math.random().toString(36).slice(2, 7);
+      const id = createChatChipId();
       const placeholderInstance: ChatChipInstance = {
         id,
         type: FILE_CHIP_TYPE,
@@ -1411,7 +1433,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     const chip = entry.toChip
       ? await entry.toChip(entry)
       : {
-          id: `${entry.provider.id}_${Math.random().toString(36).slice(2, 9)}`,
+          id: `${entry.provider.id}_${createChatChipId()}`,
           type: entry.type ?? entry.provider.chip.type,
           label: entry.label,
           data: { ...(entry.data ?? {}), label: entry.label },
@@ -1544,11 +1566,12 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       onSelect={(entry) => {
         void selectMentionEntry(entry);
       }}
+      maxWidth={mentionMenuMaxWidth}
     />
   ) : null;
 
   return (
-    <div className={classNames(css.container, { [css.loose]: variant === 'loose', [css.bubble]: variant === 'bubble' }, className)}>
+    <div ref={containerRef} className={classNames(css.container, { [css.loose]: variant === 'loose', [css.bubble]: variant === 'bubble' }, className)}>
       {abovePanels && abovePanels.length > 0 ? (
         <div className={css.senderAbove}>
           {abovePanels.map((panel) => (

@@ -88,6 +88,8 @@ export interface MentionMenuProps {
   onBack: () => void;
   onHighlight: (index: number) => void;
   onSelect: (entry: MentionMenuEntry) => void;
+  /** 菜单宽度上限（px）；不传时使用 CSS 默认值（180px）。 */
+  maxWidth?: number;
 }
 
 export const MentionMenu = ({
@@ -99,10 +101,12 @@ export const MentionMenu = ({
   onBack,
   onHighlight,
   onSelect,
+  maxWidth,
 }: MentionMenuProps) => {
   return (
     <div
       className={css.mentionMenu}
+      style={maxWidth ? { maxWidth } : undefined}
       onMouseDown={(event) => {
         if ((event.target as HTMLElement).closest(`.${css.fileMenuLabel}`)) return;
         event.preventDefault();
@@ -155,6 +159,8 @@ export const MentionMenu = ({
               );
             }
 
+            const resolvedIcon = entry.icon ?? entry.provider.icon;
+            const showIcon = resolvedIcon !== "";
             return (
               <button
                 key={`${entry.provider.id}:${entry.id}`}
@@ -167,9 +173,11 @@ export const MentionMenu = ({
                   onSelect(entry);
                 }}
               >
-                <span className={css.mentionMenuIcon}>
-                  {entry.icon ?? entry.provider.icon ?? <AtSign />}
-                </span>
+                {showIcon ? (
+                  <span className={css.mentionMenuIcon}>
+                    {resolvedIcon ?? <AtSign />}
+                  </span>
+                ) : null}
                 <span className={css.mentionMenuText}>
                   <span className={css.mentionMenuLabel}>{entry.label}</span>
                   {entry.description ? <span className={css.mentionMenuDesc}>{entry.description}</span> : null}

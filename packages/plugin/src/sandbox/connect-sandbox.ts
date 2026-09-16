@@ -4,7 +4,7 @@ import { getCodeAgentSystemPrompt } from "../../../agent/src/code-agent/prompt";
 import type { PromptSections } from "../../../kit/src";
 import { buildDirectoryInfoSection, buildProjectInfoSection, promptSectionsAdaptToPromptOption } from "../../../kit/src";
 import type { RequestAsStreamFn } from "../../../request/src";
-import type { Hooks, SandboxChipsConfig } from "./types";
+import type { Hooks, SandboxChipsConfig, MentionProvider } from "./types";
 import { context } from "../context";
 import {
   type ConnectToAIResult,
@@ -15,6 +15,7 @@ import {
   injectPluginRuntimeContext,
   getProjectContextExclude,
   registerChips,
+  registerMentions,
 } from "./connect-shared";
 
 function normalizePath(path: string): string {
@@ -75,7 +76,7 @@ function mergeVirtualFileEntries(
 
 export function connectToAIFromSandbox(
   comId: string,
-  { agentSandbox, hooks, chips }: { agentSandbox: AgentSandbox; hooks?: Hooks; chips?: SandboxChipsConfig },
+  { agentSandbox, hooks, chips, mentions }: { agentSandbox: AgentSandbox; hooks?: Hooks; chips?: SandboxChipsConfig; mentions?: MentionProvider[] },
   {
     requestAsStream, llmPluginKey, virtualFiles, configDirName, skills, plugins, promptSections, tools,
     getUserContextMessage, projectContext, formatUserMessage, disabledModes,
@@ -85,6 +86,7 @@ export function connectToAIFromSandbox(
   const resolvedConfigDirName = configDirName ?? DEFAULT_CONFIG_DIR_NAME;
   const agentKey = context.getAgentKey(comId);
   registerChips(agentKey, chips);
+  registerMentions(agentKey, mentions);
   const runtimeRef: AgentRuntimeRef = agentRuntimeRefs.get(agentKey) ?? { current: undefined };
   agentRuntimeRefs.set(agentKey, runtimeRef);
   const runtime = runtimeRef.current;

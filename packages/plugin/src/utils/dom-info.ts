@@ -1,4 +1,7 @@
 import type { ChatChipFormatContext, ChatChipInstance } from "../../../agent/src";
+import { createChatChipId } from "./chip-id";
+
+export { createChatChipId };
 
 export const DOM_CHIP_TYPE = "dom";
 
@@ -59,10 +62,6 @@ interface RepeatAncestorContext {
   total: number;
   signature?: RepeatSignature;
   skipped?: boolean;
-}
-
-export function createChatChipId(): string {
-  return Math.random().toString(36).slice(2, 8);
 }
 
 export function createDomChip(focus?: AiServiceFocusParams): ChatChipInstance {

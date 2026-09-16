@@ -48,6 +48,13 @@ export interface MentionMenuItem {
   toChip?: (item: MentionMenuItem) => ChatChipInstance | Promise<ChatChipInstance>;
 }
 
+/**
+ * 自定义 mention 注册源。
+ * - 可以通过 `PluginAIParams.mentions` 全局注册（对所有组件生效）。
+ * - 也可以通过 `connectToAI(comId, { mentions })` 按 comId 注册（仅对该组件生效，与 `chips` 同级），
+ *   便于组件库随 connectToAI 一起声明自己支持的 @能力（见 sandbox/types.ts 的 RegistSandBoxConfig.mentions）。
+ * `menu`/`search` 支持函数形式，每次唤起菜单/输入 @ 都会重新调用，天然支持动态数据。
+ */
 export interface MentionProvider {
   id: string;
   label: string;

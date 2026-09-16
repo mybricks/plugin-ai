@@ -1,8 +1,9 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from "react";
 import classNames from "classnames";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
 import { chipRegistry } from "../../../sandbox/setup";
+import { mentionRegistry } from "../../../sandbox/mention-registry";
 import type { AgentMode } from "../../../../../agent/src";
 import type { AttachProcessor } from "../../../content-limits";
 import type { MentionProvider } from "../../components/types";
@@ -166,14 +167,10 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   actionBar,
   selectorRenderInTop = false,
   attachProcessors,
-  mentions = (context.pluginParams.mentions ?? []) as MentionProvider[],
+  mentions: mentionsProp,
   resolveSessionStageText,
 }, ref) => {
   const senderRef = useRef<SenderRef>(null);
-
-  useEffect(() => {
-    mentions.forEach((mention) => chipRegistry.register(mention.chip));
-  }, [mentions]);
   const messageListRef = useRef<{ scrollToBottom: () => void }>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -188,6 +185,17 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     resolveSessionStageText,
   });
   const chatAgent = localAgent;
+
+  const mentions = useMemo(() => {
+    if (mentionsProp) return mentionsProp;
+    const globalMentions = (context.pluginParams.mentions ?? []) as MentionProvider[];
+    const scopedMentions = mentionRegistry.get(chatAgent?.agent?.key);
+    return scopedMentions.length ? [...globalMentions, ...scopedMentions] : globalMentions;
+  }, [mentionsProp, chatAgent?.agent?.key]);
+
+  useEffect(() => {
+    mentions.forEach((mention) => chipRegistry.register(mention.chip));
+  }, [mentions]);
 
   const {
     messages,

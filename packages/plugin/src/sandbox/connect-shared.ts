@@ -3,9 +3,10 @@ import { DEFAULT_CONFIG_DIR_NAME, getConfigDirPattern } from "../../../agent/src
 import type { PromptSections } from "../../../kit/src";
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { DisabledHandler } from "../disabled-handler";
-import type { Designer, SandboxChipConfig, SandboxChipsConfig, SandboxChipRecordConfig } from "./types";
+import type { Designer, SandboxChipConfig, SandboxChipsConfig, SandboxChipRecordConfig, MentionProvider } from "./types";
 import { registerChipRemoveHandlers } from "./chip-remove";
 import { chipRegistry } from "./chip-registry";
+import { mentionRegistry } from "./mention-registry";
 
 export type PluginGetUserContextMessage = () => string | null | undefined | Promise<string | null | undefined>;
 
@@ -191,4 +192,17 @@ export function registerChips(agentKey: string, chips?: SandboxChipsConfig): voi
     }
   }
   registerChipRemoveHandlers(agentKey, configs);
+}
+
+/**
+ * 注册该 comId 专属的 mention 来源，与 registerChips 同级。
+ * - 把每个 provider.chip 注册进全局 chipRegistry（与 PluginAIParams.mentions 的处理逻辑一致）；
+ * - 把 provider 列表存入 mentionRegistry，按 agentKey 隔离，供该 comId 对应的 ChatPanel 读取。
+ */
+export function registerMentions(agentKey: string, mentions?: MentionProvider[]): void {
+  mentionRegistry.register(agentKey, mentions);
+  if (!mentions?.length) return;
+  for (const mention of mentions) {
+    chipRegistry.register(mention.chip);
+  }
 }

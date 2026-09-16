@@ -272,12 +272,12 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
   window._sandbox_ = {
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
       if (config.agentSandbox) {
-        return connectToAIFromSandbox(comId, { agentSandbox: config.agentSandbox, hooks: config.hooks, chips: config.chips }, pluginParams);
+        return connectToAIFromSandbox(comId, { agentSandbox: config.agentSandbox, hooks: config.hooks, chips: config.chips, mentions: config.mentions }, pluginParams);
       }
       if (!config.designer) {
         throw new Error("connectToAI requires either designer or agentSandbox");
       }
-      return connectToAIFromV1(comId, { designer: config.designer, hooks: config.hooks, chips: config.chips }, pluginParams);
+      return connectToAIFromV1(comId, { designer: config.designer, hooks: config.hooks, chips: config.chips, mentions: config.mentions }, pluginParams);
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────

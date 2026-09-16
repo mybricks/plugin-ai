@@ -236,7 +236,6 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
               defaultFocusPlaceholder="您可以描述对于此区域的需求"
               renderAttachmentSuffix={context.pluginParams.renderAttachmentSuffix}
               attachProcessors={context.pluginParams.attachProcessors}
-              mentions={context.pluginParams.mentions}
             />
           </div>
         );

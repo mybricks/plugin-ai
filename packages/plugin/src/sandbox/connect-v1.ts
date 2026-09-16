@@ -6,7 +6,7 @@ import type { Sandbox } from "../../../agent/src";
 import type { PromptSections } from "../../../kit/src";
 import { buildDevelopmentGuideContext, buildDirectoryInfoSection, buildProjectInfoSection, promptSectionsAdaptToPromptOption } from "../../../kit/src";
 import type { RequestAsStreamFn } from "../../../request/src";
-import type { Hooks, SandboxChipsConfig } from "./types";
+import type { Hooks, SandboxChipsConfig, MentionProvider } from "./types";
 import { attachFiles, hasInitialFiles } from "./initial-files";
 import { createCheckStatusTool } from "./tools/check-status";
 import { HttpAgent } from "../ui/chat/chat-panel/http-agent";
@@ -23,6 +23,7 @@ import {
   formatLibraryDocs,
   getProjectContextExclude,
   registerChips,
+  registerMentions,
 } from "./connect-shared";
 
 function collectBrowserTools(params: { baseTools: Tool[]; plugins?: CodeAgentPlugin[] }): Tool[] {
@@ -35,7 +36,7 @@ function collectBrowserTools(params: { baseTools: Tool[]; plugins?: CodeAgentPlu
 
 export function connectToAIFromV1(
   comId: string,
-  { designer, hooks, chips }: { designer: Designer; hooks?: Hooks; chips?: SandboxChipsConfig },
+  { designer, hooks, chips, mentions }: { designer: Designer; hooks?: Hooks; chips?: SandboxChipsConfig; mentions?: MentionProvider[] },
   {
     requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles, skills, plugins, promptSections, tools,
     codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes,
@@ -45,6 +46,7 @@ export function connectToAIFromV1(
   const resolvedConfigDirName = configDirName ?? DEFAULT_CONFIG_DIR_NAME;
   const agentKey = context.getAgentKey(comId);
   registerChips(agentKey, chips);
+  registerMentions(agentKey, mentions);
   const runtimeRef: AgentRuntimeRef = agentRuntimeRefs.get(agentKey) ?? { current: undefined };
   agentRuntimeRefs.set(agentKey, runtimeRef);
   const runtime = runtimeRef.current;
