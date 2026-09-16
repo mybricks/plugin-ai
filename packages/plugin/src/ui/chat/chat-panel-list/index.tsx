@@ -28,6 +28,8 @@ export interface ChatPanelListProps {
   className?: string;
   /** 自定义根元素样式，可直接传入 CSS 变量做局部调节 */
   style?: React.CSSProperties;
+  /** 透传给内部 ChatPanel 的 Header 自定义内容渲染函数，不传时读取 context.pluginParams.renderHeaderExtra */
+  renderHeaderExtra?: ChatPanelProps["renderHeaderExtra"];
 }
 
 interface ComInstance {
@@ -49,7 +51,7 @@ function isLastSegmentSameDomChip(message: string, chips: ChatChipInstance[] | u
 // 监听 focus 事件，每个 comId 对应一个独立 ChatPanel 实例（display:none 切换）。
 // 各 ChatPanel 持有独立的 useSession，agent 事件 re-render 完全隔离。
 
-const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", className, style }: ChatPanelListProps) => {
+const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", className, style, renderHeaderExtra }: ChatPanelListProps) => {
   useAIPanelReady();
 
   const [currentComId, setCurrentComId] = useState<string | undefined>(undefined);
@@ -236,6 +238,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
               defaultFocusPlaceholder="您可以描述对于此区域的需求"
               renderAttachmentSuffix={context.pluginParams.renderAttachmentSuffix}
               attachProcessors={context.pluginParams.attachProcessors}
+              renderHeaderExtra={renderHeaderExtra ?? context.pluginParams.renderHeaderExtra}
             />
           </div>
         );

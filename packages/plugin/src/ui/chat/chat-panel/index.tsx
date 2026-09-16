@@ -123,6 +123,28 @@ export interface ChatPanelProps {
   mentions?: MentionProvider[];
   /** 覆盖当前 Agent 运行阶段的默认展示文案。 */
   resolveSessionStageText?: SessionStageTextResolver;
+  /**
+   * 在 Header 清空/导出按钮之前插入自定义内容（如宿主的状态图标+文案）。
+   * 入参 ctx.overlay 是一个覆盖层操作句柄：调用 overlay.open(node) 可以让该 node
+   * 覆盖在消息列表区域上方展示，overlay.close() 收起。展示什么、什么时候开关
+   * 完全由宿主自己决定（典型用法：图标点击时 open 一个操作日志/详情面板）；
+   * ChatPanel 只提供这一个开关能力和挂载位置，不关心里面渲染什么。
+   * 参数是对象而非直接传 overlay，方便后续扩展字段而不破坏签名。
+   * renderHeaderExtra 返回 null/false/undefined 时不展示图标本身。
+   */
+  renderHeaderExtra?: (ctx: ChatHeaderExtraContext) => React.ReactNode;
+}
+
+/** 覆盖消息列表区域的展示/隐藏句柄，见 {@link ChatPanelProps.renderHeaderExtra}。 */
+export interface ChatOverlayHandle {
+  open: (node: React.ReactNode) => void;
+  close: () => void;
+  isOpen: boolean;
+}
+
+/** {@link ChatPanelProps.renderHeaderExtra} 的入参，后续新增能力都加在这个对象上。 */
+export interface ChatHeaderExtraContext {
+  overlay: ChatOverlayHandle;
 }
 
 export interface ChatPanelRef {
@@ -169,9 +191,16 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   attachProcessors,
   mentions: mentionsProp,
   resolveSessionStageText,
+  renderHeaderExtra,
 }, ref) => {
   const senderRef = useRef<SenderRef>(null);
   const messageListRef = useRef<{ scrollToBottom: () => void }>(null);
+  const [overlayNode, setOverlayNode] = React.useState<React.ReactNode>(null);
+  const overlayHandle = useMemo<ChatOverlayHandle>(() => ({
+    open: (node: React.ReactNode) => setOverlayNode(node),
+    close: () => setOverlayNode(null),
+    isOpen: overlayNode != null,
+  }), [overlayNode]);
 
   const scrollToBottom = useCallback(() => {
     messageListRef.current?.scrollToBottom();
@@ -264,10 +293,11 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   const historyFailed = historyStatus === "error";
   const historyLoading = historyStatus === "idle" || historyStatus === "loading";
 
+  const headerExtraNode = renderHeaderExtra?.({ overlay: overlayHandle });
   const headerNode = typeof header === "function"
     ? header()
     : header
-      ? <Header title={title} onClear={chatAgent.clear} onExport={chatAgent.exportHistory} disabled={isDisabled} />
+      ? <Header title={title} onClear={chatAgent.clear} onExport={chatAgent.exportHistory} disabled={isDisabled} renderExtra={() => headerExtraNode} />
       : null;
 
   const senderNode = (
@@ -308,6 +338,8 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     </div>
   ) : senderNode;
 
+  const hasOverlayContent = overlayNode !== undefined && overlayNode !== null && overlayNode !== false;
+
   return (
     <ChatPanelProvider value={{
       user,
@@ -327,33 +359,38 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       >
         {headerNode}
 
-        <div className={css["messages-area"]}>
-          {historyLoading ? (
-            <div className={css["history-status"]}>正在加载历史记录...</div>
+        <div className={css["body-area"]}>
+          <div className={css["messages-area"]}>
+            {historyLoading ? (
+              <div className={css["history-status"]}>正在加载历史记录...</div>
+            ) : null}
+            {historyFailed ? (
+              <div className={css["history-status"]}>
+                历史记录加载失败，请刷新后重试
+              </div>
+            ) : null}
+            <MessageList
+              ref={messageListRef}
+              messages={messages}
+              agent={chatAgent.agent}
+              toolUI={chatAgent.agent?.getToolUI()}
+              activeStageText={loadingTip}
+              activeTurnId={loadingTurnId}
+              actionBar={actionBar}
+              onRetry={chatAgent.retry}
+              onExecutePlan={chatAgent.executePlan}
+              canExecutePlan={canExecutePlan}
+              renderEmpty={historyStatus === "ready" ? renderEmpty : undefined}
+              renderFooter={scrollWithSender ? () => senderBlockNode : undefined}
+              collapseCursor={collapseCursor ? { ...collapseCursor, hasMore, isLoadingMore } : (hasMore ? { visibleStartIndex: 0, collapsedCount: 0, hasMore, isLoadingMore } : undefined)}
+              onExpandHistory={onExpandHistory}
+            />
+          </div>
+          {scrollWithSender ? null : senderBlockNode}
+          {hasOverlayContent ? (
+            <div className={css["overlay-panel"]}>{overlayNode}</div>
           ) : null}
-          {historyFailed ? (
-            <div className={css["history-status"]}>
-              历史记录加载失败，请刷新后重试
-            </div>
-          ) : null}
-          <MessageList
-            ref={messageListRef}
-            messages={messages}
-            agent={chatAgent.agent}
-            toolUI={chatAgent.agent?.getToolUI()}
-            activeStageText={loadingTip}
-            activeTurnId={loadingTurnId}
-            actionBar={actionBar}
-            onRetry={chatAgent.retry}
-            onExecutePlan={chatAgent.executePlan}
-            canExecutePlan={canExecutePlan}
-            renderEmpty={historyStatus === "ready" ? renderEmpty : undefined}
-            renderFooter={scrollWithSender ? () => senderBlockNode : undefined}
-            collapseCursor={collapseCursor ? { ...collapseCursor, hasMore, isLoadingMore } : (hasMore ? { visibleStartIndex: 0, collapsedCount: 0, hasMore, isLoadingMore } : undefined)}
-            onExpandHistory={onExpandHistory}
-          />
         </div>
-        {scrollWithSender ? null : senderBlockNode}
       </div>
     </ChatPanelProvider>
   );

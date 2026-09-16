@@ -240,6 +240,17 @@ export interface PluginAIParams {
    */
   renderAttachmentSuffix?: () => React.ReactNode;
   /**
+   * 在 Header 清空/导出按钮之前插入自定义内容（如宿主自己的状态图标+文案）。
+   * 入参 ctx.overlay 是一个覆盖层操作句柄：调用 overlay.open(node) 可以让该 node
+   * 覆盖在消息列表区域上方展示，overlay.close() 收起；展示什么、什么时候开关
+   * 完全由宿主自己决定（典型用法：图标点击时 open 一个操作日志/详情面板）。
+   * pluginAI 只提供这一个开关能力和挂载位置，不关心里面渲染什么。
+   * 参数是对象而非直接传 overlay，方便后续扩展字段而不破坏签名。
+   * renderHeaderExtra 返回 null/false/undefined 时不展示图标本身。
+   * 典型用途：展示某个外部资源（如无头浏览器）的连接/运行状态，点击查看详情。
+   */
+  renderHeaderExtra?: (ctx: import("./ui/chat").ChatHeaderExtraContext) => React.ReactNode;
+  /**
    * 自定义 mention 注册源。
    * 点击 Sender 的 + 号或输入 @ 时可选择，选中后插入 chip，发送前由 chip.format 转成模型上下文。
    */
@@ -295,6 +306,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     remoteAgent,
     sender,
     renderAttachmentSuffix,
+    renderHeaderExtra,
     mentions,
   } = params;
 
@@ -323,7 +335,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
 
   context.name = name;
   (mentions ?? []).forEach((mention) => chipRegistry.register(mention.chip));
-  context.pluginParams = { name, user, onUpload: upload, onDownload: download, renderAttachmentSuffix, attachProcessors, mentions };
+  context.pluginParams = { name, user, onUpload: upload, onDownload: download, renderAttachmentSuffix, attachProcessors, mentions, renderHeaderExtra };
 
   // ── 调试工具：导入历史记录 ─────────────────────────────────────────────────
 

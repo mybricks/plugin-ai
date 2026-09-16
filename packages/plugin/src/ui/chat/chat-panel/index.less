@@ -4,6 +4,22 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  position: relative;
+}
+
+.body-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.overlay-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: var(--mybricks-bg-color, #fff);
 }
 
 .chat-panel-list {
