@@ -3,6 +3,7 @@ import type { PromptSections } from "../../prompts";
 import identitySection from "./identitySection.md";
 import taskGuide from "./taskGuide.md";
 import usingToolsSection from "./usingToolsSection.md";
+import REVOKE_TASK_PROMPT from "./revoke-task.md";
 
 /** CLI PDE owns its task, review, and audit documents under this directory. */
 const CLI_PDE_CONFIG_DIR_NAME = ".lingchuang";
@@ -13,6 +14,22 @@ export const cliPdePromptSection = {
     usingToolsSection: `${usingToolsSection}\n${taskGuide}`,
   },
 } satisfies PromptSections;
+
+/** CLI PDE 内置插件：提供任务回滚等与 TASKS.md 联动的 Prompt Templates。 */
+export const cliPdePlugin = {
+  name: "cli-pde-plugin",
+  promptTemplates: [
+    {
+      name: "revoke-task",
+      files: [
+        {
+          path: "PROMPT.md",
+          content: REVOKE_TASK_PROMPT,
+        },
+      ],
+    },
+  ],
+} satisfies CodeAgentPlugin;
 
 /**
  * PluginAI fields consumed by this preset. Extra PluginAI configuration is
@@ -52,7 +69,7 @@ export function cliPdeAgentOptionBuilder<T extends CliPdeAgentOptionBuilderOptio
     ...restOptions,
     configDirName: configDirName ?? CLI_PDE_CONFIG_DIR_NAME,
     promptSections: cliPdePromptSection,
-    plugins: [...(plugins ?? [])],
+    plugins: [cliPdePlugin, ...(plugins ?? [])],
     // CLI PDE 必须能够在 Ask / Plan 模式中向用户收集决策；同名调用方工具去重，
     // 以预设提供的交互实现为准，避免模型看到重复 function definition。
     tools: [
