@@ -1,5 +1,5 @@
 ---
-displayName: 撤销任务
+displayName: 删除任务
 description: 删除任务并撤销相关的代码
 ---
 

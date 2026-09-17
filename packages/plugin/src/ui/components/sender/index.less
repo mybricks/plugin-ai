@@ -831,7 +831,7 @@
   width: max-content;
   min-width: 160px;
   max-width: 180px;
-  max-height: 240px;
+  max-height: 320px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -845,31 +845,6 @@
   min-height: 24px;
   padding: 4px 6px 2px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-.mentionMenuBack {
-  width: 18px;
-  height: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  padding: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font-size: 16px;
-  line-height: 20px;
-
-  svg {
-    width: 14px;
-    height: 14px;
-  }
-
-  &:hover {
-    background: var(--mybricks-bg-color-hover, #F5F5F5);
-  }
 }
 
 .mentionMenuHeaderIcon {
@@ -901,6 +876,21 @@
 .mentionMenuList {
   padding: 4px;
   overflow: auto;
+}
+
+.mentionMenuSection {
+  & + & {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+  }
+}
+
+.mentionMenuSectionTitle {
+  padding: 4px 6px 2px;
+  font-size: var(--chat-font-size-sm, 12px);
+  line-height: 15px;
+  opacity: 0.45;
 }
 
 .mentionMenuItem {
@@ -972,19 +962,6 @@
   font-size: var(--chat-font-size-sm, 12px);
   line-height: 13px;
   opacity: 0.55;
-}
-
-.mentionMenuArrow {
-  flex-shrink: 0;
-  opacity: 0.5;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-
-  svg {
-    width: 14px;
-    height: 14px;
-  }
 }
 
 .mentionMenuEmpty {

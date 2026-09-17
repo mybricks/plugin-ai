@@ -1,6 +1,6 @@
 import React from "react";
 import classNames from "classnames";
-import { AtSign, Attachment, ChevronLeft, ChevronRight } from "../icons";
+import { AtSign, Attachment } from "../icons";
 import type { MentionMenuItem, MentionProvider } from "../types";
 import { fileChipDef } from "./chip";
 import css from "./index.less";
@@ -8,6 +8,16 @@ import css from "./index.less";
 export type MentionMenuEntry = MentionMenuItem & {
   provider: MentionProvider;
 };
+
+/** 每个分类下最多展示的条目数；超出部分直接截断，不做二级下钻。 */
+export const MENTION_SECTION_MAX_ENTRIES = 5;
+
+/** 一个分类：可选标题 + 该分类下的扁平条目列表（已按上限截断）。 */
+export interface MentionMenuSection {
+  key: string;
+  title?: string;
+  entries: MentionMenuEntry[];
+}
 
 export async function resolveMentionMenuItems(
   provider: MentionProvider,
@@ -31,36 +41,39 @@ export function toMentionEntries(provider: MentionProvider, items: MentionMenuIt
 export function createFileMentionEntry(): MentionMenuEntry {
   return {
     id: "__files__",
-    label: "文件与图片",
+    label: "添加文件和图片",
     keywords: ["file", "image", "附件", "上传", "文件", "图片"],
     provider: {
       id: "__files__",
-      label: "文件与图片",
+      label: "添加文件和图片",
       chip: fileChipDef,
     },
   };
 }
 
-export async function buildRootMentionEntries(mentionProviders: MentionProvider[]): Promise<MentionMenuEntry[]> {
-  const entries: MentionMenuEntry[] = [createFileMentionEntry()];
+function toSection(key: string, title: string | undefined, entries: MentionMenuEntry[]): MentionMenuSection {
+  return { key, title, entries: entries.slice(0, MENTION_SECTION_MAX_ENTRIES) };
+}
+
+/**
+ * 构建根菜单分类：未声明多个 menu 项的 provider 铺平进无标题的首个分类，
+ * 声明了多个 menu 项的 provider 各自成为一个"标题 + 列表"分类，不再支持二级下钻。
+ */
+export async function buildRootMentionSections(mentionProviders: MentionProvider[]): Promise<MentionMenuSection[]> {
+  const rootEntries: MentionMenuEntry[] = [createFileMentionEntry()];
+  const sections: MentionMenuSection[] = [];
 
   for (const provider of mentionProviders) {
     const items = await resolveMentionMenuItems(provider, provider.menu);
     if (items.length === 0) continue;
     if (items.length === 1 && !provider.menu) {
-      entries.push(...toMentionEntries(provider, items));
+      rootEntries.push(...toMentionEntries(provider, items));
     } else {
-      entries.push({
-        id: provider.id,
-        label: provider.label,
-        icon: provider.icon,
-        children: items,
-        provider,
-      });
+      sections.push(toSection(provider.id, provider.label, toMentionEntries(provider, items)));
     }
   }
 
-  return entries;
+  return [toSection("__root__", undefined, rootEntries), ...sections];
 }
 
 export async function flattenMentionItems(provider: MentionProvider): Promise<MentionMenuItem[]> {
@@ -79,13 +92,16 @@ export async function flattenMentionItems(provider: MentionProvider): Promise<Me
   return result;
 }
 
+/** 展开分类为扁平条目数组，用于键盘导航与索引对齐（顺序与渲染顺序一致）。 */
+export function flattenMentionSections(sections: MentionMenuSection[]): MentionMenuEntry[] {
+  return sections.flatMap((section) => section.entries);
+}
+
 export interface MentionMenuProps {
   title: string;
-  entries: MentionMenuEntry[];
+  sections: MentionMenuSection[];
   loading: boolean;
-  canBack: boolean;
   highlightedIndex: number;
-  onBack: () => void;
   onHighlight: (index: number) => void;
   onSelect: (entry: MentionMenuEntry) => void;
   /** 菜单宽度上限（px）；不传时使用 CSS 默认值（180px）。 */
@@ -94,15 +110,16 @@ export interface MentionMenuProps {
 
 export const MentionMenu = ({
   title,
-  entries,
+  sections,
   loading,
-  canBack,
   highlightedIndex,
-  onBack,
   onHighlight,
   onSelect,
   maxWidth,
 }: MentionMenuProps) => {
+  const hasEntries = sections.some((section) => section.entries.length > 0);
+  let flatIndex = -1;
+
   return (
     <div
       className={css.mentionMenu}
@@ -113,77 +130,75 @@ export const MentionMenu = ({
       }}
     >
       <div className={css.mentionMenuHeader}>
-        {canBack ? (
-          <button
-            type="button"
-            className={css.mentionMenuBack}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onBack();
-            }}
-          >
-            <ChevronLeft />
-          </button>
-        ) : null}
         <span className={css.mentionMenuTitle}>{title}</span>
       </div>
       <div className={css.mentionMenuList}>
         {loading ? (
           <div className={css.mentionMenuEmpty}>加载中...</div>
-        ) : entries.length > 0 ? (
-          entries.map((entry, index) => {
-            const hasChildren = !!entry.children;
-            const highlighted = index === highlightedIndex;
-            if (entry.id === "__files__") {
-              return (
-                <button
-                  key={`${entry.provider.id}:${entry.id}`}
-                  type="button"
-                  className={classNames(css.mentionMenuItem, css.fileMenuLabel, { [css.highlighted]: highlighted })}
-                  onMouseMove={() => onHighlight(index)}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onSelect(entry);
-                  }}
-                >
-                  <span className={css.mentionMenuIcon}>
-                    <Attachment />
-                  </span>
-                  <span className={css.mentionMenuText}>
-                    <span className={css.mentionMenuLabel}>{entry.label}</span>
-                    {entry.description ? <span className={css.mentionMenuDesc}>{entry.description}</span> : null}
-                  </span>
-                </button>
-              );
-            }
-
-            const resolvedIcon = entry.icon ?? entry.provider.icon;
-            const showIcon = resolvedIcon !== "";
+        ) : hasEntries ? (
+          sections.map((section) => {
+            if (section.entries.length === 0) return null;
             return (
-              <button
-                key={`${entry.provider.id}:${entry.id}`}
-                type="button"
-                className={classNames(css.mentionMenuItem, { [css.highlighted]: highlighted })}
-                onMouseMove={() => onHighlight(index)}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onSelect(entry);
-                }}
-              >
-                {showIcon ? (
-                  <span className={css.mentionMenuIcon}>
-                    {resolvedIcon ?? <AtSign />}
-                  </span>
+              <div key={section.key} className={css.mentionMenuSection}>
+                {section.title ? (
+                  <div className={css.mentionMenuSectionTitle}>{section.title}</div>
                 ) : null}
-                <span className={css.mentionMenuText}>
-                  <span className={css.mentionMenuLabel}>{entry.label}</span>
-                  {entry.description ? <span className={css.mentionMenuDesc}>{entry.description}</span> : null}
-                </span>
-                {hasChildren ? <span className={css.mentionMenuArrow}><ChevronRight /></span> : null}
-              </button>
+                {section.entries.map((entry) => {
+                  flatIndex += 1;
+                  const index = flatIndex;
+                  const highlighted = index === highlightedIndex;
+
+                  if (entry.id === "__files__") {
+                    return (
+                      <button
+                        key={`${entry.provider.id}:${entry.id}`}
+                        type="button"
+                        className={classNames(css.mentionMenuItem, css.fileMenuLabel, { [css.highlighted]: highlighted })}
+                        onMouseMove={() => onHighlight(index)}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          onSelect(entry);
+                        }}
+                      >
+                        <span className={css.mentionMenuIcon}>
+                          <Attachment />
+                        </span>
+                        <span className={css.mentionMenuText}>
+                          <span className={css.mentionMenuLabel}>{entry.label}</span>
+                          {entry.description ? <span className={css.mentionMenuDesc}>{entry.description}</span> : null}
+                        </span>
+                      </button>
+                    );
+                  }
+
+                  const resolvedIcon = entry.icon ?? entry.provider.icon;
+                  const showIcon = resolvedIcon !== "";
+                  return (
+                    <button
+                      key={`${entry.provider.id}:${entry.id}`}
+                      type="button"
+                      className={classNames(css.mentionMenuItem, { [css.highlighted]: highlighted })}
+                      onMouseMove={() => onHighlight(index)}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onSelect(entry);
+                      }}
+                    >
+                      {showIcon ? (
+                        <span className={css.mentionMenuIcon}>
+                          {resolvedIcon ?? <AtSign />}
+                        </span>
+                      ) : null}
+                      <span className={css.mentionMenuText}>
+                        <span className={css.mentionMenuLabel}>{entry.label}</span>
+                        {entry.description ? <span className={css.mentionMenuDesc}>{entry.description}</span> : null}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             );
           })
         ) : (

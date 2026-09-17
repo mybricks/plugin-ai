@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback } from "react"
+import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback, useMemo } from "react"
 import classNames from "classnames";
 import { message } from "antd";
 import { Loading, Plus, Send } from "../icons";
@@ -50,11 +50,14 @@ import {
 } from "./attach-processor";
 import {
   MentionMenu,
-  buildRootMentionEntries,
+  buildRootMentionSections,
   createFileMentionEntry,
   flattenMentionItems,
+  flattenMentionSections,
   toMentionEntries,
+  MENTION_SECTION_MAX_ENTRIES,
   type MentionMenuEntry,
+  type MentionMenuSection,
 } from "./mention";
 import type { AttachProcessor, FileContent } from "../../../content-limits";
 import { CodeAgent, parseMbsTemplateRecord } from "../../../../../agent/src";
@@ -368,9 +371,8 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [mentionMenuOpen, setMentionMenuOpen] = useState(false);
   const [mentionMenuTitle, setMentionMenuTitle] = useState("添加上下文");
-  const [mentionMenuEntries, setMentionMenuEntries] = useState<MentionMenuEntry[]>([]);
+  const [mentionMenuSections, setMentionMenuSections] = useState<MentionMenuSection[]>([]);
   const [mentionMenuLoading, setMentionMenuLoading] = useState(false);
-  const [mentionMenuCanBack, setMentionMenuCanBack] = useState(false);
   const [mentionMenuMode, setMentionMenuMode] = useState<"plus" | "trigger">("plus");
   const [mentionAnchorRect, setMentionAnchorRect] = useState<DOMRect | null>(null);
   const [mentionMenuMaxWidth, setMentionMenuMaxWidth] = useState<number | undefined>(undefined);
@@ -389,6 +391,11 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const pendingFileMapRef = useRef<Map<string, File | FileContent>>(new Map());
   const mentionTriggerRangeRef = useRef<Range | null>(null);
   const mentionMenuRequestRef = useRef(0);
+  /** 展开分类为扁平条目，供键盘导航按整体索引移动/选中，索引顺序与渲染顺序一致。 */
+  const mentionMenuFlatEntries = useMemo(
+    () => flattenMentionSections(mentionMenuSections),
+    [mentionMenuSections],
+  );
   const selectMentionEntryRef = useRef<(entry: MentionMenuEntry) => void | Promise<void>>(() => {});
   const uploadAttachmentRef = useRef<() => void>(() => {});
   const mentionFileInputRef = useRef<HTMLInputElement>(null);
@@ -642,14 +649,13 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     }
     setMentionMenuMode(nextMode);
     setMentionMenuTitle(nextMode === "plus" ? "添加上下文" : "@");
-    setMentionMenuCanBack(false);
     setMentionMenuOpen(true);
     setMentionMenuLoading(true);
 
-    const entries = await buildRootMentionEntries(mentionProviders);
+    const sections = await buildRootMentionSections(mentionProviders);
 
     if (requestId !== mentionMenuRequestRef.current) return;
-    setMentionMenuEntries(entries);
+    setMentionMenuSections(sections);
     setMentionHighlightIndex(0);
     setMentionMenuLoading(false);
   }, [disabled, mentionProviders, uploading, measureMentionMenuMaxWidth]);
@@ -668,20 +674,20 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     measureMentionMenuMaxWidth();
     setMentionMenuMode("trigger");
     setMentionMenuTitle(query ? `@${query}` : "@");
-    setMentionMenuCanBack(false);
     setMentionMenuOpen(true);
     setMentionMenuLoading(true);
 
     const normalizedQuery = query.trim().toLowerCase();
-    const entries: MentionMenuEntry[] = normalizedQuery
-      ? []
-      : await buildRootMentionEntries(mentionProviders);
+    let sections: MentionMenuSection[];
 
-    if (normalizedQuery) {
+    if (!normalizedQuery) {
+      sections = await buildRootMentionSections(mentionProviders);
+    } else {
+      sections = [];
       const fileEntry = createFileMentionEntry();
       const fileText = [fileEntry.label, ...(fileEntry.keywords ?? [])].join(" ").toLowerCase();
       if (fileText.includes(normalizedQuery)) {
-        entries.push(fileEntry);
+        sections.push({ key: "__root__", entries: [fileEntry] });
       }
 
       for (const provider of mentionProviders) {
@@ -691,12 +697,17 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
               const text = [item.label, item.description, ...(item.keywords ?? [])].filter(Boolean).join(" ").toLowerCase();
               return text.includes(normalizedQuery);
             });
-        entries.push(...toMentionEntries(provider, items));
+        if (items.length === 0) continue;
+        sections.push({
+          key: provider.id,
+          title: provider.label,
+          entries: toMentionEntries(provider, items).slice(0, MENTION_SECTION_MAX_ENTRIES),
+        });
       }
     }
 
     if (requestId !== mentionMenuRequestRef.current) return;
-    setMentionMenuEntries(entries);
+    setMentionMenuSections(sections);
     setMentionHighlightIndex(0);
     setMentionMenuLoading(false);
   }, [disabled, mentionProviders]);
@@ -707,7 +718,6 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     setMentionAnchorRect(null);
     setMentionMenuOpen(false);
     setMentionMenuLoading(false);
-    setMentionMenuCanBack(false);
     setMentionHighlightIndex(0);
   }, []);
 
@@ -808,10 +818,6 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     }
     syncInputContent();
   }, [insertChip, syncInputContent]);
-
-  const backToRootMentionMenu = useCallback(() => {
-    void openRootMentionMenu(mentionMenuMode);
-  }, [mentionMenuMode, openRootMentionMenu]);
 
   const clearEditorContent = useCallback(() => {
     const editor = inputEditorRef.current;
@@ -985,20 +991,17 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const handleMentionMenuKeyDown = useCallback((event: Pick<KeyboardEvent | React.KeyboardEvent, "key" | "preventDefault">): boolean => {
     if (handleListNavigationKeyDown(event, {
       open: mentionMenuOpen,
-      items: mentionMenuEntries,
+      items: mentionMenuFlatEntries,
       highlightedIndex: mentionHighlightIndex,
       onMoveHighlight: (step, itemCount) => {
         setMentionHighlightIndex((previous) => (previous + step + itemCount) % itemCount);
       },
       onSelect: (entry) => selectMentionEntryRef.current(entry),
       onClose: closeMentionMenu,
-      onEnterChild: (entry) => selectMentionEntryRef.current(entry),
-      canEnterChild: (entry) => !!entry.children,
-      onLeaveChild: mentionMenuCanBack ? backToRootMentionMenu : undefined,
     })) return true;
 
     return false;
-  }, [backToRootMentionMenu, closeMentionMenu, mentionHighlightIndex, mentionMenuCanBack, mentionMenuEntries, mentionMenuOpen]);
+  }, [closeMentionMenu, mentionHighlightIndex, mentionMenuFlatEntries, mentionMenuOpen]);
 
   /**
    * 所有输入浮层共用的热键入口。顺序即优先级；新增浮层时只需在此注册
@@ -1419,17 +1422,6 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       return;
     }
 
-    const children = entry.children
-      ? typeof entry.children === "function" ? await entry.children() : entry.children
-      : undefined;
-    if (children?.length) {
-      setMentionMenuTitle(entry.label);
-      setMentionMenuCanBack(true);
-      setMentionMenuEntries(toMentionEntries(entry.provider, children));
-      setMentionHighlightIndex(0);
-      return;
-    }
-
     const chip = entry.toChip
       ? await entry.toChip(entry)
       : {
@@ -1441,7 +1433,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
     insertMentionChip(chip, mentionMenuMode === "trigger" ? mentionTriggerRangeRef.current : null);
     closeMentionMenu();
-  }, [closeMentionMenu, insertMentionChip, mentionMenuMode, syncInputContent, toMentionEntries]);
+  }, [closeMentionMenu, insertMentionChip, mentionMenuMode]);
   selectMentionEntryRef.current = selectMentionEntry;
 
   const onCopy = useCallback((event: React.ClipboardEvent<HTMLDivElement>) => {
@@ -1557,11 +1549,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const mentionMenuNode = mentionMenuOpen ? (
     <MentionMenu
       title={mentionMenuTitle}
-      entries={mentionMenuEntries}
+      sections={mentionMenuSections}
       loading={mentionMenuLoading}
-      canBack={mentionMenuCanBack}
       highlightedIndex={mentionHighlightIndex}
-      onBack={backToRootMentionMenu}
       onHighlight={setMentionHighlightIndex}
       onSelect={(entry) => {
         void selectMentionEntry(entry);
