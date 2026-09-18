@@ -139,12 +139,7 @@ export interface Message {
    */
   cache?: boolean;
   /**
-   * 工具调用结果状态（仅 role === "tool" 时有意义）。
-   * 供服务端感知工具执行是否成功，发送请求前由 sanitizeMessages 移除。
-   */
-  status?: "success" | "error";
-  /**
-   * 工具调用错误类型（仅 status === "error" 时出现）。
+   * 工具调用错误类型（仅工具调用失败时出现）。
    * - "invalid_args"：工具参数校验失败
    * - "normal"：工具执行过程中的普通错误
    */
@@ -153,7 +148,7 @@ export interface Message {
    * 工具调用结果携带的附件（仅 role === "tool" 时有意义）。
    * 由 assembleMessages 从 ToolCallRecord.result.attachments 透传而来。
    * 在请求层按 model capabilities 预处理（内嵌或提取为合成 user 消息），
-   * sanitizeMessages 发送前会将此字段移除（不裸发到 API）。
+   * 不会作为原始工具消息字段发送到 API。
    */
   attachments?: Attachment[];
 }

@@ -48,14 +48,10 @@ export function toolCallRecordToMessage(
   record: ToolCallRecord,
   options: ToolCallMessageOptions = {},
 ): Message {
-  const status = record.status === "pending"
-    ? undefined
-    : record.status === "success" && record.result ? "success" : "error";
   return {
     role: "tool",
     tool_call_id: record.callId,
     content: getToolCallMessageContent(record, options),
-    ...(status ? { status } : {}),
     ...(record.errorType ? { errorType: record.errorType } : {}),
     ...(record.result?.attachments?.length ? { attachments: record.result.attachments } : {}),
   };

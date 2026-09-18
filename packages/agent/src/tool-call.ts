@@ -252,7 +252,7 @@ function finalize(
   }
 
   const message = toolCallRecordToMessage(record, { isCancelled: includePartialOutput });
-  if (message.status === "success") {
+  if (record.status === "success") {
     events.emit("tool:result", { callId: record.callId, name: record.name, result: record.result, step, endTime: record.execEndTime, iterId });
   } else {
     events.emit("tool:error", {
