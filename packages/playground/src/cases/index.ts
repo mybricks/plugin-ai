@@ -13,6 +13,7 @@ import {
   networkErrorBeforeToolRetryCase,
   networkErrorLongRetryCase,
 } from "./network-error";
+import { retrySwitchModelCase } from "./retry-switch-model";
 import {
   toolSuccessCase,
   toolWriteCase,
@@ -208,6 +209,7 @@ export const ALL_CASES: TestCase[] = [
   networkErrorStreamInterruptRetryCase,
   networkErrorBeforeToolRetryCase,
   networkErrorLongRetryCase,
+  retrySwitchModelCase,
   // 工具调用（真实 MemFS）
   toolSuccessCase,
   toolWriteCase,

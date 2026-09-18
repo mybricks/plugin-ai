@@ -1,6 +1,7 @@
 import React, { createContext, useContext } from "react";
 import type MarkdownIt from "markdown-it";
 import type { MessageRecord } from "../use-session";
+import type { SenderProps } from "../../components/sender";
 
 interface User {
   name?: string;
@@ -59,6 +60,8 @@ interface ChatPanelContextValue {
   markdownit?: ChatMarkdownItConfig;
   /** 消息内工具调用的展示形态，默认 card。 */
   messagesRenderVariant: MessagesRenderVariant;
+  /** 多模型选择器数据；用于错误重试时切换模型。 */
+  modelSelector?: SenderProps["modelSelector"];
 }
 
 const ChatPanelContext = createContext<ChatPanelContextValue>({

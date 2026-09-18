@@ -352,6 +352,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       markdownSkin,
       markdownit,
       messagesRenderVariant,
+      modelSelector,
     }}>
       <div
         className={classNames(css["chat-panel"], css[`size-${size}`], className)}

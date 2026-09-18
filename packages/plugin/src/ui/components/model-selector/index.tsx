@@ -12,9 +12,15 @@ export interface ModelSelectorProps {
     onSelect: (selection: ModelSelection) => void;
   };
   disabled?: boolean;
+  /** 自定义触发元素；不传时使用默认的胶囊按钮样式 */
+  trigger?: React.ReactNode;
+  /** 弹出位置，默认 top-start */
+  placement?: 'top' | 'top-start' | 'bottom' | 'bottom-start';
+  /** 选中后是否同步高亮当前选中项；默认 true。传 false 时每次选择都视为一次性动作（如“用其他模型重试”），不保留选中态 */
+  syncSelected?: boolean;
 }
 
-export const ModelSelector = ({ modelSelector, disabled }: ModelSelectorProps) => {
+export const ModelSelector = ({ modelSelector, disabled, trigger, placement = 'top-start', syncSelected = true }: ModelSelectorProps) => {
   const { models, selected: initialSelected, onSelect } = modelSelector;
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<ModelSelection | null | undefined>(initialSelected);
@@ -23,12 +29,12 @@ export const ModelSelector = ({ modelSelector, disabled }: ModelSelectorProps) =
     setSelected(initialSelected);
   }, [initialSelected]);
 
-  const currentModelName = selected 
+  const currentModelName = selected
     ? models.find(m => m.providerId === selected.providerId && m.modelId === selected.modelId)?.modelName || selected.modelId
     : '选择模型';
 
   const handleSelect = (model: ModelSelection) => {
-    setSelected(model);
+    if (syncSelected) setSelected(model);
     onSelect(model);
     setOpen(false);
   };
@@ -46,15 +52,17 @@ export const ModelSelector = ({ modelSelector, disabled }: ModelSelectorProps) =
       open={open}
       onOpenChange={setOpen}
       disabled={disabled}
-      placement="top-start"
-      className={css.triggerContainer}
+      placement={placement}
+      className={trigger ? css.inlineTriggerContainer : css.triggerContainer}
       trigger={
-        <div className={classNames(css.trigger, { [css.disabled]: disabled })}>
-          <span className={css.triggerText}>{currentModelName}</span>
-          <svg className={css.arrow} viewBox="0 0 1024 1024" width="10" height="10" fill="currentColor">
-            <path d="M512 714.666667c-8.533333 0-17.066667-2.133333-23.466667-8.533334l-341.333333-341.333333c-12.8-12.8-12.8-32 0-44.8 12.8-12.8 32-12.8 44.8 0l320 317.866667 317.866667-320c12.8-12.8 32-12.8 44.8 0 12.8 12.8 12.8 32 0 44.8L533.333333 704c-4.266667 8.533333-12.8 10.666667-21.333333 10.666667z" />
-          </svg>
-        </div>
+        trigger ?? (
+          <div className={classNames(css.trigger, { [css.disabled]: disabled })}>
+            <span className={css.triggerText}>{currentModelName}</span>
+            <svg className={css.arrow} viewBox="0 0 1024 1024" width="10" height="10" fill="currentColor">
+              <path d="M512 714.666667c-8.533333 0-17.066667-2.133333-23.466667-8.533334l-341.333333-341.333333c-12.8-12.8-12.8-32 0-44.8 12.8-12.8 32-12.8 44.8 0l320 317.866667 317.866667-320c12.8-12.8 32-12.8 44.8 0 12.8 12.8 12.8 32 0 44.8L533.333333 704c-4.266667 8.533333-12.8 10.666667-21.333333 10.666667z" />
+            </svg>
+          </div>
+        )
       }
     >
       <div className={css.menu}>

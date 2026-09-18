@@ -32,11 +32,15 @@ import { PlanFileCardWithContent } from "./action-cards/plan-card";
 import { SuggestionsBlock } from "./action-cards/suggestions-card";
 import { ActionBar } from "./action-bar";
 import { context } from "../../../context";
+import { ModelSelector } from "../../components/model-selector";
 
 /** 将通用网络失败映射为用户友好的提示；其余错误保留原始 message。 */
 function toUserFriendlyError(msg: string): string {
   if (msg === 'Failed to fetch' || msg === 'Load failed') {
-    return '模型服务连接失败，请检查网络或稍后重试';
+    return '模型服务连接失败，请检查网络或重试';
+  }
+  if (msg.includes('Invalid value')) {
+    return '模型服务异常，请重试或切换模型';
   }
   return msg;
 }
@@ -235,7 +239,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
   canExecutePlan?: boolean;
   activePlan: ActivePlanFile | null;
 }) {
-  const { user, renderUserMessage } = useChatPanel();
+  const { user, renderUserMessage, modelSelector } = useChatPanel();
   const userName = record.sender?.name ?? user?.name;
   const userAvatar = record.sender?.avatar ?? user?.avatar;
   const shouldShowUserHeader = Boolean(record.sender || user);
@@ -282,6 +286,10 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
       },
       { message: "重试" }
     );
+  };
+  const handleRetryWithModel = (selection: Parameters<NonNullable<typeof modelSelector>["onSelect"]>[0]) => {
+    modelSelector?.onSelect(selection);
+    handleRetryTurn();
   };
 
   // 订阅 llm:retry 事件
@@ -395,6 +403,22 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
                 <div className={css["ai-chat-error-content"]}>{toUserFriendlyError(record.error)}</div>
                 {(onRetry || agent) && !record.error.includes("连续调用，已自动中断") && (
                   <div className={css["ai-chat-error-actions"]}>
+                    {modelSelector && modelSelector.models.length > 1 && (
+                      <ModelSelector
+                        modelSelector={{
+                          models: modelSelector.models,
+                          selected: modelSelector.selected,
+                          onSelect: handleRetryWithModel,
+                        }}
+                        syncSelected={false}
+                        placement="top"
+                        trigger={
+                          <button className={css["retry-other-model-button"]}>
+                            用其他模型重试
+                          </button>
+                        }
+                      />
+                    )}
                     <button
                       className={css["retry-button"]}
                       onClick={handleRetryTurn}
