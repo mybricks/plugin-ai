@@ -3,13 +3,14 @@ import markdownit from "markdown-it";
 import css from "./index.less";
 import prdSkinCss from "../../markdown/skin-prd.less";
 import { renderMermaidInContainer } from "../../markdown/mermaid";
+import { alertsPlugin } from "../../markdown/alerts";
 import classNames from "classnames";
 
 const md = markdownit({
   html: true,
   linkify: true,
   typographer: true,
-});
+}).use(alertsPlugin);
 
 export interface PrdRenderProps {
   /** Markdown 字符串内容 */

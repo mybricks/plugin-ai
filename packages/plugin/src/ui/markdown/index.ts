@@ -18,3 +18,5 @@ export { default as messageSkin } from './skin-message.less';
 export { default as planSkin } from './skin-plan.less';
 export { default as prdSkin } from './skin-prd.less';
 export { renderMermaidInContainer } from './mermaid';
+export { alertsPlugin } from './alerts';
+export type { AlertType } from './alerts';

@@ -28,6 +28,7 @@ import "./tool-renders/register";
 import css from "./index.less";
 import messageSkinCss from "../../markdown/skin-message.less";
 import { renderMermaidInContainer } from "../../markdown/mermaid";
+import { alertsPlugin } from "../../markdown/alerts";
 import { PlanFileCardWithContent } from "./action-cards/plan-card";
 import { SuggestionsBlock } from "./action-cards/suggestions-card";
 import { ActionBar } from "./action-bar";
@@ -875,7 +876,7 @@ const MarkdownMessage = ({ message, className }: { message: string; className?: 
   // 优先使用外部自定义皮肤，否则回退内置 skin-message
   const skinClass = markdownSkin?.message ?? messageSkinCss["markdown-skin-message"];
   const md = useMemo(() => {
-    const instance = markdownit({ linkify: true });
+    const instance = markdownit({ linkify: true }).use(alertsPlugin);
     markdownitConfig?.configure?.(instance);
     return instance;
   }, [markdownitConfig]);
