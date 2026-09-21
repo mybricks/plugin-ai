@@ -466,7 +466,12 @@ function getDomCodeLocation(el: Element): string {
   return `${jsxText}${lessText}`;
 }
 
-function buildDomChipInfo(label: string, ele?: Element): string {
+function buildDomChipInfo(label: string, params: { ele?: Element, info?: string }): string {
+  const { ele, info } = params
+  if (info) {
+    return [`- @${label}`, info].join("\n");
+  }
+
   if (!ele) {
     return [
       `- @${label}：`,
@@ -533,7 +538,7 @@ ${domSummary}
  */
 export function formatDomChipMessage({ message, chips }: ChatChipFormatContext): string {
   const eleToLabel = new Map<Element | undefined, string>();
-  const labelToInfo = new Map<string, { ele?: Element }>();
+  const labelToInfo = new Map<string, { ele?: Element; info?: string }>();
   let counter = 1;
   const zoneChipMap = new Map()
 
@@ -560,7 +565,10 @@ export function formatDomChipMessage({ message, chips }: ChatChipFormatContext):
       } else {
         const label = `Dom节点${counter++}`;
         eleToLabel.set(ele, label);
-        labelToInfo.set(label, { ele });
+        labelToInfo.set(label, {
+          ele,
+          info: chip.data?.info,
+        });
       }
     }
   }
@@ -576,8 +584,8 @@ export function formatDomChipMessage({ message, chips }: ChatChipFormatContext):
 
   // Dom 节点说明用语义标签包裹，与正文显式分层，避免被当成待排查的任务。
   const domInfo = labelToInfo.size === 0 ? '' : `\n\n<referenced-dom-nodes note="上方 @Dom 节点的详情，供参考。">\n${
-    Array.from(labelToInfo).map(([label, { ele }]) => {
-      return buildDomChipInfo(label, ele)
+    Array.from(labelToInfo).map(([label, { ele, info }]) => {
+      return buildDomChipInfo(label, { ele, info })
     }).join("\n")
   }\n</referenced-dom-nodes>`
 
