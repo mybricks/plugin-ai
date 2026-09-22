@@ -18,10 +18,12 @@ function formatAnswer(answer: string | string[]): string {
 export function AskQuestionsRenderer(tool: ToolRecord, { submit, cancel, turn }: ToolRendererContext) {
   const questions: AskQuestionsQuestion[] = Array.isArray(tool.args?.questions) ? tool.args.questions : [];
   const [drafts, setDrafts] = useState<Record<number, DraftAnswer>>({});
+  const [currentStep, setCurrentStep] = useState(0);
   const answers = useMemo(() => getAnswers(tool), [tool.result?.metadata]);
   const pending = tool.status === "pending";
   const cancelled = tool.status === "error" && turn?.status === "abort";
   const title = "以下问题需要你确认一下";
+  const multiStep = questions.length > 1;
 
   const getDraft = (index: number): DraftAnswer => drafts[index] ?? { selected: [], other: false, otherText: "" };
   const updateDraft = (index: number, updater: (current: DraftAnswer) => DraftAnswer) => {
@@ -46,23 +48,31 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, cancel, turn }:
     }));
   };
 
-  const canSubmit = questions.length > 0 && questions.every((_, index) => {
+  const isStepAnswered = (index: number) => {
     const draft = getDraft(index);
     return draft.selected.length > 0 || (draft.other && draft.otherText.trim().length > 0);
-  });
+  };
 
-  const handleSubmit = () => {
-    if (!canSubmit) return;
-    const result: AskQuestionsAnswers = {};
-    questions.forEach((question, index) => {
-      const draft = getDraft(index);
-      const values = [...draft.selected, ...(draft.other ? [draft.otherText.trim()] : [])];
-      result[question.question] = question.multiSelect ? values : values[0];
-    });
-    submit(result);
+  const canProceed = isStepAnswered(currentStep);
+  const isLastStep = currentStep === questions.length - 1;
+
+  const handleNext = () => {
+    if (!canProceed) return;
+    if (isLastStep) {
+      const result: AskQuestionsAnswers = {};
+      questions.forEach((question, index) => {
+        const draft = getDraft(index);
+        const values = [...draft.selected, ...(draft.other ? [draft.otherText.trim()] : [])];
+        result[question.question] = question.multiSelect ? values : values[0];
+      });
+      submit(result);
+    } else {
+      setCurrentStep((s) => s + 1);
+    }
   };
 
   if (!pending) {
+    if (tool.status === "error" && !cancelled && !answers) return null;
     return (
       <div className={css["ask-question-card"]}>
         <div className={css["ask-question-toolbar"]}>
@@ -76,10 +86,11 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, cancel, turn }:
           </div>
         ))}
         {cancelled ? <div className={css["ask-question-cancelled-note"]}>此次提问已取消，未提交选择。</div> : null}
-        {!answers && !cancelled && tool.status === "error" ? <span className={css["ask-question-error"]}>{tool.error ?? "提问失败"}</span> : null}
       </div>
     );
   }
+
+  const currentQuestion = questions[currentStep];
 
   return (
     <div className={css["ask-question-card"]}>
@@ -87,54 +98,76 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, cancel, turn }:
         <span className={css["ask-question-command"]}>{title}</span>
         <span className={css["ask-question-state"]}>{questions.length > 0 ? "等待选择" : "正在准备"}</span>
       </div>
+      {multiStep && questions.length > 0 && (
+        <div className={css["ask-question-progress"]}>
+          <div className={css["ask-question-progress-track"]}>
+            <div
+              className={css["ask-question-progress-fill"]}
+              style={{ width: `${((currentStep) / questions.length) * 100}%` }}
+            />
+          </div>
+          <span className={css["ask-question-progress-label"]}>{currentStep + 1} / {questions.length}</span>
+        </div>
+      )}
       {questions.length === 0 && <div className={css["ask-question-loading"]}><TextShimmer>正在准备问题…</TextShimmer></div>}
-      {questions.map((question, questionIndex) => {
-        const draft = getDraft(questionIndex);
-        return (
-          <section className={css["ask-question-item"]} key={question.question}>
-            <div className={css["ask-question-header"]}>
-              <span className={css["ask-question-chip"]}>{question.header}</span>
-              <span>{question.question}</span>
-            </div>
-            <div className={css["ask-question-options"]}>
-              {question.options.map((option) => {
-                const selected = draft.selected.includes(option.label);
-                return (
+      {currentQuestion && (
+        <section className={css["ask-question-item"]} key={currentQuestion.question}>
+          <div className={css["ask-question-header"]}>
+            <span className={css["ask-question-chip"]}>{currentQuestion.header}</span>
+            <span className={css["ask-question-question"]}>{currentQuestion.question}</span>
+          </div>
+          <div className={css["ask-question-options"]}>
+            {currentQuestion.options.map((option) => {
+              const draft = getDraft(currentStep);
+              const selected = draft.selected.includes(option.label);
+              return (
+                <button
+                  type="button"
+                  className={`${css["ask-question-option"]} ${selected ? css["ask-question-option-selected"] : ""}`}
+                  key={option.label}
+                  onClick={() => toggleOption(currentQuestion, currentStep, option.label)}
+                >
+                  <span className={css["ask-question-option-label"]}>{option.label}</span>
+                  <span className={css["ask-question-option-description"]}>{option.description}</span>
+                </button>
+              );
+            })}
+            {(() => {
+              const draft = getDraft(currentStep);
+              return (
+                <>
                   <button
                     type="button"
-                    className={`${css["ask-question-option"]} ${selected ? css["ask-question-option-selected"] : ""}`}
-                    key={option.label}
-                    onClick={() => toggleOption(question, questionIndex, option.label)}
+                    className={`${css["ask-question-option"]} ${draft.other ? css["ask-question-option-selected"] : ""}`}
+                    onClick={() => toggleOther(currentQuestion, currentStep)}
                   >
-                    <span className={css["ask-question-option-label"]}>{option.label}</span>
-                    <span className={css["ask-question-option-description"]}>{option.description}</span>
+                    <span className={css["ask-question-option-label"]}>其他</span>
+                    <span className={css["ask-question-option-description"]}>你有其他想法</span>
                   </button>
-                );
-              })}
-              <button
-                type="button"
-                className={`${css["ask-question-option"]} ${draft.other ? css["ask-question-option-selected"] : ""}`}
-                onClick={() => toggleOther(question, questionIndex)}
-              >
-                <span className={css["ask-question-option-label"]}>其他</span>
-                <span className={css["ask-question-option-description"]}>你有其他想法</span>
-              </button>
-              {draft.other && (
-                <input
-                  className={css["ask-question-other-input"]}
-                  value={draft.otherText}
-                  placeholder="说说你的想法"
-                  onChange={(event) => updateDraft(questionIndex, (current) => ({ ...current, otherText: event.target.value }))}
-                />
-              )}
-            </div>
-          </section>
-        );
-      })}
+                  {draft.other && (
+                    <input
+                      className={css["ask-question-other-input"]}
+                      value={draft.otherText}
+                      placeholder="说说你的想法"
+                      onChange={(event) => updateDraft(currentStep, (current) => ({ ...current, otherText: event.target.value }))}
+                      onKeyDown={(event) => { if (event.key === "Enter") handleNext(); }}
+                    />
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        </section>
+      )}
       {questions.length > 0 && (
         <div className={css["ask-question-actions"]}>
           <button type="button" className={css["ask-question-cancel"]} onClick={cancel}>取消</button>
-          <button type="button" className={css["ask-question-submit"]} disabled={!canSubmit} onClick={handleSubmit}>确认选择</button>
+          {multiStep && currentStep > 0 && (
+            <button type="button" className={css["ask-question-back"]} onClick={() => setCurrentStep((s) => s - 1)}>上一题</button>
+          )}
+          <button type="button" className={css["ask-question-submit"]} disabled={!canProceed} onClick={handleNext}>
+            {isLastStep ? "确认选择" : "下一题"}
+          </button>
         </div>
       )}
     </div>
