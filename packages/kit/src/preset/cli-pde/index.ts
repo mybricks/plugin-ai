@@ -4,6 +4,7 @@ import identitySection from "./identitySection.md";
 import taskGuide from "./taskGuide.md";
 import usingToolsSection from "./usingToolsSection.md";
 import REVOKE_TASK_PROMPT from "./revoke-task.md";
+import GIT_PUSH_PROMPT from "./git-push.md";
 
 /** CLI PDE owns its task, review, and audit documents under this directory. */
 const CLI_PDE_CONFIG_DIR_NAME = ".lingchuang";
@@ -15,7 +16,7 @@ export const cliPdePromptSection = {
   },
 } satisfies PromptSections;
 
-/** CLI PDE 内置插件：提供任务回滚等与 TASKS.md 联动的 Prompt Templates。 */
+/** CLI PDE 内置插件：提供任务回滚、代码推送等与 TASKS.md 联动的 Prompt Templates。 */
 export const cliPdePlugin = {
   name: "cli-pde-plugin",
   promptTemplates: [
@@ -25,6 +26,15 @@ export const cliPdePlugin = {
         {
           path: "PROMPT.md",
           content: REVOKE_TASK_PROMPT,
+        },
+      ],
+    },
+    {
+      name: "git-push",
+      files: [
+        {
+          path: "PROMPT.md",
+          content: GIT_PUSH_PROMPT,
         },
       ],
     },
