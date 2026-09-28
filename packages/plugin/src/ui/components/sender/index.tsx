@@ -11,7 +11,6 @@ import { ModelSelector } from "../model-selector";
 import type { ModelSelectorProps } from "../model-selector";
 import type { QueueItem } from "../../../context/queue";
 import { context } from "../../../context";
-import type { ModelSelection } from "../../../../../request/src/providers";
 import type { SendToAgentParams } from "../../../sandbox";
 import { triggerChipRemove } from "../../../sandbox/chip-remove";
 import type { AgentMode, ChatChipDef, ChatChipInstance } from "../../../../../agent/src";
@@ -267,11 +266,7 @@ interface SenderProps {
   /** 自定义根元素类名，用于外部覆盖样式 */
   className?: string;
   /** 模型选择器配置 */
-  modelSelector?: {
-    models: Array<ModelSelection & { modelName: string; description?: string }>;
-    selected?: ModelSelection | null;
-    onSelect: (selection: ModelSelection) => void;
-  };
+  modelSelector?: ModelSelectorProps["modelSelector"];
   /**
    * Chat chip 类型注册表（从 agent.getChipTypes() 获取）。
    * 用于在输入框中渲染 chip。

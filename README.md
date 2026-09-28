@@ -203,6 +203,17 @@ const provider: CustomProviderConfig = {
 
 发起请求时也可指定单次使用的模型：`agent.requestAI({ message, providerId, modelId })`。
 
+模型选择器支持可选的 `description`（名称下方的简介）和 `suffix`（名称右侧的附加文本）：
+
+```ts
+models: [{
+  id: "auto",
+  name: "Auto",
+  suffix: "预计 3.5–5.5x",
+  description: "智能匹配最适合当前任务的模型，优先获得最佳生成效果",
+}]
+```
+
 ## 拓展
 
 ### 自定义工具

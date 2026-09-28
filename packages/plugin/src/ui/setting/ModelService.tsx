@@ -139,16 +139,19 @@ const ModelEditModal: React.FC<{
   const [id, setId] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [suffix, setSuffix] = useState("");
 
   useEffect(() => {
     if (model) {
       setId(model.id);
       setName(model.name);
       setDescription(model.description || "");
+      setSuffix(model.suffix || "");
     } else {
       setId("");
       setName("");
       setDescription("");
+      setSuffix("");
     }
   }, [model, open]);
 
@@ -156,7 +159,7 @@ const ModelEditModal: React.FC<{
 
   const handleSave = () => {
     if (!id.trim() || !name.trim()) return;
-    onSave({ id: id.trim(), name: name.trim(), description: description.trim() || undefined });
+    onSave({ ...model, id: id.trim(), name: name.trim(), description: description.trim() || undefined, suffix: suffix.trim() || undefined });
   };
 
   return (
@@ -188,9 +191,19 @@ const ModelEditModal: React.FC<{
           <input
             type="text"
             className={css.nativeInput}
-            placeholder="在模型名后方展示的简介，如 高性能通用模型"
+            placeholder="在模型名下方展示的简介，如 高性能通用模型"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
+        <div className={css.formItem}>
+          <label className={css.formLabel}>右侧展示文本 <span style={{ opacity: 0.5, fontWeight: 400 }}>(可选)</span></label>
+          <input
+            type="text"
+            className={css.nativeInput}
+            placeholder="在模型名右侧展示，如 5.5x、预计 3.5–5.5x"
+            value={suffix}
+            onChange={(e) => setSuffix(e.target.value)}
           />
         </div>
         <div className={css.modalDialogActions}>

@@ -29,8 +29,10 @@ export function getChannelLabel(c: ChannelType): string {
 export interface ModelConfig {
   id: string;
   name: string;
-  /** 模型简介，展示在下拉选择器中模型名后方（可选） */
+  /** 模型简介，展示在下拉选择器中模型名下方（可选） */
   description?: string;
+  /** 模型名右侧的展示文本，如「5.5x」（可选） */
+  suffix?: string;
 }
 
 export interface ProviderConfig {

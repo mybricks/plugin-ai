@@ -117,16 +117,17 @@
 }
 
 .itemTitle {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
 }
 
 .itemContent {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
   flex: 1;
   min-width: 0;
 }
@@ -135,6 +136,16 @@
   font-weight: 500;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+.itemSuffix {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--mybricks-text-color-tertiary, #999);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .itemDesc {

@@ -12,7 +12,10 @@ export interface ModelCapabilities {
 export interface ModelConfig {
   id: string;
   name: string;
+  /** 模型简介，展示在模型选择器的名称下方。 */
   description?: string;
+  /** 展示在模型名称右侧的文本，如「5.5x」或「预计 3.5–5.5x」。 */
+  suffix?: string;
   capabilities?: ModelCapabilities;
 }
 

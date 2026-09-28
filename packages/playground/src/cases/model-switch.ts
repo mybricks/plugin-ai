@@ -89,15 +89,15 @@ const customModelRequest: RequestAsStreamFn = async (params) => {
 
 const AUTO_PROVIDER: CustomProviderConfig = {
   providerId: "auto",
-  models: [{ id: "auto", name: "Auto", description: "推荐，智能选择合适的模型" }],
+  models: [{ id: "auto", name: "Auto", suffix: "预计 3.5–5.5x", description: "推荐，智能选择合适的模型" }],
   request: autoSmartRouter,
 };
 
 const CUSTOM_PROVIDER: CustomProviderConfig = {
   providerId: "custom",
   models: [
-    { id: "claude", name: "Claude（成功）", description: "图片理解更强力" },
-    { id: "gpt-4o", name: "GPT-4o（失败）", description: "代码能力强大，更加推荐" },
+    { id: "claude", name: "Claude（成功）", suffix: "5.5x", description: "图片理解更强力" },
+    { id: "gpt-4o", name: "GPT-4o（失败）", suffix: "3.5x", description: "代码能力强大，更加推荐" },
   ],
   request: customModelRequest,
 };
@@ -109,7 +109,7 @@ export const modelSwitchCase: TestCase = {
   description:
     "测试 CustomProviderConfig 下 auto 只消费 aiRole、custom 只消费 model 的模型选择器参数传递",
   expectedBehavior:
-    "输入框左下角显示模型选择器，列表包含：智能选择 / Claude（成功）/ GPT-4o（失败），每个模型名后方展示对应描述，不展示 provider 分组标题。" +
+    "输入框左下角显示模型选择器，列表包含：Auto / Claude（成功）/ GPT-4o（失败），每个模型名右侧展示 suffix、下方展示 description，保留原有勾选和主色高亮，不展示 provider 分组标题。" +
     "选择智能选择时，回复只展示 aiRole；选择 Claude 时，回复只展示 model=custom/claude 并成功；选择 GPT-4o 时，按 model=custom/gpt-4o 模拟失败。",
   initialTurns: [],
   llm: {

@@ -1,5 +1,5 @@
 import { LLMProvider } from "../../request/src";
-import type { ModelCapabilities, ModelSelection, ProviderConfig } from "../../request/src";
+import type { ModelCapabilities, ModelConfig, ModelSelection, ProviderConfig } from "../../request/src";
 import type { RequestAsStreamFn } from "../../agent/src";
 
 export interface ModelSelectionStorage {
@@ -9,7 +9,7 @@ export interface ModelSelectionStorage {
 }
 
 export type ModelSelectionChangeHandler = (selection: ModelSelection | null) => void;
-export type SelectableModel = ModelSelection & { modelName: string; description?: string };
+export type SelectableModel = ModelSelection & { modelName: string } & Pick<ModelConfig, "description" | "suffix">;
 
 /**
  * plugin 层的模型选择状态：默认模型、选择变更和 KV 持久化都在这里处理。
@@ -58,6 +58,7 @@ export class ModelSelectionController {
         modelId: model.id,
         modelName: model.name,
         description: model.description,
+        suffix: model.suffix,
       }))
     );
   }

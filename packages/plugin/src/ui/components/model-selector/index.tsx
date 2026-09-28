@@ -3,11 +3,12 @@ import classNames from "classnames";
 import { Popup } from "../popup";
 import { Check } from "../icons";
 import type { ModelSelection } from "../../../../../request/src/providers";
+import type { SelectableModel } from "../../../model-selection";
 import css from "./index.less";
 
 export interface ModelSelectorProps {
   modelSelector: {
-    models: Array<ModelSelection & { modelName: string; description?: string }>;
+    models: SelectableModel[];
     selected?: ModelSelection | null;
     onSelect: (selection: ModelSelection) => void;
   };
@@ -66,13 +67,13 @@ export const ModelSelector = ({ modelSelector, disabled, trigger, placement = 't
       }
     >
       <div className={css.menu}>
-        {Object.entries(providerGroups).map(([providerId, groupModels], groupIdx, arr) => (
+        {Object.entries(providerGroups).map(([providerId, groupModels]) => (
           <div key={providerId} className={css.group}>
             {groupModels.map(m => {
               const isSelected = selected?.providerId === m.providerId && selected?.modelId === m.modelId;
               return (
-                <div 
-                  key={`${m.providerId}|${m.modelId}`} 
+                <div
+                  key={`${m.providerId}|${m.modelId}`}
                   className={classNames(css.item, { [css.selected]: isSelected })}
                   onClick={() => handleSelect(m)}
                 >
@@ -80,7 +81,10 @@ export const ModelSelector = ({ modelSelector, disabled, trigger, placement = 't
                     {isSelected && <Check />}
                   </div>
                   <div className={css.itemContent}>
-                    <span className={css.itemName}>{m.modelName}</span>
+                    <div className={css.itemTitle}>
+                      <span className={css.itemName}>{m.modelName}</span>
+                      {m.suffix && <span className={css.itemSuffix} title={m.suffix}>{m.suffix}</span>}
+                    </div>
                     {m.description && <span className={css.itemDesc}>{m.description}</span>}
                   </div>
                 </div>
