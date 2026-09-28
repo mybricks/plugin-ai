@@ -242,6 +242,13 @@ export interface TurnRecord {
   /** 本轮结束时间（Unix ms），abort/error 时也记录 */
   endTime?: number;
 
+  /** 本轮 LLM 请求路由参数。retry/compact 将其作为入参；summary 沿用 providerId/modelId、改用 flash。不代表最终选中的模型。 */
+  llmOptions?: {
+    aiRole?: string;
+    providerId?: string;
+    modelId?: string;
+  };
+
   /** 用户输入文本（原始，用于 UI 展示） */
   userText: string;
   /** 格式化后的用户消息文本（发给 LLM，含 focus 上下文等注入内容；未格式化时与 userText 相同） */
@@ -290,7 +297,7 @@ export interface TurnRecord {
         endTime?: number;
         /** 本次 LLM 思考内容 */
         thinkingContent?: string;
-        /** 本 step 实际使用的 aiRole；未显式指定时为 "default"。 */
+        /** 本 step 传给请求层的 aiRole，可能由图片路由规则推导，默认值为 "default"。 */
         aiRole?: string;
         /** 本 step 实际运行的 Agent 模式 */
         mode?: AgentMode;

@@ -459,6 +459,10 @@ export const transfromExtendParams = (extendParams: { aiRole?: string; turnId?: 
       model = "moonshotai/kimi-k2.6";
       role = "fast";
       break;
+    case ["flash"].includes(aiRole):
+      model = "moonshotai/kimi-k2.6";
+      role = "flash";
+      break;
     default:
       role = "default";
       break;

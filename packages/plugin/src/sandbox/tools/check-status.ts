@@ -1,4 +1,3 @@
-import { ToolExecutionContext } from "../../../../agent/src/agent";
 import type { Tool } from "../../../../agent/src";
 import type { Designer } from "../types";
 
@@ -19,12 +18,7 @@ export function createCheckStatusTool(designerRef: { current: Designer | undefin
 
 常常用在本轮所有文件修改后，工作结束前，检查渲染情况以及文件校验情况。`,
     parameters: { type: "object", properties: {} },
-    async execute(_params: any, toolContext: ToolExecutionContext) {
-
-      // check-status 只负责检查项目状态，不应在工具调用后改变后续请求的 aiRole。
-      // TODO: 后续删除此处 aiRole 切换逻辑。
-      // toolContext.setAiRole('default')
-
+    async execute(_params: any) {
       const designer = designerRef.current;
       if (!designer) {
         return { output: "（设计器状态不可用）" };

@@ -139,16 +139,11 @@ export class BrowserToolBridge<TAgent> {
   }
 
   private createToolContext(request: BrowserToolRequest): any {
-    let aiRole: string | undefined;
     return {
       turnId: request.requestId,
       iterations: [],
       getUserMessage: () => ({ message: "", attachments: [] }),
       getAgent: () => this.options.agent,
-      getAiRole: () => aiRole,
-      setAiRole: (value?: string) => {
-        aiRole = value || undefined;
-      },
       mode: this.options.getMode(),
       getMode: this.options.getMode,
       setMode: this.options.setMode,

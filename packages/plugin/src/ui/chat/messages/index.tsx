@@ -12,7 +12,7 @@ import type {
 } from "../../../../../agent/src/types";
 import type { ToolUIChannel } from "../../../../../agent/src";
 import type { ChatAgent } from "../chat-panel/use-agent";
-import { AgentModeEnum, getConfigDirNameFromAgent } from "../../../../../agent/src";
+import { AgentModeEnum, getConfigDirNameFromAgent, type CodeAgent } from "../../../../../agent/src";
 import type { ActivePlanFile } from "../../../../../agent/src/mode-manager";
 import { WRITE_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/write";
 import { EDIT_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/edit";
@@ -34,6 +34,7 @@ import { SuggestionsBlock } from "./action-cards/suggestions-card";
 import { ActionBar } from "./action-bar";
 import { context } from "../../../context";
 import { ModelSelector } from "../../components/model-selector";
+import type { ModelSelection } from "../../../../../request/src/providers";
 
 /** 将通用网络失败映射为用户友好的提示；其余错误保留原始 message。 */
 function toUserFriendlyError(msg: string): string {
@@ -79,7 +80,7 @@ export interface MessageListProps {
    */
   actionBar?: ActionBarItem[];
   /** 自定义重试行为；不传时默认调用 agent.retry。 */
-  onRetry?: (turnId: string) => void;
+  onRetry?: (turnId: string, selection?: ModelSelection) => void;
   /** 自定义删除行为；不传时默认调用 agent.deleteTurn。 */
   onDelete?: (turnId: string) => void;
   onExecutePlan?: (title: string) => void;
@@ -230,7 +231,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
   toolRendererMap: Map<string, ToolRenderer>;
   actionBar: ActionBarItem[];
 
-  onRetry?: (turnId: string) => void;
+  onRetry?: (turnId: string, selection?: ModelSelection) => void;
   onDelete?: (turnId: string) => void;
   isLast?: boolean;
   agent?: ChatAgent;
@@ -270,27 +271,29 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
     const deleteTurn = (agent as Partial<CodeAgent> | undefined)?.deleteTurn;
     if (deleteTurn) void deleteTurn.call(agent, record.id);
   };
-  const handleRetryTurn = () => {
+  const handleRetryTurn = (selection?: ModelSelection) => {
     if (onRetry) {
-      onRetry(record.id);
+      onRetry(record.id, selection);
       return;
     }
     if (!agent) return;
     if (!agent.key) {
-      void agent.retry(record.id);
+      if (selection) void agent.retry({ turnId: record.id, ...selection });
+      else void agent.retry(record.id);
       return;
     }
     context.aiQueue.send(
       agent,
       async () => {
-        await agent.retry(record.id);
+        if (selection) await agent.retry({ turnId: record.id, ...selection });
+        else await agent.retry(record.id);
       },
       { message: "重试" }
     );
   };
   const handleRetryWithModel = (selection: Parameters<NonNullable<typeof modelSelector>["onSelect"]>[0]) => {
     modelSelector?.onSelect(selection);
-    handleRetryTurn();
+    handleRetryTurn(selection);
   };
 
   // 订阅 llm:retry 事件
@@ -422,7 +425,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
                     )}
                     <button
                       className={css["retry-button"]}
-                      onClick={handleRetryTurn}
+                      onClick={() => handleRetryTurn()}
                     >
                       重试
                     </button>
@@ -467,7 +470,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
                   return <ActionBar.Delete key="delete" onDelete={handleDeleteTurn} />;
                 }
                 if (item === "retry" && isLast && (onRetry || agent) && record.status !== "abort") {
-                  return <ActionBar.Retry key="retry" onRetry={handleRetryTurn} />;
+                  return <ActionBar.Retry key="retry" onRetry={() => handleRetryTurn()} />;
                 }
                 return null;
               }

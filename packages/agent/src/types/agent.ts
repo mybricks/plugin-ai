@@ -36,13 +36,6 @@ export interface ToolExecutionContext {
   getUserMessage: () => { message: string; attachments?: any[] };
   /** 获取当前 Agent 实例 */
   getAgent: () => Agent;
-  /** 读取当前 turn 后续 step 显式设置的 aiRole；未设置时请求层会兜底为 "default"。 */
-  getAiRole: () => string | undefined;
-  /**
-   * 设置后续 step 使用的 aiRole（仅当前 turn 生效）。
-   * 传空字符串或 undefined 可清空，恢复默认路由。
-   */
-  setAiRole: (aiRole?: string) => void;
   /** 当前工具执行时的 Agent 模式 */
   mode: AgentMode;
   /** 当前 turn 的取消信号；可传给可取消的外部操作。 */

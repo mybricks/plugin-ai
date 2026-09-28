@@ -46,7 +46,7 @@ export interface ChatPanelAgentState {
   exportHistory: () => Promise<void>;
   executePlan: (title: string) => void;
   setChatMode: (mode: AgentMode | null) => void;
-  retry: (turnId: string) => void;
+  retry: (turnId: string, selection?: ModelSelection) => void;
   slashCommands: SenderSlashCommand[];
 }
 
@@ -242,11 +242,11 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
     );
   }, [agent, canExecutePlan]);
 
-  const retry = useCallback((turnId: string) => {
+  const retry = useCallback((turnId: string, selection?: ModelSelection) => {
     if (!agent || isDisabled) return;
     context.aiQueue.send(
       agent,
-      () => agent.retry(turnId),
+      () => selection ? agent.retry({ turnId, ...selection }) : agent.retry(turnId),
       { message: "重试" },
     );
   }, [agent, isDisabled]);

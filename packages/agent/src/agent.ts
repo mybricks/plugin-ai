@@ -78,6 +78,8 @@ const DEFAULT_SUMMARY = { enabled: true as const };
 const DEFAULT_HANDOFF = { enabled: false as const };
 /** 默认 compact 配置 */
 const DEFAULT_COMPACT = { enabled: true as const, maxTurns: 15 };
+/** 自动摘要使用的 flash 路由角色。 */
+const FLASH_AI_ROLE = "flash";
 const INTERRUPTED_TURN_MESSAGE = "任务异常中断，可点击重试继续";
 
 /**
@@ -642,8 +644,12 @@ export class Agent {
    *
    * - error / 异常中断（无 endTime）且已有 LLM iter：从最后一个完整 iter 继续执行
    * - 正常结束、主动取消或一个完整 iter 都没有：清空 AI 响应重新生成
+   * - 传入 providerId/modelId 时，更新本 turn 的 llmOptions 后再发起请求
    */
-  async retry(turnId: string): Promise<void> {
+  async retry(turnIdOrOptions: string | { turnId: string; providerId?: string; modelId?: string }): Promise<void> {
+    const { turnId, providerId, modelId } = typeof turnIdOrOptions === "string"
+      ? { turnId: turnIdOrOptions, providerId: undefined, modelId: undefined }
+      : turnIdOrOptions;
     await this.ensureHistoryReady();
     const turn = this.turns[this.turns.length - 1];
     if (!turn) {
@@ -655,6 +661,10 @@ export class Agent {
       throw new Error(
         `Turn ${turnId} is not the last turn, cannot retry.`,
       );
+    }
+
+    if (modelId) {
+      turn.llmOptions = { ...turn.llmOptions, providerId, modelId };
     }
 
     const hasCompletedLLMIteration = getLLMIterations(turn.iterations).length > 0;
@@ -675,9 +685,11 @@ export class Agent {
 
     this.events.emit("turn:resume", { turnId: turn.id });
 
-    // 统一走 _runTurn，由它根据 turn.iterations 决定是否跑 beforeTurn/warmup
+    // 统一走 _runTurn，由它根据 turn.iterations 决定是否跑 beforeTurn/warmup；
+    // retry 使用本 turn 保存的 LLM 请求参数；指定新模型时已更新 llmOptions。
     await this._runTurn(turn, {
       userParams: { message: turn.userText, attachments: turn.userAttachments, meta: turn.meta, extra: turn.extra },
+      llmRest: turn.llmOptions,
       persistMode: "update",
     });
   }
@@ -782,17 +794,12 @@ export class Agent {
     const startStep = llmItersOnEntry.length + 1;
     // 确保 AbortController 可用（retry 续跑时 _abortController 可能为 null 或已 abort）
     const signal = this._ensureAbortController().signal;
-    // 每次进入 ReAct 循环都从入口参数初始化一份 turn 级 aiRole，
-    // 循环结束后自然销毁，不污染下一次 request/retry。
+    // 优先使用本次请求的 aiRole；retry 可从 turn 的请求参数恢复。
     const baseLlmRest: Record<string, any> = { ...llmRest };
     const initialAiRole = baseLlmRest.aiRole as string | undefined;
-    let turnAiRole: string | undefined = initialAiRole || undefined;
-    const buildStepLLMRest = (): { rest: Record<string, any>; effectiveAiRole: string } => {
-      const rest = { ...baseLlmRest };
-      const effectiveAiRole = turnAiRole || "default";
-      rest.aiRole = effectiveAiRole;
-      return { rest, effectiveAiRole };
-    };
+    const effectiveAiRole = initialAiRole || turn.llmOptions?.aiRole || "default";
+    turn.llmOptions = { ...turn.llmOptions, aiRole: effectiveAiRole };
+    const llmRequestRest = { ...baseLlmRest, aiRole: effectiveAiRole };
 
     const maxSteps = this.options.maxSteps ?? 50;
     const doomLoopThreshold = this.options.doomLoopThreshold ?? 3;
@@ -885,7 +892,6 @@ export class Agent {
         };
 
         // 调用 LLM
-        const { rest: stepLLMRest, effectiveAiRole } = buildStepLLMRest();
         const stepMode = this.getMode();
         let llmResult: LLMCallResult;
         try {
@@ -893,7 +899,7 @@ export class Agent {
             this.options,
             messages,
             signal,
-            { ...stepLLMRest, _step: step, turnId: turn?.id }, // 传递 step 用于 retry 事件，turnId 用于 SSE 请求头
+            { ...llmRequestRest, _step: step, turnId: turn?.id }, // 传递 step 用于 retry 事件，turnId 用于 SSE 请求头
             step,
             (delta, content, thinkingDelta, thinkingContent) => {
               this.events.emit("llm:content", { delta, content, thinkingDelta, thinkingContent, step, iterId: currentIterId });
@@ -1057,10 +1063,6 @@ export class Agent {
                 attachments: userParams.attachments,
               }),
               getAgent: () => this,
-              getAiRole: () => turnAiRole,
-              setAiRole: (aiRole?: string) => {
-                turnAiRole = aiRole || undefined;
-              },
               mode: this.getMode(),
               signal,
               getMode: () => this.getMode(),
@@ -1187,7 +1189,7 @@ export class Agent {
     const initialModelMessage = modelMessage ?? message!;
     this.setMode(mode, "requestAI");
     const effectiveRequestMode = this.getMode();
-    // 有图片附件时，自动将 aiRole 覆盖为 "image"，使请求层路由到支持视觉的模型。
+    // 请求涉及图片时，通常将 aiRole 改为 "image"；flash 按多模态路由设计，保留原值。
     // 扩展：当前是 build 模式且无图片，但历史 Ask / Plan 轮中携带过图片时，
     // 图片仍在历史 messages 里（Ask / Plan 轮不参与 mask），
     // 此时也需要路由到视觉模型，否则普通模型无法处理 image_url。
@@ -1203,7 +1205,7 @@ export class Agent {
           return false;
         })()
       : false;
-    if (attachments?.length || hasPlanHistoryImage) {
+    if (rest.aiRole !== FLASH_AI_ROLE && (attachments?.length || hasPlanHistoryImage)) {
       rest.aiRole = "image";
     }
 
@@ -1249,6 +1251,11 @@ export class Agent {
       id: turnId,
       startTime: Date.now(),
       userText: userMessage,
+      llmOptions: {
+        ...(rest.aiRole ? { aiRole: rest.aiRole } : {}),
+        ...(rest.providerId ? { providerId: rest.providerId } : {}),
+        ...(rest.modelId ? { modelId: rest.modelId } : {}),
+      },
       ...(formattedParams.message !== userMessage ? { userFormattedText: formattedParams.message } : {}),
       userAttachments,
       ...(formattedMeta ? { meta: formattedMeta } : {}),
@@ -1436,7 +1443,7 @@ export class Agent {
 
     if (compact != null && compact.enabled !== false) {
       if (this._shouldAutoCompact()) {
-        tasks.push(this._runAutoCompact().catch((e) => {
+        tasks.push(this._runAutoCompact(turn).catch((e) => {
           console.warn("[Agent] autoCompact failed:", e);
         }));
       }
@@ -1579,7 +1586,7 @@ ${TASK_HANDOFF}
 IMPORTANT: 不要调用工具！
 `;
 
-    const fork = this.createFork({ tools: [], turnsSlice: { from: "end", count: 1 }, retry: { maxRetries: 0 } });
+    const fork = this.createFork({ tools: [], aiRole: FLASH_AI_ROLE, turnsSlice: { from: "end", count: 1 }, retry: { maxRetries: 0 } });
     (fork as any).options.getAttachmentContextMessages = undefined;
     (fork as any).options.formatUserMessage = undefined;
 
@@ -1632,7 +1639,7 @@ IMPORTANT: 不要调用工具！
     });
 
     try {
-      await fork.requestAI({ message: SUMMARY_PROMPT });
+      await fork.requestAI({ message: SUMMARY_PROMPT, ...turn.llmOptions });
     } finally {
       // 清除 fork 引用，释放 turns / events 等资源
       fork.turns = [];
@@ -1711,7 +1718,7 @@ IMPORTANT: 不要调用工具！
         warmupIter.content = `正在尝试其他策略进行压缩，第 ${attempt} 次重试…`;
         this.events.emit("warmup:content", { content: warmupIter.content });
       };
-      const compactOk = await this._runAutoCompact(signal, true, onRetry);
+      const compactOk = await this._runAutoCompact(turn, signal, true, onRetry);
       if (!compactOk) {
         // compact 重试全部失败，以 error 终止本轮 turn
         const errorMsg = "上下文压缩失败，请重试或者点击上方清空历史记录";
@@ -1847,11 +1854,13 @@ IMPORTANT: 不要调用工具！
    *
    * 错误在内部消化，不向外抛出。返回 true 表示成功，false 表示失败/取消。
    *
-   * @param signal       - AbortSignal，用于监听用户取消操作
-   * @param enableRetry  - 是否启用重试（前置 warmup 时传 true；后置 fire-and-forget 传 false）
-   * @param onRetry      - 重试时的回调，用于更新 warmup content（仅 enableRetry=true 时有意义）
+   * @param turn           - 触发 compact 的父 turn，提供其 LLM 请求参数
+   * @param signal         - AbortSignal，用于监听用户取消操作
+   * @param enableRetry    - 是否启用重试（前置 warmup 时传 true；后置 fire-and-forget 传 false）
+   * @param onRetry        - 重试时的回调，用于更新 warmup content（仅 enableRetry=true 时有意义）
    */
   private async _runAutoCompact(
+    turn: TurnRecord,
     signal?: AbortSignal,
     enableRetry = false,
     onRetry?: (attempt: number) => void,
@@ -1960,7 +1969,7 @@ IMPORTANT: 不要调用工具！
 
       let apiOk = true;
       try {
-        await fork.requestAI({ message: COMPACT_PROMPT + EXAMPLE_PROMPT });
+        await fork.requestAI({ message: COMPACT_PROMPT + EXAMPLE_PROMPT, ...turn.llmOptions });
       } catch (e) {
         apiOk = false;
         console.warn(`[Agent] autoCompact requestAI failed (attempt ${attempt}):`, e);
@@ -2047,14 +2056,9 @@ export class ForkAgent extends Agent {
    * 重写 requestAI，自动注入 fork 时指定的 aiRole。
    */
   async requestAI(params: RequestAIOptions): Promise<void> {
-    const { attachments, ...rest } = params;
-    // 有图片附件时，自动将 aiRole 覆盖为 "image"
-    if (attachments?.length) {
-      rest.aiRole = "image";
-    } else if (this._forkAiRole) {
-      // 否则使用 fork 时指定的 aiRole
-      rest.aiRole = this._forkAiRole;
-    }
-    return super.requestAI({ ...rest, ...(attachments !== undefined ? { attachments } : {}) });
+    return super.requestAI({
+      ...params,
+      ...(this._forkAiRole ? { aiRole: this._forkAiRole } : {}),
+    });
   }
 }
