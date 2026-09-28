@@ -1,6 +1,6 @@
 ---
 displayName: 推送代码
-description: 评估任务状态后提交并推送当前分支的代码改动
+description: 提交并推送当前改动到远程分支
 ---
 
 推送诉求：$@

@@ -5,6 +5,7 @@ import taskGuide from "./taskGuide.md";
 import usingToolsSection from "./usingToolsSection.md";
 import REVOKE_TASK_PROMPT from "./revoke-task.md";
 import GIT_PUSH_PROMPT from "./git-push.md";
+import EVALUATE_IMPACT_PROMPT from "./evaluate-impact.md";
 
 /** CLI PDE owns its task, review, and audit documents under this directory. */
 const CLI_PDE_CONFIG_DIR_NAME = ".lingchuang";
@@ -35,6 +36,15 @@ export const cliPdePlugin = {
         {
           path: "PROMPT.md",
           content: GIT_PUSH_PROMPT,
+        },
+      ],
+    },
+    {
+      name: "evaluate-impact",
+      files: [
+        {
+          path: "PROMPT.md",
+          content: EVALUATE_IMPACT_PROMPT,
         },
       ],
     },
