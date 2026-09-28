@@ -10,7 +10,8 @@ import type { RequestAsStreamFn } from "../../../request/src";
 import type { Designer, RegistSandBoxConfig, SandboxChipConfig, SandboxChipsConfig } from "./types";
 import { LoadingView, type ComChatStartViewProps, type LoadingViewProps } from "../ui/chat";
 import type { PrdRenderProps } from "../ui/renders/prd-render";
-import { LoadingViewWithStyles, ComChatStartViewWithStyles, PrdRenderWithStyles } from "../ui/renders/register";
+import type { ReviewRenderProps } from "../ui/renders/review-render";
+import { LoadingViewWithStyles, ComChatStartViewWithStyles, PrdRenderWithStyles, ReviewRenderWithStyles } from "../ui/renders/register";
 import { context } from "../context";
 import { ensureAIPanelOpen, ensureFocusComId } from "../utils/ensure-ai-panel-open";
 import { createDomChip } from "../utils/dom-info";
@@ -99,6 +100,7 @@ export interface SandboxHelpers {
   renders: {
     renderStartView: (props: ComChatStartViewProps) => React.ReactElement;
     renderPrdView: (props?: PrdRenderProps) => React.ReactElement;
+    renderReviewView: (props?: ReviewRenderProps) => React.ReactElement;
     renderLoadingView: (props: LoadingViewProps) => React.ReactElement;
   };
 }
@@ -321,6 +323,8 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
           React.createElement(ComChatStartViewWithStyles, props),
         renderPrdView: (props?: PrdRenderProps): React.ReactElement =>
           React.createElement(PrdRenderWithStyles, props ?? { content: "" }),
+        renderReviewView: (props?: ReviewRenderProps): React.ReactElement =>
+          React.createElement(ReviewRenderWithStyles, props ?? { content: "" }),
         renderLoadingView: (props: LoadingViewProps): React.ReactElement =>
           React.createElement(LoadingViewWithStyles, props),
       },

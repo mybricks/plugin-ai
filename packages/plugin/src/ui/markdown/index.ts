@@ -5,6 +5,7 @@
  *  - messageSkin  → AI 流式输出消息（字号紧凑，h1-h6 锁定 12px）
  *  - planSkin     → 计划卡片 body（与消息皮肤同基础，独立演进）
  *  - prdSkin      → PRD 需求文档阅读（h1-h6 有层级，间距宽松）
+ *  - reviewSkin   → 影响评估文档阅读（章节和评估元信息）
  *
  * 使用方式：
  *   import messageSkin from '@/ui/markdown/skin-message.less';
@@ -17,6 +18,7 @@
 export { default as messageSkin } from './skin-message.less';
 export { default as planSkin } from './skin-plan.less';
 export { default as prdSkin } from './skin-prd.less';
+export { default as reviewSkin } from './skin-review.less';
 export { renderMermaidInContainer } from './mermaid';
 export { alertsPlugin } from './alerts';
 export type { AlertType } from './alerts';
