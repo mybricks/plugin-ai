@@ -76,6 +76,12 @@ export interface SendToAgentParams {
   mentionFocus?: boolean;
 }
 
+/** 只更新 Sender 当前可见选项，不发送消息。 */
+export type SenderOptions = Pick<
+  SendToAgentParams,
+  "mode" | "providerId" | "modelId"
+>;
+
 export interface SandboxHelpers {
   /**
    * Creates the default AgentSandbox implementation from a V1-compatible file
@@ -86,6 +92,11 @@ export interface SandboxHelpers {
    * 向当前 focus 的 Agent 发送消息（供 sandbox 组件运行时调用）。
    */
   sendToAgent: (comId: string, params: SendToAgentParams) => void;
+  /**
+   * 更新指定 comId 的 Sender 模式和模型选择，不触发请求。
+   * 用于外部 pending message 在发送前同步一次 UI 选项。
+   */
+  setSenderOptions: (comId: string, options: SenderOptions) => void;
   /**
    * 向指定 comId 的底部 Sender 草稿区追加内容，不触发发送。
    * 参数与 sendToAgent / controller.appendInput 保持一致：
@@ -286,6 +297,21 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
     helpers: {
       createAgentSandboxFromV1(sandbox: SandboxV1, options?: CreateAgentSandboxFromV1Options) {
         return createAgentSandboxFromV1(sandbox, options);
+      },
+      setSenderOptions(comId: string, options: SenderOptions) {
+        const agentKey = context.getAgentKey(comId);
+        const agent = context.agentMap.get(agentKey);
+        if (
+          options.mode &&
+          agent?.getAvailableModes?.().includes(options.mode)
+        ) {
+          agent.setMode(options.mode, "pending-message");
+        }
+        if (options.modelId) {
+          context
+            .getModelSelection(agentKey)
+            ?.setSelected(options.providerId, options.modelId);
+        }
       },
       sendToAgent(comId: string, params: SendToAgentParams) {
         const agentKey = context.getAgentKey(comId);

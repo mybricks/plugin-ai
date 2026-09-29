@@ -47,7 +47,7 @@ export { createRequestAsStream, createOnUpload } from "../../request/src";
 export type { RequestAsStreamFn } from "../../request/src";
 export { openSetting, closeSetting, SettingModal } from "./ui/setting";
 export type { SettingModalProps } from "./ui/setting";
-export type { AgentRuntimeConfig, RemoteAgentConfig, ConnectToAIResult, Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams, PluginGetUserContextMessage, ProjectContext, VirtualFilesRuntimeContext, ChatChipRemoveHandler, SandboxChipConfig, SandboxChipRecordConfig, SandboxChipsConfig } from "./sandbox";
+export type { AgentRuntimeConfig, RemoteAgentConfig, ConnectToAIResult, Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams, SenderOptions, PluginGetUserContextMessage, ProjectContext, VirtualFilesRuntimeContext, ChatChipRemoveHandler, SandboxChipConfig, SandboxChipRecordConfig, SandboxChipsConfig } from "./sandbox";
 export type { MentionProvider, MentionMenuItem } from "./ui/components/types";
 export type { AttachProcessor, FileContent, FileReference, LinkAttachment } from "./content-limits";
 // ProviderConfig / ModelConfig 已由 request 包导出，此处仅导出 plugin 专属类型
