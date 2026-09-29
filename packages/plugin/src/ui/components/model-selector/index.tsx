@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import classNames from "classnames";
 import { Popup } from "../popup";
 import { Check } from "../icons";
-import type { ModelSelection } from "../../../../../request/src/providers";
+import type { ModelSelection } from "../../../../../request/src";
 import type { SelectableModel } from "../../../model-selection";
 import css from "./index.less";
 

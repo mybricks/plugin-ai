@@ -1,6 +1,6 @@
 import React from "react";
 import type { RequestAsStreamFn } from "@request/types";
-import type { CustomProviderConfig } from "@request/providers";
+import type { CustomProviderConfig } from "@request";
 import { AgentModeEnum } from "@agent/mode-manager";
 import type { TestCase } from "./types";
 

@@ -34,7 +34,7 @@ import { SuggestionsBlock } from "./action-cards/suggestions-card";
 import { ActionBar } from "./action-bar";
 import { context } from "../../../context";
 import { ModelSelector } from "../../components/model-selector";
-import type { ModelSelection } from "../../../../../request/src/providers";
+import type { ModelSelection } from "../../../../../request/src";
 
 /** 将通用网络失败映射为用户友好的提示；其余错误保留原始 message。 */
 function toUserFriendlyError(msg: string): string {

@@ -3,13 +3,31 @@ import {
   loadRequestInfraFromCDN,
   requestAsStreamForDevelopmentSSE,
   requestAsStreamForProductionSSE,
-} from "./base";
+} from "./legacy";
 import { createMyBricksAIRequest, createMyBricksAIRequestSSE } from "./mybricks";
 import { checkInfraAvailable, createInfraAIOnUpload, createInfraAIRequest, createOnUpload } from "./infra";
 import type { OnUploadFn, RequestAsStreamFn } from "./types";
-import { LLMProvider } from "./providers";
+import { LLMProvider } from "./llm-provider";
 
-export { sanitizeMessages, preprocessMessagesForModel, attachmentToMessagePart } from "./base";
+export {
+  attachmentToMessagePart,
+  prepareMessagesForModel,
+  preprocessMessagesForModel,
+  sanitizeMessages,
+} from "./messages";
+export type { MessageAttachment, ModelCapabilityLike } from "./messages";
+
+export {
+  anthropicProtocol,
+  getProtocol,
+  normalizeProtocolUrl,
+  openAIProtocol,
+} from "./protocols";
+export type {
+  ModelProtocol,
+  ProtocolRequestInput,
+  ProtocolType,
+} from "./protocols";
 
 export type {
   TokenUsage,
@@ -22,7 +40,7 @@ export type {
   OnUploadFn,
 } from "./types";
 
-export type { ModelConfig, ModelCapabilities, ToolAttachment, ProviderConfig, RemoteProviderConfig, CustomProviderConfig, ModelSelection, LLMProviderOptions } from "./providers";
+export type { ModelConfig, ModelCapabilities, ToolAttachment, ProviderConfig, RemoteProviderConfig, CustomProviderConfig, ModelSelection, LLMProviderOptions } from "./llm-provider";
 
 function createRequestAsStream(config?: { useInfra?: boolean }): RequestAsStreamFn {
   const { useInfra = true } = config ?? {};

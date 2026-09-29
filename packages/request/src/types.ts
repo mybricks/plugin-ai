@@ -7,7 +7,7 @@ export type {
   RequestAsStreamFn,
 } from "../../agent/src/types/request";
 
-import type { ModelSelection } from "./providers";
+import type { ModelSelection } from "./llm-provider";
 
 export type { TokenUsage } from "../../agent/src/types";
 

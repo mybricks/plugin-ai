@@ -1,5 +1,5 @@
 import type { RequestAsStreamFn } from "./types";
-import { requestAsStreamForProduction, requestAsStreamForProductionSSE } from "./base";
+import { requestAsStreamForProduction, requestAsStreamForProductionSSE } from "./legacy";
 
 export function createMyBricksAIRequest(config: { getToken: () => string | Promise<string> }): RequestAsStreamFn {
   return requestAsStreamForProduction(async () => ({

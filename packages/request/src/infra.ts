@@ -4,7 +4,7 @@ import {
   createInfraAIOnUpload,
   createOnUpload,
   loadRequestInfraFromCDN,
-} from "./base";
+} from "./legacy";
 
 
 export { checkInfraAvailable, createInfraAIOnUpload, createOnUpload };

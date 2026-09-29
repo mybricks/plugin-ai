@@ -13,6 +13,7 @@
     "jsx": "react-jsx",
     "strict": true,
     "paths": {
+      "@request": ["../request/src/index.ts"],
       "@agent/*": ["../agent/src/*"],
       "@request/*": ["../request/src/*"],
       "@plugin/*": ["../plugin/src/*"]

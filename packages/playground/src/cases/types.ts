@@ -1,6 +1,6 @@
 import type { HistoryPersistMode, TurnRecord, AgentMode } from "@agent/types";
 import type { RequestAsStreamFn } from "@request/types";
-import type { ProviderConfig } from "@request/providers";
+import type { ProviderConfig } from "@request";
 import type { Tool } from "@agent/types";
 import type { CodeAgent } from "@agent/code-agent";
 import type { CodeAgentPlugin, SkillFile } from "@agent/code-agent";

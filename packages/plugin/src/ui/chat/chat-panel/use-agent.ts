@@ -6,7 +6,7 @@ import type { SenderProps } from "../../components/sender";
 import type { AgentMode, CodeAgent } from "../../../../../agent/src";
 import { AgentModeEnum, getAgentModeMetadata } from "../../../../../agent/src";
 import type { HistoryStatus } from "../../../../../agent/src";
-import type { ModelSelection } from "../../../../../request/src/providers";
+import type { ModelSelection } from "../../../../../request/src";
 import { useSession } from "../use-session";
 import { isHttpAgent, type HttpAgent } from "./http-agent";
 import {
