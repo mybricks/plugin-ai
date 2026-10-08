@@ -7,6 +7,7 @@ import {
   type AgentEventMap,
   type AgentHooks,
   type CompactRecord,
+  type CodeAgentPlugin,
   type BoundHistory,
   type Tool,
   type ToolUIChannel,
@@ -14,7 +15,7 @@ import {
   type VersionFile,
   type VersionRecord,
 } from "../../../../../agent/src";
-import type { Sandbox } from "../../../../../agent/src/code-agent";
+import { composePluginHooks, type Sandbox } from "../../../../../agent/src/code-agent";
 import type {
   ActivePlanFile,
   PlanFileInfo,
@@ -95,6 +96,8 @@ interface HttpAgentRuntimeOptions {
    * 仍需要这些 hooks 来维护 loading、锁和 undo/redo 等本地 UI 状态。
    */
   hooks?: AgentHooks;
+  /** 与本地 CodeAgent 一致，启用的插件 hooks 在顶层 hooks 之后执行。 */
+  plugins?: CodeAgentPlugin[];
 }
 
 interface HttpAgentRequestAICommonParams {
@@ -165,6 +168,8 @@ export class HttpAgent {
   private readonly disabledHandler?: DisabledHandler;
   private readonly disabledModes: AgentMode[];
   private readonly hooks?: AgentHooks;
+  private readonly plugins: CodeAgentPlugin[];
+  private readonly enabledPluginNames: Set<string>;
   private readonly workspaceBridge: WorkspaceBridge<HttpAgent>;
   private mode: AgentMode = AgentModeEnum.Build;
   private turns: TurnRecord[] = [];
@@ -197,7 +202,13 @@ export class HttpAgent {
     this.key = `http:${this.baseUrl}:${this.workspaceId}:${this.agentId}`;
     this.disabledHandler = runtime.disabledHandler;
     this.disabledModes = runtime.disabledModes ?? [];
-    this.hooks = runtime.hooks;
+    this.plugins = runtime.plugins ?? [];
+    this.enabledPluginNames = new Set(
+      this.plugins.filter((plugin) => plugin.enabled !== false).map((plugin) => plugin.name),
+    );
+    this.hooks = composePluginHooks(runtime.hooks, this.plugins, {
+      current: this.enabledPluginNames,
+    });
     this.workspaceBridge = new WorkspaceBridge<HttpAgent>({
       workspaceId: this.workspaceId,
       requestJson: <T>(path: string, init?: RequestInit) =>
@@ -251,6 +262,14 @@ export class HttpAgent {
 
   getTools(): Tool[] {
     return this.workspaceBridge.getTools();
+  }
+
+  enablePlugin(name: string): void {
+    this.enabledPluginNames.add(name);
+  }
+
+  disablePlugin(name: string): void {
+    this.enabledPluginNames.delete(name);
   }
 
   /**
@@ -641,19 +660,19 @@ export class HttpAgent {
   }
 
   /**
-   * 解析本次请求使用的模型：显式传入的 providerId/modelId 优先，
-   * 否则取 context 中为该 agent key 保存的模型选择（与模型选择 UI 联动）。
+   * 解析本次请求使用的模型，与本地 CodeAgent 保持相同的单次覆盖规则：
+   * 仅 modelId 会触发模型覆盖；providerId 未传时按当前 provider 优先、
+   * 再从其余 provider 中匹配。否则取该 agent key 保存的模型选择。
    * 未配置 LLM providers 时返回空对象，不向服务端传模型参数。
    */
   private resolveModelSelection(providerId?: string, modelId?: string): {
     providerId?: string;
     modelId?: string;
   } {
-    const selected = context.getModelSelection(this.key)?.getSelected();
-    return {
-      providerId: providerId ?? selected?.providerId,
-      modelId: modelId ?? selected?.modelId,
-    };
+    return context
+      .getModelSelection(this.key)
+      ?.resolveRequestSelection(providerId, modelId)
+      ?? {};
   }
 
   private async initializeHistory(): Promise<void> {
@@ -775,6 +794,7 @@ export class HttpAgent {
         String(event.data?.message ?? "Remote agent session failed"),
       );
     }
+    this.applyTurnEvent(event);
     if (
       event.event === "turn:summary" ||
       event.event === "turn:summary:error"
@@ -784,7 +804,6 @@ export class HttpAgent {
     if (event.event === "turn:settled") {
       this.triggerAfterTurnSettled(event);
     }
-    this.applyTurnEvent(event);
     const shouldUpdateSessionState =
       options.updateSessionState !== false &&
       this.shouldUpdateSessionState(event);
@@ -1076,6 +1095,10 @@ export class HttpAgent {
         turn.error = "Unknown error";
       }
       if (turn.endTime === undefined) turn.endTime = event.createdAt;
+    } else if (event.event === "turn:summary") {
+      if (typeof data.summary === "string" && data.summary) {
+        turn.summary = data.summary;
+      }
     } else if (event.event === "turn:suggestions") {
       turn.suggestions = data.suggestions;
     } else if (event.event === "turn:suggestions:dismiss") {
@@ -1186,14 +1209,12 @@ export class HttpAgent {
           ? "abort"
           : "error";
     const replayStartTask = this.replayStartHookTasks.get(turnId);
-    void Promise.resolve(replayStartTask)
+    const turn = this.findTurn(turnId) ?? ({ id: turnId, status } as TurnRecord);
+    const runHook = async () => { await this.hooks?.afterTurn?.(turn); };
+    void (replayStartTask
       // 启动 hook 的错误已单独记录；仍要运行 afterTurn，以清理已部分建立的 UI 状态。
-      .catch(() => undefined)
-      .then(() => this.hooks?.afterTurn?.({
-        id: turnId,
-        status,
-        ...(event.event === "turn:error" ? { error: event.data?.error } : {}),
-      } as TurnRecord))
+      ? replayStartTask.catch(() => undefined).then(runHook)
+      : runHook())
       .catch((error) => {
         console.warn("[HttpAgent] hooks.afterTurn failed:", error);
       })
@@ -1227,13 +1248,12 @@ export class HttpAgent {
               ? { versionId: event.data.versionId }
               : {}),
           };
-    void Promise.resolve(
-      this.hooks?.afterTurnSummary?.(turn, summary ?? "", result),
-    ).catch(
-      (error) => {
+    void Promise.resolve(this.replayStartHookTasks.get(turnId))
+      .catch(() => undefined)
+      .then(() => this.hooks?.afterTurnSummary?.(turn, summary ?? "", result))
+      .catch((error) => {
         console.warn("[HttpAgent] hooks.afterTurnSummary failed:", error);
-      },
-    );
+      });
   }
 
   /** 服务端后台任务已收口；不改变已由 turn:complete 结束的 UI loading。 */
@@ -1244,7 +1264,7 @@ export class HttpAgent {
     const turn =
       this.findTurn(turnId) ??
       ({ id: turnId, status: "success" } as TurnRecord);
-    void Promise.resolve(this.hooks?.afterTurnSettled?.(turn)).catch((error) => {
+    void Promise.resolve().then(() => this.hooks?.afterTurnSettled?.(turn)).catch((error) => {
       console.warn("[HttpAgent] hooks.afterTurnSettled failed:", error);
     });
   }

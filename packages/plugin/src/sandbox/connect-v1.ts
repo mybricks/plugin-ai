@@ -159,7 +159,7 @@ export function connectToAIFromV1(
   if (remoteAgent) {
     const agent = new HttpAgent(
       { baseUrl: remoteAgent.baseUrl, workspaceId: remoteAgent.workspaceId, agentId: remoteAgent.agentId },
-      { disabledHandler, ...(disabledModes ? { disabledModes } : {}), browserTools, hooks }
+      { disabledHandler, ...(disabledModes ? { disabledModes } : {}), browserTools, hooks, plugins: effectivePlugins }
     );
     if (llmPluginKey) context.createLLMRequest(llmPluginKey, agent.key);
     context.aiQueue.setRequestGuard(agent, requestGuard);

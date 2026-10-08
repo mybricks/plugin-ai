@@ -315,7 +315,7 @@ export interface CodeAgentOptions extends Omit<AgentOptions, "system"> {
 /** 插件 name 命名规范校验 */
 const PLUGIN_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
-function composePluginHooks(
+export function composePluginHooks(
   baseHooks: AgentHooks | undefined,
   plugins: CodeAgentPlugin[],
   enabledNamesRef: { current: Set<string> },

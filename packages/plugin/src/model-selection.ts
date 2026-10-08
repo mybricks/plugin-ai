@@ -89,9 +89,7 @@ export class ModelSelectionController {
 
   /** 单次请求可指定模型，但不会修改 UI 当前选择或 KV。 */
   request = async (provider: LLMProvider, params: Parameters<RequestAsStreamFn>[0]): Promise<void> => {
-    const selection = params.modelId
-      ? this.resolveSelection({ providerId: params.providerId, modelId: params.modelId }) ?? this.selected
-      : this.selected;
+    const selection = this.resolveRequestSelection(params.providerId, params.modelId);
     if (!selection) {
       const error = new Error("no valid provider/model selected");
       params.emits.error(error);
@@ -99,6 +97,16 @@ export class ModelSelectionController {
     }
     return provider.request(params, selection);
   };
+
+  /**
+   * 解析单次请求的模型覆盖规则。
+   * 只有 modelId 才构成一次有效的模型覆盖；单独传 providerId 不会与当前
+   * modelId 强行拼接，以免得到不存在的 provider/model 组合。
+   */
+  resolveRequestSelection(providerId?: string, modelId?: string): ModelSelection | null {
+    if (!modelId) return this.selected;
+    return this.resolveSelection({ providerId, modelId }) ?? this.selected;
+  }
 
   private isValidSelection(selection: ModelSelection): boolean {
     return this.providers.get(selection.providerId)?.models.some((model) => model.id === selection.modelId) ?? false;
