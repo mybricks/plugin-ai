@@ -242,7 +242,7 @@ export interface TurnRecord {
   /** 本轮结束时间（Unix ms），abort/error 时也记录 */
   endTime?: number;
 
-  /** 本轮 LLM 请求路由参数。retry/compact 将其作为入参；summary 沿用 providerId/modelId、改用 flash。不代表最终选中的模型。 */
+  /** 本轮 LLM 请求路由参数。retry 和普通 fork 默认沿用；summary fork 仅使用 aiRole=flash。不代表最终选中的模型。 */
   llmOptions?: {
     aiRole?: string;
     providerId?: string;

@@ -1334,6 +1334,14 @@ export class Agent {
 
     // options 继承 + 覆盖
     const { system } = forkOptions ?? {};
+    // 普通 fork 沿用父 turn 的路由；summary 使用 flash 时只按角色路由，
+    // 不继承父 turn 显式选中的 provider/model。
+    const defaultLLMOptions = aiRole === FLASH_AI_ROLE
+      ? { aiRole: FLASH_AI_ROLE }
+      : {
+          ...this.turns[this.turns.length - 1]?.llmOptions,
+          ...(aiRole ? { aiRole } : {}),
+        };
     const forkAgentOptions: AgentOptions = {
       ...this.options,
       // 使用原始 request，让 fork 的 retry 覆盖真正生效，避免继承父 Agent 已包装的 retry。
@@ -1364,8 +1372,7 @@ export class Agent {
       compact: { enabled: false },
     };
 
-    // 使用 ForkAgent 构造，传入 aiRole
-    const fork = new ForkAgent(forkAgentOptions, aiRole);
+    const fork = new ForkAgent(forkAgentOptions, defaultLLMOptions);
     fork.turns = snapshotTurns;
     fork.compactRecord = snapshotCompactRecord;
     return fork;
@@ -1639,7 +1646,7 @@ IMPORTANT: 不要调用工具！
     });
 
     try {
-      await fork.requestAI({ message: SUMMARY_PROMPT, ...turn.llmOptions });
+      await fork.requestAI({ message: SUMMARY_PROMPT });
     } finally {
       // 清除 fork 引用，释放 turns / events 等资源
       fork.turns = [];
@@ -1969,7 +1976,7 @@ IMPORTANT: 不要调用工具！
 
       let apiOk = true;
       try {
-        await fork.requestAI({ message: COMPACT_PROMPT + EXAMPLE_PROMPT, ...turn.llmOptions });
+        await fork.requestAI({ message: COMPACT_PROMPT + EXAMPLE_PROMPT });
       } catch (e) {
         apiOk = false;
         console.warn(`[Agent] autoCompact requestAI failed (attempt ${attempt}):`, e);
@@ -2042,23 +2049,29 @@ function createTurnId(): string {
 
 /**
  * ForkAgent 是 Agent 的子类，用于 fork 出的独立 Agent 实例。
- * 核心差异：requestAI 时会自动带上创建时指定的 aiRole。
+ * 核心差异：requestAI 时默认沿用创建时父 turn 的 LLM 路由，fork 指定的
+ * aiRole 覆盖父 turn 的值，请求参数再覆盖这些默认值。
  */
 export class ForkAgent extends Agent {
-  private _forkAiRole?: string;
+  private readonly defaultLLMOptions: NonNullable<TurnRecord["llmOptions"]>;
 
-  constructor(options: AgentOptions, aiRole?: string) {
+  constructor(options: AgentOptions, defaultLLMOptions: NonNullable<TurnRecord["llmOptions"]> = {}) {
     super(options);
-    this._forkAiRole = aiRole;
+    this.defaultLLMOptions = defaultLLMOptions;
   }
 
   /**
-   * 重写 requestAI，自动注入 fork 时指定的 aiRole。
+   * 默认沿用 fork 创建时的路由；请求显式指定 provider/model 时把旧的
+   * provider/model 配对一起清掉，避免拼出无效组合。
    */
   async requestAI(params: RequestAIOptions): Promise<void> {
+    const hasExplicitModelSelection =
+      params.providerId !== undefined || params.modelId !== undefined;
     return super.requestAI({
+      ...(hasExplicitModelSelection
+        ? { aiRole: this.defaultLLMOptions.aiRole }
+        : this.defaultLLMOptions),
       ...params,
-      ...(this._forkAiRole ? { aiRole: this._forkAiRole } : {}),
     });
   }
 }
