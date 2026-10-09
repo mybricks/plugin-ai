@@ -79,10 +79,9 @@ function parseFilesFromStreamingContent(content: string): Array<{
 }
 
 /**
- * SubAgent 的系统 prompt
+ * init-project fork 的任务提示词，作为末尾用户消息发送以复用父 Agent 的 system 缓存。
  */
-const SUB_AGENT_SYSTEM_PROMPT = `你是一个是一名资深的前端开发专家、架构师，技术资深、逻辑严谨、实事求是，同时具备专业的审美和设计能力。
-根据用户的需求，输出所有需要重新写入的文件。
+const INIT_PROJECT_TASK_PROMPT = `根据用户的需求，输出所有需要重新写入的文件。
 
 <输出规则>
 1. 每个文件必须用带文件路径的代码块格式输出，格式如下：
@@ -108,10 +107,7 @@ import React from 'react';
 </example>
 
 注意事项：
-1. 除非用户明确要求，否则所有文件内容中禁止使用emoji、特殊字符、表情符号；
-2. 代码要完整可运行，输出所有必要的代码文件，包括入口文件、组件文件、样式等；
-3. 你要完成的是中文场景下的开发任务，请仔细斟酌文案、用语，在各类文案表达中尽量使用中文，但是对于代码、技术术语等，可以使用英文；
-4. 不要调用任何工具，只输出文件代码块。
+不要调用任何工具，只输出文件代码块。
 `;
 
 const LARGE_GENERATION_WARNING = '本轮生成内容较多，请注意是否继续生成。';
@@ -121,11 +117,9 @@ const LARGE_GENERATION_WARNING = '本轮生成内容较多，请注意是否继�
  */
 async function executeSubAgent(
   parentAgent: Agent,
-  forkOptions: { hasImage: boolean },
   prompt: string,
   ctx: {
     emitProgress: (data: any) => void;
-    getUserMessage: () => { message: string; attachments?: any[] };
     signal: AbortSignal;
   },
   sandbox: Sandbox,
@@ -133,10 +127,12 @@ async function executeSubAgent(
   shouldWarnLargeGeneration = false
 ) {
   // 拼接完整消息
-  const fullPrompt = `开始生成和输出以下所有文件
-<需要你生成写入的文件>
+  const fullPrompt = `${INIT_PROJECT_TASK_PROMPT}
+
+开始生成和输出以下所有文件
+<需要你输出的文件>
 ${prompt}
-</需要你生成写入的文件>`;
+</需要你输出的文件>`;
 
   // 进度状态
   const progressState = {
@@ -151,17 +147,22 @@ ${prompt}
 
   // 记录已写入的文件路径，避免重复写入
   const writtenFiles = new Set<string>();
+  const fileStatuses = new Map<string, "success" | "error">();
+  const generatedFiles = new Map<string, string>();
 
   // 创建 SubAgent fork
+  // 继承父 Agent 的 system、工具定义和模型路由，以复用相同的请求前缀。
+  // 工具调用由 beforeToolCall 拒绝，并把继续输出代码块的指令回传给模型。
   // - retry: false 禁用重试，避免重试时已写文件被跳过导致内容混杂
   // - hooks.beforeRequest：每次 LLM 请求前告知当前文件写入状态，
   //   确保 finishReason=length 续写时模型不会重复输出已写文件
   const subAgent = parentAgent.createFork({
-    tools: [],
-    system: SUB_AGENT_SYSTEM_PROMPT,
-    aiRole: forkOptions.hasImage ? "image" : undefined,
     retry: false,
     hooks: {
+      beforeToolCall: () => ({
+        decision: "deny",
+        reason: "Tool use is not allowed during this agent。请根据已有对话和文件列表，继续直接输出带文件路径的完整代码块。",
+      }),
       beforeRequest: () => {
         const written = Array.from(writtenFiles);
         if (written.length === 0) return;
@@ -217,14 +218,17 @@ ${prompt}
       progressState.thinkingContent = thinkingContent;
     }
 
-    // 解析文件列表
+    // 同一个 fork 可能因工具调用被拒绝而续跑；各次回复的文件都要保留。
+    const fileBlocks = parseFileBlocks(content || "");
+    for (const file of fileBlocks) {
+      if (!generatedFiles.has(file.path)) generatedFiles.set(file.path, file.content);
+    }
     const parsedFiles = parseFilesFromStreamingContent(content || "");
 
     // 检测新完成的文件并立即写入
     for (const file of parsedFiles) {
       if (file.status === "complete" && !writtenFiles.has(file.path)) {
         // 解析文件内容
-        const fileBlocks = parseFileBlocks(content || "");
         const fileData = fileBlocks.find((f) => f.path === file.path);
 
         if (fileData) {
@@ -233,6 +237,7 @@ ${prompt}
           try {
             // 立即写入文件
             await sandbox.updateFiles([fileData]);
+            fileStatuses.set(file.path, "success");
 
             // 更新状态为 success
             const fileIndex = parsedFiles.findIndex((f) => f.path === file.path);
@@ -240,6 +245,7 @@ ${prompt}
               parsedFiles[fileIndex] = { ...parsedFiles[fileIndex], status: "success" };
             }
           } catch (err) {
+            fileStatuses.set(file.path, "error");
             // 写入失败，标记为 error
             const fileIndex = parsedFiles.findIndex((f) => f.path === file.path);
             if (fileIndex !== -1) {
@@ -284,10 +290,13 @@ ${prompt}
 
   // 请求中途出错或用户取消：保留已写入文件，并把中断说明拼进 output。
   if (requestError) {
-    const writtenList = Array.from(writtenFiles);
-    const remainingFiles = expectedFiles.filter((f) => !writtenFiles.has(f));
-    const writtenFilesWithContent = parseFileBlocks(progressState.content)
-      .filter((file) => writtenFiles.has(file.path))
+    const writtenList = Array.from(fileStatuses)
+      .filter(([, status]) => status === "success")
+      .map(([path]) => path);
+    const writtenSet = new Set(writtenList);
+    const remainingFiles = expectedFiles.filter((f) => !writtenSet.has(f));
+    const writtenFilesWithContent = Array.from(generatedFiles, ([path, content]) => ({ path, content }))
+      .filter((file) => writtenSet.has(file.path))
       .map((file) => {
         const ext = file.path.split(".").pop() || "";
         return `- ${file.path}\n\`\`\`${ext}\n${file.content}\n\`\`\``;
@@ -319,7 +328,7 @@ ${prompt}
     }
     const filesMetadataOnError = writtenList.map((p) => ({
       path: p,
-      lineCount: progressState.files.find((f) => f.path === p)?.lineCount ?? 0,
+      lineCount: generatedFiles.get(p)?.split("\n").length ?? 0,
       status: 'success' as const,
     }));
 
@@ -334,11 +343,13 @@ ${prompt}
   // 处理输出
   const turns = await subAgent.getTurns();
   const lastTurn = turns[turns.length - 1];
-  const lastLLMIter = lastTurn?.iterations?.slice().reverse().find(iter => !("type" in iter));
-  const content = (lastLLMIter as any)?.content ?? "";
-
-  const allFiles = parseFileBlocks(content);
-  const files = allFiles;
+  for (const iter of lastTurn?.iterations ?? []) {
+    if ("type" in iter) continue;
+    for (const file of parseFileBlocks(iter.content ?? "")) {
+      if (!generatedFiles.has(file.path)) generatedFiles.set(file.path, file.content);
+    }
+  }
+  const files = Array.from(generatedFiles, ([path, content]) => ({ path, content }));
 
   if (files.length === 0) {
     return {
@@ -347,16 +358,12 @@ ${prompt}
     };
   }
 
-  // 统计成功/失败的文件数（从 progressState.files 中获取状态）
+  // 已写入状态跨多次 LLM 回复保留，避免只统计最后一步的文件。
   const successPaths = new Set<string>();
   const failedPaths = new Set<string>();
-
-  for (const file of progressState.files) {
-    if (file.status === "success") {
-      successPaths.add(file.path);
-    } else if (file.status === "error") {
-      failedPaths.add(file.path);
-    }
+  for (const [path, status] of fileStatuses) {
+    if (status === "success") successPaths.add(path);
+    else failedPaths.add(path);
   }
 
   // 处理未写入的文件（可能是最后一个正在写入的文件）
@@ -476,10 +483,6 @@ export function createInitProjectTool(sandbox: Sandbox): Tool {
       // 从 toolContext 获取父 Agent
       const parentAgent = toolContext.getAgent();
 
-      // 检查用户消息是否有图片附件，有则注入 aiRole
-      const { attachments } = toolContext.getUserMessage();
-      const hasImage = attachments?.some((a: any) => a.type === "image");
-
       // 创建 SubAgent (使用 createFork)
       // 禁用 retry：SubAgent 流式写入文件时 writtenFiles 不会在重试间清空，
       // 重试会导致已写入文件被跳过，出现新旧内容混杂。
@@ -488,11 +491,9 @@ export function createInitProjectTool(sandbox: Sandbox): Tool {
       // 执行 SubAgent 逻辑
       return executeSubAgent(
         parentAgent,
-        { hasImage: !!hasImage },
         prompt,
         {
           emitProgress: toolContext.emitProgress,
-          getUserMessage: toolContext.getUserMessage,
           signal: toolContext.signal,
         },
         sandbox,

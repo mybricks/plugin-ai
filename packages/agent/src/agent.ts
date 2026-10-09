@@ -78,7 +78,7 @@ const DEFAULT_SUMMARY = { enabled: true as const };
 const DEFAULT_HANDOFF = { enabled: false as const };
 /** 默认 compact 配置 */
 const DEFAULT_COMPACT = { enabled: true as const, maxTurns: 15 };
-/** 自动摘要使用的 flash 路由角色。 */
+/** 自动摘要和压缩使用的 flash 路由角色。 */
 const FLASH_AI_ROLE = "flash";
 const INTERRUPTED_TURN_MESSAGE = "任务异常中断，可点击重试继续";
 
@@ -1189,7 +1189,8 @@ export class Agent {
     const initialModelMessage = modelMessage ?? message!;
     this.setMode(mode, "requestAI");
     const effectiveRequestMode = this.getMode();
-    // 请求涉及图片时，通常将 aiRole 改为 "image"；flash 按多模态路由设计，保留原值。
+    // 请求涉及图片时，通常将 aiRole 改为 "image"；summary / compact 的
+    // flash 路由支持多模态，保留原值。
     // 扩展：当前是 build 模式且无图片，但历史 Ask / Plan 轮中携带过图片时，
     // 图片仍在历史 messages 里（Ask / Plan 轮不参与 mask），
     // 此时也需要路由到视觉模型，否则普通模型无法处理 image_url。
@@ -1334,8 +1335,8 @@ export class Agent {
 
     // options 继承 + 覆盖
     const { system } = forkOptions ?? {};
-    // 普通 fork 沿用父 turn 的路由；summary 使用 flash 时只按角色路由，
-    // 不继承父 turn 显式选中的 provider/model。
+    // summary / compact 使用 flash 时不继承父 turn 的 provider/model，
+    // 其余 fork 保持原有的父 turn 路由继承行为。
     const defaultLLMOptions = aiRole === FLASH_AI_ROLE
       ? { aiRole: FLASH_AI_ROLE }
       : {
@@ -1365,8 +1366,6 @@ export class Agent {
       hooks: "hooks" in (forkOptions ?? {}) ? hooks : undefined,
       // fork 是 worker agent，不需要计划或询问模式
       disabledModes: [AgentModeEnum.Plan, AgentModeEnum.Ask],
-      // fork 不注入随消息携带的动态上下文（模式说明、skills 等），getAttachmentContextMessages 是 CodeAgent 的箭头函数，this 永远指向父实例，无法感知 fork 的 disabledModes
-      getAttachmentContextMessages: undefined,
       // fork 强制关闭 summary/compact，防止 summary fork / compact fork 再递归创建 fork。
       summary: { enabled: false },
       compact: { enabled: false },
@@ -1594,6 +1593,7 @@ IMPORTANT: 不要调用工具！
 `;
 
     const fork = this.createFork({ tools: [], aiRole: FLASH_AI_ROLE, turnsSlice: { from: "end", count: 1 }, retry: { maxRetries: 0 } });
+    // summary 只总结这一轮历史，不注入父 Agent 当前请求的动态上下文。
     (fork as any).options.getAttachmentContextMessages = undefined;
     (fork as any).options.formatUserMessage = undefined;
 
@@ -1856,12 +1856,14 @@ IMPORTANT: 不要调用工具！
   /**
    * 执行 autoCompact：fork 一个无工具 Agent 对所有历史生成完整摘要，
    * 将摘要以 CompactRecord 形式单独存储到 History（不替换 turns）。
+   * mask / handoff 已经单独塑造了消息列表，提示词缓存已经丢了
+   * compact 与 summary 一样使用 flash 路由，不继承父 turn 显式选择的模型。
    * iter 级 messages 构建时会读取 compactRecord，用游标分割历史：
    *   游标前（含）→ 替换为摘要消息；游标后 → 正常展开。
    *
    * 错误在内部消化，不向外抛出。返回 true 表示成功，false 表示失败/取消。
    *
-   * @param turn           - 触发 compact 的父 turn，提供其 LLM 请求参数
+   * @param turn           - 触发 compact 的父 turn；compact 固定走 flash 路由
    * @param signal         - AbortSignal，用于监听用户取消操作
    * @param enableRetry    - 是否启用重试（前置 warmup 时传 true；后置 fire-and-forget 传 false）
    * @param onRetry        - 重试时的回调，用于更新 warmup content（仅 enableRetry=true 时有意义）
@@ -1959,8 +1961,10 @@ IMPORTANT: 不要调用工具！
       const forkTurns = compactSourceTurns.slice(0, sliceCount);
       const upToTurnId = forkTurns[forkTurns.length - 1].id;
 
-      // fork 继承 compactRecord（由 createFork 联动处理：游标在截取范围内则保留）
-      const fork = this.createFork({ tools: [], mask: false, handoff: { enabled: true }, retry: { maxRetries: 0 }, turnsSlice: { from: "start", count: sliceCount } });
+      // fork 继承 compactRecord（由 createFork 联动处理：游标在截取范围内则保留）；
+      // compact 任务指令放在 system，覆盖父 Agent 的 system。
+      const fork = this.createFork({ tools: [], system: COMPACT_PROMPT, aiRole: FLASH_AI_ROLE, mask: false, handoff: { enabled: true }, retry: { maxRetries: 0 }, turnsSlice: { from: "start", count: sliceCount } });
+      // compact 只压缩选定历史，不注入父 Agent 当前请求的动态上下文。
       (fork as any).options.getAttachmentContextMessages = undefined;
       (fork as any).options.formatUserMessage = undefined;
 
@@ -1976,7 +1980,7 @@ IMPORTANT: 不要调用工具！
 
       let apiOk = true;
       try {
-        await fork.requestAI({ message: COMPACT_PROMPT + EXAMPLE_PROMPT });
+        await fork.requestAI({ message: EXAMPLE_PROMPT });
       } catch (e) {
         apiOk = false;
         console.warn(`[Agent] autoCompact requestAI failed (attempt ${attempt}):`, e);

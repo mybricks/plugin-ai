@@ -155,6 +155,10 @@ export interface AgentOptions {
   };
   /**
    * compact 配置。
+   * mask 会遮蔽旧工具结果，handoff 可用逐轮摘要替代历史；两者先降低常规请求的
+   * 上下文占用，compact 则在达到下方阈值时继续作为兜底压缩手段。
+   * compact 与 summary 一样会发起独立的模型请求，使用 flash 路由，
+   * 不继承触发它的父 turn 显式选择的模型。
    * 触发条件：优先通过 token 阈值判断（需 usage 字段有值）；usage 缺失时降级为轮次判断。
    * 触发时机：双时机策略——
    *   1. turn 结束后异步（fire-and-forget），尽早完成压缩
