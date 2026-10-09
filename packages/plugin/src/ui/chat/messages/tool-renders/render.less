@@ -613,13 +613,38 @@
 
 // 分节标题（文件列表、错误）
 .init-project-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   font-size: var(--chat-font-size-sm, 12px);
   font-weight: 600;
   color: var(--mybricks-text-color-main, #333);
-  opacity: 0.6;
   padding: 6px 10px 4px;
   border-top: 1px solid var(--mybricks-border-color-main, #E6E6E6);
   background: var(--mybricks-bg-color-secondary, #F5F5F5);
+}
+
+.init-project-section-label {
+  opacity: 0.6;
+}
+
+.init-project-files-toggle {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 400;
+  opacity: 0.8;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover,
+  &:focus-visible {
+    opacity: 1;
+    text-decoration: underline;
+  }
 }
 
 // 文件列表面板

@@ -6,6 +6,7 @@ import { ElapsedTime } from "../../../../components/elapsed-time";
 import css from "../render.less";
 
 type ProjectFile = { path: string; lineCount: number; status: string };
+const FILE_PREVIEW_COUNT = 8;
 
 /**
  * filesToGenerate 是这次任务的完整目标清单；progress / result.metadata.files
@@ -37,9 +38,22 @@ function getProjectFiles(tool: ToolRecord, isRunning: boolean): ProjectFile[] {
  * 初始化项目专用渲染器（为 init-project 工具设计）
  */
 export const InitProjectRenderer = ({ tool }: { tool: ToolRecord }) => {
+  const [showAllFiles, setShowAllFiles] = React.useState(false);
   const isRunning = tool.status === "pending";
   const isError = tool.status === "error";
   const files = getProjectFiles(tool, isRunning);
+  const hasMoreFiles = files.length > FILE_PREVIEW_COUNT;
+  const visibleFiles = !hasMoreFiles || showAllFiles
+    ? files
+    : (() => {
+        // 优先展示已有进展的文件，避免预览被尚未生成的目标文件占满。
+        const observedIndices = files.flatMap((file, index) => file.status !== "pending" ? [index] : []);
+        const visibleIndices = new Set(observedIndices.slice(-FILE_PREVIEW_COUNT));
+        for (let index = 0; index < files.length && visibleIndices.size < FILE_PREVIEW_COUNT; index++) {
+          visibleIndices.add(index);
+        }
+        return files.filter((_, index) => visibleIndices.has(index));
+      })();
   const headerTitle = isRunning
     ? "初始化项目..."
     : isError && files.length === 0
@@ -75,9 +89,21 @@ export const InitProjectRenderer = ({ tool }: { tool: ToolRecord }) => {
       {/* 文件列表面板 */}
       {files.length > 0 && (
         <div className={css["init-project-files"]}>
-          <div className={css["init-project-section-title"]}>文件列表</div>
+          <div className={css["init-project-section-title"]}>
+            <span className={css["init-project-section-label"]}>文件列表</span>
+            {hasMoreFiles && (
+              <button
+                type="button"
+                className={css["init-project-files-toggle"]}
+                aria-expanded={showAllFiles}
+                onClick={() => setShowAllFiles((current) => !current)}
+              >
+                {showAllFiles ? "收起" : `展开全部（另有 ${files.length - visibleFiles.length} 个）`}
+              </button>
+            )}
+          </div>
           <div className={css["init-project-files-list"]}>
-            {files.map((file, idx) => {
+            {visibleFiles.map((file, idx) => {
               const fileStatus = file.status || "complete";
               const isWriting = fileStatus === "writing";
               const isFileError = fileStatus === "error";
@@ -85,7 +111,7 @@ export const InitProjectRenderer = ({ tool }: { tool: ToolRecord }) => {
               const statusText = isPending ? "" : `${file.lineCount} 行`;
 
               return (
-                <div key={idx} className={css["init-project-file-item"]}>
+                <div key={`${file.path}-${idx}`} className={css["init-project-file-item"]}>
                   <span className={css["init-project-file-icon"]}>
                     {isWriting
                       ? <Loading />
