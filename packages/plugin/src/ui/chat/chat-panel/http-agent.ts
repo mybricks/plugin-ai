@@ -10,12 +10,17 @@ import {
   type CodeAgentPlugin,
   type BoundHistory,
   type Tool,
+  type ToolCallRecord,
   type ToolUIChannel,
   type TurnRecord,
   type VersionFile,
   type VersionRecord,
 } from "../../../../../agent/src";
 import { composePluginHooks, type Sandbox } from "../../../../../agent/src/code-agent";
+import {
+  createAfterToolCallParams,
+  createBeforeToolCallParams,
+} from "../../../../../agent/src/hooks";
 import type {
   ActivePlanFile,
   PlanFileInfo,
@@ -94,6 +99,9 @@ interface HttpAgentRuntimeOptions {
   /**
    * 浏览器侧生命周期 hooks。远程 Agent 的实际推理在服务端执行，但 sandbox
    * 仍需要这些 hooks 来维护 loading、锁和 undo/redo 等本地 UI 状态。
+   *
+   * beforeToolCall / afterToolCall 会随服务端 SSE 的工具事件通知浏览器；远端
+   * 调用和结果已由服务端决定，因此 hook 的返回值不会影响远端执行或结果。
    */
   hooks?: AgentHooks;
   /** 与本地 CodeAgent 一致，插件 hooks 在顶层 hooks 之后执行。 */
@@ -193,6 +201,12 @@ export class HttpAgent {
   private readonly completedSummaryHookTurns = new Set<string>();
   /** 已消费的后台收口，避免 run/connect 重放触发两次。 */
   private readonly completedSettledHookTurns = new Set<string>();
+  /** 已向浏览器侧派发过 beforeToolCall 的远端 tool:call，避免 SSE 重放重复通知。 */
+  private readonly dispatchedBeforeToolCalls = new Set<string>();
+  /** 已向浏览器侧派发过 afterToolCall 的远端终态工具事件，避免 SSE 重放重复通知。 */
+  private readonly dispatchedAfterToolCalls = new Set<string>();
+  /** 服务端工具定义不会随 SSE 下发；为 hook 提供稳定的最小 Tool 描述。 */
+  private readonly remoteHookTools = new Map<string, Tool>();
 
   constructor(options: HttpAgentOptions, runtime: HttpAgentRuntimeOptions = {}) {
     this.baseUrl = trimRight(options.baseUrl ?? DEFAULT_BASE_URL, "/");
@@ -781,6 +795,12 @@ export class HttpAgent {
       );
     }
     this.applyTurnEvent(event);
+    if (event.event === "tool:call") {
+      this.triggerBeforeToolCall(event);
+    }
+    if (event.event === "tool:result" || event.event === "tool:error") {
+      this.triggerAfterToolCall(event);
+    }
     if (
       event.event === "turn:summary" ||
       event.event === "turn:summary:error"
@@ -976,29 +996,42 @@ export class HttpAgent {
     if (event.event === "tool:args" && iterId) {
       const iter = this.findLLMIteration(turn, iterId);
       if (!iter || typeof data.callId !== "string") return;
-      const existing = iter.toolCalls.find((call) => call.callId === data.callId);
+      const toolCalls = iter.toolCalls as ToolCallRecord[];
+      const existing = toolCalls.find((call) => call.callId === data.callId);
       if (existing || typeof data.name !== "string") return;
       const tool = this.getTools().find((item) => item.name === data.name);
       const call = {
         callId: data.callId,
         name: data.name,
+        ...(tool?.title ? { title: tool.title } : {}),
         args: {},
         status: "pending",
         execStartTime: event.createdAt,
         execEndTime: 0,
       };
-      if (tool?.title) call.title = tool.title;
-      iter.toolCalls.push(call);
+      toolCalls.push(call);
       return;
     }
 
     if (event.event === "tool:call" && iterId) {
       const iter = this.findLLMIteration(turn, iterId);
       if (!iter || typeof data.callId !== "string") return;
-      const call = iter.toolCalls.find((item) => item.callId === data.callId);
+      const toolCalls = iter.toolCalls as ToolCallRecord[];
+      const call = toolCalls.find((item) => item.callId === data.callId);
       if (call) {
         if (data.args !== undefined) call.args = data.args;
         call.execStartTime = Number(data.startTime) || event.createdAt;
+      } else if (typeof data.name === "string") {
+        const tool = this.getTools().find((item) => item.name === data.name);
+        toolCalls.push({
+          callId: data.callId,
+          name: data.name,
+          ...(tool?.title ? { title: tool.title } : {}),
+          args: data.args ?? {},
+          status: "pending",
+          execStartTime: Number(data.startTime) || event.createdAt,
+          execEndTime: 0,
+        });
       }
       return;
     }
@@ -1092,6 +1125,114 @@ export class HttpAgent {
     } else if (event.event === "turn:delete") {
       turn.deleted = true;
     }
+  }
+
+  /**
+   * 远端工具已经由服务端开始执行后，才会通过 SSE 抵达浏览器。因此这里保证
+   * beforeToolCall 的观察能力与本地 Agent 一致，但不能采用其改写参数或拒绝
+   * 调用的返回值。后续若服务端提供 tool:before-call 请求/响应协议，再把该
+   * 返回值接入协议即可。
+   */
+  private triggerBeforeToolCall(event: RemoteAgentEvent): void {
+    if (!this.hooks?.beforeToolCall) return;
+
+    const data = event.data ?? {};
+    // tool:args 只是流式片段；只有 tool:call 携带完整、已解析的参数时才通知。
+    if (!Object.prototype.hasOwnProperty.call(data, "args")) return;
+    const turnId = this.eventTurnId(event);
+    const iterId = typeof data.iterId === "string" ? data.iterId : undefined;
+    const callId = typeof data.callId === "string" ? data.callId : undefined;
+    const name = typeof data.name === "string" ? data.name : undefined;
+    if (!turnId || !iterId || !callId || !name) return;
+
+    const turn = this.findTurn(turnId);
+    const iter = turn && this.findLLMIteration(turn, iterId);
+    const toolCall = iter?.toolCalls.find((call) => call.callId === callId);
+    if (!turn || !toolCall) return;
+
+    const dispatchKey = `${turnId}:${iterId}:${callId}`;
+    if (this.dispatchedBeforeToolCalls.has(dispatchKey)) return;
+    this.dispatchedBeforeToolCalls.add(dispatchKey);
+
+    try {
+      // Remote Agent 的取消状态不随 SSE 暴露；hook 执行期间提供一个独立的
+      // signal，以保持 AgentHooks 的统一参数形状。
+      const result = this.hooks.beforeToolCall(createBeforeToolCallParams({
+        turn,
+        step: Number(data.step) || 0,
+        iterId,
+        tool: this.getRemoteHookTool(name),
+        toolCall,
+        signal: new AbortController().signal,
+      }));
+      void Promise.resolve(result).catch((error) => {
+        console.warn("[HttpAgent] hooks.beforeToolCall failed:", error);
+      });
+    } catch (error) {
+      console.warn("[HttpAgent] hooks.beforeToolCall failed:", error);
+    }
+  }
+
+  /**
+   * 服务端的 tool:result / tool:error 已经是最终结果；afterToolCall 因此作为
+   * 浏览器侧观察回调触发，返回的 outcome 不会回写到远端。
+   */
+  private triggerAfterToolCall(event: RemoteAgentEvent): void {
+    if (!this.hooks?.afterToolCall) return;
+
+    const data = event.data ?? {};
+    // 与本地 Agent 一致：参数解析或 validate 失败不属于实际执行结果。
+    if (event.event === "tool:error" && data.errorType === "invalid_args") {
+      return;
+    }
+
+    const turnId = this.eventTurnId(event);
+    const iterId = typeof data.iterId === "string" ? data.iterId : undefined;
+    const callId = typeof data.callId === "string" ? data.callId : undefined;
+    if (!turnId || !iterId || !callId) return;
+
+    const turn = this.findTurn(turnId);
+    const iter = turn && this.findLLMIteration(turn, iterId);
+    const toolCall = iter?.toolCalls.find((call) => call.callId === callId);
+    if (!turn || !toolCall) return;
+
+    const dispatchKey = `${turnId}:${iterId}:${callId}`;
+    if (this.dispatchedAfterToolCalls.has(dispatchKey)) return;
+    this.dispatchedAfterToolCalls.add(dispatchKey);
+
+    try {
+      const result = this.hooks.afterToolCall(createAfterToolCallParams({
+        turn,
+        step: Number(data.step) || 0,
+        iterId,
+        tool: this.getRemoteHookTool(toolCall.name),
+        toolCall,
+        signal: new AbortController().signal,
+      }));
+      void Promise.resolve(result).catch((error) => {
+        console.warn("[HttpAgent] hooks.afterToolCall failed:", error);
+      });
+    } catch (error) {
+      console.warn("[HttpAgent] hooks.afterToolCall failed:", error);
+    }
+  }
+
+  private getRemoteHookTool(name: string): Tool {
+    const browserTool = this.getTools().find((tool) => tool.name === name);
+    if (browserTool) return browserTool;
+
+    let tool = this.remoteHookTools.get(name);
+    if (!tool) {
+      tool = {
+        name,
+        description: "Remote Agent tool; its definition is unavailable in this browser.",
+        execute: async () => {
+          throw new Error(`Remote tool ${name} cannot execute in the browser.`);
+        },
+      };
+      this.remoteHookTools.set(name, tool);
+    }
+    return tool;
   }
 
   private eventTurnId(event: RemoteAgentEvent): string | null {
