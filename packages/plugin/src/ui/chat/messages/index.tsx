@@ -261,8 +261,8 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
     Boolean(planFile?.content?.trim());
   const canOperatePlanCard = Boolean(isLast) && Boolean(agent);
 
-  // 重试状态：{ attempt, maxRetries } 或 null
-  const [retryState, setRetryState] = useState<{ attempt: number; maxRetries: number } | null>(null);
+  // 重试状态只属于触发它的 LLM iter，不能延续到工具执行后的下一轮 iter。
+  const [retryState, setRetryState] = useState<{ step: number; attempt: number; maxRetries: number } | null>(null);
   const handleDeleteTurn = () => {
     if (onDelete) {
       onDelete(record.id);
@@ -300,11 +300,16 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
   useEffect(() => {
     if (!agent) return;
 
-    const unsubscribe = agent.events.on('llm:retry', ({ step, attempt, maxRetries }) => {
+    const unsubscribeRetry = agent.events.on('llm:retry', ({ step, attempt, maxRetries }) => {
       // 只显示当前 pending record 的重试状态
       if (record.status === 'pending') {
-        setRetryState({ attempt, maxRetries });
+        setRetryState({ step, attempt, maxRetries });
       }
+    });
+
+    // 当前 iter 成功返回后，无论接下来是执行工具还是进入下一轮 LLM，都不应继续显示它的重试信息。
+    const unsubscribeComplete = agent.events.on('llm:complete', ({ step }) => {
+      setRetryState((current) => current?.step === step ? null : current);
     });
 
     // 清理：当 record 不再 pending 时清空重试状态
@@ -312,7 +317,10 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
       setRetryState(null);
     }
 
-    return unsubscribe;
+    return () => {
+      unsubscribeRetry();
+      unsubscribeComplete();
+    };
   }, [agent, record.status]);
 
   return (
@@ -499,7 +507,7 @@ const MessageIteration = React.memo(function MessageIteration({
   isLastItem: boolean;
   isPending: boolean;
   turn: MessageRecord,
-  retryState: { attempt: number; maxRetries: number } | null;
+  retryState: { step: number; attempt: number; maxRetries: number } | null;
   toolRendererMap: Map<string, ToolRenderer>;
   agent?: ChatAgent;
   toolUI?: ToolUIChannel;

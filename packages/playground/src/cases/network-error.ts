@@ -428,8 +428,8 @@ export const networkErrorBeforeToolRetryCase: TestCase = {
         return;
       }
 
-      // 第三次请求：工具执行后的最后内容
-      await delay(200);
+      // 第三次请求：工具执行后的最后内容。故意停留较久，便于观察重试提示是否错误地延续到下一轮。
+      await delay(10_000);
       const chunks = ["文件已成功创建！", "重试机制确保了可靠性。"];
       for (const chunk of chunks) {
         params.emits.write?.(chunk);
