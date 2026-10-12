@@ -186,7 +186,7 @@ export interface CodeAgentPlugin {
    * 每个 SubAgentConfig 通过 `${name}.md` 文件定义配置和系统提示词。
    */
   agents?: SubAgentConfig[];
-  /** 插件内置工具，使用原始工具名合并到顶层 tools */
+  /** 插件内置工具；按注册顺序合并到顶层 tools，同名时保留最先注册的实现。 */
   tools?: Tool[];
   /**
    * 插件生命周期 hooks，与 AgentOptions.hooks 的定义和行为一致。
@@ -239,6 +239,21 @@ const DEFAULT_BUILTIN_TOOLS: CodeAgentBuiltinToolName[] = [
   GREP_TOOL_NAME,
   BASH_TOOL_NAME,
 ];
+
+/**
+ * 工具按注册顺序稳定去重：同名时保留最先注册的实现。
+ *
+ * 这既避免将重复 function definition 发送给模型，也让调用方可以通过
+ * 更靠前的来源（例如 AgentOptions.tools）显式覆盖后续插件的默认工具。
+ */
+function deduplicateTools(tools: Tool[]): Tool[] {
+  const names = new Set<string>();
+  return tools.filter((tool) => {
+    if (names.has(tool.name)) return false;
+    names.add(tool.name);
+    return true;
+  });
+}
 
 // ─── Sandbox V1 兼容接口 ──────────────────────────────────────────────────────
 
@@ -868,7 +883,7 @@ export class CodeAgent extends Agent {
       ...this._pluginRuntime.plugins.flatMap((p) => p.agents ?? []),
     ];
     const pluginTools = this._pluginRuntime.plugins.flatMap((p) => p.tools ?? []);
-    const tools = [...this._base.tools, ...pluginTools];
+    const tools = deduplicateTools([...this._base.tools, ...pluginTools]);
 
     return { skills, subAgents, tools };
   }
@@ -890,11 +905,11 @@ export class CodeAgent extends Agent {
         )
       : null;
 
-    this.options.tools = [
+    this.options.tools = deduplicateTools([
       ...tools,
       ...(skillTool ? [skillTool] : []),
       ...(subAgentTool ? [subAgentTool] : []),
-    ];
+    ]);
   }
 
   override async requestAI(params: Parameters<Agent["requestAI"]>[0]): Promise<void> {

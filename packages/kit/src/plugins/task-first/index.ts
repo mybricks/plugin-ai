@@ -1,4 +1,4 @@
-import type { CodeAgentPluginFactory, TurnRecord } from "../../../../agent/src";
+import { Tools, type CodeAgentPluginFactory, type TurnRecord } from "../../../../agent/src";
 import taskFirstWorkflow from "./task-first-workflow.md";
 import revokeTaskPrompt from "./revoke-task-git.md";
 import type { GitBranchInfo } from "../branch-info";
@@ -81,6 +81,7 @@ export function createTaskFirstPlugin(): CodeAgentPluginFactory {
     return {
     name: "task-first",
     description: "按 TASKS.md 推进任务并在源码变更后检查回写。",
+    tools: [Tools.createAskQuestions()],
     promptSections: { workflowSection: taskFirstWorkflow },
     promptTemplates: branchInfo ? [{
           name: "revoke-task",

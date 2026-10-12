@@ -1,4 +1,4 @@
-import { Tools, type CodeAgentPlugin, type CodeAgentPluginInput, type Tool } from "../../../../agent/src";
+import { type CodeAgentPlugin, type CodeAgentPluginInput, type Tool } from "../../../../agent/src";
 import type { PromptSections } from "../../prompts";
 import identitySection from "./identity-section.md";
 import usingToolsSection from "./using-tools-section.md";
@@ -64,7 +64,6 @@ export function cliPdeAgentOptionBuilder<T extends CliPdeAgentOptionBuilderOptio
   options: T,
 ): CliPdeAgentOptionBuilderResult<T> {
   const { configDirName, plugins, tools, ...restOptions } = options;
-  const askQuestionsTool = Tools.createAskQuestions();
   const resolvedConfigDirName = configDirName ?? CLI_PDE_CONFIG_DIR_NAME;
 
   return {
@@ -80,11 +79,6 @@ export function cliPdeAgentOptionBuilder<T extends CliPdeAgentOptionBuilderOptio
       createImpactDocumentPlugin({ configDirName: resolvedConfigDirName }),
       ...(plugins ?? []),
     ],
-    // CLI PDE 必须能够在 Ask / Plan 模式中向用户收集决策；同名调用方工具去重，
-    // 以预设提供的交互实现为准，避免模型看到重复 function definition。
-    tools: [
-      askQuestionsTool,
-      ...(tools ?? []).filter((tool) => tool.name !== askQuestionsTool.name),
-    ],
+    tools: tools ?? [],
   } as CliPdeAgentOptionBuilderResult<T>;
 }
