@@ -76,7 +76,7 @@ export function cliPdeAgentOptionBuilder<T extends CliPdeAgentOptionBuilderOptio
     },
     plugins: [
       cliPdePlugin,
-      createTaskFirstPlugin({ configDirName: resolvedConfigDirName }),
+      createTaskFirstPlugin(),
       createImpactDocumentPlugin({ configDirName: resolvedConfigDirName }),
       ...(plugins ?? []),
     ],

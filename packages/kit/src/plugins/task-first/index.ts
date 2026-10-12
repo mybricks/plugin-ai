@@ -4,11 +4,6 @@ import revokeTaskPrompt from "./revoke-task-git.md";
 import type { GitBranchInfo } from "../branch-info";
 import { readGitBranchInfoFromSandbox } from "../branch-info";
 
-export interface TaskFirstPluginOptions {
-  /** 与 CodeAgent.configDirName 相同的文档根目录。 */
-  configDirName: string;
-}
-
 const MUTATION_TOOLS = new Set([
   "write_file", "multi_write", "edit_file", "multi_edit", "delete_file", "init-project",
 ]);
@@ -76,7 +71,7 @@ export function getTaskDocumentPath(
 /**
  * Git 状态只能在 sandbox 可用后读取，因此返回一次性 factory；解析后的插件是静态的。
  */
-export function createTaskFirstPlugin(_options: TaskFirstPluginOptions): CodeAgentPluginFactory {
+export function createTaskFirstPlugin(): CodeAgentPluginFactory {
   return async ({ sandbox, configDirName }) => {
     const branchInfo = await readGitBranchInfoFromSandbox(sandbox);
     const promptedTurnIds = new Set<string>();
