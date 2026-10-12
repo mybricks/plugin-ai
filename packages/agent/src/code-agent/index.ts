@@ -150,7 +150,7 @@ export const isFileExcluded = (file: UnifiedFile, exclude?: GetFilesOptions["exc
  *   - skills 使用 SkillFile 声明
  *   - agents 使用 SubAgentConfig 声明（md 文件驱动），合并到顶层 subAgents
  *   - tools 使用 Tool 声明，并合并到顶层 tools
- *   - hooks 使用 AgentHooks 声明，仅在插件启用时参与执行
+ *   - hooks 使用 AgentHooks 声明
  *
  * name 命名规范：
  *   - 仅允许小写英文字母、数字、中划线、下划线
@@ -161,7 +161,6 @@ export const isFileExcluded = (file: UnifiedFile, exclude?: GetFilesOptions["exc
 export interface CodeAgentPlugin {
   /**
    * 插件唯一标识（必填）。
-   * 用作 enablePlugin / disablePlugin 的查找键。
    * 命名规范：[a-z0-9][a-z0-9_-]*
    */
   name: string;
@@ -169,15 +168,19 @@ export interface CodeAgentPlugin {
   version?: string;
   /** 插件描述（可选，展示/调试用） */
   description?: string;
-  /**
-   * 初始启用状态，默认 true（全部启用）。
-   * 设为 false 可让插件以禁用状态注册，需调用 enablePlugin(name) 后才会在 turn 中生效。
-   */
-  enabled?: boolean;
   /** 插件内置 Skills，合并到顶层 skills */
   skills?: SkillFile[];
-  /** 插件级 Prompt Templates，随插件启用状态动态生效。 */
+  /** 插件级 Prompt Templates。 */
   promptTemplates?: PromptTemplateFile[];
+  /** 固定工作流程提示词，进入 system。 */
+  promptSections?: Pick<CodeAgentPromptOptions, "workflowSection">;
+  /** 每轮附加的动态上下文，位于历史之后、当前用户消息之前。 */
+  getAttachmentContextMessages?: (context: {
+    sandbox: AgentSandbox;
+    configDirName: string;
+    mode: Parameters<NonNullable<AgentOptions["getAttachmentContextMessages"]>>[0]["mode"];
+    previousMode: Parameters<NonNullable<AgentOptions["getAttachmentContextMessages"]>>[0]["previousMode"];
+  }) => string[] | Promise<string[]>;
   /**
    * 插件内置 SubAgents，合并到顶层 subAgents。
    * 每个 SubAgentConfig 通过 `${name}.md` 文件定义配置和系统提示词。
@@ -187,9 +190,34 @@ export interface CodeAgentPlugin {
   tools?: Tool[];
   /**
    * 插件生命周期 hooks，与 AgentOptions.hooks 的定义和行为一致。
-   * 仅在插件启用时参与执行；多个插件按 plugins 数组顺序依次执行。
+   * 多个插件按 plugins 数组顺序依次执行。
    */
   hooks?: AgentHooks;
+}
+
+/**
+ * 延迟创建插件。适合依赖 sandbox 状态的能力（例如 Git 探测）：工厂只执行一次，
+ * 返回的仍是普通静态插件，不会在每个 turn 中重复求值。
+ */
+export type CodeAgentPluginFactory = (context: {
+  sandbox: AgentSandbox;
+  configDirName: string;
+}) => CodeAgentPlugin | Promise<CodeAgentPlugin>;
+
+export type CodeAgentPluginInput = CodeAgentPlugin | CodeAgentPluginFactory;
+
+interface PluginRuntimeState {
+  /** 已可用的静态插件；factory 解析成功后追加到此数组。 */
+  plugins: CodeAgentPlugin[];
+  /** 尚未执行的一次性插件工厂。 */
+  factories: CodeAgentPluginFactory[];
+  /** 并发调用 initializePlugins 时复用同一个初始化任务。 */
+  initializing?: Promise<void>;
+}
+
+interface SystemPromptState {
+  options: CodeAgentPromptOptions | false | undefined;
+  customSystem: string | undefined;
 }
 
 export type CodeAgentBuiltinToolName =
@@ -294,12 +322,10 @@ export interface CodeAgentOptions extends Omit<AgentOptions, "system"> {
   /**
    * 插件配置列表。
    *
-   * 每个插件的 skills / agents / tools 会在每次 turn 开始时，根据当前启用状态
-   * 动态合并到顶层 skills / subAgents / tools 中，而非构造期固化。
-   *
-   * 插件启用状态通过 enablePlugin / disablePlugin 控制，初始状态由 plugin.enabled 字段决定（默认 true）。
+   * 普通对象会立即生效；函数工厂在首次使用前基于已初始化的 sandbox 执行一次，
+   * 适合在 Git 等工作区状态已可读取后决定模板与工作流。
    */
-  plugins?: CodeAgentPlugin[];
+  plugins?: CodeAgentPluginInput[];
   /**
    * 控制 CodeAgent 内置工具。
    *
@@ -315,19 +341,39 @@ export interface CodeAgentOptions extends Omit<AgentOptions, "system"> {
 /** 插件 name 命名规范校验 */
 const PLUGIN_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
+function collectPluginTemplates(plugins: CodeAgentPlugin[]) {
+  return collectPluginPromptTemplates(plugins);
+}
+
+function composeSystemPrompt(
+  promptOptions: CodeAgentPromptOptions | false | undefined,
+  customSystem: string | undefined,
+  plugins: CodeAgentPlugin[],
+): string {
+  const workflowSections = [
+    promptOptions === false ? undefined : promptOptions?.workflowSection,
+    ...plugins.map((plugin) => plugin.promptSections?.workflowSection),
+  ].filter((section): section is string => Boolean(section?.trim()));
+  const builtin = promptOptions === false
+    ? workflowSections.join("\n\n")
+    : getCodeAgentSystemPrompt({
+      ...promptOptions,
+      workflowSection: workflowSections.join("\n\n") || undefined,
+    });
+  return [builtin, customSystem].filter(Boolean).join("\n\n");
+}
+
 export function composePluginHooks(
   baseHooks: AgentHooks | undefined,
   plugins: CodeAgentPlugin[],
-  enabledNamesRef: { current: Set<string> },
+  hasPendingFactories = false,
 ): AgentHooks | undefined {
   const hasPluginHooks = plugins.some((plugin) => plugin.hooks);
-  if (!baseHooks && !hasPluginHooks) return undefined;
+  if (!baseHooks && !hasPluginHooks && !hasPendingFactories) return undefined;
 
   const getActiveHooks = (): Array<{ source: string; hooks: AgentHooks }> => [
     ...(baseHooks ? [{ source: "AgentOptions", hooks: baseHooks }] : []),
-    ...plugins
-      .filter((plugin) => enabledNamesRef.current.has(plugin.name))
-      .flatMap((plugin) => plugin.hooks
+    ...plugins.flatMap((plugin) => plugin.hooks
         ? [{ source: `plugin "${plugin.name}"`, hooks: plugin.hooks }]
         : []),
   ];
@@ -574,14 +620,8 @@ async function fetchPlanFiles(
 }
 
 export class CodeAgent extends Agent {
-  /** 全量插件列表（构造时传入，不变） */
-  private _plugins: CodeAgentPlugin[];
-  /**
-   * 当前已启用的插件名集合。
-   * 由 plugin.enabled 字段（默认 true）初始化。
-   * enablePlugin / disablePlugin 调用时即时更新，下一个 turn 生效。
-   */
-  private _enabledPluginNames: Set<string>;
+  private _pluginRuntime: PluginRuntimeState;
+  private _systemPrompt: SystemPromptState;
   /** CodeAgent 内部只使用归一化后的 AgentSandbox。 */
   private _sandbox: AgentSandbox;
   /** Normalized directory used by this CodeAgent for its virtual resources. */
@@ -601,7 +641,7 @@ export class CodeAgent extends Agent {
       skills,
       system,
       subAgents,
-      plugins = [],
+      plugins: pluginInputs = [],
       builtinTools,
       bash,
       ...agentOptions
@@ -613,6 +653,11 @@ export class CodeAgent extends Agent {
       ? sandbox
       : createAgentSandboxFromV1(sandbox, { allowedCommands: bash?.allowedCommands });
 
+    const pluginRuntime: PluginRuntimeState = {
+      plugins: pluginInputs.filter((plugin): plugin is CodeAgentPlugin => typeof plugin !== "function"),
+      factories: pluginInputs.filter((plugin): plugin is CodeAgentPluginFactory => typeof plugin === "function"),
+    };
+    const { plugins, factories: pluginFactories } = pluginRuntime;
     for (const plugin of plugins) {
       if (!PLUGIN_NAME_PATTERN.test(plugin.name)) {
         console.warn(
@@ -627,9 +672,6 @@ export class CodeAgent extends Agent {
     const baseUserTools = agentOptions.tools ?? [];
     const subAgentTaskManager = new SubAgentTaskManager();
 
-    // super() 调用前 this 不可用，先用 enabledNamesRef 供 sandbox 闭包读取。
-    // super() 之后再把它同步到真实的 this._enabledPluginNames 引用。
-    const enabledNamesRef = { current: new Set<string>() };
     const hooks = composePluginHooks({
       ...agentOptions.hooks,
       async beforeRequest(params) {
@@ -638,16 +680,14 @@ export class CodeAgent extends Agent {
         const additionalMessages = [...(base?.additionalMessages ?? []), ...messages];
         return additionalMessages.length ? { additionalMessages } : undefined;
       },
-    }, plugins, enabledNamesRef);
+    }, plugins, pluginFactories.length > 0);
 
-    const getEnabledPluginSkills = (): SkillFile[] => plugins
-      .filter((plugin) => enabledNamesRef.current.has(plugin.name))
-      .flatMap((plugin) => plugin.skills ?? []);
+    const getPluginSkills = (): SkillFile[] => plugins.flatMap((plugin) => plugin.skills ?? []);
 
     const formatUserMessage = async (params: Parameters<NonNullable<AgentOptions["formatUserMessage"]>>[0]) => {
       const mbsMessage = expandMbsTemplateMessage(
         params.message,
-        createMbsTemplates(collectPluginPromptTemplates(plugins, enabledNamesRef.current)),
+        createMbsTemplates(collectPluginTemplates(plugins)),
       );
       const formattedParams = { ...params, message: mbsMessage ?? params.message };
       return agentOptions.formatUserMessage
@@ -657,7 +697,7 @@ export class CodeAgent extends Agent {
 
     // 收集 skills 文件（只读，不可列出）
     const collectSkillFiles = (): UnifiedFile[] => {
-      const allSkills = [...baseSkills, ...getEnabledPluginSkills()];
+      const allSkills = [...baseSkills, ...getPluginSkills()];
       return allSkills.flatMap((s) =>
         s.files.map((f) => ({
           path: `${skillsPrefix}${s.name}/${f.path}`,
@@ -701,7 +741,7 @@ export class CodeAgent extends Agent {
     };
 
     const getStableContextMessages = async (): Promise<Message[]> => {
-      const skills = [...baseSkills, ...getEnabledPluginSkills()];
+      const skills = [...baseSkills, ...getPluginSkills()];
       const [agentsMdMessage, alwaysLoadedSkillsContent, ctx] = await Promise.all([
         createAgentsMdContextMessage(toolSandbox, configDirName),
         buildAlwaysLoadedSkillsContent(skills, configDirName),
@@ -717,12 +757,11 @@ export class CodeAgent extends Agent {
       ];
     };
 
-    const builtinSystem = options.promptOptions === false
-      ? ""
-      : getCodeAgentSystemPrompt(agentOptions.promptOptions || undefined);
-    const finalSystem = system ? `${builtinSystem}
-
-${system}` : builtinSystem;
+    const finalSystem = composeSystemPrompt(
+      options.promptOptions,
+      system,
+      plugins,
+    );
 
     super({
       ...agentOptions,
@@ -734,7 +773,7 @@ ${system}` : builtinSystem;
         const sections: string[] = [];
 
         // 1. 环境信息：skills/subAgents/日期 + 模式提示词
-        const { skills, subAgents } = this._getEnabledResources();
+        const { skills, subAgents } = this._getPluginResources();
         const baseSection = buildEnvironmentSection(
           skills.length ? skills : undefined,
           subAgents.length ? subAgents : undefined,
@@ -753,21 +792,31 @@ ${system}` : builtinSystem;
         const extra = await agentOptions.getAttachmentContextMessages?.(ctx);
         if (extra?.length) sections.push(...extra);
 
+        for (const plugin of plugins) {
+          if (!plugin.getAttachmentContextMessages) continue;
+          try {
+            const pluginSections = await plugin.getAttachmentContextMessages({
+              ...ctx,
+              sandbox: toolSandbox,
+              configDirName,
+            });
+            if (pluginSections?.length) sections.push(...pluginSections);
+          } catch (error) {
+            console.warn(`[CodeAgent] plugin "${plugin.name}" attachment context failed:`, error);
+          }
+        }
+
         return sections;
       },
       tools: base.tools,
     });
 
-    this._plugins = plugins;
+    this._pluginRuntime = pluginRuntime;
+    this._systemPrompt = { options: options.promptOptions, customSystem: system };
     this._base = base;
     this._sandbox = toolSandbox;
     this.configDirName = configDirName;
     this._subAgentTaskManager = subAgentTaskManager;
-    this._enabledPluginNames = new Set(
-      plugins.filter((p) => p.enabled !== false).map((p) => p.name)
-    );
-    enabledNamesRef.current = this._enabledPluginNames;
-
     this._rebuildDynamicTools();
   }
 
@@ -782,9 +831,7 @@ ${system}` : builtinSystem;
 
   /** Active MBS templates. UI may present these through any interaction it owns. */
   getMbsTemplates(): MbsTemplateDescriptor[] {
-    return createMbsTemplates(
-      collectPluginPromptTemplates(this._plugins, this._enabledPluginNames),
-    ).map((item) => item.descriptor);
+    return createMbsTemplates(collectPluginTemplates(this._pluginRuntime.plugins)).map((item) => item.descriptor);
   }
 
   /**
@@ -807,35 +854,30 @@ ${system}` : builtinSystem;
     await this._sandbox.files.write({ path, content: newContent });
   }
 
-  private _getEnabledResources(): {
+  private _getPluginResources(): {
     skills: SkillFile[];
     subAgents: SubAgentConfig[];
     tools: Tool[];
   } {
-    const enabledPlugins = this._plugins.filter((p) =>
-      this._enabledPluginNames.has(p.name)
-    );
-
     const skills = [
       ...this._base.skills,
-      ...enabledPlugins.flatMap((p) => p.skills ?? []),
+      ...this._pluginRuntime.plugins.flatMap((p) => p.skills ?? []),
     ];
     const subAgents = [
       ...this._base.subAgents,
-      ...enabledPlugins.flatMap((p) => p.agents ?? []),
+      ...this._pluginRuntime.plugins.flatMap((p) => p.agents ?? []),
     ];
-    const pluginTools = enabledPlugins.flatMap((p) => p.tools ?? []);
+    const pluginTools = this._pluginRuntime.plugins.flatMap((p) => p.tools ?? []);
     const tools = [...this._base.tools, ...pluginTools];
 
     return { skills, subAgents, tools };
   }
 
   /**
-   * 根据当前启用插件状态，重建 use_skill、call-sub-agent 工具以及 plugin tools。
-   * 每次 requestAI 前调用，确保工具列表与启用状态一致。
+   * 重建 use_skill、call-sub-agent 工具以及 plugin tools。
    */
   private _rebuildDynamicTools(): void {
-    const { skills, subAgents, tools } = this._getEnabledResources();
+    const { skills, subAgents, tools } = this._getPluginResources();
 
     const modelSkills = skills.filter(shouldExposeSkillToModel);
     const skillTool = modelSkills.length ? createSkillTool(modelSkills, this.configDirName) : null;
@@ -856,30 +898,62 @@ ${system}` : builtinSystem;
   }
 
   override async requestAI(params: Parameters<Agent["requestAI"]>[0]): Promise<void> {
+    await this.initializePlugins();
     this._rebuildDynamicTools();
     return super.requestAI(params);
   }
 
-  /**
-   * 启用指定插件（仅影响当前实例）。
-   * 下一个 turn 开始时生效（skills / tools / agents 会重新合并）。
-   */
-  enablePlugin(name: string): void {
-    this._enabledPluginNames.add(name);
+  override async retry(params: Parameters<Agent["retry"]>[0]): Promise<void> {
+    await this.initializePlugins();
+    return super.retry(params);
   }
 
-  /**
-   * 禁用指定插件（仅影响当前实例）。
-   * 下一个 turn 开始时生效（skills / tools / agents 会重新合并）。
-   */
-  disablePlugin(name: string): void {
-    this._enabledPluginNames.delete(name);
+  /** 仅执行一次延迟插件工厂；工厂产物随后等同于普通静态插件。 */
+  initializePlugins(): Promise<void> {
+    const runtime = this._pluginRuntime;
+    if (runtime.initializing) return runtime.initializing;
+    if (!runtime.factories.length) return Promise.resolve();
+    const factories = runtime.factories.splice(0);
+    const initialize = async () => {
+      for (const factory of factories) {
+        try {
+          const plugin = await factory({
+            sandbox: this._sandbox,
+            configDirName: this.configDirName,
+          });
+          if (!PLUGIN_NAME_PATTERN.test(plugin.name)) {
+            console.warn(`[CodeAgent] Plugin name "${plugin.name}" 不符合命名规范 [a-z0-9][a-z0-9_-]。`);
+          }
+          runtime.plugins.push(plugin);
+        } catch (error) {
+          console.warn("[CodeAgent] plugin factory failed to initialize:", error);
+        }
+      }
+      this._refreshSystemPrompt();
+      this._rebuildDynamicTools();
+    };
+    runtime.initializing = initialize().finally(() => {
+      runtime.initializing = undefined;
+    });
+    return runtime.initializing;
   }
 
-  /**
-   * 获取当前已启用的插件列表（快照，不影响内部状态）。
-   */
-  getEnabledPlugins(): CodeAgentPlugin[] {
-    return this._plugins.filter((p) => this._enabledPluginNames.has(p.name));
+  private _refreshSystemPrompt(): void {
+    this.options.system = composeSystemPrompt(
+      this._systemPrompt.options,
+      this._systemPrompt.customSystem,
+      this._pluginRuntime.plugins,
+    );
+  }
+
+  /** 更新基础提示词并重组 system。 */
+  setPromptOptions(promptOptions: CodeAgentPromptOptions | false | undefined): void {
+    this._systemPrompt.options = promptOptions;
+    this._refreshSystemPrompt();
+  }
+
+  /** 已初始化插件的快照。 */
+  getPlugins(): CodeAgentPlugin[] {
+    return [...this._pluginRuntime.plugins];
   }
 }

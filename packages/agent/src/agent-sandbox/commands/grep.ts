@@ -2,6 +2,7 @@ import type { AgentSandboxFiles } from "../files";
 import type { AgentSandboxCommandProxy, AgentSandboxGrepInput, AgentSandboxGrepMatch, AgentSandboxGrepResult } from "./index";
 import { isStructuredCommandRequest, type CommandRequest } from "./helpers/request";
 import { createFileSystem } from "./helpers/file-access";
+import { normalizeConfigDirName } from "../../code-agent/config-dir";
 
 function matchGlob(glob: string, path: string): boolean {
   const value = glob.includes("/") ? path : path.split("/").pop() ?? path;
@@ -147,7 +148,8 @@ export function createFileSystemGrepCommandProxy(files: AgentSandboxFiles): Agen
  * transport as `rg --json`, then converts the JSON stream into the same
  * structured result used by the files fallback and the grep Tool.
  */
-export function createNativeGrepCommandProxy(): AgentSandboxCommandProxy {
+export function createNativeGrepCommandProxy(configDirName?: string): AgentSandboxCommandProxy {
+  const configDirPath = `./${normalizeConfigDirName(configDirName)}`;
   return {
     command: "grep",
     async execute(request, next, options) {
@@ -182,7 +184,7 @@ export function createNativeGrepCommandProxy(): AgentSandboxCommandProxy {
         // trees forever. `find` visits normal files only and prunes the same
         // high-volume internal directories that a project search should skip.
         const grepCommand = [
-          "find . \\( -path './.git' -o -path './node_modules' -o -path './.agent' -o -path './.claude' \\) -prune -o -type f -exec grep -H -I -n -E",
+          `find . \\( -path './.git' -o -path './node_modules' -o -path ${shellQuote(configDirPath)} -o -path './.claude' \\) -prune -o -type f -exec grep -H -I -n -E`,
           normalized.caseInsensitive ? "-i" : "",
           "--",
           shellQuote(normalized.pattern),

@@ -460,7 +460,7 @@ function createRecordedHooks(label: string, calls: string[]): AgentHooks {
   };
 }
 
-/** CodeAgent plugin hooks share AgentHooks semantics and follow live plugin enablement. */
+/** CodeAgent plugin hooks share AgentHooks semantics and run in declaration order. */
 export async function verifyPluginHooksContracts() {
   const fs = new MemFS([]);
   const calls: string[] = [];
@@ -483,7 +483,7 @@ export async function verifyPluginHooksContracts() {
     hooks: createRecordedHooks("base", calls),
     plugins: [
       { name: "one", tools: [pluginTool("one_tool")], hooks: createRecordedHooks("one", calls) },
-      { name: "two", enabled: false, tools: [pluginTool("two_tool")], hooks: createRecordedHooks("two", calls) },
+      { name: "two", tools: [pluginTool("two_tool")], hooks: createRecordedHooks("two", calls) },
     ],
     async request(params) {
       calls.push("request");
@@ -511,10 +511,8 @@ export async function verifyPluginHooksContracts() {
 
   await runTurn("first");
   const first = calls.splice(0);
-  agent.enablePlugin("two");
   await runTurn("second");
   const second = calls.splice(0);
-  agent.disablePlugin("one");
   await runTurn("third");
   const third = calls.splice(0);
 

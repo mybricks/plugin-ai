@@ -97,7 +97,7 @@ function parsePlanFileStatus(content: string): string | null {
 
 /**
  * 从文件路径中提取日期文件夹（格式 YYYY-MM-DD）。
- * 例：".agent/plans/2026-06-09/plan-lifecycle.md" → "2026-06-09"
+ * 例："<configDirName>/plans/2026-06-09/plan-lifecycle.md" → "2026-06-09"
  */
 function extractDateFolder(filePath: string): string | null {
   const match = filePath.match(/(\d{4}-\d{2}-\d{2})/);

@@ -54,10 +54,8 @@ export interface MbsTemplate {
 
 export function collectPluginPromptTemplates(
   plugins: Array<{ name: string; promptTemplates?: PromptTemplateFile[] }>,
-  enabledNames: Set<string>,
 ): Array<{ template: PromptTemplateFile; scope: "plugin" }> {
   return plugins
-    .filter((plugin) => enabledNames.has(plugin.name))
     .flatMap((plugin) => plugin.promptTemplates ?? [])
     .map((template) => ({ template, scope: "plugin" as const }));
 }

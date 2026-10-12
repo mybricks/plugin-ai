@@ -1,4 +1,4 @@
-import type { AgentSandbox, AgentOptions, Tool, CodeAgentPlugin, History, TurnSender, SkillFile, UnifiedFile, BoundHistory } from "../../../agent/src";
+import type { AgentSandbox, AgentOptions, Tool, CodeAgentPlugin, CodeAgentPluginInput, History, TurnSender, SkillFile, UnifiedFile, BoundHistory } from "../../../agent/src";
 import { DEFAULT_CONFIG_DIR_NAME, getConfigDirPattern } from "../../../agent/src";
 import type { PromptSections } from "../../../kit/src";
 import type { RequestAsStreamFn } from "../../../request/src";
@@ -13,7 +13,10 @@ export type PluginGetUserContextMessage = () => string | null | undefined | Prom
 /** Controls the automatic project-space context attached to each turn. */
 export type ProjectContext =
   | { type?: "project" }
-  | { type: "directory"; directory: string };
+  | {
+      type: "directory";
+      directory: string;
+    };
 
 /** Directories omitted from automatic project-space context, not from tools. */
 export function getProjectContextExclude(configDirName = DEFAULT_CONFIG_DIR_NAME): RegExp[] {
@@ -124,7 +127,7 @@ export interface PluginParams {
   /** 本地 CodeAgent 的初始化文件快照；首次请求前会执行 diff/update/delete。 */
   initialFiles?: Array<Pick<UnifiedFile, "path" | "content">>;
   skills?: SkillFile[];
-  plugins?: CodeAgentPlugin[];
+  plugins?: CodeAgentPluginInput[];
   promptSections?: PromptSections;
   tools?: Tool[];
   codeRules?: string;
@@ -160,7 +163,10 @@ export function injectSkillRuntimeContext(skill: SkillFile, runtimeContext: Skil
   return clonedSkill;
 }
 
-export function injectPluginRuntimeContext(plugin: CodeAgentPlugin, runtimeContext: SkillRuntimeContext): CodeAgentPlugin {
+export function injectPluginRuntimeContext(plugin: CodeAgentPluginInput, runtimeContext: SkillRuntimeContext): CodeAgentPluginInput {
+  if (typeof plugin === "function") {
+    return async (context) => injectPluginRuntimeContext(await plugin(context), runtimeContext) as CodeAgentPlugin;
+  }
   if (!plugin.skills?.length) return plugin;
   return {
     ...plugin,

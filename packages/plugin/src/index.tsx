@@ -4,7 +4,7 @@ import pkg from "../../../package.json";
 console.log(`%c ${pkg.name} %c@${pkg.version}`, `color:#FFF;background:#fa6400`, ``, ``);
 
 import { IDBHistory, normalizeConfigDirName } from "../../agent/src";
-import type { AgentOptions, CodeAgentPlugin, SkillFile, TurnSender } from "../../agent/src";
+import type { AgentOptions, CodeAgentPluginInput, SkillFile, TurnSender } from "../../agent/src";
 import { createRequestAsStream, createOnUpload } from "../../request/src";
 import type { RequestAsStreamFn, ProviderConfig } from "../../request/src";
 export type { ProviderConfig, RemoteProviderConfig, CustomProviderConfig, ModelConfig, ModelSelection } from "../../request/src";
@@ -42,7 +42,7 @@ export type {
 } from "../../agent/src";
 export { DisabledHandler } from "./disabled-handler";
 export type { DisabledMessage, DisabledRequestHandler } from "./disabled-handler";
-export type { AgentEventMap, AgentHooks, CodeAgentPlugin, PromptTemplateFile, SkillFile, UnifiedFile } from "../../agent/src";
+export type { AgentEventMap, AgentHooks, CodeAgentPlugin, CodeAgentPluginFactory, CodeAgentPluginInput, PromptTemplateFile, SkillFile, UnifiedFile } from "../../agent/src";
 export { createRequestAsStream, createOnUpload } from "../../request/src";
 export type { RequestAsStreamFn } from "../../request/src";
 export { openSetting, closeSetting, SettingModal } from "./ui/setting";
@@ -78,16 +78,6 @@ export interface PluginAIController {
   enable(): void;
   /** 动态设置禁用状态 */
   setDisabled(value: boolean): void;
-  /**
-   * 广播启用插件：影响所有已创建的 CodeAgent 实例，且对后续新建实例同样生效。
-   * 下一个 turn 开始时生效（skills / tools / agents 会重新合并）。
-   */
-  enablePlugin(name: string): void;
-  /**
-   * 广播禁用插件：影响所有已创建的 CodeAgent 实例，且对后续新建实例同样生效。
-   * 下一个 turn 开始时生效（skills / tools / agents 会重新合并）。
-   */
-  disablePlugin(name: string): void;
   /** 向指定 comId 的 Agent 发送消息，复用 sandbox helpers.sendToAgent 的队列/聚焦逻辑。 */
   requestAI(comId: string, params: SendToAgentParams): void;
   /**
@@ -200,7 +190,7 @@ export interface PluginAIParams {
   /** 技能文件列表，挂载为虚拟 <configDirName>/skills/ 目录，LLM 通过 use_skill 工具按需加载 */
   skills?: SkillFile[];
   /** 插件列表，会将内部 skills / agents / tools / hooks 合并进 CodeAgent 顶层配置 */
-  plugins?: CodeAgentPlugin[];
+  plugins?: CodeAgentPluginInput[];
   /** 覆盖内置系统提示词各节，按 key 深度合并，未提供的 key 保留 MYBRICKS_PROMPT_SECTIONS 默认值 */
   promptSections?: PromptSections;
   /** 额外自定义工具，追加到内置工具（read_file / write_file 等）之后 */
@@ -425,12 +415,6 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
       },
       setDisabled(value: boolean) {
         context.setDisabled(value);
-      },
-      enablePlugin(name: string) {
-        context.enablePlugin(name);
-      },
-      disablePlugin(name: string) {
-        context.disablePlugin(name);
       },
       requestAI(comId: string, params: SendToAgentParams) {
         window._sandbox_?.helpers.sendToAgent(comId, params);

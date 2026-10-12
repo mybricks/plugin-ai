@@ -3,7 +3,7 @@ import type { RequestAsStreamFn } from "@request/types";
 import type { ProviderConfig } from "@request";
 import type { Tool } from "@agent/types";
 import type { CodeAgent } from "@agent/code-agent";
-import type { CodeAgentPlugin, SkillFile } from "@agent/code-agent";
+import type { CodeAgentPluginInput, SkillFile } from "@agent/code-agent";
 import type { AgentSandbox } from "@agent/agent-sandbox";
 import type { ChatPanelProps } from "@plugin/ui/chat";
 import type { MentionProvider } from "@plugin/index";
@@ -55,7 +55,7 @@ export interface TestCase {
   /** 预设技能文件列表，传入 CodeAgent.skills */
   skills?: SkillFile[];
   /** 插件资源，包含 promptTemplates 等 CodeAgentPlugin 级配置。 */
-  plugins?: CodeAgentPlugin[];
+  plugins?: CodeAgentPluginInput[];
   maskOptions?: {
     maxTurns?: number;
     maxAgeMinutes?: number;

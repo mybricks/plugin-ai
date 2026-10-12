@@ -4,7 +4,7 @@ import {
 } from "../../../agent/src";
 import type { AgentSandbox, CreateAgentSandboxFromV1Options, SandboxV1 } from "../../../agent/src";
 import { DisabledHandler, type DisabledRequestHandler } from "../disabled-handler";
-import type { Tool, CodeAgentPlugin, History, TurnSender, SkillFile, UnifiedFile, AgentOptions, AgentMode, ChatChipInstance } from "../../../agent/src";
+import type { Tool, CodeAgentPluginInput, History, TurnSender, SkillFile, UnifiedFile, AgentOptions, AgentMode, ChatChipInstance } from "../../../agent/src";
 import type { PromptSections } from "../../../kit/src";
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { Designer, RegistSandBoxConfig, SandboxChipConfig, SandboxChipsConfig } from "./types";
@@ -117,6 +117,8 @@ export interface SandboxHelpers {
 }
 
 export interface SandboxConfig {
+  /** 任务、计划等文档所使用的配置目录。 */
+  configDirName?: string;
   /**
    * 系统提示词各节配置，由 Plugin 合并后下发给 sandbox。
    */
@@ -215,7 +217,7 @@ export interface SetupSandboxParams {
   llmPluginKey?: string;
   /**
    * 注入到根工程虚拟 FS 的文件（每个 turn 调用一次）。
-   * 典型用途：在根工程放 `.agent/agent.md` 提供项目规范。
+   * 典型用途：在根工程放 `<configDirName>/agent.md` 提供项目规范。
    * 同路径下 virtualFiles 优先级高于 designer.getFiles() 返回的真实文件。
    */
   virtualFiles?: (context: VirtualFilesRuntimeContext) => Promise<UnifiedFile[]>;
@@ -224,7 +226,7 @@ export interface SetupSandboxParams {
   /** 本地 CodeAgent 的初始化文件快照；首次请求前会执行 diff/update/delete。 */
   initialFiles?: Array<Pick<UnifiedFile, "path" | "content">>;
   skills?: SkillFile[];
-  plugins?: CodeAgentPlugin[];
+  plugins?: CodeAgentPluginInput[];
   promptSections?: PromptSections;
   tools?: Tool[];
   availableLibraries?: any[];
@@ -358,6 +360,7 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
 
     // ── Plugin → sandbox（静态配置）──────────────────────────────────────────
     config: {
+      configDirName,
       availableLibraries: availableLibraries ?? [],
       themes: themes ?? [],
       componentRuntime,

@@ -1,11 +1,10 @@
-import { Tools, type CodeAgentPlugin, type Tool } from "../../../../agent/src";
+import { Tools, type CodeAgentPlugin, type CodeAgentPluginInput, type Tool } from "../../../../agent/src";
 import type { PromptSections } from "../../prompts";
-import identitySection from "./identitySection.md";
-import taskGuide from "./taskGuide.md";
-import usingToolsSection from "./usingToolsSection.md";
-import REVOKE_TASK_PROMPT from "./revoke-task.md";
+import identitySection from "./identity-section.md";
+import usingToolsSection from "./using-tools-section.md";
 import GIT_PUSH_PROMPT from "./git-push.md";
-import EVALUATE_IMPACT_PROMPT from "./evaluate-impact.md";
+import { createTaskFirstPlugin } from "../../plugins/task-first";
+import { createImpactDocumentPlugin } from "../../plugins/impact-document";
 
 /** CLI PDE owns its task, review, and audit documents under this directory. */
 const CLI_PDE_CONFIG_DIR_NAME = ".lingchuang";
@@ -13,38 +12,20 @@ const CLI_PDE_CONFIG_DIR_NAME = ".lingchuang";
 export const cliPdePromptSection = {
   agent: {
     identitySection,
-    usingToolsSection: `${usingToolsSection}\n${taskGuide}`,
+    usingToolsSection,
   },
 } satisfies PromptSections;
 
-/** CLI PDE 内置插件：提供任务回滚、代码推送等与 TASKS.md 联动的 Prompt Templates。 */
+/** CLI PDE 内置插件：提供代码推送的 Prompt Template。 */
 export const cliPdePlugin = {
   name: "cli-pde-plugin",
   promptTemplates: [
-    {
-      name: "revoke-task",
-      files: [
-        {
-          path: "PROMPT.md",
-          content: REVOKE_TASK_PROMPT,
-        },
-      ],
-    },
     {
       name: "git-push",
       files: [
         {
           path: "PROMPT.md",
           content: GIT_PUSH_PROMPT,
-        },
-      ],
-    },
-    {
-      name: "evaluate-impact",
-      files: [
-        {
-          path: "PROMPT.md",
-          content: EVALUATE_IMPACT_PROMPT,
         },
       ],
     },
@@ -61,7 +42,7 @@ interface CliPdeAgentOptionBuilderOptions {
   key: string;
   configDirName?: string;
   promptSections?: PromptSections;
-  plugins?: CodeAgentPlugin[];
+  plugins?: CodeAgentPluginInput[];
   /** 追加到 CLI PDE 的工具；ask_questions 始终由 preset 内置。 */
   tools?: Tool[];
 }
@@ -70,7 +51,7 @@ type CliPdeAgentOptionBuilderResult<T extends CliPdeAgentOptionBuilderOptions> =
   Omit<T, "configDirName" | "promptSections" | "plugins" | "tools"> & {
     configDirName: string;
     promptSections: PromptSections;
-    plugins: CodeAgentPlugin[];
+    plugins: CodeAgentPluginInput[];
     tools: Tool[];
   };
 
@@ -82,14 +63,23 @@ type CliPdeAgentOptionBuilderResult<T extends CliPdeAgentOptionBuilderOptions> =
 export function cliPdeAgentOptionBuilder<T extends CliPdeAgentOptionBuilderOptions>(
   options: T,
 ): CliPdeAgentOptionBuilderResult<T> {
-  const { configDirName, plugins, promptSections, tools, ...restOptions } = options;
+  const { configDirName, plugins, tools, ...restOptions } = options;
   const askQuestionsTool = Tools.createAskQuestions();
+  const resolvedConfigDirName = configDirName ?? CLI_PDE_CONFIG_DIR_NAME;
 
   return {
     ...restOptions,
-    configDirName: configDirName ?? CLI_PDE_CONFIG_DIR_NAME,
-    promptSections: cliPdePromptSection,
-    plugins: [cliPdePlugin, ...(plugins ?? [])],
+    configDirName: resolvedConfigDirName,
+    promptSections: {
+      ...cliPdePromptSection,
+      agent: cliPdePromptSection.agent,
+    },
+    plugins: [
+      cliPdePlugin,
+      createTaskFirstPlugin({ configDirName: resolvedConfigDirName }),
+      createImpactDocumentPlugin({ configDirName: resolvedConfigDirName }),
+      ...(plugins ?? []),
+    ],
     // CLI PDE 必须能够在 Ask / Plan 模式中向用户收集决策；同名调用方工具去重，
     // 以预设提供的交互实现为准，避免模型看到重复 function definition。
     tools: [

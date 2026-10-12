@@ -1,5 +1,6 @@
 import type { PromptSections } from "./index";
 import { resolveDefaultPromptSections } from "../internal/resolve";
+import { normalizeConfigDirName } from "../../../agent/src/code-agent/config-dir";
 
 export interface DevelopmentGuideLibrary {
   name: string;
@@ -20,14 +21,14 @@ export interface ProjectInfoFile {
 }
 
 export interface BuildProjectInfoSectionOptions {
+  /** CodeAgent 配置目录名；未显式传入 ignoredDirectories 时隐藏该目录。 */
+  configDirName?: string;
   /**
    * Directories hidden from the project snapshot and empty-project check.
    * This affects prompt presentation only; it never changes sandbox files.
    */
   ignoredDirectories?: readonly string[];
 }
-
-const DEFAULT_PROJECT_INFO_IGNORED_DIRECTORIES = [".agent", ".lingchuang"] as const;
 
 function wrapRules(tag: string, value?: string): string {
   const content = value?.trim();
@@ -64,15 +65,14 @@ function summarizeFiles(files: ProjectInfoFile[]): string {
 /**
  * 构建主工程文件清单。
  *
- * 给线上版本用。默认隐藏 `.agent` / `.lingchuang`：线上 Agent 暂时不需要理解
- * `.lingchuang` 文件夹，内部规则也不应刷进全量文件列表。这是故意的，与
+ * 给线上版本用。默认隐藏当前 CodeAgent 配置目录，避免内部规则刷进全量文件列表。这是故意的，与
  * `buildDirectoryInfoSection` 不隐藏目录名的行为不同。
  */
 export function buildProjectInfoSection(
   files: ProjectInfoFile[],
   options: BuildProjectInfoSectionOptions = {},
 ): string {
-  const ignoredDirectories = options.ignoredDirectories ?? DEFAULT_PROJECT_INFO_IGNORED_DIRECTORIES;
+  const ignoredDirectories = options.ignoredDirectories ?? [normalizeConfigDirName(options.configDirName)];
   const projectFiles = files.filter((file) => !isInIgnoredDirectory(file.path, ignoredDirectories));
   const sections = ["这是发送这条消息时的项目空间快照，并不会实时更新。", "# 项目空间"];
 
@@ -99,13 +99,20 @@ export function buildProjectInfoSection(
 /**
  * 构建目录级快照；不递归也不读取文件内容。
  *
- * 给可进入真实目录树的场景用。故意不隐藏 `.agent` / `.lingchuang`：只展示
+ * 给可进入真实目录树的场景用。故意不隐藏配置目录：只展示
  * 当前目录的一层名字，模型需要看见这些目录才能决定要不要进去。线上全量
  * 文件快照的隐藏由 `buildProjectInfoSection` 负责。
  */
-export function buildDirectoryInfoSection(options: { workingDirectory?: string; entries: string[] }): string {
+export function buildDirectoryInfoSection(options: {
+  workingDirectory?: string;
+  entries: string[];
+  branchInfo?: { branch: string; branchDir: string };
+}): string {
   const entries = options.entries.length ? options.entries.join("\n") : "（空目录）";
-  return `<project-info>\n当前工作目录：${options.workingDirectory ?? "."}\n \n 命令行默认在此目录下执行，无需进入目录。 \n \n根目录树\n${entries}\n</project-info>`;
+  const branch = options.branchInfo?.branch
+    ? `\n当前 Git 分支：${options.branchInfo.branch}${options.branchInfo.branchDir ? `（分支目录：${options.branchInfo.branchDir}）` : ""}`
+    : "\n当前不是 Git 项目。";
+  return `<project-info>\n当前工作目录：${options.workingDirectory ?? "."}${branch}\n \n 命令行默认在此目录下执行，无需进入目录。 \n \n根目录树\n${entries}\n</project-info>`;
 }
 
 export function buildDevelopmentGuideContext(options: BuildDevelopmentGuideContextOptions): string | null {

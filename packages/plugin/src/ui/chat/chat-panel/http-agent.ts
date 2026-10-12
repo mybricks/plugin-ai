@@ -96,7 +96,7 @@ interface HttpAgentRuntimeOptions {
    * 仍需要这些 hooks 来维护 loading、锁和 undo/redo 等本地 UI 状态。
    */
   hooks?: AgentHooks;
-  /** 与本地 CodeAgent 一致，启用的插件 hooks 在顶层 hooks 之后执行。 */
+  /** 与本地 CodeAgent 一致，插件 hooks 在顶层 hooks 之后执行。 */
   plugins?: CodeAgentPlugin[];
 }
 
@@ -169,7 +169,6 @@ export class HttpAgent {
   private readonly disabledModes: AgentMode[];
   private readonly hooks?: AgentHooks;
   private readonly plugins: CodeAgentPlugin[];
-  private readonly enabledPluginNames: Set<string>;
   private readonly workspaceBridge: WorkspaceBridge<HttpAgent>;
   private mode: AgentMode = AgentModeEnum.Build;
   private turns: TurnRecord[] = [];
@@ -203,12 +202,7 @@ export class HttpAgent {
     this.disabledHandler = runtime.disabledHandler;
     this.disabledModes = runtime.disabledModes ?? [];
     this.plugins = runtime.plugins ?? [];
-    this.enabledPluginNames = new Set(
-      this.plugins.filter((plugin) => plugin.enabled !== false).map((plugin) => plugin.name),
-    );
-    this.hooks = composePluginHooks(runtime.hooks, this.plugins, {
-      current: this.enabledPluginNames,
-    });
+    this.hooks = composePluginHooks(runtime.hooks, this.plugins);
     this.workspaceBridge = new WorkspaceBridge<HttpAgent>({
       workspaceId: this.workspaceId,
       requestJson: <T>(path: string, init?: RequestInit) =>
@@ -262,14 +256,6 @@ export class HttpAgent {
 
   getTools(): Tool[] {
     return this.workspaceBridge.getTools();
-  }
-
-  enablePlugin(name: string): void {
-    this.enabledPluginNames.add(name);
-  }
-
-  disablePlugin(name: string): void {
-    this.enabledPluginNames.delete(name);
   }
 
   /**

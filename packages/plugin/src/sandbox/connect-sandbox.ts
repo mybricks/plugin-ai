@@ -1,8 +1,7 @@
 import { CodeAgent, DEFAULT_CONFIG_DIR_NAME, IDBHistory, isFileExcluded } from "../../../agent/src";
 import type { AgentSandbox, AgentSandboxFileEntry, AgentSandboxListOptions, Tool, CodeAgentPlugin, History, TurnSender, SkillFile, UnifiedFile, AgentOptions } from "../../../agent/src";
-import { getCodeAgentSystemPrompt } from "../../../agent/src/code-agent/prompt";
 import type { PromptSections } from "../../../kit/src";
-import { buildDirectoryInfoSection, buildProjectInfoSection, promptSectionsAdaptToPromptOption } from "../../../kit/src";
+import { buildDirectoryInfoSection, buildProjectInfoSection, promptSectionsAdaptToPromptOption, readGitBranchInfoFromSandbox } from "../../../kit/src";
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { Hooks, SandboxChipsConfig, MentionProvider } from "./types";
 import { context } from "../context";
@@ -100,7 +99,6 @@ export function connectToAIFromSandbox(
   const getRuntimeVirtualFiles = () => runtimeRef.current?.virtualFiles ?? virtualFiles;
   const runtimeSkills = getRuntimeSkills(runtime);
   const runtimePlugins = plugins?.map((plugin) => injectPluginRuntimeContext(plugin, runtimeContext));
-  const effectivePlugins = context.applyPluginEnabledOverrides(runtimePlugins);
   const requestGuard = { disabledHandler };
 
   if (context.agentMap.has(agentKey)) {
@@ -207,7 +205,7 @@ export function connectToAIFromSandbox(
     promptOptions,
     hooks: sandboxHooks,
     skills: runtimeSkills,
-    plugins: effectivePlugins,
+    plugins: runtimePlugins,
     subAgents: [],
     disabledModes,
     ...(localAgent ? { mask: { maxTurns: 20 } } : {}),
@@ -217,6 +215,7 @@ export function connectToAIFromSandbox(
       const projectInfo = projectContext?.type === "directory"
         ? buildDirectoryInfoSection({
           workingDirectory: projectContext.directory,
+          branchInfo: await readGitBranchInfoFromSandbox(codeAgentSandbox),
           entries: directEntries.map((entry) => `${entry.path}${entry.type === "directory" ? "/" : ""}`),
         })
         : buildProjectInfoSection(files, { ignoredDirectories: [resolvedConfigDirName] });
@@ -249,9 +248,7 @@ export function connectToAIFromSandbox(
     (agent as any)._base.skills = nextSkills;
     (agent as any)._base.tools = [...builtinTools, ...nextTools];
     (agent as any)._rebuildDynamicTools();
-    (agent as any).options.system = getCodeAgentSystemPrompt(
-      promptSectionsAdaptToPromptOption(getRuntimePromptSections(config))
-    );
+    agent.setPromptOptions(promptSectionsAdaptToPromptOption(getRuntimePromptSections(config)));
   };
 
   context.agentMap.set(agentKey, agent);

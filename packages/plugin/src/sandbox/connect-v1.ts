@@ -1,7 +1,6 @@
 import { CodeAgent, DEFAULT_CONFIG_DIR_NAME, IDBHistory, isFileExcluded } from "../../../agent/src";
-import type { AgentOptions, Tool, CodeAgentPlugin, History, TurnSender, SkillFile, UnifiedFile } from "../../../agent/src";
+import type { AgentOptions, Tool, CodeAgentPlugin, CodeAgentPluginInput, History, TurnSender, SkillFile, UnifiedFile } from "../../../agent/src";
 import { createInitProjectTool } from "../../../agent/src/code-agent/tools";
-import { getCodeAgentSystemPrompt } from "../../../agent/src/code-agent/prompt";
 import type { Sandbox } from "../../../agent/src";
 import type { PromptSections } from "../../../kit/src";
 import { buildDevelopmentGuideContext, buildDirectoryInfoSection, buildProjectInfoSection, promptSectionsAdaptToPromptOption } from "../../../kit/src";
@@ -27,11 +26,14 @@ import {
 } from "./connect-shared";
 
 function collectBrowserTools(params: { baseTools: Tool[]; plugins?: CodeAgentPlugin[] }): Tool[] {
-  const enabledPlugins = params.plugins?.filter((plugin) => plugin.enabled !== false) ?? [];
   return [
     ...params.baseTools,
-    ...enabledPlugins.flatMap((plugin) => plugin.tools ?? []),
+    ...(params.plugins ?? []).flatMap((plugin) => plugin.tools ?? []),
   ];
+}
+
+function getStaticPlugins(plugins?: CodeAgentPluginInput[]): CodeAgentPlugin[] {
+  return (plugins ?? []).filter((plugin): plugin is CodeAgentPlugin => typeof plugin !== "function");
 }
 
 export function connectToAIFromV1(
@@ -61,9 +63,13 @@ export function connectToAIFromV1(
   const getRuntimeVirtualFiles = () => runtimeRef.current?.virtualFiles ?? virtualFiles;
   const runtimeSkills = getRuntimeSkills(runtime);
   const runtimePlugins = plugins?.map((plugin) => injectPluginRuntimeContext(plugin, runtimeContext));
-  const effectivePlugins = context.applyPluginEnabledOverrides(runtimePlugins);
+  const staticPlugins = getStaticPlugins(runtimePlugins);
   const requestGuard = { disabledHandler };
   const isRemoteAgent = Boolean(remoteAgent);
+
+  if (isRemoteAgent && runtimePlugins?.some((plugin) => typeof plugin === "function")) {
+    console.warn("[plugin-ai] remoteAgent ignores plugin factories; resolve remote plugins on the server instead.");
+  }
 
   if (context.agentMap.has(agentKey)) {
     const existingAgent = context.agentMap.get(agentKey)!;
@@ -153,13 +159,13 @@ export function connectToAIFromV1(
   const initProjectTool = createInitProjectTool(sandbox);
   const browserTools = collectBrowserTools({
     baseTools: [checkStatusTool, initProjectTool, ...(activeTools ?? [])],
-    plugins: effectivePlugins,
+    plugins: staticPlugins,
   });
 
   if (remoteAgent) {
     const agent = new HttpAgent(
       { baseUrl: remoteAgent.baseUrl, workspaceId: remoteAgent.workspaceId, agentId: remoteAgent.agentId },
-      { disabledHandler, ...(disabledModes ? { disabledModes } : {}), browserTools, hooks, plugins: effectivePlugins }
+      { disabledHandler, ...(disabledModes ? { disabledModes } : {}), browserTools, hooks, plugins: staticPlugins }
     );
     if (llmPluginKey) context.createLLMRequest(llmPluginKey, agent.key);
     context.aiQueue.setRequestGuard(agent, requestGuard);
@@ -192,7 +198,7 @@ export function connectToAIFromV1(
     promptOptions,
     hooks,
     skills: runtimeSkills,
-    plugins: effectivePlugins,
+    plugins: runtimePlugins,
     subAgents: [],
     disabledModes,
     ...(localAgent ? { mask: { maxTurns: 20 } } : {}),
@@ -238,9 +244,7 @@ export function connectToAIFromV1(
     (agent as any)._base.skills = nextSkills;
     (agent as any)._base.tools = [...builtinTools, checkStatusTool, initProjectTool, ...nextTools];
     (agent as any)._rebuildDynamicTools();
-    (agent as any).options.system = getCodeAgentSystemPrompt(
-      promptSectionsAdaptToPromptOption(getRuntimePromptSections(config))
-    );
+    agent.setPromptOptions(promptSectionsAdaptToPromptOption(getRuntimePromptSections(config)));
   };
 
   context.agentMap.set(agentKey, agent);

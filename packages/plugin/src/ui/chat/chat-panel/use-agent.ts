@@ -125,9 +125,14 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
     };
   }, [hasModelSelection, modelSelection, selectedModel]);
 
-  useEffect(() => context.events.on("pluginState", () => {
-    setPluginRevision((revision) => revision + 1);
-  }), []);
+  useEffect(() => {
+    if (!agent || isHttpAgent(agent)) return;
+    let active = true;
+    agent.initializePlugins().then(() => {
+      if (active) setPluginRevision((revision) => revision + 1);
+    });
+    return () => { active = false; };
+  }, [agent]);
 
   const mbsTemplateCommands = useMemo<SenderPromptTemplateSlashCommand[]>(() => {
     if (!agent || isHttpAgent(agent)) return [];
