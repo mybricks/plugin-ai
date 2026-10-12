@@ -36,7 +36,7 @@ import { AskQuestionsRenderer } from "./built-ins/ask-questions";
 registerToolRenderer(READ_TOOL_NAME, (tool) => <ReadFileRenderer tool={tool} />);
 registerToolRenderer(WRITE_TOOL_NAME, (tool, ctx) => <WriteFileRenderer tool={tool} configDirName={ctx.configDirName} />);
 registerToolRenderer(MULTI_WRITE_TOOL_NAME, (tool) => <MultiWriteRenderer tool={tool} />);
-registerToolRenderer(EDIT_TOOL_NAME, (tool) => <EditFileRenderer tool={tool} />);
+registerToolRenderer(EDIT_TOOL_NAME, (tool, ctx) => <EditFileRenderer tool={tool} configDirName={ctx.configDirName} />);
 registerToolRenderer(MULTI_EDIT_TOOL_NAME, (tool) => <MultiEditRenderer tool={tool} />);
 registerToolRenderer(DELETE_TOOL_NAME, (tool) => <DeleteFileRenderer tool={tool} />);
 registerToolRenderer(CHECK_STATUS_TOOL_NAME, (tool) => <CheckStatusRenderer tool={tool} />);
