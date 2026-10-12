@@ -5,6 +5,7 @@ import { buildDirectoryInfoSection, buildProjectInfoSection, promptSectionsAdapt
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { Hooks, SandboxChipsConfig, MentionProvider } from "./types";
 import { context } from "../context";
+import { builtInSandboxPlugins } from "./plugins";
 import {
   type ConnectToAIResult,
   type PluginParams,
@@ -98,7 +99,10 @@ export function connectToAIFromSandbox(
     (config?.skills ?? skills)?.map((skill) => injectSkillRuntimeContext(skill, runtimeContext));
   const getRuntimeVirtualFiles = () => runtimeRef.current?.virtualFiles ?? virtualFiles;
   const runtimeSkills = getRuntimeSkills(runtime);
-  const runtimePlugins = plugins?.map((plugin) => injectPluginRuntimeContext(plugin, runtimeContext));
+  // Keep plugin-ai built-ins available for the AgentSandbox contract as well
+  // as the legacy Designer sandbox.
+  const runtimePlugins = [...builtInSandboxPlugins, ...(plugins ?? [])]
+    .map((plugin) => injectPluginRuntimeContext(plugin, runtimeContext));
   const requestGuard = { disabledHandler };
 
   if (context.agentMap.has(agentKey)) {

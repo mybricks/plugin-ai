@@ -8,6 +8,7 @@ import type { RequestAsStreamFn } from "../../../request/src";
 import type { Hooks, SandboxChipsConfig, MentionProvider } from "./types";
 import { attachFiles, hasInitialFiles } from "./initial-files";
 import { createCheckStatusTool } from "./tools/check-status";
+import { builtInSandboxPlugins } from "./plugins";
 import { HttpAgent } from "../ui/chat/chat-panel/http-agent";
 import { context } from "../context";
 import type { Designer } from "./types";
@@ -62,7 +63,12 @@ export function connectToAIFromV1(
     (config?.skills ?? skills)?.map((skill) => injectSkillRuntimeContext(skill, runtimeContext));
   const getRuntimeVirtualFiles = () => runtimeRef.current?.virtualFiles ?? virtualFiles;
   const runtimeSkills = getRuntimeSkills(runtime);
-  const runtimePlugins = plugins?.map((plugin) => injectPluginRuntimeContext(plugin, runtimeContext));
+  // These are plugin-ai's sandbox capabilities, not caller-supplied plugins.
+  // Register them at the sandbox boundary so every sandbox implementation gets
+  // the same built-ins, alongside its sandbox-specific tools (for example
+  // check-status for the legacy Designer contract).
+  const runtimePlugins = [...builtInSandboxPlugins, ...(plugins ?? [])]
+    .map((plugin) => injectPluginRuntimeContext(plugin, runtimeContext));
   const staticPlugins = getStaticPlugins(runtimePlugins);
   const requestGuard = { disabledHandler };
   const isRemoteAgent = Boolean(remoteAgent);
