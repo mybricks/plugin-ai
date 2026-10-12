@@ -22,6 +22,14 @@ export interface AskQuestionsParams {
 
 export type AskQuestionsAnswers = Record<string, string | string[]>;
 
+interface AskQuestionsSkip {
+  skipped: true;
+}
+
+function isSkip(response: AskQuestionsAnswers | AskQuestionsSkip): response is AskQuestionsSkip {
+  return "skipped" in response && response.skipped === true;
+}
+
 function formatAnswers(answers: AskQuestionsAnswers): string {
   return Object.entries(answers)
     .map(([question, answer]) => `- ${question}：${Array.isArray(answer) ? answer.join("、") : answer}`)
@@ -31,7 +39,7 @@ function formatAnswers(answers: AskQuestionsAnswers): string {
 const DESCRIPTION = `在执行过程中向用户提出 1 至 4 个多选题，以澄清需求、收集偏好或让用户作出决策。
 
 规则：
-- 每次调用提 1 至 4 题，每题提供 2 至 4 个选项。
+- 每次调用提 1 至 4 题，每题提供 1 至 4 个选项。
 - 同一次调用中的问题文本和选项 label 必须全局唯一。
 - 不要自行添加“其他”选项，UI 会自动提供。
 - 如有推荐项，放在第一项，并在 label 末尾添加 (推荐)。
@@ -56,8 +64,8 @@ function validateParams(params: AskQuestionsParams): void {
     if (typeof item.header !== "string" || item.header.length > 12) {
       throw new ToolValidationError("每个 header 最多 12 个字符");
     }
-    if (!Array.isArray(item.options) || item.options.length < 2 || item.options.length > 4) {
-      throw new ToolValidationError("每个问题必须包含 2 至 4 个选项");
+    if (!Array.isArray(item.options) || item.options.length < 1 || item.options.length > 4) {
+      throw new ToolValidationError("每个问题必须包含 1 至 4 个选项");
     }
     if (item.multiSelect && item.options.some((option) => option.preview !== undefined)) {
       throw new ToolValidationError("preview 仅支持单选题");
@@ -109,7 +117,7 @@ export function createAskQuestionsTool(): Tool {
                   required: ["label", "description"],
                   properties: {
                     label: { type: "string", description: "简洁的可见选项名称。" },
-                    description: { type: "string", description: "该选项的含义、影响或取舍。" },
+                    description: { type: "string", description: "该选项的具体影响、理由、取舍。" },
                     preview: { type: "string", description: "仅单选题可用的纯文本预览内容，不支持 Markdown 或 HTML。" },
                   },
                 },
@@ -125,15 +133,22 @@ export function createAskQuestionsTool(): Tool {
         return { output: "错误：当前工具上下文不支持等待 UI 回传。" };
       }
 
-      const answers = await ctx.waitUIRender<AskQuestionsAnswers>();
-      if (answers === null) {
+      const response = await ctx.waitUIRender<AskQuestionsAnswers | AskQuestionsSkip>();
+      if (response === null) {
         ctx.getAgent().abort();
         return { output: "用户未回答问题，当前对话已取消。" };
       }
 
+      if (isSkip(response)) {
+        return {
+          output: "The user skipped these questions without submitting answers.",
+          metadata: { skipped: true },
+        };
+      }
+
       return {
-        output: `用户已确认以下选择：\n${formatAnswers(answers)}`,
-        metadata: { answers },
+        output: `用户已确认以下选择：\n${formatAnswers(response)}`,
+        metadata: { answers: response },
       };
     },
   };

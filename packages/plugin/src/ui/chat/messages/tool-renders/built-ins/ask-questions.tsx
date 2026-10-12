@@ -1,7 +1,9 @@
-import React, { useMemo, useState } from "react";
+import React, { useLayoutEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import type { AskQuestionsQuestion, AskQuestionsAnswers } from "../../../../../../../agent/src";
 import type { ToolRecord, ToolRendererContext } from "../index";
 import { TextShimmer } from "../../../../components/text-shimmer";
+import { useChatPanel } from "../../../chat-panel/context";
 import css from "../render.less";
 
 type DraftAnswer = { selected: string[]; other: boolean; otherText: string };
@@ -15,14 +17,23 @@ function formatAnswer(answer: string | string[]): string {
   return Array.isArray(answer) ? answer.join("、") : answer;
 }
 
-export function AskQuestionsRenderer(tool: ToolRecord, { submit, cancel, turn }: ToolRendererContext) {
+export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRendererContext) {
   const questions: AskQuestionsQuestion[] = Array.isArray(tool.args?.questions) ? tool.args.questions : [];
   const [drafts, setDrafts] = useState<Record<number, DraftAnswer>>({});
   const [currentStep, setCurrentStep] = useState(0);
   const answers = useMemo(() => getAnswers(tool), [tool.result?.metadata]);
   const pending = tool.status === "pending";
+  const { blockingToolSlot } = useChatPanel();
+  const blockingToolTarget = blockingToolSlot?.target;
+  const setBlockingToolActive = blockingToolSlot?.setActive;
+  useLayoutEffect(() => {
+    if (!pending || !blockingToolTarget || !setBlockingToolActive) return;
+    setBlockingToolActive(tool.callId, true);
+    return () => setBlockingToolActive(tool.callId, false);
+  }, [pending, blockingToolTarget, setBlockingToolActive, tool.callId]);
   const cancelled = tool.status === "error" && turn?.status === "abort";
-  const title = "以下问题需要你确认一下";
+  const skipped = tool.result?.metadata?.skipped === true;
+  const title = "以下问题需要您确认";
   const multiStep = questions.length > 1;
 
   const getDraft = (index: number): DraftAnswer => drafts[index] ?? { selected: [], other: false, otherText: "" };
@@ -76,13 +87,13 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, cancel, turn }:
     return (
       <div className={css["ask-question-card"]}>
         <div className={css["ask-question-toolbar"]}>
-          <span className={css["ask-question-command"]}>{answers ? "已收到你的选择" : title}</span>
-          <span className={css["ask-question-state"]}>{tool.status === "success" ? "已完成" : cancelled ? "已取消" : "未完成"}</span>
+          <span className={css["ask-question-command"]}>{skipped ? "本次提问已跳过" : answers ? "已收到您的选择" : title}</span>
+          <span className={css["ask-question-state"]}>{skipped ? "已跳过" : tool.status === "success" ? "已完成" : cancelled ? "已取消" : "未完成"}</span>
         </div>
         {questions.map((question) => (
           <div className={css["ask-question-result"]} key={question.question}>
             <span>{question.question}</span>
-            {answers ? <strong>{formatAnswer(answers[question.question] ?? "未回答")}</strong> : cancelled ? <em>未作答</em> : null}
+            {answers ? <strong>{formatAnswer(answers[question.question] ?? "未回答")}</strong> : skipped ? <em>已跳过</em> : cancelled ? <em>未作答</em> : null}
           </div>
         ))}
         {cancelled ? <div className={css["ask-question-cancelled-note"]}>此次提问已取消，未提交选择。</div> : null}
@@ -92,8 +103,8 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, cancel, turn }:
 
   const currentQuestion = questions[currentStep];
 
-  return (
-    <div className={css["ask-question-card"]}>
+  const questionCard = (
+    <div className={`${css["ask-question-card"]} ${blockingToolTarget ? css["ask-question-card-in-sender"] : ""}`}>
       <div className={css["ask-question-toolbar"]}>
         <span className={css["ask-question-command"]}>{title}</span>
         <span className={css["ask-question-state"]}>{questions.length > 0 ? "等待选择" : "正在准备"}</span>
@@ -161,7 +172,7 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, cancel, turn }:
       )}
       {questions.length > 0 && (
         <div className={css["ask-question-actions"]}>
-          <button type="button" className={css["ask-question-cancel"]} onClick={cancel}>取消</button>
+          <button type="button" className={css["ask-question-skip"]} onClick={() => submit({ skipped: true })}>跳过</button>
           {multiStep && currentStep > 0 && (
             <button type="button" className={css["ask-question-back"]} onClick={() => setCurrentStep((s) => s - 1)}>上一题</button>
           )}
@@ -172,4 +183,5 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, cancel, turn }:
       )}
     </div>
   );
+  return pending && blockingToolTarget ? createPortal(questionCard, blockingToolTarget) : questionCard;
 }

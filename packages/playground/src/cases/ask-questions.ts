@@ -8,7 +8,7 @@ export const askQuestionsCase: TestCase = {
   group: "工具调用",
   priority: "P0",
   description: "调用 ask_questions，验证工具卡片收集选项后将答案作为同一 turn 的 tool result 返回给模型。",
-  expectedBehavior: "先显示两道可交互问题；选择后点击提交，卡片显示答案，随后模型继续输出确认文案。点击取消会中止当前 turn。",
+  expectedBehavior: "待回答卡片显示在 Sender 位置，Sender 草稿保留；提交或点击「跳过」后 Sender 恢复，卡片结果留在消息历史中，当前 turn 继续执行。跳过时工具结果使用英文。",
   initialTurns: [],
   tools: [Tools.createAskQuestions()],
   request: makeScriptedRequest([

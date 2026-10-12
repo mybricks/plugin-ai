@@ -62,6 +62,11 @@ interface ChatPanelContextValue {
   messagesRenderVariant: MessagesRenderVariant;
   /** 多模型选择器数据；用于错误重试时切换模型。 */
   modelSelector?: SenderProps["modelSelector"];
+  /** 阻塞式工具卡片在 Sender 区域的挂载点。 */
+  blockingToolSlot?: {
+    target: HTMLElement | null;
+    setActive: (callId: string, active: boolean) => void;
+  };
 }
 
 const ChatPanelContext = createContext<ChatPanelContextValue>({

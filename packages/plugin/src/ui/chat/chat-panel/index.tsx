@@ -195,6 +195,11 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
 }, ref) => {
   const senderRef = useRef<SenderRef>(null);
   const messageListRef = useRef<{ scrollToBottom: () => void }>(null);
+  const [blockingToolTarget, setBlockingToolTarget] = React.useState<HTMLDivElement | null>(null);
+  const [activeBlockingToolCallId, setActiveBlockingToolCallId] = React.useState<string | null>(null);
+  const setBlockingToolActive = useCallback((callId: string, active: boolean) => {
+    setActiveBlockingToolCallId((current) => active ? callId : current === callId ? null : current);
+  }, []);
   const [overlayNode, setOverlayNode] = React.useState<React.ReactNode>(null);
   const overlayHandle = useMemo<ChatOverlayHandle>(() => ({
     open: (node: React.ReactNode) => setOverlayNode(node),
@@ -331,12 +336,21 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     />
   );
   const senderFooterNode = renderSenderFooter?.();
-  const senderBlockNode = senderFooterNode !== undefined && senderFooterNode !== null && senderFooterNode !== false ? (
+  const senderBlockNode = (
     <div className={css["sender-block"]}>
-      {senderNode}
-      <div className={css["sender-footer"]}>{senderFooterNode}</div>
+      <div style={{ display: activeBlockingToolCallId ? "none" : undefined }}>
+        {senderNode}
+        {senderFooterNode !== undefined && senderFooterNode !== null && senderFooterNode !== false
+          ? <div className={css["sender-footer"]}>{senderFooterNode}</div>
+          : null}
+      </div>
+      <div
+        ref={setBlockingToolTarget}
+        className={css["blocking-tool-slot"]}
+        style={{ display: activeBlockingToolCallId ? undefined : "none" }}
+      />
     </div>
-  ) : senderNode;
+  );
 
   const hasOverlayContent = overlayNode !== undefined && overlayNode !== null && overlayNode !== false;
 
@@ -353,6 +367,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       markdownit,
       messagesRenderVariant,
       modelSelector,
+      blockingToolSlot: { target: blockingToolTarget, setActive: setBlockingToolActive },
     }}>
       <div
         className={classNames(css["chat-panel"], css[`size-${size}`], className)}
