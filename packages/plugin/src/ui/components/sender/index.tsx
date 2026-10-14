@@ -343,6 +343,13 @@ interface SenderRef {
   /** 当前输入框是否可以被外部自动追加内容 */
   canAppendInput: () => boolean;
   /**
+   * 当前输入框是否可同步默认 focus 内容。
+   *
+   * 默认 focus 内容在面板隐藏期间也需要保持最新；因此仅要求编辑器已挂载，
+   * 不要求其当前具有可见布局。
+   */
+  canSyncFocusContent: () => boolean;
+  /**
    * 向输入框追加内容。
    * - string / SendToAgentParams：纯文本追加（兼容旧用法）
    * - { message, meta }：message 中可含 [[chip:id]] 占位符，
@@ -871,6 +878,10 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       canAppendInput: () => {
         const editor = inputEditorRef.current;
         return !!(!disabled && editor?.isConnected && editor.getClientRects().length > 0);
+      },
+      canSyncFocusContent: () => {
+        const editor = inputEditorRef.current;
+        return !!(!disabled && editor?.isConnected);
       },
       appendInput,
       getInput: () => {

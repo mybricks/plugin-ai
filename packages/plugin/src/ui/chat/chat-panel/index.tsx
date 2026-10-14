@@ -151,6 +151,8 @@ export interface ChatPanelRef {
   focus: () => void;
   /** 当前输入框是否可以被外部自动追加内容 */
   canAppendInput: () => boolean;
+  /** 当前输入框是否可同步默认 focus 内容（隐藏时也允许）。 */
+  canSyncFocusContent: () => boolean;
   appendInput: SenderRef["appendInput"];
   /** 获取输入框当前草稿内容 */
   getInput: SenderRef["getInput"];
@@ -273,6 +275,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       senderRef.current?.focus();
     },
     canAppendInput: () => senderRef.current?.canAppendInput() ?? false,
+    canSyncFocusContent: () => senderRef.current?.canSyncFocusContent() ?? false,
     appendInput: (params) => {
       senderRef.current?.appendInput(params);
     },

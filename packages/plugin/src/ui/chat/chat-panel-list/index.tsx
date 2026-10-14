@@ -110,7 +110,9 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
 
     appendFocusChipTimerRef.current = setTimeout(() => {
       const panel = panelRefs.current.get(comId);
-      if (!panel?.canAppendInput()) return;
+      // 默认 focus 内容需要在面板隐藏时也保持最新；普通外部 append
+      // 则仍沿用 canAppendInput 的可见性限制。
+      if (!panel?.canSyncFocusContent()) return;
 
       const input = panel?.getInput();
       const message = input?.message ?? "";
@@ -136,6 +138,10 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
         });
         return;
       }
+
+      // editor 有用户内容时，仅在可见状态追加普通 dom chip。隐藏期间保留草稿，
+      // 不因 focus 在末尾累计 chip。
+      if (!panel.canAppendInput()) return;
 
       // editor 有内容：走原有逻辑，追加普通 dom chip（不重复追加相同元素）
       if (isLastSegmentSameDomChip(message, input?.chips, ele)) return;
