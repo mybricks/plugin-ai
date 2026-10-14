@@ -7,6 +7,21 @@ import { useChatPanel } from "../../../chat-panel/context";
 import css from "../render.less";
 
 type DraftAnswer = { selected: string[]; other: boolean; otherText: string };
+type RenderOption = AskQuestionsQuestion["options"][number] & { isOther?: boolean };
+
+const OTHER_LIKE_OPTION_PATTERN = /其他|其它|其余|别的|未(?:列出|涵盖)|(?:上述|以上)(?:之外|以外|均?不|都不|没有)|(?:均|都)不适用|(?:没有|无)合适|自定义|自由填写|自行(?:填写|输入)|任意(?:填写|输入)|(?:补充|填写|输入)(?:说明|内容|选项)?|\b(?:other|something\s+else|custom|none\s+of\s+the\s+above|none\s+of\s+these)\b/i;
+
+function isOtherLikeOption(label: string): boolean {
+  return OTHER_LIKE_OPTION_PATTERN.test(label);
+}
+
+function getRenderOptions(options: AskQuestionsQuestion["options"]): RenderOption[] {
+  const otherIndex = options.findIndex((option) => isOtherLikeOption(option.label));
+  if (otherIndex >= 0) {
+    return options.map((option, index) => ({ ...option, isOther: index === otherIndex }));
+  }
+  return [...options, { label: "其他", description: "你有其他想法", isOther: true }];
+}
 
 function getAnswers(tool: ToolRecord): AskQuestionsAnswers | null {
   const answers = tool.result?.metadata?.answers;
@@ -73,7 +88,10 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
       const result: AskQuestionsAnswers = {};
       questions.forEach((question, index) => {
         const draft = getDraft(index);
-        const values = [...draft.selected, ...(draft.other ? [draft.otherText.trim()] : [])];
+        const values = [
+          ...draft.selected,
+          ...(draft.other ? [draft.otherText.trim()] : []),
+        ];
         result[question.question] = question.multiSelect ? values : values[0];
       });
       submit(result);
@@ -128,45 +146,33 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
             <span className={css["ask-question-question"]}>{currentQuestion.question}</span>
           </div>
           <div className={css["ask-question-options"]}>
-            {currentQuestion.options.map((option) => {
+            {getRenderOptions(currentQuestion.options).map((option) => {
               const draft = getDraft(currentStep);
-              const selected = draft.selected.includes(option.label);
+              const selected = option.isOther ? draft.other : draft.selected.includes(option.label);
               return (
-                <button
-                  type="button"
-                  className={`${css["ask-question-option"]} ${selected ? css["ask-question-option-selected"] : ""}`}
-                  key={option.label}
-                  onClick={() => toggleOption(currentQuestion, currentStep, option.label)}
-                >
-                  <span className={css["ask-question-option-label"]}>{option.label}</span>
-                  <span className={css["ask-question-option-description"]}>{option.description}</span>
-                </button>
-              );
-            })}
-            {(() => {
-              const draft = getDraft(currentStep);
-              return (
-                <>
+                <React.Fragment key={option.label}>
                   <button
                     type="button"
-                    className={`${css["ask-question-option"]} ${draft.other ? css["ask-question-option-selected"] : ""}`}
-                    onClick={() => toggleOther(currentQuestion, currentStep)}
+                    className={`${css["ask-question-option"]} ${selected ? css["ask-question-option-selected"] : ""}`}
+                    onClick={() => (option.isOther
+                      ? toggleOther(currentQuestion, currentStep)
+                      : toggleOption(currentQuestion, currentStep, option.label))}
                   >
-                    <span className={css["ask-question-option-label"]}>其他</span>
-                    <span className={css["ask-question-option-description"]}>你有其他想法</span>
+                    <span className={css["ask-question-option-label"]}>{option.label}</span>
+                    <span className={css["ask-question-option-description"]}>{option.description}</span>
                   </button>
-                  {draft.other && (
+                  {option.isOther && draft.other && (
                     <input
                       className={css["ask-question-other-input"]}
                       value={draft.otherText}
-                      placeholder="说说你的想法"
+                      placeholder="输入您的想法"
                       onChange={(event) => updateDraft(currentStep, (current) => ({ ...current, otherText: event.target.value }))}
                       onKeyDown={(event) => { if (event.key === "Enter") handleNext(); }}
                     />
                   )}
-                </>
+                </React.Fragment>
               );
-            })()}
+            })}
           </div>
         </section>
       )}
