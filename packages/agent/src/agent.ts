@@ -83,6 +83,21 @@ const FLASH_AI_ROLE = "flash";
 const INTERRUPTED_TURN_MESSAGE = "任务异常中断，可点击重试继续";
 
 /**
+ * beforeTurnStop 返回的补充文本用于阻止本轮结束、要求模型继续处理，
+ * 因此按系统提醒而非普通用户输入传递。非 user/text 消息保持原样，
+ * 以兼容现有 Hook 的完整 Message 能力。
+ */
+function wrapStopHookAdditionalMessages(messages: Message[]): Message[] {
+  return messages.map((message) => {
+    if (message.role !== "user" || typeof message.content !== "string") return message;
+    return {
+      ...message,
+      content: `<system-reminder>\n${message.content}\n</system-reminder>`,
+    };
+  });
+}
+
+/**
  * 工具输出内容的粗略 token 上限（所有工具统一限制，包含自定义工具）。
  *
  * 超限时将工具结果替换为错误提示，引导模型缩小查询范围或换用更精准的工具，
@@ -984,7 +999,7 @@ export class Agent {
                   ? { reasoning_content: llmResult.thinkingContent }
                   : {}),
               });
-              tail.push(...stopHookMessages);
+              tail.push(...wrapStopHookAdditionalMessages(stopHookMessages));
               if (this.historyManager.persistMode === "iter") {
                 await this._saveTurnRecord(turn, "update");
               }

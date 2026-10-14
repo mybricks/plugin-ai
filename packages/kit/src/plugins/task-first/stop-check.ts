@@ -150,17 +150,21 @@ export function createTaskFirstStopCheck({ sandbox, configDirName, taskPath }: T
 
       const mutationPaths = collectMutationPaths(turn);
       const taskDocumentUpdated = mutationPaths.some((path) => isCurrentTaskPath(path, currentTaskPath));
-      const sourceUpdated = mutationPaths.some((path) => isProjectSourcePath(path, configDirName));
 
-      if (sourceUpdated && !taskDocumentUpdated && !taskDocumentPromptedTurnIds.has(turn.id)) {
-        taskDocumentPromptedTurnIds.add(turn.id);
-        return {
-          additionalMessages: [{
-            role: "user" as const,
-            content: `本轮修改了项目源码，但尚未更新当前任务文档 \`${currentTaskPath}\`。若回写后新增了待验证任务，请记得调用 \`ask_questions\` 邀请用户验证，再结束。`,
-          }],
-        };
-      }
+      // 注释原因：按「本轮改了源码就必须回写任务文档」的检查过于绝对，
+      // 会把「同一问题反复调试、尚未收敛」的中间轮次也当作必须回写的信号，
+      // 产生没有信息增量的流水账提醒。待验证任务的检查（下方）仍然保留，
+      // 因为那是任务状态真正发生变化时才触发的信号，更明确可靠。
+      // const sourceUpdated = mutationPaths.some((path) => isProjectSourcePath(path, configDirName));
+      // if (sourceUpdated && !taskDocumentUpdated && !taskDocumentPromptedTurnIds.has(turn.id)) {
+      //   taskDocumentPromptedTurnIds.add(turn.id);
+      //   return {
+      //     additionalMessages: [{
+      //       role: "user" as const,
+      //       content: `本轮修改了项目源码，但尚未更新当前任务文档 \`${currentTaskPath}\`。若回写后新增了待验证任务，请记得调用 \`ask_questions\` 邀请用户验证，再结束。`,
+      //     }],
+      //   };
+      // }
 
       if (
         !taskDocumentUpdated
