@@ -80,7 +80,7 @@ export function buildProjectInfoSection(
     sections.push([
       "## 项目工程",
       "权限：读取、写入",
-      "当前没有任何代码文件。可以使用类似 `index.tsx` 的路径来操作文件。建议使用初始化来同时生成多份文件。",
+      "当前没有任何代码文件。可以使用类似 `index.tsx` 的路径来操作文件。建议使用`init-project`工具来同时生成多份文件。",
     ].join("\n"));
   } else {
     const fileList = projectFiles.map((file) => `- ${normalizePath(file.path)} (${file.content.split("\n").length} lines)`).join("\n");
