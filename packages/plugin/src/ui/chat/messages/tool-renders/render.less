@@ -75,11 +75,44 @@
 }
 
 .ask-question-card-in-sender {
+  position: relative;
   margin: 0;
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 26%, transparent),
-    0 0 5px 1px color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 20%, transparent),
-    0 0 10px 2px color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 8%, transparent);
+  // 与 Sender 的 .editor 一样，让外沿的伪元素不被卡片裁掉。
+  overflow: visible;
+}
+
+.ask-question-card-in-sender::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  z-index: 20;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--ask-question-glow-angle),
+    transparent 0deg 270deg,
+    color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 35%, transparent) 292deg,
+    color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 90%, transparent) 332deg,
+    color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 35%, transparent) 350deg,
+    transparent 360deg
+  );
+  padding: 1.5px;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  animation: askQuestionReceiveGlow 4s linear infinite;
+}
+
+@property --ask-question-glow-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes askQuestionReceiveGlow {
+  to { --ask-question-glow-angle: 360deg; }
 }
 
 .ask-question-toolbar {

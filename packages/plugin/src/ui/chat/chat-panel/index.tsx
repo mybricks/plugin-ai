@@ -323,6 +323,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       onStop={chatAgent.stop}
       pendingQueue={pendingQueue}
       onRemoveFromQueue={chatAgent.removeFromQueue}
+      blocking={!!activeBlockingToolCallId}
       renderFocus={renderFocus}
       renderAttachmentSuffix={renderAttachmentSuffix}
       modelSelector={modelSelector}
@@ -338,17 +339,15 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   const senderFooterNode = renderSenderFooter?.();
   const senderBlockNode = (
     <div className={css["sender-block"]}>
-      <div style={{ display: activeBlockingToolCallId ? "none" : undefined }}>
-        {senderNode}
-        {senderFooterNode !== undefined && senderFooterNode !== null && senderFooterNode !== false
-          ? <div className={css["sender-footer"]}>{senderFooterNode}</div>
-          : null}
-      </div>
       <div
         ref={setBlockingToolTarget}
         className={css["blocking-tool-slot"]}
         style={{ display: activeBlockingToolCallId ? undefined : "none" }}
       />
+      {senderNode}
+      {!activeBlockingToolCallId && senderFooterNode !== undefined && senderFooterNode !== null && senderFooterNode !== false
+        ? <div className={css["sender-footer"]}>{senderFooterNode}</div>
+        : null}
     </div>
   );
 

@@ -37,6 +37,8 @@ import {
   customToolValidationErrorThenSlowStreamCase,
 } from "./custom-tool";
 import { askQuestionsCase } from "./ask-questions";
+import { askQuestionsQueueCase } from "./ask-questions-queue";
+import { senderQueueCase } from "./sender-queue";
 import {
   handoffDisabledCase,
   handoffWithMaskCase,
@@ -188,6 +190,8 @@ export const ALL_CASES: TestCase[] = [
   interruptedTurnRetryCase,
   customToolRendererErrorBoundaryCase,
   askQuestionsCase,
+  askQuestionsQueueCase,
+  senderQueueCase,
   historyCollapseRestoreCase,
   historyCollapseGrowingCase,
   historySlowLoadCase,

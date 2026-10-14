@@ -5,7 +5,7 @@ import type { Tool } from "@agent/types";
 import type { CodeAgent } from "@agent/code-agent";
 import type { CodeAgentPluginInput, SkillFile } from "@agent/code-agent";
 import type { AgentSandbox } from "@agent/agent-sandbox";
-import type { ChatPanelProps } from "@plugin/ui/chat";
+import type { ChatPanelProps, ChatPanelRef } from "@plugin/ui/chat";
 import type { MentionProvider } from "@plugin/index";
 import type { AttachProcessor } from "@plugin/content-limits";
 import type { FsFile } from "../lib/mem-fs";
@@ -98,7 +98,10 @@ export interface TestCase {
   /** 在 Sender 下方渲染的自定义内容。 */
   renderSenderFooter?: () => React.ReactNode;
   /** 在右侧 Inspector 上方渲染的自定义操作区。 */
-  renderRightPanelActions?: (params: { agent: CodeAgent | null }) => React.ReactNode;
+  renderRightPanelActions?: (params: {
+    agent: CodeAgent | null;
+    appendInput: ChatPanelRef["appendInput"];
+  }) => React.ReactNode;
   /** 自动断言；返回 null 表示等待用户运行或异步流程尚未到达可判定状态。 */
   assertions?: TestCaseAssertion[];
   /**

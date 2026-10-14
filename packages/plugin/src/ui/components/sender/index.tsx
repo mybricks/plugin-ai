@@ -151,38 +151,67 @@ function flyToTarget(targetEl: HTMLElement, label: string, onLanded: () => void)
 
 // ─── PendingQueue ─────────────────────────────────────────────────────────────
 
-const PendingQueue = ({ queue, onRemove }: { queue: QueueItem[]; onRemove?: (id: string) => void }) => {
-  const [expanded, setExpanded] = useState(true);
+export const PendingQueue = ({
+  queue,
+  onRemove,
+  onEdit,
+  compact = false,
+}: {
+  queue: QueueItem[];
+  onRemove?: (id: string) => void;
+  onEdit?: (item: QueueItem) => void;
+  compact?: boolean;
+}) => {
   if (!queue.length) return null;
   return (
-    <div className={css.pendingQueue}>
-      <div className={css.pendingQueueHeader} onClick={() => setExpanded(v => !v)}>
-        <span className={css.pendingQueueArrow}>{expanded ? <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="12" height="12" style={{ transform: 'rotate(0deg)', display: 'block' }}><path d="M512 714.666667c-8.533333 0-17.066667-2.133333-23.466667-8.533334l-341.333333-341.333333c-12.8-12.8-12.8-32 0-44.8 12.8-12.8 32-12.8 44.8 0l320 317.866667 317.866667-320c12.8-12.8 32-12.8 44.8 0 12.8 12.8 12.8 32 0 44.8L533.333333 704c-4.266667 8.533333-12.8 10.666667-21.333333 10.666667z" fill="currentColor"/></svg> : <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="12" height="12" style={{ transform: 'rotate(-90deg)', display: 'block' }}><path d="M512 714.666667c-8.533333 0-17.066667-2.133333-23.466667-8.533334l-341.333333-341.333333c-12.8-12.8-12.8-32 0-44.8 12.8-12.8 32-12.8 44.8 0l320 317.866667 317.866667-320c12.8-12.8 32-12.8 44.8 0 12.8 12.8 12.8 32 0 44.8L533.333333 704c-4.266667 8.533333-12.8 10.666667-21.333333 10.666667z" fill="currentColor"/></svg>}</span>
-        <span>{queue.length} 个待发送问题</span>
+    <div className={classNames(css.pendingQueue, { [css.pendingQueueMini]: compact })}>
+      <div className={css.pendingQueueHeader}>
+        <span className={css.pendingQueueCount}>{queue.length} 条消息排队中</span>
       </div>
-      {expanded && (
-        <div className={css.pendingQueueList}>
-          {queue.map((item, index) => (
-            <div key={item.id} className={css.pendingQueueItem}>
-              <span className={css.pendingQueueDot} />
+      <div className={classNames(css.pendingQueueList, { [css.miniList]: compact })}>
+        {queue.map((item, index) => (
+          <div key={item.id} className={css.pendingQueueItem}>
+            <span className={css.pendingQueueIndex}>{index + 1}</span>
+            <div className={css.pendingQueueContent}>
               {item.params?.focus && (item.params.focus.focusArea || item.params.focus.title) && (
                 <span className={css.pendingQueueFocus}>
                   <span className={css.pendingQueueFocusArea}>
-                    {item.params.focus.focusArea?.title || item.params.focus.title}
+                    "{item.params.focus.focusArea?.title || item.params.focus.title}"
                   </span>
                 </span>
               )}
               <span className={css.pendingQueueMsg}>{item.message || `消息 ${index + 1}`}</span>
               {item.attachments && item.attachments.length > 0 && (
-                <span className={css.pendingQueueBadge}>{item.attachments.length} 个附件</span>
+                <span className={css.pendingQueueBadge}>{item.attachments.length} 附件</span>
               )}
-              <button className={css.pendingQueueDel} onClick={() => onRemove?.(item.id)}>
-                <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" fill="none"><path d="M874.666667 241.066667h-202.666667V170.666667c0-40.533333-34.133333-74.666667-74.666667-74.666667h-170.666666c-40.533333 0-74.666667 34.133333-74.666667 74.666667v70.4H149.333333c-17.066667 0-32 14.933333-32 32s14.933333 32 32 32h53.333334V853.333333c0 40.533333 34.133333 74.666667 74.666666 74.666667h469.333334c40.533333 0 74.666667-34.133333 74.666666-74.666667V305.066667H874.666667c17.066667 0 32-14.933333 32-32s-14.933333-32-32-32zM416 170.666667c0-6.4 4.266667-10.666667 10.666667-10.666667h170.666666c6.4 0 10.666667 4.266667 10.666667 10.666667v70.4h-192V170.666667z m341.333333 682.666666c0 6.4-4.266667 10.666667-10.666666 10.666667H277.333333c-6.4 0-10.666667-4.266667-10.666666-10.666667V309.333333h490.666666V853.333333z" fill="currentColor"/><path d="M426.666667 736c17.066667 0 32-14.933333 32-32V490.666667c0-17.066667-14.933333-32-32-32s-32 14.933333-32 32v213.333333c0 17.066667 14.933333 32 32 32zM597.333333 736c17.066667 0 32-14.933333 32-32V490.666667c0-17.066667-14.933333-32-32-32s-32 14.933333-32 32v213.333333c0 17.066667 14.933333 32 32 32z" fill="currentColor"/></svg>
+            </div>
+            <div className={css.pendingQueueActions}>
+              {onEdit && (
+                <button
+                  className={css.pendingQueueEdit}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit(item);
+                  }}
+                  title="编辑并放回输入框"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                </button>
+              )}
+              <button
+                className={css.pendingQueueDel}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemove?.(item.id);
+                }}
+                title="移除"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
@@ -252,6 +281,8 @@ interface SenderProps {
   onStop?: () => void;
   pendingQueue?: QueueItem[];
   onRemoveFromQueue?: (id: string) => void;
+  /** 阻塞式工具等待用户操作时，收起输入框并显示紧凑队列栏。 */
+  blocking?: boolean;
   /** 输入框上方的 focus 信息渲染（mention 区域展示） */
   renderFocus?: () => React.ReactNode;
   /** 在 Sender 顶部渲染一组 panel，Sender 负责统一外壳与分割线 */
@@ -346,7 +377,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const {
     loading, placeholder = "请输入", defaultFocusPlaceholder, disabled,
     onBlur, attachmentsPrompt, mode, chatMode, availableChatModes, onChatModeChange,
-    variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue,
+    variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue, blocking = false,
     renderFocus, abovePanels, renderActionPrefix, renderAttachmentSuffix,
     modelSelector, className, chipTypes = [], matchDefaultFocusContent,
     selectorRenderInTop = false,
@@ -452,14 +483,11 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   }, [matchDefaultFocusContent]);
 
   const triggerReceiveAnimation = useCallback((label?: string) => {
-    const editorEl = inputEditorRef.current;
-    if (!editorEl) return;
-    const editorWrapper = editorEl.closest(`.${css.editor}`) as HTMLElement | null;
-    const target = editorWrapper ?? editorEl.parentElement;
+    // 队列与输入区共享 Sender 根节点；阻塞时仅隐藏输入区，动画始终落到同一容器。
+    const target = containerRef.current;
     if (!target) return;
 
     const doLand = () => {
-      // 飞行落地后：弹起 + 流光边框
       target.classList.add(css.receivingBounce);
       target.classList.add(css.receivingGlow);
       setTimeout(() => target.classList.remove(css.receivingBounce), 450);
@@ -1555,8 +1583,28 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     />
   ) : null;
 
+  const handleEditQueueItem = useCallback((item: QueueItem) => {
+    onRemoveFromQueue?.(item.id);
+    clearEditorContent();
+    setAttachments(item.attachments || []);
+    appendInput({
+      message: item.message || "",
+      meta: { chips: item.params?.chips || [] }
+    });
+  }, [onRemoveFromQueue, clearEditorContent, appendInput]);
+
   return (
-    <div ref={containerRef} className={classNames(css.container, { [css.loose]: variant === 'loose', [css.bubble]: variant === 'bubble' }, className)}>
+    <div ref={containerRef} className={classNames(css.container, {
+      [css.loose]: variant === 'loose',
+      [css.bubble]: variant === 'bubble',
+      [css.blocking]: blocking,
+    }, className)}>
+      {blocking && pendingQueue && pendingQueue.length > 0 ? (
+        <div className={css.blockingQueueSummary}>
+          有 {pendingQueue.length} 条消息排队中
+        </div>
+      ) : null}
+      <div style={{ display: blocking ? "none" : undefined }}>
       {abovePanels && abovePanels.length > 0 ? (
         <div className={css.senderAbove}>
           {abovePanels.map((panel) => (
@@ -1567,7 +1615,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         </div>
       ) : null}
       {pendingQueue && pendingQueue.length > 0 && (
-        <PendingQueue queue={pendingQueue} onRemove={onRemoveFromQueue} />
+        <PendingQueue queue={pendingQueue} onRemove={onRemoveFromQueue} onEdit={!blocking ? handleEditQueueItem : undefined} />
       )}
       <div className={classNames(css.editor, {
         [css.noMentions]: mode === "mention" && !renderFocus,
@@ -1721,6 +1769,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   )

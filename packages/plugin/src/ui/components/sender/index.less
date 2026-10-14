@@ -4,6 +4,39 @@
 
 .container {
   padding: var(--chat-sender-padding, 8px);
+  position: relative;
+  border-radius: var(--chat-sender-border-radius, 12px);
+
+  &.receivingBounce {
+    animation: senderReceiveBounce 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  }
+
+  &.receivingGlow::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    z-index: 20;
+    pointer-events: none;
+    background: linear-gradient(
+      100deg,
+      transparent 0%,
+      color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 90%, transparent) 50%,
+      transparent 100%
+    );
+    background-size: 250% 100%;
+    padding: 1.5px;
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    animation: senderReceiveGlow 1.4s ease-out forwards;
+  }
+
+  &.blocking {
+    padding-top: 0;
+  }
 
   .senderAbove {
     margin: 0 10px;
@@ -21,118 +54,6 @@
       border-top: 1px solid var(--mybricks-border-color-main, #E6E6E6);
     }
   }
-
-  .pendingQueue {
-    position: relative;
-    background: var(--mybricks-bg-color-secondary, #F5F5F5);
-    border: 1px solid rgba(0, 0, 0, .08);
-    border-top-left-radius: 8px;
-    border-top-right-radius: 8px;
-    font-size: var(--chat-font-size-sm, 12px);
-    overflow: hidden;
-    width: calc(100% - 14px);
-    margin-left: 7px;
-
-    .pendingQueueHeader {
-      display: flex;
-      align-items: center;
-      gap: var(--chat-message-group-gap, 4px);
-      padding: var(--chat-card-option-padding, 5px 8px);
-      cursor: pointer;
-      color: var(--mybricks-text-color-main, #333);
-      opacity: 0.7;
-      user-select: none;
-
-      &:hover {
-        opacity: 1;
-      }
-
-      .pendingQueueArrow {
-        font-size: 10px;
-        line-height: 1;
-      }
-    }
-
-    .pendingQueueList {
-      padding: 0 6px 5px;
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-    }
-
-    .pendingQueueItem {
-      display: flex;
-      align-items: center;
-      gap: var(--chat-message-group-gap, 4px);
-      padding: 3px 4px;
-      border-radius: 4px;
-      background: var(--mybricks-bg-color-main, #FFF);
-
-      .pendingQueueDot {
-        flex-shrink: 0;
-        width: 5px;
-        height: 5px;
-        border-radius: 50%;
-        background: var(--mybricks-color-primary, #FA6400);
-        opacity: 0.6;
-      }
-
-      .pendingQueueFocus {
-        flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        gap: 2px;
-        color: var(--mybricks-text-color-main, #333);
-        font-size: var(--chat-font-size-sm, 12px);
-        white-space: nowrap;
-
-        .pendingQueueFocusArea {
-          color: var(--mybricks-color-primary, #FA6400);
-        }
-      }
-
-      .pendingQueueMsg {
-        flex: 1;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        color: var(--mybricks-text-color-main, #333);
-        font-size: var(--chat-font-size-sm, 12px);
-      }
-
-      .pendingQueueBadge {
-        flex-shrink: 0;
-        font-size: var(--chat-caption-font-size, 12px);
-        color: var(--mybricks-text-color-main, #333);
-        opacity: 0.5;
-      }
-
-      .pendingQueueDel {
-        flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 14px;
-        height: 14px;
-        padding: 0;
-        border: none;
-        background: transparent;
-        cursor: pointer;
-        opacity: 0.4;
-        color: var(--mybricks-text-color-main, #333);
-
-        &:hover {
-          opacity: 1;
-        }
-
-        svg {
-          width: 14px;
-          height: 14px;
-        }
-      }
-    }
-  }
-
 
   &.loose {
     padding: 0;
@@ -335,36 +256,6 @@
     &.dragging {
       border-color: var(--mybricks-color-primary, #FA6400);
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 15%, transparent);
-    }
-
-    // ─── appendInput 注入动画：弹起 ──────────────────────────────────────────
-    &.receivingBounce {
-      animation: senderReceiveBounce 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
-    }
-
-    // ─── appendInput 注入动画：流光边框扫描 ──────────────────────────────────
-    &.receivingGlow::after {
-      content: '';
-      position: absolute;
-      inset: -1px;
-      border-radius: inherit;
-      z-index: 20;
-      pointer-events: none;
-      // 用渐变模拟流光，只露出边框宽度区域（mask 排除内容区）
-      background: linear-gradient(
-        100deg,
-        transparent 0%,
-        color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 90%, transparent) 50%,
-        transparent 100%
-      );
-      background-size: 250% 100%;
-      padding: 1.5px;
-      -webkit-mask:
-        linear-gradient(#fff 0 0) content-box,
-        linear-gradient(#fff 0 0);
-      -webkit-mask-composite: xor;
-              mask-composite: exclude;
-      animation: senderReceiveGlow 1.4s ease-out forwards;
     }
 
     .dragOverlay {
@@ -818,6 +709,161 @@
           }
         }
       }
+    }
+  }
+}
+
+.blockingQueueSummary {
+  color: var(--mybricks-color-primary, #FA6400);
+  font-size: var(--chat-font-size-sm, 12px);
+  font-weight: 500;
+  line-height: 20px;
+  text-align: left;
+}
+
+// 独立为顶层规则，供普通 Sender 使用。
+.pendingQueue {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 8px 6px;
+  padding: 4px;
+  background: var(--mybricks-bg-color-secondary, #F5F5F5);
+  border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  border-radius: 8px;
+  font-size: var(--chat-font-size-sm, 12px);
+
+  &.pendingQueueMini {
+    margin: 0;
+    margin-bottom: 0;
+    width: 100%;
+  }
+
+  .pendingQueueHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2px 4px 4px;
+    color: var(--mybricks-text-color-main, #333);
+    opacity: 0.6;
+
+    .pendingQueueCount {
+      font-weight: 500;
+    }
+  }
+
+  .pendingQueueList {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+
+    &.miniList {
+      max-height: 120px;
+      overflow-y: auto;
+    }
+  }
+
+  .pendingQueueItem {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: var(--mybricks-bg-color-main, #FFF);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    font-size: var(--chat-font-size-sm, 12px);
+    color: var(--mybricks-text-color-main, #333);
+    min-height: 28px;
+    transition: background 0.15s;
+
+    &:hover {
+      background: color-mix(in srgb, var(--mybricks-bg-color-main, #FFF) 95%, var(--mybricks-color-primary, #FA6400));
+    }
+
+    .pendingQueueIndex {
+      font-family: monospace;
+      color: var(--mybricks-text-color-main, #333);
+      opacity: 0.35;
+      width: 16px;
+      text-align: center;
+      font-size: 11px;
+    }
+
+    .pendingQueueContent {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow: hidden;
+
+      .pendingQueueFocus {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        color: var(--mybricks-text-color-main, #333);
+        white-space: nowrap;
+
+        .pendingQueueFocusArea {
+          color: var(--mybricks-color-primary, #FA6400);
+          margin-left: 2px;
+        }
+      }
+
+      .pendingQueueMsg {
+        flex: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .pendingQueueBadge {
+        flex-shrink: 0;
+        font-size: 10px;
+        padding: 1px 6px;
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--mybricks-text-color-main, #333) 6%, transparent);
+        color: var(--mybricks-text-color-main, #333);
+        opacity: 0.6;
+      }
+    }
+
+    .pendingQueueActions {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      opacity: 0;
+      transition: opacity 0.15s;
+
+      .pendingQueueDel,
+      .pendingQueueEdit {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        cursor: pointer;
+        color: var(--mybricks-text-color-main, #333);
+        opacity: 0.45;
+        transition: color 0.15s, background 0.15s, opacity 0.15s;
+
+        &:hover {
+          opacity: 0.85;
+          background: color-mix(in srgb, var(--mybricks-text-color-main, #333) 8%, transparent);
+        }
+
+        svg {
+          width: 13px;
+          height: 13px;
+        }
+      }
+    }
+
+    &:hover .pendingQueueActions {
+      opacity: 1;
     }
   }
 }

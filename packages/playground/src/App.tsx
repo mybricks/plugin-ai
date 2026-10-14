@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import JsonView from "@microlink/react-json-view";
 import { ChatPanel } from "@plugin/ui/chat/chat-panel";
+import type { ChatPanelRef } from "@plugin/ui/chat/chat-panel";
 import { openSetting } from "@plugin/ui/setting";
 import { ALL_CASES, groupCases } from "./cases";
 import type { TestCase } from "./cases";
@@ -327,6 +328,7 @@ export default function App() {
   const { mode, cycle: cycleTheme } = useTheme();
   const { disabled: chatDisabled, toggle: toggleDisabled } = useChatDisabled();
   const { width: panelWidth, toggle: togglePanelWidth } = usePanelWidth();
+  const chatPanelRef = useRef<ChatPanelRef | null>(null);
 
   // 从 URL 读取初始 case（?case=xxx）
   const initialCaseId = new URLSearchParams(window.location.search).get("case");
@@ -543,7 +545,7 @@ export default function App() {
             {/* ChatPanel 列 */}
             <div className="pg-chat-col" style={{ width: panelWidth }}>
               {agent ? (
-                <ChatPanel agent={agent as any} title="playground" header={true} disabled={chatDisabled} renderEmpty={activeCase?.renderEmpty} renderFocus={activeCase?.renderFocus} historyCollapse={activeCase?.historyCollapse} selectorRenderInTop={activeCase?.selectorRenderInTop} attachProcessors={activeCase?.attachProcessors} mentions={activeCase?.mentions} renderAttachmentSuffix={activeCase?.renderAttachmentSuffix} actionBar={activeCase?.actionBar} />
+                <ChatPanel ref={chatPanelRef} agent={agent as any} title="playground" header={true} disabled={chatDisabled} renderEmpty={activeCase?.renderEmpty} renderFocus={activeCase?.renderFocus} historyCollapse={activeCase?.historyCollapse} selectorRenderInTop={activeCase?.selectorRenderInTop} attachProcessors={activeCase?.attachProcessors} mentions={activeCase?.mentions} renderAttachmentSuffix={activeCase?.renderAttachmentSuffix} actionBar={activeCase?.actionBar} />
               ) : (
                 <div className="pg-loading">加载中…</div>
               )}
@@ -551,7 +553,10 @@ export default function App() {
 
             {/* 右侧：Inspector 上 + FS Viewer 下 */}
             <div className="pg-right-col">
-              {activeCase?.renderRightPanelActions?.({ agent })}
+              {activeCase?.renderRightPanelActions?.({
+                agent,
+                appendInput: (input) => chatPanelRef.current?.appendInput(input),
+              })}
               <InspectorPanel snapshots={snapshots} />
               <FSViewer memFS={memFS} />
             </div>
