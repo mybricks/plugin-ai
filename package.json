@@ -10,6 +10,8 @@
     "export:aicode": "node scripts/export-aicode-agent-packages.mjs",
     "build:request": "node scripts/build-request.mjs",
     "build:plugin": "node scripts/build-plugin.mjs",
+    "dev:showcase": "npm --prefix packages/showcase run dev",
+    "build:showcase": "npm --prefix packages/showcase run build",
     "build:cdzd": "node scripts/build-cdzd.mjs",
     "watch:plugin": "APP_ENV=development node scripts/build-plugin.mjs --watch"
   },

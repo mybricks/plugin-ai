@@ -1,0 +1,18 @@
+html, body, #root { width: 100%; height: 100%; margin: 0; }
+body { color: #1f2937; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.designer-page { width: 100%; height: 100%; }
+.status, .route-error { display: grid; width: 100%; height: 100%; place-items: center; background: #f7f8fa; color: #344054; }
+.status.error { color: #b42318; }
+.route-error code { padding: 2px 5px; border-radius: 4px; background: #e9eef8; }
+.toolbar { display: flex; align-items: center; gap: 8px; padding: 0 10px; font-size: 12px; }
+.toolbar button { border: 0; border-radius: 5px; padding: 6px 10px; color: #fff; background: #2563eb; cursor: pointer; }
+.toolbar button:disabled { cursor: default; opacity: .65; }
+.toolbar button.secondary { color: #344054; background: #eef2f7; }
+.switcher { position: relative; }
+.switcher-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; width: 250px; overflow: hidden; border: 1px solid #e4e7ec; border-radius: 7px; background: #fff; box-shadow: 0 8px 18px rgb(16 24 40 / 14%); }
+.switcher-title, .switcher-empty { padding: 9px 11px; color: #667085; font-size: 12px; }
+.switcher-title { border-bottom: 1px solid #eaecf0; font-weight: 600; }
+.switcher-item { display: flex; width: 100%; flex-direction: column; gap: 3px; padding: 9px 11px; color: #344054 !important; background: #fff !important; text-align: left; }
+.switcher-item:hover:not(:disabled) { background: #f8fafc !important; }
+.switcher-item time { color: #98a2b3; font-size: 11px; }
+.toast { position: fixed; right: 16px; bottom: 16px; z-index: 10; max-width: 380px; margin: 0; padding: 10px 12px; border-radius: 6px; color: #fff; background: #b42318; font-size: 13px; }
