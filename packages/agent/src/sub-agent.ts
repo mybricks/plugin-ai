@@ -1,6 +1,5 @@
 import type { Agent } from "./agent";
 import type { Message, Tool } from "./types";
-import { splitFrontmatter, getFrontmatterString, getFrontmatterStringArray } from "./utils/frontmatter";
 
 // TODO: 将 SubAgent 迁移为 CodeAgent 的内置运行时插件。
 // 这样任务队列、beforeRequest 回传与动态工具创建都由插件自身管理，避免 CodeAgent 了解 SubAgent 细节。
@@ -52,104 +51,31 @@ export class SubAgentTaskManager {
 
 // ─── SubAgentConfig ───────────────────────────────────────────────────────────
 
-/**
- * SubAgent 文件条目。
- */
-export interface SubAgentFile {
-  /** 相对于 subAgent 目录的路径（如 "code-reviewer.md"） */
-  path: string;
-  /** 文件完整内容 */
-  content: string;
-}
-
-/**
- * SubAgent 配置。
- *
- * 类比 Claude Code 的 agents/*.md 文件结构：
- *   - `name`  ：唯一标识，同时作为主入口 md 文件名（`${name}.md`）
- *   - `files` ：文件列表，必须包含 `${name}.md`（含 YAML frontmatter + 系统提示词正文）
- *
- * `${name}.md` 支持的 YAML frontmatter 字段：
- *   - name           (必须) — 唯一标识，与 SubAgentConfig.name 一致
- *   - description    (必须) — 功能描述，LLM 据此决定何时调用
- *   - tools          (可选) — 英文逗号分隔的工具名，如 `read_file, bash`；不传则继承父 Agent 所有工具
- *   - disallowedTools(可选) — string[]，要拒绝的工具
- *   - aiRole         (可选) — 指定模型角色
- *   - title          (可选) — UI 显示标题
- *   - skills         (可选) — string[]，在启动时注入完整 skill 内容到子 Agent 上下文
- *
- * md 正文成为子 Agent 的系统提示词（system prompt）。
- *
- * @example
- * {
- *   name: "code-reviewer",
- *   files: [
- *     {
- *       path: "code-reviewer.md",
- *       content: `---
- * name: code-reviewer
- * description: 审查代码质量、安全性和可维护性
- * tools: read_file, grep_search
- * title: 代码审查
- * ---
- *
- * 你是一名资深代码审查专家...`
- *     }
- *   ]
- * }
- */
+/** SubAgent 的纯配置声明。 */
 export interface SubAgentConfig {
-  /** 唯一标识，同时作为主入口 md 文件名（`${name}.md`） */
+  /** 唯一标识，供 call-sub-agent.type 使用。 */
   name: string;
-  /** 文件列表，必须包含 path === `${name}.md` 的条目 */
-  files: SubAgentFile[];
-}
-
-// ─── 解析 ─────────────────────────────────────────────────────────────────────
-
-/**
- * 解析 subAgent 主入口 md 文件，提取 frontmatter 配置和系统提示词正文。
- */
-export interface SubAgentMeta {
-  /** 来自 frontmatter.name，回退为 SubAgentConfig.name */
-  name: string;
-  /** 来自 frontmatter.description，LLM 据此决定何时调用 */
+  /** 功能描述，供父 Agent 判断何时委派。 */
   description: string;
-  /** 系统提示词（md 正文，去掉 frontmatter 后的内容） */
-  system: string;
-  /** 工具白名单（名称列表） */
-  tools: string[] | null;
-  /** 工具黑名单（名称列表） */
-  disallowedTools: string[] | null;
-  /** 模型角色 */
-  aiRole: string | null;
-  /** UI 显示标题 */
-  title: string | null;
-  /** 需要预加载到子 Agent 上下文的 skill 名称列表 */
-  skills: string[] | null;
-}
-
-/**
- * 解析 SubAgent 主入口 md 文件（`${name}.md`）。
- *
- * @param content      md 文件内容
- * @param fallbackName 回退名称（SubAgentConfig.name）
- */
-export function resolveSubAgentMeta(content: string, fallbackName: string): SubAgentMeta {
-  const { fmText, body } = splitFrontmatter(content);
-
-  const name = getFrontmatterString(fmText, "name") ?? fallbackName;
-  const description =
-    getFrontmatterString(fmText, "description") ?? name;
-  const aiRole = getFrontmatterString(fmText, "aiRole") ?? getFrontmatterString(fmText, "ai_role");
-  const title = getFrontmatterString(fmText, "title");
-
-  const tools = getFrontmatterStringArray(fmText, "tools");
-  const disallowedTools = getFrontmatterStringArray(fmText, "disallowedTools") ??
-    getFrontmatterStringArray(fmText, "disallowed_tools");
-  const skills = getFrontmatterStringArray(fmText, "skills");
-
-  return { name, description, system: body, tools, disallowedTools, aiRole, title, skills };
+  /** UI 显示标题。 */
+  title?: string;
+  /** 子 Agent 的 system prompt；不传时不使用 system，也不继承父 Agent 的 system。 */
+  system?: string;
+  /** 仅允许使用的工具名称；不传则继承全部父工具并叠加私有工具。 */
+  allowedTools?: string[];
+  /** 禁止使用的工具名称。 */
+  disallowedTools?: string[];
+  /** 指定模型角色。 */
+  aiRole?: string;
+  /** 需要预加载到子 Agent 上下文的 Skill 名称。 */
+  skills?: string[];
+  /**
+   * 仅在此 SubAgent 运行时可见的工具。
+   *
+   * 这些工具不会注册到父 Agent；配置了 allowedTools 时，仍需在其中列出
+   * 对应名称才会被实际注入。
+   */
+  tools?: Tool[];
 }
 
 // ─── createSubAgentTool ────────────────────────────────────────────────────────
@@ -176,13 +102,9 @@ export function createSubAgentTool(
   resolvedSkills?: import("./code-agent/skills").SkillFile[],
   taskManager?: SubAgentTaskManager,
 ): Tool {
-  // 预解析所有 meta（避免每次调用都重新解析）
-  const metaMap = new Map<string, SubAgentMeta>();
+  const configMap = new Map<string, SubAgentConfig>();
   for (const config of subAgentConfigs) {
-    const mainFile = config.files.find((f) => f.path === `${config.name}.md`);
-    if (!mainFile) continue;
-    const meta = resolveSubAgentMeta(mainFile.content, config.name);
-    metaMap.set(config.name, meta);
+    configMap.set(config.name, config);
   }
 
   const description = `调用 SubAgent 处理特定任务。`;
@@ -219,38 +141,43 @@ export function createSubAgentTool(
       { prompt, type, async: runAsync = false }: { prompt: string; type: string; name: string; async?: boolean },
       ctx,
     ) => {
-      const meta = metaMap.get(type);
-      if (!meta) {
+      const config = configMap.get(type);
+      if (!config) {
         return { output: `Error: SubAgent type not found: ${type}` };
       }
 
       // 检查用户消息是否有图片附件，优先以附件决定 aiRole
       const { attachments } = ctx.getUserMessage();
       const hasImage = attachments?.some((a: any) => a.type === "image");
-      const aiRole = hasImage ? "image" : (meta.aiRole ?? undefined);
+      const aiRole = hasImage ? "image" : config.aiRole;
 
       const parentAgent = getAgent();
 
-      // 构建工具列表（按 tools 白名单 / disallowedTools 黑名单过滤父 Agent 工具）
+      // 构建工具列表（按 tools 白名单 / disallowedTools 黑名单过滤父 Agent 工具，
+      // 并合入仅此 SubAgent 可见的私有工具）。
       let subAgentTools: Tool[] | undefined;
       const parentTools: Tool[] = (parentAgent as any).options?.tools ?? [];
+      const availableTools = [...parentTools, ...(config.tools ?? [])];
 
-      if (meta.tools) {
+      if (config.allowedTools !== undefined) {
         // 白名单模式：只允许指定工具
-        subAgentTools = parentTools.filter((t) => meta.tools!.includes(t.name));
-      } else if (meta.disallowedTools) {
+        subAgentTools = availableTools.filter((t) => config.allowedTools!.includes(t.name));
+      } else if (config.disallowedTools?.length) {
         // 黑名单模式：继承全部，排除指定工具（同时排除 call-sub-agent 自身）
-        const denied = new Set([...meta.disallowedTools, CALL_SUB_AGENT_TOOL_NAME]);
-        subAgentTools = parentTools.filter((t) => !denied.has(t.name));
+        const denied = new Set([...config.disallowedTools, CALL_SUB_AGENT_TOOL_NAME]);
+        subAgentTools = availableTools.filter((t) => !denied.has(t.name));
+      } else if (config.tools?.length) {
+        // 有私有工具时必须显式传入，否则 createSubAgent 会仅继承父 Agent 工具。
+        subAgentTools = availableTools;
       }
       // 若两者都未指定，subAgentTools 为 undefined，createSubAgent 会继承父 Agent 工具（自动过滤 call-sub-agent）
 
-      // 构建系统提示词：正文 + 预加载 skills 内容
-      let system = meta.system || undefined;
+      // 未配置 system 时显式使用空字符串，不能回退继承父 Agent 的 system。
+      let system = config.system ?? "";
 
-      if (meta.skills?.length && resolvedSkills?.length) {
+      if (config.skills?.length && resolvedSkills?.length) {
         const skillContents: string[] = [];
-        for (const skillName of meta.skills) {
+        for (const skillName of config.skills) {
           const skillFile = resolvedSkills.find((s) => s.name === skillName);
           if (!skillFile) continue;
           const mainSkillMd = skillFile.files.find((f) => f.path === "SKILL.md");
@@ -269,24 +196,95 @@ export function createSubAgentTool(
         return { output: "Error: 当前 Agent 未配置异步 SubAgent 任务队列。" };
       }
 
-      const subAgent = parentAgent.createSubAgent({ system, tools: subAgentTools, aiRole });
+      const subAgent = parentAgent.createSubAgent({
+        system,
+        tools: subAgentTools,
+        aiRole,
+      });
       const agentKey = subAgent.key;
       if (!agentKey) return { output: "Error: SubAgent 未分配 agentKey。" };
+      const subAgentToolCalls = new Map<string, {
+        callId: string;
+        name: string;
+        title?: string;
+        status: "running" | "success" | "error";
+      }>();
+      let latestContent = "";
+      let latestThinkingContent: string | undefined;
+      const getSubAgentToolCalls = () => [...subAgentToolCalls.values()];
+      const getSubAgentToolMetadata = () => ({ subAgentToolCalls: getSubAgentToolCalls() });
+      const appendToolCallSummary = (output: string) => {
+        const calls = getSubAgentToolCalls();
+        const summary = calls.length === 0
+          ? "工具调用总结：未调用工具。"
+          : (() => {
+              const counts = new Map<string, { name: string; title?: string; count: number }>();
+              for (const toolCall of calls) {
+                const current = counts.get(toolCall.name);
+                if (current) current.count += 1;
+                else counts.set(toolCall.name, { name: toolCall.name, title: toolCall.title, count: 1 });
+              }
+              const details = [...counts.values()]
+                .map(({ name, title, count }) => `${title ? `${title}（${name}）` : name} × ${count}`)
+                .join("、");
+              return `工具调用总结：共调用 ${calls.length} 次：${details}。`;
+            })();
+        return output ? `${output}\n\n${summary}` : summary;
+      };
+      const emitSubAgentProgress = (data: Record<string, unknown> = {}) => {
+        ctx?.emitProgress({
+          status: "running",
+          agentKey,
+          subAgentType: type,
+          title: config.title,
+          ...getSubAgentToolMetadata(),
+          content: latestContent,
+          ...(latestThinkingContent !== undefined ? { thinkingContent: latestThinkingContent } : {}),
+          ...data,
+        });
+      };
+      emitSubAgentProgress();
 
       const run = async (): Promise<CompletedSubAgentTask> => {
         let lastProgressAt = 0;
         const unsubscribe = subAgent.events.on("llm:content", ({ content, thinkingContent }) => {
           const now = Date.now();
+          latestContent = content ?? "";
+          latestThinkingContent = thinkingContent;
           if (now - lastProgressAt < 250) return;
           lastProgressAt = now;
-          ctx?.emitProgress({
+          emitSubAgentProgress();
+        });
+        const unsubscribeToolCall = subAgent.events.on("tool:call", ({ callId, name, title }) => {
+          subAgentToolCalls.set(callId, {
+            callId,
+            name,
+            ...(title ? { title } : {}),
             status: "running",
-            agentKey,
-            subAgentType: type,
-            title: meta.title ?? undefined,
-            content: content ?? "",
-            ...(thinkingContent !== undefined ? { thinkingContent } : {}),
           });
+          emitSubAgentProgress();
+        });
+        const unsubscribeToolResult = subAgent.events.on("tool:result", ({ callId, name, title }) => {
+          const previous = subAgentToolCalls.get(callId);
+          subAgentToolCalls.set(callId, {
+            ...previous,
+            callId,
+            name,
+            ...(title ? { title } : {}),
+            status: "success",
+          });
+          emitSubAgentProgress();
+        });
+        const unsubscribeToolError = subAgent.events.on("tool:error", ({ callId, name, title }) => {
+          const previous = subAgentToolCalls.get(callId);
+          subAgentToolCalls.set(callId, {
+            ...previous,
+            callId,
+            name,
+            ...(title ? { title } : {}),
+            status: "error",
+          });
+          emitSubAgentProgress();
         });
         const abort = () => subAgent.abort();
         ctx?.signal?.addEventListener("abort", abort, { once: true });
@@ -298,17 +296,26 @@ export function createSubAgentTool(
           const lastLLMIter = lastTurn?.iterations?.slice().reverse().find((iter) => !("type" in iter));
           const output = (lastLLMIter as any)?.content ?? "";
           const status = lastTurn?.status === "abort" ? "aborted" : lastTurn?.status === "error" ? "error" : "success";
-          return { agentKey, type, title: meta.title ?? undefined, status, output: output || "(SubAgent 未产生输出)" };
+          return {
+            agentKey,
+            type,
+            title: config.title,
+            status,
+            output: appendToolCallSummary(output || "(SubAgent 未产生输出)"),
+          };
         } catch (error) {
           return {
             agentKey,
             type,
-            title: meta.title ?? undefined,
+            title: config.title,
             status: "error",
-            output: `SubAgent 执行失败: ${String((error as Error)?.message ?? error)}`,
+            output: appendToolCallSummary(`SubAgent 执行失败: ${String((error as Error)?.message ?? error)}`),
           };
         } finally {
           unsubscribe();
+          unsubscribeToolCall();
+          unsubscribeToolResult();
+          unsubscribeToolError();
           ctx?.signal?.removeEventListener("abort", abort);
         }
       };
@@ -332,18 +339,39 @@ export function createSubAgentTool(
           // 父 Agent 已结束时，子任务可自行收尾，但不再写回下一轮对话。
           if (parentTurnEnded) return;
           taskManager!.complete(task);
-          ctx?.emitProgress({ status: task.status, agentKey, subAgentType: type, title: meta.title ?? undefined, output: task.output });
+          ctx?.emitProgress({
+            status: task.status,
+            agentKey,
+            subAgentType: type,
+            title: config.title,
+            ...getSubAgentToolMetadata(),
+            output: task.output,
+          });
         });
         return {
           output: `SubAgent 已异步启动（agentKey: ${agentKey}）。仅当父 Agent 仍在执行时，完成结果才会自动在下一次模型请求前送达。`,
-          metadata: { subAgentType: type, title: meta.title ?? undefined, agentKey, status: "running", async: true },
+          metadata: {
+            subAgentType: type,
+            title: config.title,
+            agentKey,
+            status: "running",
+            async: true,
+            ...getSubAgentToolMetadata(),
+          },
         };
       }
 
       const task = await run();
       return {
         output: task.output,
-        metadata: { subAgentType: type, title: meta.title ?? undefined, agentKey, status: task.status, async: false },
+        metadata: {
+          subAgentType: type,
+          title: config.title,
+          agentKey,
+          status: task.status,
+          async: false,
+          ...getSubAgentToolMetadata(),
+        },
       };
     },
   };

@@ -1,4 +1,15 @@
-import type { CodeAgentPlugin, Tool, ToolResult } from "../../../../agent/src";
+import {
+  BASH_TOOL_NAME,
+  EDIT_TOOL_NAME,
+  GREP_TOOL_NAME,
+  MULTI_EDIT_TOOL_NAME,
+  MULTI_WRITE_TOOL_NAME,
+  READ_TOOL_NAME,
+  WRITE_TOOL_NAME,
+  type CodeAgentPlugin,
+  type Tool,
+  type ToolResult,
+} from "../../../../agent/src";
 import auditPowerWorkflow from "./audit-power-workflow.md";
 
 export const AUDIT_UNDERSTAND_PAGE_TOOL_NAME = "docs_understand_page";
@@ -65,20 +76,37 @@ function createAuditPowerTools(implementation?: AuditPowerImplementation): Tool[
   ];
 }
 
-/** Creates the shared Skill and its stable browser/local tool declarations. */
+/**
+ * Creates AuditPower as a plugin-provided, context-isolated SubAgent.
+ *
+ * The page-analysis tools intentionally live on the agent declaration instead of
+ * plugin.tools, so the parent Agent never exposes them directly.
+ */
 export function createAuditPowerPlugin(options: AuditPowerPluginOptions): CodeAgentPlugin {
   const configDirName = options.configDirName.replace(/^\/+|\/+$/g, "");
   if (!configDirName) throw new Error("audit-power: configDirName is required");
-  const prompt = auditPowerWorkflow.replaceAll("<configDirName>", configDirName);
 
   return {
     name: "audit-power",
     description: options.description ?? "按需审计页面或组件的接口、状态与事件。",
-    skills: [{
+    agents: [{
       name: "audit-power",
-      files: [{ path: "SKILL.md", content: prompt }],
+      description: options.description ?? "按需审计页面或组件的接口、状态与事件。",
+      title: "页面审计",
+      system: auditPowerWorkflow.replaceAll("<configDirName>", configDirName),
+      allowedTools: [
+        READ_TOOL_NAME,
+        GREP_TOOL_NAME,
+        BASH_TOOL_NAME,
+        WRITE_TOOL_NAME,
+        EDIT_TOOL_NAME,
+        MULTI_WRITE_TOOL_NAME,
+        MULTI_EDIT_TOOL_NAME,
+        AUDIT_UNDERSTAND_PAGE_TOOL_NAME,
+        AUDIT_VALIDATE_PAGE_TOOL_NAME,
+      ],
+      tools: createAuditPowerTools(options.implementation),
     }],
-    tools: createAuditPowerTools(options.implementation),
   };
 }
 

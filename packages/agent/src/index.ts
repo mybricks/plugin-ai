@@ -78,8 +78,8 @@ export { HTTPHistory } from "./history/http-history";
 export { HistoryManager } from "./history/manager";
 export type { HistoryManagerSnapshot, HistoryStatus } from "./history/manager";
 
-export { createSubAgentTool, resolveSubAgentMeta, CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
-export type { SubAgentConfig, SubAgentFile, SubAgentMeta, CompletedSubAgentTask } from "./sub-agent";
+export { createSubAgentTool, CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
+export type { SubAgentConfig, CompletedSubAgentTask } from "./sub-agent";
 
 export type { RetryOptions } from "./retry";
 export { AbortError, isAbortError } from "./errors";

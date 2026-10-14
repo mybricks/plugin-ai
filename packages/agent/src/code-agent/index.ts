@@ -56,7 +56,6 @@ import { collectPluginPromptTemplates, createMbsTemplates, expandMbsTemplateMess
 import type { MbsTemplateDescriptor } from "./mbs";
 import {
   createSubAgentTool,
-  resolveSubAgentMeta,
   SubAgentTaskManager,
   type SubAgentConfig,
   CALL_SUB_AGENT_TOOL_NAME,
@@ -148,7 +147,7 @@ export const isFileExcluded = (file: UnifiedFile, exclude?: GetFilesOptions["exc
  *
  * 对标 Claude Code plugin 的组件聚合语义：
  *   - skills 使用 SkillFile 声明
- *   - agents 使用 SubAgentConfig 声明（md 文件驱动），合并到顶层 subAgents
+ *   - agents 使用 SubAgentConfig 声明，合并到顶层 subAgents
  *   - tools 使用 Tool 声明，并合并到顶层 tools
  *   - hooks 使用 AgentHooks 声明
  *
@@ -183,7 +182,7 @@ export interface CodeAgentPlugin {
   }) => string[] | Promise<string[]>;
   /**
    * 插件内置 SubAgents，合并到顶层 subAgents。
-   * 每个 SubAgentConfig 通过 `${name}.md` 文件定义配置和系统提示词。
+   * 每个 SubAgentConfig 直接定义描述、工具和可选 system prompt。
    */
   agents?: SubAgentConfig[];
   /** 插件内置工具；按注册顺序合并到顶层 tools，同名时保留最先注册的实现。 */
@@ -570,15 +569,10 @@ function buildEnvironmentSection(skills?: SkillFile[], subAgents?: SubAgentConfi
     }
   }
 
-  // ── SubAgent 目录 ─────────────────────────────────────────────────────────
+  // ── SubAgent 列表 ─────────────────────────────────────────────────────────
   if (subAgents?.length) {
     const lines = subAgents
-      .map((c) => {
-        const mainFile = c.files.find((f) => f.path === `${c.name}.md`);
-        if (!mainFile) return `  ${c.name}`;
-        const { description } = resolveSubAgentMeta(mainFile.content, c.name);
-        return `  ${c.name}: ${description}`;
-      })
+      .map((c) => `  ${c.name}: ${c.description}`)
       .join("\n");
 
     sections.push(

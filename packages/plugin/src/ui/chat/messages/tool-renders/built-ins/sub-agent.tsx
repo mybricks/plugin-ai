@@ -5,6 +5,21 @@ import { Duration, StatusIcon } from "../shared";
 import { InitProjectRenderer } from "./init-project";
 import css from "../render.less";
 
+type SubAgentToolCall = {
+  callId: string;
+  name: string;
+  title?: string;
+  status: "running" | "success" | "error";
+};
+
+function getSubAgentToolCalls(tool: ToolRecord): SubAgentToolCall[] {
+  const raw = tool.progress?.subAgentToolCalls ?? tool.result?.metadata?.subAgentToolCalls;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((item): item is SubAgentToolCall =>
+    !!item && typeof item.callId === "string" && typeof item.name === "string"
+  );
+}
+
 export const SubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
   const agentType: string = tool.args?.type ?? "";
 
@@ -20,7 +35,7 @@ export const SubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
 // ─── 默认 SubAgent 渲染器 ─────────────────────────────────────────────────────
 
 const DefaultSubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
-  const [collapsed, setCollapsed] = useState(false);
+  const [toolsExpanded, setToolsExpanded] = useState(false);
 
   const agentType: string = tool.args?.type ?? "";
   const taskName = tool.args?.name ?? "";
@@ -36,8 +51,9 @@ const DefaultSubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
       ? { ...tool, status: "error" }
       : tool;
   const isPending = displayTool.status === "pending";
-  const isError = displayTool.status === "error";
   const streamingContent = progress?.content ?? "";
+  const subAgentToolCalls = getSubAgentToolCalls(tool);
+  const toolCallCount = subAgentToolCalls.length;
   const files = progress?.files ?? [];
 
   // 如果有文件列表，显示正在处理的文件名
@@ -57,42 +73,64 @@ const DefaultSubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
     ? streamingContent
     : (isAsync ? progress?.output ?? tool.result?.output ?? "" : tool.result?.output ?? "");
 
-  const lineCount = displayContent ? displayContent.split("\n").length : 0;
-
-  const canToggle = !isPending && !isError && !!displayContent;
-  const isCollapsed = isError || (canToggle && collapsed);
-  const shouldShowBody = (isPending && streamingContent) || (!isPending && !isCollapsed && displayContent);
+  const shouldShowContent = isPending || !!displayContent;
 
   return (
-    <div className={css["code-card"]}>
-      <div
-        className={css["code-card-header"]}
-        onClick={() => canToggle && setCollapsed((c: boolean) => !c)}
-        style={canToggle ? undefined : { cursor: "default" }}
-      >
-          <span className={css["code-card-icon"]}>
+    <div className={css["sub-agent-card"]}>
+      <div className={css["sub-agent-header"]}>
+        <span className={css["sub-agent-header-icon"]}>
           <StatusIcon tool={displayTool} />
         </span>
 
-        <span className={css["code-card-filename"]}>
+        <span className={css["sub-agent-header-title"]}>
           {isPending ? <TextShimmer>{headerTitle}</TextShimmer> : headerTitle}
         </span>
 
-        {lineCount > 0 && !isError && (
-          <span className={css["code-card-lines"]}>{lineCount} 行</span>
+        {toolCallCount > 0 && (
+          <span className={css["sub-agent-header-meta"]}>{toolCallCount} 次调用</span>
         )}
 
         <Duration tool={displayTool} />
-
-        {canToggle && (
-          <span className={css["code-card-toggle"]}>{isCollapsed ? "▶" : "▼"}</span>
-        )}
       </div>
 
-      {shouldShowBody && (
-        <pre className={css["code-card-body"]}>
-          <code>{displayContent}</code>
-        </pre>
+      {shouldShowContent && (
+        <div className={css["sub-agent-output"]}>
+          <div className={css["sub-agent-section-title"]}>
+            {isPending ? "最新输出" : "执行结果"}
+          </div>
+          <pre className={css["sub-agent-output-content"]}>
+            <code>{displayContent || "等待模型输出…"}</code>
+          </pre>
+        </div>
+      )}
+
+      {toolCallCount > 0 && (
+        <div className={css["sub-agent-tools"]}>
+          <div className={css["sub-agent-tools-heading"]}>
+            <span className={css["sub-agent-section-title"]}>调用工具</span>
+            <button
+              type="button"
+              className={css["sub-agent-tools-toggle"]}
+              aria-expanded={toolsExpanded}
+              onClick={() => setToolsExpanded((expanded) => !expanded)}
+            >
+              {toolsExpanded ? "收起" : "展开调用"}
+            </button>
+          </div>
+          {toolsExpanded && (
+            <div className={css["sub-agent-tools-list"]}>
+              {subAgentToolCalls.map((toolCall) => (
+                <div key={toolCall.callId} className={css["sub-agent-tool-item"]}>
+                  <span>{toolCall.title || toolCall.name}</span>
+                  <span className={css[`sub-agent-tool-status-${toolCall.status}`]}>
+                    {toolCall.status === "running" ? "执行中" : toolCall.status === "error" ? "失败" : "完成"}
+                  </span>
+                  {toolCall.title && <code>{toolCall.name}</code>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

@@ -589,6 +589,145 @@
   line-height: 1;
 }
 
+// ── 通用 SubAgent 卡片 ───────────────────────────────────────────────────────
+
+.sub-agent-card {
+  border-radius: 6px;
+  border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  background: var(--mybricks-bg-color-secondary, #F5F5F5);
+  margin: 3px 0;
+  overflow: hidden;
+  font-size: var(--chat-font-size, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  user-select: none;
+}
+
+.sub-agent-header,
+.sub-agent-tools-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--chat-block-gap, 6px);
+  padding: var(--chat-card-option-padding, 5px 10px);
+}
+
+.sub-agent-header {
+  min-height: var(--chat-card-min-height, 28px);
+  border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+}
+
+.sub-agent-header-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+
+  svg { width: var(--chat-icon-size, 12px); height: var(--chat-icon-size, 12px); }
+}
+
+.sub-agent-header-title {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sub-agent-header-meta,
+.sub-agent-tools-toggle {
+  font-size: var(--chat-font-size-sm, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+
+.sub-agent-tools-toggle {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sub-agent-output,
+.sub-agent-tools {
+  border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+}
+
+.sub-agent-tools:last-child {
+  border-bottom: 0;
+}
+
+.sub-agent-section-title {
+  color: var(--mybricks-text-color-main, #333);
+  font-size: var(--chat-font-size-sm, 12px);
+  opacity: 0.5;
+}
+
+.sub-agent-output .sub-agent-section-title {
+  padding: 6px 10px 0;
+}
+
+.sub-agent-tools-heading .sub-agent-section-title {
+  flex: 1;
+}
+
+.sub-agent-output-content {
+  margin: 0;
+  padding: var(--chat-card-padding, 8px 10px);
+  max-height: calc(11px * 1.6 * 8 + 16px);
+  overflow: auto;
+  color: var(--mybricks-text-color-main, #333);
+  background: transparent;
+  font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: var(--chat-font-size-sm, 12px);
+  line-height: 1.6;
+  white-space: pre;
+  user-select: text;
+
+  &::-webkit-scrollbar { display: none; }
+  scrollbar-width: none;
+
+  code {
+    background: transparent;
+    padding: 0;
+    font: inherit;
+    user-select: text;
+  }
+}
+
+.sub-agent-tools-list {
+  display: grid;
+  gap: 3px;
+  padding: 0 10px 8px;
+}
+
+.sub-agent-tool-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--mybricks-text-color-main, #333);
+  font-size: var(--chat-font-size-sm, 12px);
+
+  code {
+    color: inherit;
+    font-size: inherit;
+    opacity: 0.5;
+  }
+}
+
+.sub-agent-tool-status-running,
+.sub-agent-tool-status-success,
+.sub-agent-tool-status-error {
+  font-size: var(--chat-font-size-sm, 12px);
+  opacity: 0.55;
+  white-space: nowrap;
+}
+
+.sub-agent-tool-status-error {
+  color: var(--mybricks-color-danger, #E5484D);
+  opacity: 0.85;
+}
+
 // 组内代码体：直接复用 code-card-body，仅覆盖 border-top 和 max-height
 .batch-item-body {
   border-top: 1px solid var(--mybricks-border-color-main, #E6E6E6);

@@ -161,7 +161,15 @@ export async function executeToolCall(
   params.onRecordCreated?.(record);
   // tool:call 与 tool:result / tool:error 必须成对：
   // 工具不存在、参数解析失败、hook deny 等分支也要先发出开始事件，UI 才有卡片可更新。
-  events.emit("tool:call", { callId: record.callId, name: record.name, args: record.args ?? undefined, step, startTime: record.execStartTime, iterId });
+  events.emit("tool:call", {
+    callId: record.callId,
+    name: record.name,
+    ...(record.title ? { title: record.title } : {}),
+    args: record.args ?? undefined,
+    step,
+    startTime: record.execStartTime,
+    iterId,
+  });
 
   // 前置已失败（工具不存在 / 参数非法 / hook deny）
   if (record.status === "error" || !tool) return finalize(record, tool, ctx);
@@ -253,11 +261,20 @@ function finalize(
 
   const message = toolCallRecordToMessage(record, { isCancelled: includePartialOutput });
   if (record.status === "success") {
-    events.emit("tool:result", { callId: record.callId, name: record.name, result: record.result, step, endTime: record.execEndTime, iterId });
+    events.emit("tool:result", {
+      callId: record.callId,
+      name: record.name,
+      ...(record.title ? { title: record.title } : {}),
+      result: record.result,
+      step,
+      endTime: record.execEndTime,
+      iterId,
+    });
   } else {
     events.emit("tool:error", {
       callId: record.callId,
       name: record.name,
+      ...(record.title ? { title: record.title } : {}),
       error: String(record.error ?? "Tool execution failed"),
       errorType: record.errorType,
       // 取消时 UI 仍可接收安全的 metadata；若 output 超限，上面的守卫已将

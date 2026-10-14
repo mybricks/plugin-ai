@@ -1396,15 +1396,16 @@ export class Agent {
    * 创建一个 SubAgent 实例（基于 fork 机制）。
    *
    * 与 createFork 的差异：
-   *   - 默认继承父 Agent 工具；如在 config.tools 中传入白名单则只使用该白名单
+   *   - 默认继承父 Agent 工具；传入 config.tools 时使用该工具列表
    *   - 始终移除 call-sub-agent，避免子 Agent 无限递归派发
    *   - 支持通过 ForkAgentOptions 覆盖 system / tools / aiRole
-   *   - 全量继承父 turns 历史
+   *   - 默认不携带父 turns 历史；如有需要可显式传入 turnsSlice
    */
   createSubAgent(config: ForkAgentOptions): ForkAgent {
     const baseTools = config.tools ?? (this.options.tools ?? []);
     const tools = baseTools.filter((t: Tool) => t.name !== CALL_SUB_AGENT_TOOL_NAME);
     return this.createFork({
+      turnsSlice: config.turnsSlice ?? { from: "start", count: 0 },
       tools,
       ...(config.system !== undefined ? { system: config.system } : {}),
       ...(config.aiRole !== undefined ? { aiRole: config.aiRole } : {}),

@@ -241,6 +241,8 @@ export type AgentEventMap = {
   "tool:call": {
     callId: string;
     name: string;
+    /** 工具自身提供的展示标题（Tool.title）。 */
+    title?: string;
     args: any;
     step: number;
     startTime: number;
@@ -259,6 +261,8 @@ export type AgentEventMap = {
   "tool:result": {
     callId: string;
     name: string;
+    /** 工具自身提供的展示标题（Tool.title）。 */
+    title?: string;
     result: any;
     step: number;
     endTime: number;
@@ -279,6 +283,8 @@ export type AgentEventMap = {
   "tool:error": {
     callId: string;
     name: string;
+    /** 工具自身提供的展示标题（Tool.title）。 */
+    title?: string;
     error: string;
     errorType?: "invalid_args" | "normal";
     result?: ToolResult;
