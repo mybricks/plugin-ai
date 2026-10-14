@@ -1,6 +1,7 @@
 import React from "react";
 import {
   createAgentSandboxFromV1,
+  DEFAULT_CONFIG_DIR_NAME,
 } from "../../../agent/src";
 import type { AgentSandbox, CreateAgentSandboxFromV1Options, SandboxV1 } from "../../../agent/src";
 import { DisabledHandler, type DisabledRequestHandler } from "../disabled-handler";
@@ -271,6 +272,7 @@ export interface SetupSandboxParams {
  */
 export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController {
   const { requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, onDisabledRequest, history, remoteAgent, sender, localAgent } = params;
+  const resolvedConfigDirName = configDirName ?? DEFAULT_CONFIG_DIR_NAME;
   // 空数组与某些应用产生的 App 空文件组合都视为无效快照，本地与远程 Agent 均不读取。
   const syncableInitialFiles = getSyncableInitialFiles(initialFiles);
   const disabledHandler = new DisabledHandler({
@@ -286,7 +288,13 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
   window._sandbox_ = {
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
       if (config.agentSandbox) {
-        return connectToAIFromSandbox(comId, { agentSandbox: config.agentSandbox, hooks: config.hooks, chips: config.chips, mentions: config.mentions }, pluginParams);
+        return connectToAIFromSandbox(comId, {
+          agentSandbox: config.agentSandbox,
+          pageAnalysis: config.pageAnalysis,
+          hooks: config.hooks,
+          chips: config.chips,
+          mentions: config.mentions,
+        }, pluginParams);
       }
       if (!config.designer) {
         throw new Error("connectToAI requires either designer or agentSandbox");
@@ -359,7 +367,7 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
 
     // ── Plugin → sandbox（静态配置）──────────────────────────────────────────
     config: {
-      configDirName,
+      configDirName: resolvedConfigDirName,
       availableLibraries: availableLibraries ?? [],
       themes: themes ?? [],
       componentRuntime,

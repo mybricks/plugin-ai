@@ -1,5 +1,6 @@
 import type { AgentHooks, ChatChipDef, ChatChipInstance } from "../../../agent/src";
 import type { AgentSandbox } from "../../../agent/src";
+import type { AuditPowerImplementation } from "../../../kit/src";
 import type { MentionProvider } from "../ui/components/types";
 
 export type { MentionProvider, MentionMenuItem } from "../ui/components/types";
@@ -41,6 +42,8 @@ export interface Designer {
    * 用于注入当前项目源码上下文。
    */
   exportResourceCode(): string;
+  /** 页面分析执行器；工具声明由 plugin-ai 的内置 AuditPower 插件提供。 */
+  pageAnalysis?: AuditPowerImplementation;
 
 }
 
@@ -100,6 +103,8 @@ export interface RegistSandBoxConfig {
    * virtual-file and additional-directory overlays.
    */
   agentSandbox?: AgentSandbox;
+  /** AgentSandbox 场景的页面分析执行器（如 local-iframe HTTP 分析）。 */
+  pageAnalysis?: AuditPowerImplementation;
   hooks?: Hooks;
   /**
    * 注册 chip 相关能力，支持自定义 chip 定义和内置/自定义 chip 的 remove 回调。

@@ -1,11 +1,11 @@
 import { CodeAgent, DEFAULT_CONFIG_DIR_NAME, IDBHistory, isFileExcluded } from "../../../agent/src";
 import type { AgentSandbox, AgentSandboxFileEntry, AgentSandboxListOptions, Tool, CodeAgentPlugin, History, TurnSender, SkillFile, UnifiedFile, AgentOptions } from "../../../agent/src";
-import type { PromptSections } from "../../../kit/src";
+import type { AuditPowerImplementation, PromptSections } from "../../../kit/src";
 import { buildDirectoryInfoSection, buildProjectInfoSection, promptSectionsAdaptToPromptOption, readGitBranchInfoFromSandbox } from "../../../kit/src";
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { Hooks, SandboxChipsConfig, MentionProvider } from "./types";
 import { context } from "../context";
-import { builtInSandboxPlugins } from "./plugins";
+import { createBuiltInSandboxPlugins } from "./plugins";
 import {
   type ConnectToAIResult,
   type PluginParams,
@@ -76,7 +76,7 @@ function mergeVirtualFileEntries(
 
 export function connectToAIFromSandbox(
   comId: string,
-  { agentSandbox, hooks, chips, mentions }: { agentSandbox: AgentSandbox; hooks?: Hooks; chips?: SandboxChipsConfig; mentions?: MentionProvider[] },
+  { agentSandbox, pageAnalysis, hooks, chips, mentions }: { agentSandbox: AgentSandbox; pageAnalysis?: AuditPowerImplementation; hooks?: Hooks; chips?: SandboxChipsConfig; mentions?: MentionProvider[] },
   {
     requestAsStream, llmPluginKey, virtualFiles, configDirName, skills, plugins, promptSections, tools,
     getUserContextMessage, projectContext, formatUserMessage, disabledModes,
@@ -101,7 +101,10 @@ export function connectToAIFromSandbox(
   const runtimeSkills = getRuntimeSkills(runtime);
   // Keep plugin-ai built-ins available for the AgentSandbox contract as well
   // as the legacy Designer sandbox.
-  const runtimePlugins = [...builtInSandboxPlugins, ...(plugins ?? [])]
+  const runtimePlugins = [...createBuiltInSandboxPlugins({
+    configDirName: resolvedConfigDirName,
+    pageAnalysis,
+  }), ...(plugins ?? [])]
     .map((plugin) => injectPluginRuntimeContext(plugin, runtimeContext));
   const requestGuard = { disabledHandler };
 
