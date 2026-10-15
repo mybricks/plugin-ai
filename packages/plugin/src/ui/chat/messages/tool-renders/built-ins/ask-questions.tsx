@@ -4,6 +4,7 @@ import type { AskQuestionsQuestion, AskQuestionsAnswers } from "../../../../../.
 import type { ToolRecord, ToolRendererContext } from "../index";
 import { TextShimmer } from "../../../../components/text-shimmer";
 import { useChatPanel } from "../../../chat-panel/context";
+import { lang } from "../../../../../i18n";
 import css from "../render.less";
 
 type DraftAnswer = { selected: string[]; other: boolean; otherText: string };
@@ -20,7 +21,7 @@ function getRenderOptions(options: AskQuestionsQuestion["options"]): RenderOptio
   if (otherIndex >= 0) {
     return options.map((option, index) => ({ ...option, isOther: index === otherIndex }));
   }
-  return [...options, { label: "其他", description: "你有其他想法", isOther: true }];
+  return [...options, { label: lang.askQuestions.otherOption(), description: lang.askQuestions.otherOptionDescription(), isOther: true }];
 }
 
 function getAnswers(tool: ToolRecord): AskQuestionsAnswers | null {
@@ -48,7 +49,7 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
   }, [pending, blockingToolTarget, setBlockingToolActive, tool.callId]);
   const cancelled = tool.status === "error" && turn?.status === "abort";
   const skipped = tool.result?.metadata?.skipped === true;
-  const title = "以下问题需要您确认";
+  const title = lang.askQuestions.title();
   const multiStep = questions.length > 1;
 
   const getDraft = (index: number): DraftAnswer => drafts[index] ?? { selected: [], other: false, otherText: "" };
@@ -105,16 +106,16 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
     return (
       <div className={css["ask-question-card"]}>
         <div className={css["ask-question-toolbar"]}>
-          <span className={css["ask-question-command"]}>{skipped ? "本次提问已跳过" : answers ? "已收到您的选择" : title}</span>
-          <span className={css["ask-question-state"]}>{skipped ? "已跳过" : tool.status === "success" ? "已完成" : cancelled ? "已取消" : "未完成"}</span>
+          <span className={css["ask-question-command"]}>{skipped ? lang.askQuestions.skippedPrompt() : answers ? lang.askQuestions.answersReceived() : title}</span>
+          <span className={css["ask-question-state"]}>{skipped ? lang.askQuestions.skipped() : tool.status === "success" ? lang.askQuestions.completed() : cancelled ? lang.askQuestions.cancelled() : lang.askQuestions.incomplete()}</span>
         </div>
         {questions.map((question) => (
           <div className={css["ask-question-result"]} key={question.question}>
             <span>{question.question}</span>
-            {answers ? <strong>{formatAnswer(answers[question.question] ?? "未回答")}</strong> : skipped ? <em>已跳过</em> : cancelled ? <em>未作答</em> : null}
+            {answers ? <strong>{formatAnswer(answers[question.question] ?? lang.askQuestions.unanswered())}</strong> : skipped ? <em>{lang.askQuestions.skipped()}</em> : cancelled ? <em>{lang.askQuestions.notAnswered()}</em> : null}
           </div>
         ))}
-        {cancelled ? <div className={css["ask-question-cancelled-note"]}>此次提问已取消，未提交选择。</div> : null}
+        {cancelled ? <div className={css["ask-question-cancelled-note"]}>{lang.askQuestions.cancelledNote()}</div> : null}
       </div>
     );
   }
@@ -125,7 +126,7 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
     <div className={`${css["ask-question-card"]} ${blockingToolTarget ? css["ask-question-card-in-sender"] : ""}`}>
       <div className={css["ask-question-toolbar"]}>
         <span className={css["ask-question-command"]}>{title}</span>
-        <span className={css["ask-question-state"]}>{questions.length > 0 ? "等待选择" : "正在准备"}</span>
+        <span className={css["ask-question-state"]}>{questions.length > 0 ? lang.askQuestions.waitingForSelection() : lang.askQuestions.preparing()}</span>
       </div>
       {multiStep && questions.length > 0 && (
         <div className={css["ask-question-progress"]}>
@@ -138,7 +139,7 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
           <span className={css["ask-question-progress-label"]}>{currentStep + 1} / {questions.length}</span>
         </div>
       )}
-      {questions.length === 0 && <div className={css["ask-question-loading"]}><TextShimmer>正在准备问题…</TextShimmer></div>}
+      {questions.length === 0 && <div className={css["ask-question-loading"]}><TextShimmer>{lang.askQuestions.preparingQuestions()}</TextShimmer></div>}
       {currentQuestion && (
         <section className={css["ask-question-item"]} key={currentQuestion.question}>
           <div className={css["ask-question-header"]}>
@@ -165,7 +166,7 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
                     <input
                       className={css["ask-question-other-input"]}
                       value={draft.otherText}
-                      placeholder="输入您的想法"
+                      placeholder={lang.askQuestions.otherPlaceholder()}
                       onChange={(event) => updateDraft(currentStep, (current) => ({ ...current, otherText: event.target.value }))}
                       onKeyDown={(event) => { if (event.key === "Enter") handleNext(); }}
                     />
@@ -178,12 +179,12 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
       )}
       {questions.length > 0 && (
         <div className={css["ask-question-actions"]}>
-          <button type="button" className={css["ask-question-skip"]} onClick={() => submit({ skipped: true })}>跳过</button>
+          <button type="button" className={css["ask-question-skip"]} onClick={() => submit({ skipped: true })}>{lang.askQuestions.skip()}</button>
           {multiStep && currentStep > 0 && (
-            <button type="button" className={css["ask-question-back"]} onClick={() => setCurrentStep((s) => s - 1)}>上一题</button>
+            <button type="button" className={css["ask-question-back"]} onClick={() => setCurrentStep((s) => s - 1)}>{lang.askQuestions.previous()}</button>
           )}
           <button type="button" className={css["ask-question-submit"]} disabled={!canProceed} onClick={handleNext}>
-            {isLastStep ? "确认选择" : "下一题"}
+            {isLastStep ? lang.askQuestions.confirm() : lang.askQuestions.next()}
           </button>
         </div>
       )}

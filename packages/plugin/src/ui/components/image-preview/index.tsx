@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import classNames from "classnames";
+import { lang } from "../../../i18n";
 import { Close } from "../icons";
 import css from "./index.less";
 
@@ -81,7 +82,7 @@ const ImagePreviewGroup = ({
 
   return createPortal(
     <div className={css.previewRoot} role="dialog" aria-modal="true" onClick={close}>
-      <button className={classNames(css.actionButton, css.closeButton)} type="button" onClick={close} aria-label="关闭图片预览">
+      <button className={classNames(css.actionButton, css.closeButton)} type="button" onClick={close} aria-label={lang.imagePreview.close()}>
         <Close />
       </button>
       {imageCount > 1 && (
@@ -93,7 +94,7 @@ const ImagePreviewGroup = ({
               event.stopPropagation();
               updateCurrent(currentIndex - 1);
             }}
-            aria-label="上一张图片"
+            aria-label={lang.imagePreview.previous()}
           >
             <ChevronLeft />
           </button>
@@ -104,7 +105,7 @@ const ImagePreviewGroup = ({
               event.stopPropagation();
               updateCurrent(currentIndex + 1);
             }}
-            aria-label="下一张图片"
+            aria-label={lang.imagePreview.next()}
           >
             <ChevronRight />
           </button>

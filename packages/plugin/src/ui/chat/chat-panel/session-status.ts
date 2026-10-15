@@ -2,6 +2,7 @@ import {
   CODE_AGENT_SESSION_STAGE,
   type AgentRuntimeStage,
 } from "../../../context/agent-runtime";
+import { lang } from "../../../i18n";
 
 /** HttpAgent 暴露给 UI 的阶段 key；事件名称仍由 HttpAgent 自己消化。 */
 export const HTTP_AGENT_SESSION_STAGE = {
@@ -25,14 +26,14 @@ export function getDefaultSessionStageText(
 ): string {
   switch (stage?.key) {
     case CODE_AGENT_SESSION_STAGE.AWAITING_MODEL:
-      return "模型响应中...";
+      return lang.chat.modelResponding();
     case HTTP_AGENT_SESSION_STAGE.PREPARING:
-      return "准备中...";
+      return lang.chat.preparing();
     case HTTP_AGENT_SESSION_STAGE.SYNCING_FILES:
-      return "获取最新文件...";
+      return lang.chat.syncingFiles();
     case HTTP_AGENT_SESSION_STAGE.CONFIGURING:
-      return "获取配置...";
+      return lang.chat.configuring();
     default:
-      return "等待模型响应...";
+      return lang.chat.waitingForModel();
   }
 }

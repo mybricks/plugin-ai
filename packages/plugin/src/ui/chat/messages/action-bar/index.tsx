@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { getMchipPlainText, writeMchipClipboard } from "../../../components/sender/mchip-clipboard";
+import { lang } from "../../../../i18n";
 import css from "./index.less";
 
 // ─── Line-style Icons (stroke, rounded) ──────────────────────────────────────
@@ -89,7 +90,7 @@ const Copy = ({ text, meta }: CopyProps) => {
   };
 
   return (
-    <ActionBarButton onClick={handleCopy} title={copied ? "已复制" : "复制"} active={copied}>
+    <ActionBarButton onClick={handleCopy} title={copied ? lang.common.copied() : lang.common.copy()} active={copied}>
       {copied ? <CopyDoneIcon /> : <CopyIcon />}
     </ActionBarButton>
   );
@@ -102,7 +103,7 @@ interface DeleteProps {
 }
 
 const DeleteBtn = ({ onDelete }: DeleteProps) => (
-  <ActionBarButton onClick={onDelete} title="删除">
+  <ActionBarButton onClick={onDelete} title={lang.common.delete()}>
     <DeleteIcon />
   </ActionBarButton>
 );
@@ -115,7 +116,7 @@ interface RetryProps {
 }
 
 const Retry = ({ onRetry, disabled }: RetryProps) => (
-  <ActionBarButton onClick={onRetry} title="重试" disabled={disabled}>
+  <ActionBarButton onClick={onRetry} title={lang.common.retry()} disabled={disabled}>
     <RetryIcon />
   </ActionBarButton>
 );

@@ -19,6 +19,7 @@ import type {
   TokenUsage,
   Tool,
   ToolCallRecord,
+  TurnErrorCode,
   TurnMessageSnapshot,
   TurnPersistMode,
   TurnRecord,
@@ -38,7 +39,7 @@ import { executeToolCall, prepareToolCall, type PreparedToolCall } from "./tool-
 import { toolCallRecordToMessage } from "./message-utils";
 
 export { AgentEvents };
-export type { AgentMode, Message, History, HistoryPersistMode, Tool, TurnRecord, ToolCallRecord, WarmupIter };
+export type { AgentMode, Message, History, HistoryPersistMode, Tool, TurnErrorCode, TurnRecord, ToolCallRecord, WarmupIter };
 export type {
   AgentOptions,
   AgentHooks,
@@ -80,7 +81,7 @@ const DEFAULT_HANDOFF = { enabled: false as const };
 const DEFAULT_COMPACT = { enabled: true as const, maxTurns: 15 };
 /** 自动摘要和压缩使用的 flash 路由角色。 */
 const FLASH_AI_ROLE = "flash";
-const INTERRUPTED_TURN_MESSAGE = "任务异常中断，可点击重试继续";
+const TURN_INCOMPLETE_ERROR_CODE = "TURN_INCOMPLETE" as const;
 
 /**
  * beforeTurnStop 返回的补充文本用于阻止本轮结束、要求模型继续处理，
@@ -581,7 +582,7 @@ export class Agent {
       loadedTurns[loadedTurns.length - 1] = {
         ...lastLoadedTurn,
         status: "error",
-        error: INTERRUPTED_TURN_MESSAGE,
+        errorCode: TURN_INCOMPLETE_ERROR_CODE,
       };
     }
     // 合并：保留面板已产生但尚未持久化的 turn（仅在 loadHistory 之前发起的请求才可能出现）
@@ -696,6 +697,7 @@ export class Agent {
     }
     turn.status = "success";
     turn.error = undefined;
+    turn.errorCode = undefined;
     turn.endTime = undefined;
 
     this.events.emit("turn:resume", { turnId: turn.id });
@@ -729,6 +731,7 @@ export class Agent {
     // 重置 turn 状态
     turn.status = "success";
     turn.error = undefined;
+    turn.errorCode = undefined;
 
     const signal = this._ensureAbortController().signal;
 
@@ -1123,9 +1126,9 @@ export class Agent {
         if (doomLoopTriggered && doomLoopInfo) {
           turn.endTime = Date.now();
           turn.status = "error";
-          turn.error = `模型异常，已自动中断，可以点击重试或发送新的消息`;
+          turn.errorCode = "TURN_LOOP_DETECTED";
           await this._saveTurnRecord(turn, persistMode);
-          this.events.emit("turn:error", { error: new Error(turn.error) });
+          this.events.emit("turn:error", { error: new Error(turn.errorCode), errorCode: turn.errorCode });
           this._onTurnEnd(turn);
           return;
         }
@@ -1726,34 +1729,33 @@ IMPORTANT: 不要调用工具！
     const warmupIterId = randomUUID();
     const warmupIter: WarmupIter = {
       type: "warmup",
+      operation: "context_compaction",
       iterId: warmupIterId,
       status: "loading",
-      content: "当前正在压缩上下文...",
       startTime: warmupStartTime,
       toolCalls: [],
     };
     turn.iterations.push(warmupIter);
-    this.events.emit("warmup:start", { startTime: warmupStartTime, content: warmupIter.content, iterId: warmupIterId });
+    this.events.emit("warmup:start", { startTime: warmupStartTime, operation: warmupIter.operation, iterId: warmupIterId });
 
     // ── compact 步骤（错误内部消化）
     if (needCompact) {
       const onRetry = (attempt: number) => {
-        warmupIter.content = `正在尝试其他策略进行压缩，第 ${attempt} 次重试…`;
-        this.events.emit("warmup:content", { content: warmupIter.content });
+        warmupIter.retryCount = attempt;
+        this.events.emit("warmup:content", { retryCount: attempt });
       };
       const compactOk = await this._runAutoCompact(turn, signal, true, onRetry);
       if (!compactOk) {
         // compact 重试全部失败，以 error 终止本轮 turn
-        const errorMsg = "上下文压缩失败，请重试或者点击上方清空历史记录";
         warmupIter.status = "error";
-        warmupIter.content = errorMsg;
+        warmupIter.errorCode = "CONTEXT_COMPACTION_FAILED";
         warmupIter.endTime = Date.now();
-        this.events.emit("warmup:complete", { status: "error", content: errorMsg, endTime: warmupIter.endTime, iterId: warmupIterId });
+        this.events.emit("warmup:complete", { status: "error", errorCode: warmupIter.errorCode, endTime: warmupIter.endTime, iterId: warmupIterId });
         turn.endTime = warmupIter.endTime;
         turn.status = "error";
-        turn.error = errorMsg;
+        turn.errorCode = warmupIter.errorCode;
         await this._saveTurnRecord(turn, persistMode);
-        this.events.emit("turn:error", { error: new Error(errorMsg) });
+        this.events.emit("turn:error", { error: new Error(turn.errorCode), errorCode: turn.errorCode });
         this._onTurnEnd(turn);
         return true;
       }
@@ -1762,10 +1764,9 @@ IMPORTANT: 不要调用工具！
     // 统一处理取消
     if (signal.aborted) {
       const warmupEndTime = Date.now();
-      warmupIter.status = "error";
-      warmupIter.content = "已取消";
+      warmupIter.status = "abort";
       warmupIter.endTime = warmupEndTime;
-      this.events.emit("warmup:complete", { status: "error", content: warmupIter.content, endTime: warmupEndTime, iterId: warmupIterId });
+      this.events.emit("warmup:complete", { status: "abort", endTime: warmupEndTime, iterId: warmupIterId });
       turn.endTime = warmupEndTime;
       turn.status = "abort";
       await this._saveTurnRecord(turn, persistMode);
@@ -1779,9 +1780,8 @@ IMPORTANT: 不要调用工具！
     // warmup 全部成功
     const warmupEndTime = Date.now();
     warmupIter.status = "success";
-    warmupIter.content = "上下文压缩完成。";
     warmupIter.endTime = warmupEndTime;
-    this.events.emit("warmup:complete", { status: "success", content: warmupIter.content, endTime: warmupEndTime, iterId: warmupIterId });
+    this.events.emit("warmup:complete", { status: "success", endTime: warmupIter.endTime, iterId: warmupIterId });
     return false;
   }
 

@@ -11,6 +11,7 @@ import { ModelSelector } from "../model-selector";
 import type { ModelSelectorProps } from "../model-selector";
 import type { QueueItem } from "../../../context/queue";
 import { context } from "../../../context";
+import { lang } from "../../../i18n";
 import type { SendToAgentParams } from "../../../sandbox";
 import { triggerChipRemove } from "../../../sandbox/chip-remove";
 import type { AgentMode, ChatChipDef, ChatChipInstance } from "../../../../../agent/src";
@@ -166,7 +167,7 @@ export const PendingQueue = ({
   return (
     <div className={classNames(css.pendingQueue, { [css.pendingQueueMini]: compact })}>
       <div className={css.pendingQueueHeader}>
-        <span className={css.pendingQueueCount}>{queue.length} 条消息排队中</span>
+        <span className={css.pendingQueueCount}>{lang.sender.queuedMessages(queue.length)}</span>
       </div>
       <div className={classNames(css.pendingQueueList, { [css.miniList]: compact })}>
         {queue.map((item, index) => (
@@ -180,9 +181,9 @@ export const PendingQueue = ({
                   </span>
                 </span>
               )}
-              <span className={css.pendingQueueMsg}>{item.message || `消息 ${index + 1}`}</span>
+              <span className={css.pendingQueueMsg}>{item.message || lang.sender.message(index + 1)}</span>
               {item.attachments && item.attachments.length > 0 && (
-                <span className={css.pendingQueueBadge}>{item.attachments.length} 附件</span>
+                <span className={css.pendingQueueBadge}>{lang.sender.attachments(item.attachments.length)}</span>
               )}
             </div>
             <div className={css.pendingQueueActions}>
@@ -193,7 +194,7 @@ export const PendingQueue = ({
                     e.stopPropagation();
                     onEdit(item);
                   }}
-                  title="编辑并放回输入框"
+                  title={lang.sender.editQueued()}
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
                 </button>
@@ -204,7 +205,7 @@ export const PendingQueue = ({
                   e.stopPropagation();
                   onRemove?.(item.id);
                 }}
-                title="移除"
+                title={lang.sender.remove()}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
@@ -382,7 +383,7 @@ interface SenderRef {
 
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const {
-    loading, placeholder = "请输入", defaultFocusPlaceholder, disabled,
+    loading, placeholder = lang.sender.placeholder(), defaultFocusPlaceholder, disabled,
     onBlur, attachmentsPrompt, mode, chatMode, availableChatModes, onChatModeChange,
     variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue, blocking = false,
     renderFocus, abovePanels, renderActionPrefix, renderAttachmentSuffix,
@@ -403,7 +404,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const [uploading, setUploading] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [mentionMenuOpen, setMentionMenuOpen] = useState(false);
-  const [mentionMenuTitle, setMentionMenuTitle] = useState("添加上下文");
+  const [mentionMenuTitle, setMentionMenuTitle] = useState(lang.sender.addContext());
   const [mentionMenuSections, setMentionMenuSections] = useState<MentionMenuSection[]>([]);
   const [mentionMenuLoading, setMentionMenuLoading] = useState(false);
   const [mentionMenuMode, setMentionMenuMode] = useState<"plus" | "trigger">("plus");
@@ -678,7 +679,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       setMentionAnchorRect(null);
     }
     setMentionMenuMode(nextMode);
-    setMentionMenuTitle(nextMode === "plus" ? "添加上下文" : "@");
+    setMentionMenuTitle(nextMode === "plus" ? lang.sender.addContext() : "@");
     setMentionMenuOpen(true);
     setMentionMenuLoading(true);
 
@@ -938,7 +939,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         });
       } catch (err) {
         console.error("[@mybricks/plugin-ai - 处理文件失败]", err);
-        message.error(`处理「${file.name}」失败，已取消发送`);
+        message.error(lang.sender.fileProcessFailed(file.name));
         return null;
       }
     }
@@ -1278,7 +1279,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         syncInputContent();
       } catch (err) {
         console.error("[@mybricks/plugin-ai - 读取文件失败]", err);
-        message.error(`读取「${rawFile.name}」失败，已跳过`);
+        message.error(lang.sender.fileReadFailed(rawFile.name));
         const wrapper = chipWrapperMapRef.current.get(id);
         if (wrapper) {
           unmountChipContainer(wrapper);
@@ -1312,11 +1313,11 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     }
 
     if (invalidFiles.length > 0 && validFiles.length === 0) {
-      message.info(`当前仅支持上传${SUPPORTED_IMAGE_LABEL}格式的图片`);
+      message.info(lang.sender.uploadUnsupportedImage(SUPPORTED_IMAGE_LABEL));
       return;
     }
     if (invalidFiles.length > 0) {
-      message.info(`${invalidFiles.length} 个文件格式不支持（仅支持${SUPPORTED_IMAGE_LABEL}）已跳过`);
+      message.info(lang.sender.skippedUnsupportedFiles(invalidFiles.length, SUPPORTED_IMAGE_LABEL));
     }
 
     if (validFiles.length === 0) return;
@@ -1324,30 +1325,30 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     // Step 2：数量上限截断
     const slots = 5 - attachments.length;
     if (slots <= 0) {
-      message.info("当前最多只能上传五张图片");
+      message.info(lang.sender.imageLimitReached());
       return;
     }
     const toUpload = validFiles.slice(0, slots);
     if (validFiles.length > slots) {
-      message.info(`已上传 ${slots} 张，超出上限的 ${validFiles.length - slots} 张已忽略`);
+      message.info(lang.sender.extraImagesSkipped(slots, validFiles.length - slots));
     }
 
     // Step 3：逐个校验并上传
     for (const file of toUpload) {
       if (file.size > MAX_IMAGE_SIZE_BYTES) {
-        message.info(`文件「${file.name}」大小 ${(file.size / 1024 / 1024).toFixed(2)}MB，超过了${MAX_IMAGE_SIZE_MB}MB，已跳过`);
+        message.info(lang.sender.imageTooLarge(file.name, (file.size / 1024 / 1024).toFixed(2), MAX_IMAGE_SIZE_MB));
         continue;
       }
 
       try {
         const { width, height } = await getImageSize(file);
         if (width > 8000 || height > 8000) {
-          message.info(`文件「${file.name}」尺寸 ${width}x${height}px，宽高任一不得大于8000px，已跳过`);
+          message.info(lang.sender.imageTooLargeDimensions(file.name, width, height));
           continue;
         }
       } catch (event) {
         console.error("[@mybricks/plugin-ai - 读取图片尺寸失败]", event);
-        message.error(`读取「${file.name}」尺寸失败，已跳过`);
+        message.error(lang.sender.imageDimensionsReadFailed(file.name));
         continue;
       }
 
@@ -1387,7 +1388,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           URL.revokeObjectURL(localUrl);
           setAttachments((prev) => prev.filter((a) => a !== placeholder));
           console.error("[@mybricks/plugin-ai - 图片上传CDN失败]", event);
-          message.error("图片上传失败，请重试");
+          message.error(lang.sender.imageUploadFailed());
         })
         .finally(() => {
           setUploading(false);
@@ -1612,7 +1613,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     }, className)}>
       {blocking && pendingQueue && pendingQueue.length > 0 ? (
         <div className={css.blockingQueueSummary}>
-          有 {pendingQueue.length} 条消息排队中
+          {lang.sender.queuedMessages(pendingQueue.length)}
         </div>
       ) : null}
       <div style={{ display: blocking ? "none" : undefined }}>
@@ -1644,8 +1645,8 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         ) : null}
         {isDraggingOver && (
           <div className={css.dragOverlay}>
-            <span className={css.dragOverlayTitle}>拖放文件至此</span>
-            <span className={css.dragOverlayHint}>支持图片及常见文件，视频/压缩包等会跳过，图片最大 {MAX_IMAGE_SIZE_MB}MB</span>
+            <span className={css.dragOverlayTitle}>{lang.sender.dragFilesHere()}</span>
+            <span className={css.dragOverlayHint}>{lang.sender.dragFilesHint(MAX_IMAGE_SIZE_MB)}</span>
           </div>
         )}
         {renderFocus ? (
@@ -1767,7 +1768,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
                 className={classNames(css.sendButton, {
                   [css.loadingButton]: loading || uploading || hasLoadingChips
                 })}
-                data-mybricks-tip={loading ? "停止" : ""}
+                data-mybricks-tip={loading ? lang.sender.stop() : ""}
                 onClick={(e) => {
                   if (loading) {
                     e.stopPropagation();

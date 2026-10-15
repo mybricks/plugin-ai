@@ -5,6 +5,7 @@ import {
   StatusIcon, Duration, Label, BatchItem, BatchGroup,
 } from "../shared";
 import css from "../render.less";
+import { lang } from "../../../../../i18n";
 
 type EditItem = { path: string; old_str?: string; new_str?: string; replace_all?: boolean };
 type EditResult = { path: string; error?: string };
@@ -18,7 +19,7 @@ export const MultiEditRenderer = ({ tool }: { tool: ToolRecord }) => {
     return (
       <div className={css["tool-card"]}>
         <StatusIcon tool={tool} icon={<Pencil />} />
-        <Label tool={tool} text="批量修改" />
+        <Label tool={tool} text={lang.tool.batchEdit()} />
         <Duration tool={tool} />
       </div>
     );
@@ -51,7 +52,7 @@ export const MultiEditRenderer = ({ tool }: { tool: ToolRecord }) => {
     <BatchGroup
       tool={tool}
       icon={<Pencil />}
-      verb="批量修改"
+      verb={lang.tool.batchEdit()}
       count={edits.length}
       items={items}
       hasPartialError={hasPartialError}

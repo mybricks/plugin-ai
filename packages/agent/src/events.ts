@@ -1,4 +1,4 @@
-import type { AgentMode, TokenUsage, ToolResult, TurnSender } from "./types";
+import type { AgentMode, TokenUsage, ToolResult, TurnErrorCode, TurnSender } from "./types";
 
 // ─── SSE 风格事件类型 ─────────────────────────────────────────────────────────
 //
@@ -52,6 +52,7 @@ export type AgentEventMap = {
    */
   "turn:error": {
     error: any;
+    errorCode?: TurnErrorCode;
   };
 
   /**
@@ -324,32 +325,32 @@ export type AgentEventMap = {
   /**
    * warmup 阶段开始（如 autoCompact 开始执行）。
    *   - `startTime`  开始时间（Unix ms）
-   *   - `content`    初始展示文本（如 "启动中..."）
+   *   - `operation`  本次执行的 warmup 操作
    */
   "warmup:start": {
     startTime: number;
-    content: string;
+    operation: "context_compaction";
     /** 本次 warmup iter 的唯一 ID，与 warmup:complete 对应 */
     iterId: string;
   };
 
   /**
-   * warmup 阶段内容更新（类比 llm:content，streaming 更新展示文本）。
-   *   - `content`  当前完整文本（覆盖上一帧，UI 直接替换）
+   * warmup 阶段进度更新（事件名为兼容既有协议保留）。
+   *   - `retryCount` 当前累计重试次数
    */
   "warmup:content": {
-    content: string;
+    retryCount: number;
   };
 
   /**
    * warmup 阶段结束（类比 llm:complete）。
-   *   - `status`   最终状态：success / error
-   *   - `content`  最终展示文本
+   *   - `status`   最终状态：success / error / abort
+   *   - `errorCode` warmup 失败时的稳定业务错误码
    *   - `endTime`  结束时间（Unix ms）
    */
   "warmup:complete": {
-    status: "success" | "error";
-    content: string;
+    status: "success" | "error" | "abort";
+    errorCode?: TurnErrorCode;
     endTime: number;
     /** 与 warmup:start 对应的 iter 唯一 ID */
     iterId: string;

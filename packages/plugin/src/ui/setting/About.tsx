@@ -1,5 +1,6 @@
 import React from "react";
 import { AboutItem, ChannelType, getChannelLabel } from "./Modal";
+import { lang } from "../../i18n";
 import css from "./index.less";
 
 interface AboutProps {
@@ -27,10 +28,10 @@ export const About: React.FC<AboutProps> = ({
       </div>
 
       <div className={`${css.section} ${css.aboutModelChannelSection}`}>
-        <div className={css.sectionTitle}>模型渠道</div>
+        <div className={css.sectionTitle}>{lang.settings.modelChannels()}</div>
         <button type="button" className={css.modelChannelCard} onClick={() => onGoToModelService?.()}>
           <div className={css.modelChannelCardMain}>
-            <span className={css.modelChannelCurrentLabel}>当前请求渠道</span>
+            <span className={css.modelChannelCurrentLabel}>{lang.settings.currentRequestChannel()}</span>
             <span className={css.modelChannelCurrentValue}>{getChannelLabel(channel)}</span>
           </div>
           <span className={css.modelChannelChevron} aria-hidden>
@@ -43,7 +44,7 @@ export const About: React.FC<AboutProps> = ({
 
       {items.length > 0 && (
         <div className={css.section}>
-          <div className={css.sectionTitle}>依赖库信息</div>
+          <div className={css.sectionTitle}>{lang.settings.dependencyInfo()}</div>
           <div className={css.aboutInfo}>
             {items.map((item, index) => (
               <div key={index} className={css.aboutItem}>

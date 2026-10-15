@@ -3,33 +3,36 @@ import classNames from "classnames";
 import { Popup } from "../popup";
 import { handleListNavigationKeyDown } from "../menu-keyboard";
 import { AgentModeEnum } from "../../../../../agent/src";
+import { lang } from "../../../i18n";
 import css from "./index.less";
 
 // build = 智能体（默认执行）| plan = 计划（先规划再执行）| ask = 询问（先澄清再决定）
 export type ChatModeType = typeof AgentModeEnum.Build | typeof AgentModeEnum.Plan | typeof AgentModeEnum.Ask | null;
 
-const CHAT_MODE_MAP: Record<
+function getChatModeMap(): Record<
   NonNullable<ChatModeType>,
   { triggerTitle: string; title: string; description: string }
-> = {
+> {
+  return {
   [AgentModeEnum.Build]: {
-    triggerTitle: "智能体模式",
-    title: "智能体模式",
-    description: "模型智能执行，快速交付任务",
+    triggerTitle: lang.chatMode.agentTrigger(),
+    title: lang.chatMode.agentTitle(),
+    description: lang.chatMode.agentDescription(),
   },
   [AgentModeEnum.Plan]: {
-    triggerTitle: "计划",
-    title: "计划模式",
-    description: "执行前先制定方案，再决定是否执行",
+    triggerTitle: lang.chatMode.planTrigger(),
+    title: lang.chatMode.planTitle(),
+    description: lang.chatMode.planDescription(),
   },
   [AgentModeEnum.Ask]: {
-    triggerTitle: "询问",
-    title: "询问模式",
-    description: "先澄清并质询关键决策，不创建计划或修改项目",
+    triggerTitle: lang.chatMode.askTrigger(),
+    title: lang.chatMode.askTitle(),
+    description: lang.chatMode.askDescription(),
   },
-};
+  };
+}
 
-const ALL_CHAT_MODE_OPTIONS = Object.keys(CHAT_MODE_MAP) as NonNullable<ChatModeType>[];
+const ALL_CHAT_MODE_OPTIONS = Object.values(AgentModeEnum) as NonNullable<ChatModeType>[];
 
 /** 莫比乌斯环图标（∞，横着的8），线条流动动画 */
 const MobiusIcon = () => (
@@ -82,6 +85,7 @@ interface ChatModeProps {
 
 const ChatMode = (props: ChatModeProps) => {
   const { chatMode, disabled, availableModes, onChange } = props;
+  const chatModeMap = getChatModeMap();
   const options = availableModes && availableModes.length > 0
     ? ALL_CHAT_MODE_OPTIONS.filter((mode) => availableModes.includes(mode))
     : ALL_CHAT_MODE_OPTIONS;
@@ -129,7 +133,7 @@ const ChatMode = (props: ChatModeProps) => {
     return null;
   }
 
-  const current = CHAT_MODE_MAP[chatMode];
+  const current = chatModeMap[chatMode];
 
   return (
     <Popup
@@ -154,9 +158,9 @@ const ChatMode = (props: ChatModeProps) => {
         </div>
       }
     >
-      <div className={css.menu} role="listbox" aria-label="选择模式">
+      <div className={css.menu} role="listbox" aria-label={lang.chatMode.select()}>
         {options.map((key) => {
-          const item = CHAT_MODE_MAP[key];
+          const item = chatModeMap[key];
           const isSelected = chatMode === key;
           return (
             <button

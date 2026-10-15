@@ -2,6 +2,7 @@ import React from "react";
 import classNames from "classnames";
 import { Delete, Export } from "../../components/icons";
 import { context } from "../../../context";
+import { lang } from "../../../i18n";
 import css from "./header.less";
 
 interface HeaderProps {
@@ -24,7 +25,7 @@ const Header = ({ onClear, onExport, title, disabled = false, renderExtra }: Hea
         <div className={css.actions}>
           <div
             className={classNames(css.action, { [css.disabled]: disabled })}
-            data-mybricks-tip="清空对话记录"
+            data-mybricks-tip={lang.header.clearHistory()}
             onClick={disabled ? undefined : onClear}
           >
             <Delete />
@@ -35,7 +36,7 @@ const Header = ({ onClear, onExport, title, disabled = false, renderExtra }: Hea
       <div className={css.right}>
         <div
           className={classNames(css.action, css.export)}
-          data-mybricks-tip="导出对话记录"
+          data-mybricks-tip={lang.header.exportHistory()}
           onClick={onExport}
         >
           <Export />

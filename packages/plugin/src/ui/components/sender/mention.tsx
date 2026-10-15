@@ -3,6 +3,7 @@ import classNames from "classnames";
 import { AtSign, Attachment } from "../icons";
 import type { MentionMenuItem, MentionProvider } from "../types";
 import { fileChipDef } from "./chip";
+import { lang } from "../../../i18n";
 import css from "./index.less";
 
 export type MentionMenuEntry = MentionMenuItem & {
@@ -41,11 +42,11 @@ export function toMentionEntries(provider: MentionProvider, items: MentionMenuIt
 export function createFileMentionEntry(): MentionMenuEntry {
   return {
     id: "__files__",
-    label: "添加文件和图片",
+    label: lang.sender.addFiles(),
     keywords: ["file", "image", "附件", "上传", "文件", "图片"],
     provider: {
       id: "__files__",
-      label: "添加文件和图片",
+      label: lang.sender.addFiles(),
       chip: fileChipDef,
     },
   };
@@ -134,7 +135,7 @@ export const MentionMenu = ({
       </div>
       <div className={css.mentionMenuList}>
         {loading ? (
-          <div className={css.mentionMenuEmpty}>加载中...</div>
+          <div className={css.mentionMenuEmpty}>{lang.common.loading()}</div>
         ) : hasEntries ? (
           sections.map((section) => {
             if (section.entries.length === 0) return null;
@@ -202,7 +203,7 @@ export const MentionMenu = ({
             );
           })
         ) : (
-          <div className={css.mentionMenuEmpty}>暂无可用项</div>
+          <div className={css.mentionMenuEmpty}>{lang.sender.noAvailableItems()}</div>
         )}
       </div>
     </div>

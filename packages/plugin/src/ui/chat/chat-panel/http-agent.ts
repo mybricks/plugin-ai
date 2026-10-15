@@ -27,6 +27,7 @@ import type {
 } from "../../../../../agent/src/mode-manager";
 import type { AgentRuntimeState } from "../../../context/agent-runtime";
 import { context } from "../../../context";
+import { lang } from "../../../i18n";
 import { jsonStringifySafe } from "../../../utils/json";
 import type { BrowserToolRequest } from "./workspace-bridge";
 import { WorkspaceBridge } from "./workspace-bridge";
@@ -155,7 +156,23 @@ interface HttpAgentRetryOptions {
 const DEFAULT_BASE_URL = "http://localhost:3001/agents/api";
 const DEFAULT_AGENT_ID = "default";
 const DEFAULT_TURNS_PAGE_SIZE = 20;
-const INTERRUPTED_TURN_MESSAGE = "任务异常中断，可点击重试继续";
+const TURN_INCOMPLETE_ERROR_CODE = "TURN_INCOMPLETE" as const;
+
+/** 旧版 error code 只用于兼容已持久化的历史记录和旧服务端。 */
+function normalizeTurnErrorCode(value: unknown): TurnRecord["errorCode"] | undefined {
+  switch (value) {
+    case "TURN_INCOMPLETE":
+    case "TURN_INTERRUPTED":
+      return "TURN_INCOMPLETE";
+    case "TURN_LOOP_DETECTED":
+    case "MODEL_AUTO_INTERRUPTED":
+      return "TURN_LOOP_DETECTED";
+    case "CONTEXT_COMPACTION_FAILED":
+      return "CONTEXT_COMPACTION_FAILED";
+    default:
+      return undefined;
+  }
+}
 /**
  * TODO: 服务端支持 Agent 探活和 turn 终态确认后，改用服务端状态判断任务是否结束。
  * 当前仍保留客户端超时作为兜底，但需要容忍代理缓冲和服务端背压。
@@ -655,7 +672,7 @@ export class HttpAgent {
    */
   private blockIfDisabled(): boolean {
     if (!this.isDisabled()) return false;
-    this.disabledHandler?.message("当前没有操作权限");
+    this.disabledHandler?.message(lang.common.noPermission());
     return true;
   }
 
@@ -739,12 +756,12 @@ export class HttpAgent {
     if (!turn || turn.status !== "success" || turn.endTime != null) return;
 
     turn.status = "error";
-    turn.error = INTERRUPTED_TURN_MESSAGE;
+    turn.errorCode = TURN_INCOMPLETE_ERROR_CODE;
     turn.endTime = Date.now();
     this.setSessionState({ running: false });
     // 即使初始化期间还没有事件订阅者，重新发布 History 快照也能刷新 UI。
     this.historyManager.markReady({ hasMore: this.turnsPage.hasMore });
-    this.events.emit("turn:error", { error: new Error(INTERRUPTED_TURN_MESSAGE) });
+    this.events.emit("turn:error", { error: new Error(TURN_INCOMPLETE_ERROR_CODE), errorCode: TURN_INCOMPLETE_ERROR_CODE });
   }
 
   /**
@@ -951,6 +968,7 @@ export class HttpAgent {
       this.completedSettledHookTurns.delete(turnId);
       turn.status = "success";
       delete turn.error;
+      delete turn.errorCode;
       delete turn.endTime;
       return;
     }
@@ -1056,13 +1074,12 @@ export class HttpAgent {
 
     if (event.event === "warmup:start" && iterId) {
       if (!turn.iterations.some((iter) => iter.iterId === iterId)) {
-        let content = "";
-        if (typeof data.content === "string") content = data.content;
         turn.iterations.push({
           type: "warmup",
           iterId,
           status: "loading",
-          content,
+          operation: data.operation === "context_compaction" ? data.operation : "context_compaction",
+          ...(typeof data.content === "string" ? { content: data.content } : {}),
           startTime: Number(data.startTime) || event.createdAt,
           toolCalls: [],
         });
@@ -1079,6 +1096,8 @@ export class HttpAgent {
           break;
         }
       }
+      if (iter && typeof data.retryCount === "number") iter.retryCount = data.retryCount;
+      // 兼容尚未升级结构化 warmup 事件的服务端。
       if (iter && typeof data.content === "string") iter.content = data.content;
       return;
     }
@@ -1088,11 +1107,8 @@ export class HttpAgent {
         (item) => "type" in item && item.type === "warmup" && item.iterId === iterId,
       );
       if (!iter) return;
-      if (data.status === "error") {
-        iter.status = "error";
-      } else {
-        iter.status = "success";
-      }
+      iter.status = data.status === "error" || data.status === "abort" ? data.status : "success";
+      if (typeof data.errorCode === "string") iter.errorCode = normalizeTurnErrorCode(data.errorCode) ?? iter.errorCode;
       if (typeof data.content === "string") iter.content = data.content;
       iter.endTime = Number(data.endTime) || event.createdAt;
       return;
@@ -1106,11 +1122,18 @@ export class HttpAgent {
       if (turn.endTime === undefined) turn.endTime = event.createdAt;
     } else if (event.event === "turn:error") {
       turn.status = "error";
+      const errorMessage = data.error && typeof data.error.message === "string"
+        ? data.error.message
+        : data.error !== undefined
+          ? String(data.error)
+          : undefined;
+      const knownErrorCode = normalizeTurnErrorCode(data.errorCode) ?? normalizeTurnErrorCode(errorMessage);
+      if (knownErrorCode) turn.errorCode = knownErrorCode;
       if (data.error && typeof data.error.message === "string") {
         turn.error = data.error.message;
       } else if (data.error !== undefined) {
         turn.error = String(data.error);
-      } else {
+      } else if (!turn.errorCode) {
         turn.error = "Unknown error";
       }
       if (turn.endTime === undefined) turn.endTime = event.createdAt;

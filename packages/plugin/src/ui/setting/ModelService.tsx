@@ -8,6 +8,7 @@ import {
   ProviderConfig,
   ModelConfig,
 } from "./Modal";
+import { lang } from "../../i18n";
 import css from "./index.less";
 
 export interface ModelServiceProps {
@@ -165,50 +166,50 @@ const ModelEditModal: React.FC<{
   return (
     <div className={css.modalOverlay} onClick={onCancel}>
       <div className={css.modalDialog} onClick={(e) => e.stopPropagation()}>
-        <div className={css.modalDialogTitle}>{model ? "编辑模型" : "添加模型"}</div>
+        <div className={css.modalDialogTitle}>{model ? lang.settings.editModel() : lang.settings.addModel()}</div>
         <div className={css.formItem}>
-          <label className={css.formLabel}>模型 ID</label>
+          <label className={css.formLabel}>{lang.settings.modelId()}</label>
           <input
             type="text"
             className={css.nativeInput}
-            placeholder="发送给供应商的模型参数，如 gpt-4o、claude-sonnet-4"
+            placeholder={lang.settings.modelIdPlaceholder()}
             value={id}
             onChange={(e) => setId(e.target.value)}
           />
         </div>
         <div className={css.formItem}>
-          <label className={css.formLabel}>模型名称</label>
+          <label className={css.formLabel}>{lang.settings.modelName()}</label>
           <input
             type="text"
             className={css.nativeInput}
-            placeholder="下拉选择时展示的模型名，如 GPT-4o、Claude Sonnet 4"
+            placeholder={lang.settings.modelNamePlaceholder()}
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
         </div>
         <div className={css.formItem}>
-          <label className={css.formLabel}>模型描述 <span style={{ opacity: 0.5, fontWeight: 400 }}>(可选)</span></label>
+          <label className={css.formLabel}>{lang.settings.modelDescription()} <span style={{ opacity: 0.5, fontWeight: 400 }}>({lang.settings.optional()})</span></label>
           <input
             type="text"
             className={css.nativeInput}
-            placeholder="在模型名下方展示的简介，如 高性能通用模型"
+            placeholder={lang.settings.modelDescriptionPlaceholder()}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
         </div>
         <div className={css.formItem}>
-          <label className={css.formLabel}>右侧展示文本 <span style={{ opacity: 0.5, fontWeight: 400 }}>(可选)</span></label>
+          <label className={css.formLabel}>{lang.settings.suffix()} <span style={{ opacity: 0.5, fontWeight: 400 }}>({lang.settings.optional()})</span></label>
           <input
             type="text"
             className={css.nativeInput}
-            placeholder="在模型名右侧展示，如 5.5x、预计 3.5–5.5x"
+            placeholder={lang.settings.suffixPlaceholder()}
             value={suffix}
             onChange={(e) => setSuffix(e.target.value)}
           />
         </div>
         <div className={css.modalDialogActions}>
-          <button className={css.cancelBtn} onClick={onCancel}>取消</button>
-          <button className={css.confirmBtn} onClick={handleSave} disabled={!id.trim() || !name.trim()}>确定</button>
+          <button className={css.cancelBtn} onClick={onCancel}>{lang.common.cancel()}</button>
+          <button className={css.confirmBtn} onClick={handleSave} disabled={!id.trim() || !name.trim()}>{lang.common.confirm()}</button>
         </div>
       </div>
     </div>
@@ -264,9 +265,9 @@ const ProviderEditModal: React.FC<{
   return (
     <div className={css.modalOverlay} onClick={onCancel}>
       <div className={css.modalDialog} onClick={(e) => e.stopPropagation()}>
-        <div className={css.modalDialogTitle}>{provider ? "编辑供应商" : "添加供应商"}</div>
+        <div className={css.modalDialogTitle}>{provider ? lang.settings.editProvider() : lang.settings.addProvider()}</div>
         <div className={css.formItem}>
-          <label className={css.formLabel}>供应商 ID</label>
+          <label className={css.formLabel}>{lang.settings.providerId()}</label>
           <input
             type="text"
             className={css.nativeInput}
@@ -276,7 +277,7 @@ const ProviderEditModal: React.FC<{
           />
         </div>
         <div className={css.formItem}>
-          <label className={css.formLabel}>API 地址</label>
+          <label className={css.formLabel}>{lang.settings.apiAddress()}</label>
           <input
             type="text"
             className={css.nativeInput}
@@ -286,16 +287,16 @@ const ProviderEditModal: React.FC<{
           />
         </div>
         <div className={css.formItem}>
-          <label className={css.formLabel}>API 密钥</label>
+          <label className={css.formLabel}>{lang.settings.apiKey()}</label>
           <PasswordInput
-            placeholder="请输入 API 密钥"
+            placeholder={lang.settings.apiKeyPlaceholder()}
             value={apiKey}
             onChange={setApiKey}
           />
         </div>
         <div className={css.modalDialogActions}>
-          <button className={css.cancelBtn} onClick={onCancel}>取消</button>
-          <button className={css.confirmBtn} onClick={handleSave} disabled={!providerId.trim() || !baseUrl.trim() || !apiKey.trim()}>确定</button>
+          <button className={css.cancelBtn} onClick={onCancel}>{lang.common.cancel()}</button>
+          <button className={css.confirmBtn} onClick={handleSave} disabled={!providerId.trim() || !baseUrl.trim() || !apiKey.trim()}>{lang.common.confirm()}</button>
         </div>
       </div>
     </div>
@@ -584,12 +585,12 @@ export const ModelService: React.FC<ModelServiceProps> = ({ value, onChange, onS
         {currentChannel === "mybricks" && (
           <div className={css.configSection}>
             <div className={css.serviceInfo}>
-              所有 AI 服务将由 MyBricks 提供，在请求中自动选择使用。
+              {lang.settings.mybricksDescription()}
             </div>
             <div className={css.formItem}>
-              <label className={css.formLabel}>API 密钥</label>
+              <label className={css.formLabel}>{lang.settings.apiKey()}</label>
               <PasswordInput
-                placeholder="请输入 MyBricks AI Token"
+                placeholder={lang.settings.mybricksTokenPlaceholder()}
                 value={localValue.mybricksAiToken || ""}
                 onChange={(val: string) => setLocalValue((prev: SettingValue) => ({ ...prev, mybricksAiToken: val }))}
               />
@@ -601,7 +602,7 @@ export const ModelService: React.FC<ModelServiceProps> = ({ value, onChange, onS
         {currentChannel === "infra" && (
           <div className={css.configSection}>
             <div className={css.serviceInfo}>
-              此渠道仅供内部使用，由系统统一管理配置。
+              {lang.settings.infraDescription()}
             </div>
           </div>
         )}
@@ -629,7 +630,7 @@ export const ModelService: React.FC<ModelServiceProps> = ({ value, onChange, onS
                       <button
                         type="button"
                         className={css.providerDeleteBtn}
-                        title="删除供应商"
+                        title={lang.settings.providerDelete()}
                         onClick={(e) => {
                           e.stopPropagation();
                           requestDeleteProvider(provider.key);
@@ -645,7 +646,7 @@ export const ModelService: React.FC<ModelServiceProps> = ({ value, onChange, onS
                 className={`${css.providerSidebarItem} ${css.addItem}`}
                 onClick={handleAddCustomProvider}
               >
-                + 添加供应商
+                + {lang.settings.providerAdd()}
               </div>
             </div>
 
@@ -654,7 +655,7 @@ export const ModelService: React.FC<ModelServiceProps> = ({ value, onChange, onS
               {activeProvider && (
                 <>
                   <div className={css.formItem}>
-                    <label className={css.formLabel}>API 地址</label>
+                    <label className={css.formLabel}>{lang.settings.apiAddress()}</label>
                     <input
                       type="text"
                       className={css.nativeInput}
@@ -664,14 +665,14 @@ export const ModelService: React.FC<ModelServiceProps> = ({ value, onChange, onS
                     />
                     {activeProvider.baseUrl && (
                       <div className={css.formTip}>
-                        预览: {normalizeProviderRequestUrl(activeProvider.format, activeProvider.baseUrl)}
+                        {lang.settings.requestPreview(normalizeProviderRequestUrl(activeProvider.format, activeProvider.baseUrl))}
                       </div>
                     )}
                   </div>
                   <div className={css.formItem}>
-                    <label className={css.formLabel}>API 密钥</label>
+                    <label className={css.formLabel}>{lang.settings.apiKey()}</label>
                     <PasswordInput
-                      placeholder="请输入 API 密钥"
+                      placeholder={lang.settings.apiKeyPlaceholder()}
                       value={activeProvider.apiKey || ""}
                       onChange={(val: string) => updateProviderConfig(activeProviderId, { apiKey: val })}
                     />
@@ -679,7 +680,7 @@ export const ModelService: React.FC<ModelServiceProps> = ({ value, onChange, onS
                       const preset = PRESET_PROVIDERS.find(p => p.key === activeProviderId);
                       return preset?.apiKeyUrl ? (
                         <a className={css.formTipLink} href={preset.apiKeyUrl} target="_blank" rel="noopener noreferrer">
-                          点击这里获取密钥
+                          {lang.settings.getApiKey()}
                         </a>
                       ) : null;
                     })()}
@@ -688,9 +689,9 @@ export const ModelService: React.FC<ModelServiceProps> = ({ value, onChange, onS
                   {/* 模型列表 */}
                   <div className={css.modelListSection}>
                     <div className={css.modelListHeader}>
-                      <span className={css.modelListTitle}>模型列表</span>
+                      <span className={css.modelListTitle}>{lang.settings.modelList()}</span>
                       <button className={css.addModelBtn} onClick={handleAddModel}>
-                        + 添加模型
+                        + {lang.settings.addModel()}
                       </button>
                     </div>
                     <div className={css.modelList}>
@@ -705,10 +706,10 @@ export const ModelService: React.FC<ModelServiceProps> = ({ value, onChange, onS
                             {!model.isPreset && (
                               <>
                                 <button className={css.modelItemBtn} onClick={() => handleEditModel(index)}>
-                                  编辑
+                                  {lang.settings.edit()}
                                 </button>
                                 <button className={`${css.modelItemBtn} ${css.deleteBtn}`} onClick={() => handleDeleteModel(index)}>
-                                  删除
+                                  {lang.common.delete()}
                                 </button>
                               </>
                             )}
@@ -753,7 +754,7 @@ export const ModelService: React.FC<ModelServiceProps> = ({ value, onChange, onS
             </>
           )}
         </div>
-        <button className={css.saveBtn} onClick={handleSave}>保存</button>
+        <button className={css.saveBtn} onClick={handleSave}>{lang.common.save()}</button>
       </div>
 
       {/* 弹窗 */}
@@ -772,13 +773,13 @@ export const ModelService: React.FC<ModelServiceProps> = ({ value, onChange, onS
       {deleteProviderId && (
         <div className={css.modalOverlay} onClick={() => setDeleteProviderId(undefined)}>
           <div className={css.modalDialog} onClick={(e) => e.stopPropagation()}>
-            <div className={css.modalDialogTitle}>删除供应商</div>
+            <div className={css.modalDialogTitle}>{lang.settings.providerDelete()}</div>
             <div className={css.deleteConfirmText}>
-              确定删除供应商「{deleteProviderId}」吗？删除后需要保存才会生效。
+              {lang.settings.deleteProviderConfirm(deleteProviderId)}
             </div>
             <div className={css.modalDialogActions}>
-              <button className={css.cancelBtn} onClick={() => setDeleteProviderId(undefined)}>取消</button>
-              <button className={css.dangerBtn} onClick={handleDeleteProvider}>删除</button>
+              <button className={css.cancelBtn} onClick={() => setDeleteProviderId(undefined)}>{lang.common.cancel()}</button>
+              <button className={css.dangerBtn} onClick={handleDeleteProvider}>{lang.common.delete()}</button>
             </div>
           </div>
         </div>

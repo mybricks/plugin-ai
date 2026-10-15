@@ -6,6 +6,7 @@ import {
 } from "../shared";
 import { PlanToolCard } from "../../action-cards/plan-card";
 import { isPlanFilePath, renderPlanMarkdownHtml } from "../../../../components/plan";
+import { lang } from "../../../../../i18n";
 
 export const EditFileRenderer = ({ tool, configDirName }: { tool: ToolRecord; configDirName?: string }) => {
   const path: string = tool.args?.path ?? "";
@@ -20,7 +21,7 @@ export const EditFileRenderer = ({ tool, configDirName }: { tool: ToolRecord; co
         path={path}
         content={newStr || oldStr || undefined}
         pending={tool.status === "pending"}
-        verb="方案更新"
+        verb={lang.tool.planUpdated()}
         renderContent={(body) => (
           <div
             dangerouslySetInnerHTML={{ __html: renderPlanMarkdownHtml(body) }}
@@ -30,7 +31,7 @@ export const EditFileRenderer = ({ tool, configDirName }: { tool: ToolRecord; co
     );
   }
 
-  const title = path ? `修改文件 ${path}` : "修改文件";
+  const title = lang.tool.editFile(path || undefined);
 
   if (tool.status === "pending") {
     const streamContent = newStr || oldStr;

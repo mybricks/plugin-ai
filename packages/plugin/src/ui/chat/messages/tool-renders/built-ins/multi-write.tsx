@@ -5,6 +5,7 @@ import {
   StatusIcon, Duration, Label, BatchItem, BatchGroup,
 } from "../shared";
 import css from "../render.less";
+import { lang } from "../../../../../i18n";
 
 export const MultiWriteRenderer = ({ tool }: { tool: ToolRecord }) => {
   const files: Array<{ path: string; content?: string }> = Array.isArray(tool.args?.files) ? tool.args.files : [];
@@ -14,7 +15,7 @@ export const MultiWriteRenderer = ({ tool }: { tool: ToolRecord }) => {
     return (
       <div className={css["tool-card"]}>
         <StatusIcon tool={tool} icon={<FileWrite />} />
-        <Label tool={tool} text="批量写文件" />
+        <Label tool={tool} text={lang.tool.batchWriteFiles()} />
         <Duration tool={tool} />
       </div>
     );
@@ -41,7 +42,7 @@ export const MultiWriteRenderer = ({ tool }: { tool: ToolRecord }) => {
     <BatchGroup
       tool={tool}
       icon={<FileWrite />}
-      verb="批量写文件"
+      verb={lang.tool.batchWriteFiles()}
       count={files.length}
       items={items}
     />

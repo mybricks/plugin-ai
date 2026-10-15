@@ -3,6 +3,7 @@ import type { ToolRecord } from "../index";
 import { TextShimmer } from "../../../../components/text-shimmer";
 import { Duration, StatusIcon } from "../shared";
 import { InitProjectRenderer } from "./init-project";
+import { lang } from "../../../../../i18n";
 import css from "../render.less";
 
 type SubAgentToolCall = {
@@ -65,8 +66,8 @@ const DefaultSubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
       ? `${taskName}${currentFileName ? ` - ${currentFileName}` : ""}…`
       : agentType
         ? `${agentType}…`
-        : "处理中…"
-    : taskName || agentType || "已完成";
+        : lang.tool.processing()
+    : taskName || agentType || lang.tool.completed();
 
   // 显示内容：执行中显示流式内容，完成后显示最终结果
   const displayContent: string = isPending
@@ -87,7 +88,7 @@ const DefaultSubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
         </span>
 
         {toolCallCount > 0 && (
-          <span className={css["sub-agent-header-meta"]}>{toolCallCount} 次调用</span>
+          <span className={css["sub-agent-header-meta"]}>{lang.tool.toolCalls(toolCallCount)}</span>
         )}
 
         <Duration tool={displayTool} />
@@ -96,10 +97,10 @@ const DefaultSubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
       {shouldShowContent && (
         <div className={css["sub-agent-output"]}>
           <div className={css["sub-agent-section-title"]}>
-            {isPending ? "最新输出" : "执行结果"}
+            {isPending ? lang.tool.latestOutput() : lang.tool.executionResult()}
           </div>
           <pre className={css["sub-agent-output-content"]}>
-            <code>{displayContent || "等待模型输出…"}</code>
+            <code>{displayContent || lang.tool.awaitingModelOutput()}</code>
           </pre>
         </div>
       )}
@@ -107,14 +108,14 @@ const DefaultSubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
       {toolCallCount > 0 && (
         <div className={css["sub-agent-tools"]}>
           <div className={css["sub-agent-tools-heading"]}>
-            <span className={css["sub-agent-section-title"]}>调用工具</span>
+            <span className={css["sub-agent-section-title"]}>{lang.tool.invokedTools()}</span>
             <button
               type="button"
               className={css["sub-agent-tools-toggle"]}
               aria-expanded={toolsExpanded}
               onClick={() => setToolsExpanded((expanded) => !expanded)}
             >
-              {toolsExpanded ? "收起" : "展开调用"}
+              {toolsExpanded ? lang.tool.collapse() : lang.tool.expandCalls()}
             </button>
           </div>
           {toolsExpanded && (
@@ -123,7 +124,7 @@ const DefaultSubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
                 <div key={toolCall.callId} className={css["sub-agent-tool-item"]}>
                   <span>{toolCall.title || toolCall.name}</span>
                   <span className={css[`sub-agent-tool-status-${toolCall.status}`]}>
-                    {toolCall.status === "running" ? "执行中" : toolCall.status === "error" ? "失败" : "完成"}
+                    {toolCall.status === "running" ? lang.tool.running() : toolCall.status === "error" ? lang.tool.failed() : lang.tool.completed()}
                   </span>
                   {toolCall.title && <code>{toolCall.name}</code>}
                 </div>

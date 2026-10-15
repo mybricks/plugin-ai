@@ -5,11 +5,12 @@ import { useChatPanel } from "../../../chat-panel/context";
 import {
   PendingCodeCard, CodeCard, LineToolRenderer,
 } from "../shared";
+import { lang } from "../../../../../i18n";
 
 export const ReadFileRenderer = ({ tool }: { tool: ToolRecord }) => {
   const { messagesRenderVariant } = useChatPanel();
   const path: string = tool.args?.path ?? "";
-  const title = path ? `查看文件 ${path}` : "查看文件";
+  const title = lang.tool.readFile(path || undefined);
 
   let lineMeta: string | null = null;
   if (tool.status === "success" && tool.result) {
@@ -20,7 +21,7 @@ export const ReadFileRenderer = ({ tool }: { tool: ToolRecord }) => {
       const end = metadata?.endLine ?? metadata?.totalLines ?? content.split("\n").length;
       lineMeta = `L${start} - L${end}`;
     } else if (Array.isArray(metadata?.files)) {
-      lineMeta = `${metadata.files.length} 个文件`;
+      lineMeta = lang.tool.files(metadata.files.length);
     }
   }
 

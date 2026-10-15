@@ -5,6 +5,7 @@ import type { ProviderConfig, RequestAsStreamFn } from "../../../request/src";
 import type { SenderRef } from "../ui/components/sender";
 import { PluginAIKVStore } from "./kv";
 import { ModelSelectionController } from "../model-selection";
+import { lang } from "../i18n";
 
 type SenderInputValue = ReturnType<SenderRef["getInput"]>;
 
@@ -15,8 +16,16 @@ export interface SettingValue {
 }
 
 class Context {
-  /** UI 显示名称 */
-  name: string = "智能助手";
+  private _name?: string;
+
+  /** UI 显示名称；宿主未覆盖时跟随当前语言。 */
+  get name(): string {
+    return this._name ?? lang.common.assistant();
+  }
+
+  set name(value: string) {
+    this._name = value;
+  }
 
   /** 插件命名空间 key，用于 agentKey 拼接 */
   private _pluginKey: string = "";

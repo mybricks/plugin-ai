@@ -1,5 +1,6 @@
 import { AbortError } from "./../../../agent/src/errors";
 import type { DisabledHandler } from "../disabled-handler";
+import { lang } from "../i18n";
 import {
   createAgentRuntime,
   type AgentRuntime,
@@ -121,7 +122,7 @@ export class AgentQueue {
   private blockIfDisabled(agent: RuntimeAgent): boolean {
     const guard = this.requestGuards.get(agent);
     if (!guard?.disabledHandler.isDisabled()) return false;
-    guard.disabledHandler.message("当前没有操作权限");
+    guard.disabledHandler.message(lang.common.noPermission());
     return true;
   }
 

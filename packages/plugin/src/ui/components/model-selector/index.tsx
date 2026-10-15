@@ -4,6 +4,7 @@ import { Popup } from "../popup";
 import { Check } from "../icons";
 import type { ModelSelection } from "../../../../../request/src";
 import type { SelectableModel } from "../../../model-selection";
+import { lang } from "../../../i18n";
 import css from "./index.less";
 
 export interface ModelSelectorProps {
@@ -32,7 +33,7 @@ export const ModelSelector = ({ modelSelector, disabled, trigger, placement = 't
 
   const currentModelName = selected
     ? models.find(m => m.providerId === selected.providerId && m.modelId === selected.modelId)?.modelName || selected.modelId
-    : '选择模型';
+    : lang.chat.selectModel();
 
   const handleSelect = (model: ModelSelection) => {
     if (syncSelected) setSelected(model);

@@ -2,6 +2,11 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { context } from "@plugin/context";
 import App from "./App";
+import { applyPlaygroundLocale, getPlaygroundLocale } from "./locale";
+
+// `lang` in the URL is the playground-wide source of truth. Set it before any
+// plugin UI is rendered so every panel reads the same language.
+applyPlaygroundLocale(getPlaygroundLocale());
 
 // 初始化 context（让 ChatPanel 能运行）
 context.name = "playground";

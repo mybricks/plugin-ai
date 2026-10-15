@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Code } from "../../../../components/icons";
 import type { ToolRecord } from "../index";
 import { StatusIcon, Duration } from "../shared";
+import { lang } from "../../../../../i18n";
 import css from "../render.less";
 
 export const BashRenderer = ({ tool }: { tool: ToolRecord }) => {
@@ -12,8 +13,8 @@ export const BashRenderer = ({ tool }: { tool: ToolRecord }) => {
   const isPending = tool.status === "pending";
   const exitCode = tool.result?.metadata?.exitCode;
   const isCommandError = tool.status === "error" || (typeof exitCode === "number" && exitCode !== 0);
-  const statusText = isPending ? "执行中" : isCommandError ? "执行失败" : "已完成";
-  const title = description || "执行命令";
+  const statusText = isPending ? lang.tool.running() : isCommandError ? lang.tool.failed() : lang.tool.completed();
+  const title = description || lang.tool.command();
   const output: string = tool.status === "error"
     ? tool.error ?? tool.result?.output ?? ""
     : tool.result?.output ?? "";

@@ -7,6 +7,7 @@ import type { ChatChipDef } from "../../../../../agent/src";
 import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
 import { createDomChip, DOM_CHIP_TYPE, formatDomChipMessage, matchDefaultDomFocusContent } from "../../../utils/dom-info";
 import { usePluginDisabled } from "../../../utils/use-plugin-disabled";
+import { lang } from "../../../i18n";
 import css from "./index.less";
 
 export interface ChatFocusViewProps {
@@ -50,7 +51,7 @@ chipRegistry.register(domChipDef);
  */
 const ChatFocusView = ({
   onUpload,
-  placeholder = "描述需求，追加到对话批量处理或者立即发送",
+  placeholder = lang.chat.focusPlaceholder(),
 }: ChatFocusViewProps) => {
   const senderRef = useRef<SenderRef>(null);
 
@@ -132,14 +133,14 @@ const ChatFocusView = ({
   const renderActionPrefix: SenderProps["renderActionPrefix"] = ({ hasInput, disabled }) => (
     <button
       className={css["append-btn"]}
-      title={hasInput ? "追加到对话框，可与其他消息一起编辑后发送" : "请输入内容后再追加"}
+      title={hasInput ? lang.chat.appendToChatTip() : lang.chat.appendToChatDisabledTip()}
       disabled={disabled || !hasInput}
       onClick={onAppendToChat}
     >
       <svg className={css["append-icon"]} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
       </svg>
-      追加到对话
+      {lang.chat.appendToChat()}
     </button>
   );
 

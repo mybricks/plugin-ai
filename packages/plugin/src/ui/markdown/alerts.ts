@@ -1,16 +1,10 @@
+import { lang } from "../../i18n";
+
 // 项目未安装 @types/markdown-it，这里统一以 any 对接 markdown-it 的 token/state
 type MarkdownItLike = any;
 type Token = any;
 
 export type AlertType = "note" | "tip" | "important" | "warning" | "caution";
-
-const ALERT_TITLES: Record<AlertType, string> = {
-  note: "说明",
-  tip: "建议",
-  important: "重点",
-  warning: "注意",
-  caution: "警告",
-};
 
 const ALERT_RE = /^\[!(note|tip|important|warning|caution)\]\s*(.*)$/i;
 
@@ -30,7 +24,6 @@ function matchAlertMarker(tokens: Token[], start: number) {
     firstLineLength: firstLine.length,
   };
 }
-
 /**
  * 支持 GitHub Alerts 语法：
  *
@@ -67,7 +60,7 @@ export function alertsPlugin(md: MarkdownItLike): void {
 
       const titleOpen = new state.Token("html_block", "", 0);
       titleOpen.content =
-        `<div class="md-alert-title">${md.utils.escapeHtml(customTitle || ALERT_TITLES[type])}</div>`;
+        `<div class="md-alert-title">${md.utils.escapeHtml(customTitle || lang.markdown.alertTitle(type))}</div>`;
       tokens.splice(i + 1, 0, titleOpen);
     }
 

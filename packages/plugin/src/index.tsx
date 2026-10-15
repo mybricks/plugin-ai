@@ -265,7 +265,7 @@ export interface PluginAIParams {
 
 export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<string, any> {
   const {
-    name = "智能助手",
+    name,
     user,
     key: pluginKey,
     onRequest,
@@ -323,9 +323,9 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     document.body.removeChild(eleLink);
   });
 
-  context.name = name;
+  if (name) context.name = name;
   (mentions ?? []).forEach((mention) => chipRegistry.register(mention.chip));
-  context.pluginParams = { name, user, onUpload: upload, onDownload: download, renderAttachmentSuffix, attachProcessors, mentions, renderHeaderExtra };
+  context.pluginParams = { name: context.name, user, onUpload: upload, onDownload: download, renderAttachmentSuffix, attachProcessors, mentions, renderHeaderExtra };
 
   // ── 调试工具：导入历史记录 ─────────────────────────────────────────────────
 

@@ -5,6 +5,7 @@ import { parsePlanContent, PlanActions } from "../../../components/plan";
 import css from "./plan-card.less";
 import planSkinCss from "../../../markdown/skin-plan.less";
 import { useChatPanel } from "../../chat-panel/context";
+import { lang } from "../../../../i18n";
 
 /** 获取当前 plan 场景的 markdown 皮肤 class，优先外部自定义，否则内置 skin-plan */
 function usePlanSkinClass(): string {
@@ -31,7 +32,7 @@ export const PlanToolCard = ({
   path,
   content,
   pending = false,
-  verb = "方案制定",
+  verb = lang.plan.drafting(),
   renderContent,
 }: {
   path: string;
@@ -64,7 +65,7 @@ export const PlanToolCard = ({
             <div
               className={css["plan-card-icon-button"]}
               onClick={() => setModalOpen(true)}
-              title="查看完整方案"
+              title={lang.plan.viewFull()}
             >
               <ExpandIcon />
             </div>
@@ -120,34 +121,34 @@ export const PlanFileCard = ({
       {!abandoned && onAbandon && (
         <div
           className={css["plan-card-abandon-button"]}
-          title="废弃此方案"
+          title={lang.plan.abandon()}
           onClick={() => {
             setModalOpen(false);
             onAbandon();
           }}
         >
-          废弃此方案
+          {lang.plan.abandon()}
         </div>
       )}
       <div
         className={classNames(css["plan-card-execute-button"], { [css["plan-card-execute-button-disabled"]]: executeDisabled })}
-        title={abandoned ? "方案已废弃" : executeDisabled ? "当前无法执行方案" : "按当前方案进入执行模式"}
+        title={abandoned ? lang.plan.abandoned() : executeDisabled ? lang.plan.executeDisabled() : lang.plan.executeTip()}
         onClick={() => {
           if (executeDisabled) return;
           setModalOpen(false);
           onExecute?.();
         }}
       >
-        执行此方案
+        {lang.plan.execute()}
       </div>
     </div>
   );
 
   const modalTitle = (
     <>
-      <span className={css["plan-card-modal-title-text"]}>方案</span>
+      <span className={css["plan-card-modal-title-text"]}>{lang.plan.title()}</span>
       <span className={css["plan-card-modal-path"]} title={path}>{path}</span>
-      {abandoned && <span className={css["plan-card-abandoned-badge"]}>已废弃</span>}
+      {abandoned && <span className={css["plan-card-abandoned-badge"]}>{lang.plan.abandoned()}</span>}
     </>
   );
 
@@ -156,14 +157,14 @@ export const PlanFileCard = ({
       <div className={classNames(css["plan-card"], { [css["plan-card-abandoned"]]: abandoned })}>
         <div className={css["plan-card-header"]}>
           <div className={css["plan-card-title"]}>
-            <span className={css["plan-card-title-text"]}>方案</span>
+            <span className={css["plan-card-title-text"]}>{lang.plan.title()}</span>
             <span className={css["plan-card-path"]}>{path}</span>
-            {abandoned && <span className={css["plan-card-abandoned-badge"]}>已废弃</span>}
+            {abandoned && <span className={css["plan-card-abandoned-badge"]}>{lang.plan.abandoned()}</span>}
           </div>
           <div
             className={css["plan-card-icon-button"]}
             onClick={() => setModalOpen(true)}
-            title="查看完整方案"
+            title={lang.plan.viewFull()}
           >
             <ExpandIcon />
           </div>
@@ -175,18 +176,18 @@ export const PlanFileCard = ({
           {!abandoned && onAbandon && (
             <div
               className={css["plan-card-abandon-button"]}
-              title="废弃此方案"
+              title={lang.plan.abandon()}
               onClick={onAbandon}
             >
-              废弃此方案
+              {lang.plan.abandon()}
             </div>
           )}
           <div
             className={classNames(css["plan-card-execute-button"], { [css["plan-card-execute-button-disabled"]]: executeDisabled })}
-            title={abandoned ? "方案已废弃" : executeDisabled ? "当前无法执行方案" : "按当前方案进入执行模式"}
+            title={abandoned ? lang.plan.abandoned() : executeDisabled ? lang.plan.executeDisabled() : lang.plan.executeTip()}
             onClick={() => { if (!executeDisabled) onExecute?.(); }}
           >
-            执行此方案
+            {lang.plan.execute()}
           </div>
         </div>
       </div>
@@ -234,7 +235,7 @@ export const PlanFileCardWithContent = ({
 
   const modalTitle = (
     <>
-      <span className={css["plan-card-modal-title-text"]}>方案</span>
+      <span className={css["plan-card-modal-title-text"]}>{lang.plan.title()}</span>
       <span className={css["plan-card-modal-path"]} title={path}>{displayTitle}</span>
     </>
   );
@@ -250,8 +251,8 @@ export const PlanFileCardWithContent = ({
         setModalOpen(false);
         onExecute();
       } : undefined}
-      abandonLabel="废弃此方案"
-      executeLabel="执行此方案"
+      abandonLabel={lang.plan.abandon()}
+      executeLabel={lang.plan.execute()}
       classes={{
         root: css["plan-card-footer-inner"],
         abandon: css["plan-card-abandon-button"],
@@ -268,15 +269,15 @@ export const PlanFileCardWithContent = ({
         {/* 第一行：方案标题 + 打开预览 */}
         <div className={css["plan-banner-row1"]}>
           <div className={css["plan-banner-left"]}>
-            <span className={css["plan-banner-label"]}>方案：</span>
+            <span className={css["plan-banner-label"]}>{lang.plan.title()}：</span>
             <span className={css["plan-banner-title"]} title={displayTitle}>{displayTitle}</span>
           </div>
           <div
             className={css["plan-banner-open-btn"]}
             onClick={() => setModalOpen(true)}
-            title="打开预览"
+            title={lang.plan.openPreview()}
           >
-            打开预览
+            {lang.plan.openPreview()}
           </div>
         </div>
         {/* 第二行：desc + 废弃/执行（执行/废弃后只展示 desc） */}

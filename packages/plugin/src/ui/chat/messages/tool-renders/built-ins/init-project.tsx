@@ -3,6 +3,7 @@ import type { ToolRecord } from "../index";
 import { Loading, Success, ErrorIcon, FileIcon } from "../../../../components/icons";
 import { TextShimmer } from "../../../../components/text-shimmer";
 import { ElapsedTime } from "../../../../components/elapsed-time";
+import { lang } from "../../../../../i18n";
 import css from "../render.less";
 
 type ProjectFile = { path: string; lineCount: number; status: string };
@@ -55,10 +56,10 @@ export const InitProjectRenderer = ({ tool }: { tool: ToolRecord }) => {
         return files.filter((_, index) => visibleIndices.has(index));
       })();
   const headerTitle = isRunning
-    ? "初始化项目..."
+    ? `${lang.tool.initializeProject()}...`
     : isError && files.length === 0
-        ? "初始化项目失败"
-        : "初始化项目";
+        ? lang.tool.initializeProjectFailed()
+        : lang.tool.initializeProject();
 
   return (
     <div className={css["init-project-card"]}>
@@ -75,7 +76,7 @@ export const InitProjectRenderer = ({ tool }: { tool: ToolRecord }) => {
           <span className={css["init-project-header-title"]}>{headerTitle}</span>
         )}
         {files.length > 0 && (
-          <span className={css["init-project-header-meta"]}>{files.length} 个文件</span>
+          <span className={css["init-project-header-meta"]}>{lang.tool.files(files.length)}</span>
         )}
         {tool.execStartTime && (
           <ElapsedTime
@@ -90,7 +91,7 @@ export const InitProjectRenderer = ({ tool }: { tool: ToolRecord }) => {
       {files.length > 0 && (
         <div className={css["init-project-files"]}>
           <div className={css["init-project-section-title"]}>
-            <span className={css["init-project-section-label"]}>文件列表</span>
+            <span className={css["init-project-section-label"]}>{lang.tool.fileList()}</span>
             {hasMoreFiles && (
               <button
                 type="button"
@@ -98,7 +99,7 @@ export const InitProjectRenderer = ({ tool }: { tool: ToolRecord }) => {
                 aria-expanded={showAllFiles}
                 onClick={() => setShowAllFiles((current) => !current)}
               >
-                {showAllFiles ? "收起" : `展开全部（另有 ${files.length - visibleFiles.length} 个）`}
+                {showAllFiles ? lang.tool.collapse() : lang.tool.expandAllRemaining(files.length - visibleFiles.length)}
               </button>
             )}
           </div>
@@ -108,7 +109,7 @@ export const InitProjectRenderer = ({ tool }: { tool: ToolRecord }) => {
               const isWriting = fileStatus === "writing";
               const isFileError = fileStatus === "error";
               const isPending = fileStatus === "pending";
-              const statusText = isPending ? "" : `${file.lineCount} 行`;
+              const statusText = isPending ? "" : lang.tool.lines(file.lineCount);
 
               return (
                 <div key={`${file.path}-${idx}`} className={css["init-project-file-item"]}>

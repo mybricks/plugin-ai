@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import classNames from "classnames";
 import { context } from "../../../context";
+import { lang } from "../../../i18n";
 import { ChatPanel } from "../chat-panel";
 import type { ChatPanelProps, ChatPanelRef } from "../chat-panel";
 import type { SendToAgentParams } from "../../../sandbox";
@@ -241,7 +242,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
               disabled={contextDisabled}
               size={size}
               matchDefaultFocusContent={matchDefaultDomFocusContent}
-              defaultFocusPlaceholder="您可以描述对于此区域的需求"
+              defaultFocusPlaceholder={lang.chat.defaultFocusPlaceholder()}
               renderAttachmentSuffix={context.pluginParams.renderAttachmentSuffix}
               attachProcessors={context.pluginParams.attachProcessors}
               renderHeaderExtra={renderHeaderExtra ?? context.pluginParams.renderHeaderExtra}

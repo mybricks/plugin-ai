@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import classNames from "classnames";
+import { lang } from "../../../i18n";
 import markdownit from "markdown-it";
 import css from "./index.less";
 import reviewSkinCss from "../../markdown/skin-review.less";
@@ -93,14 +94,14 @@ const ReviewRender = ({
         <header className={css["review-render-meta"]}>
           {status && (
             <div className={css["review-render-result"]}>
-              <span className={css["review-status-label"]}>评估结果</span>
+              <span className={css["review-status-label"]}>{lang.review.result()}</span>
               <span className={css["review-status-value"]} data-status={getStatusTone(status)}>
                 <span className={css["review-status-dot"]} />
                 {status}
               </span>
             </div>
           )}
-          {updateTime && <time className={css["review-render-updated-at"]}>更新于 {updateTime}</time>}
+          {updateTime && <time className={css["review-render-updated-at"]}>{lang.review.updatedAt(updateTime)}</time>}
         </header>
       )}
       <div className={css["review-render-scroll"]}>

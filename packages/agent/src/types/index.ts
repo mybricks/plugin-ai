@@ -163,12 +163,22 @@ export interface Message {
 export interface WarmupIter {
   /** 固定为 "warmup"，用于区分普通 LLM iter */
   type: "warmup";
+  /** warmup 所执行的操作；用于调用方渲染，不包含展示文案。 */
+  operation: "context_compaction";
   /** 本次 warmup iter 的唯一 ID，与 warmup:start 事件中的 iterId 对应 */
   iterId?: string;
-  /** 当前状态 */
-  status: "loading" | "success" | "error";
-  /** 展示给用户的描述文本（streaming 更新，与 LLM iter.content 对齐） */
-  content: string;
+  /** 当前生命周期状态。 */
+  status: "loading" | "success" | "error" | "abort";
+  /** 压缩重试次数；未重试时省略。 */
+  retryCount?: number;
+  /** warmup 失败时的稳定业务错误码。 */
+  errorCode?: TurnErrorCode;
+  /**
+   * 旧版本持久化的展示文案。
+   *
+   * @deprecated 新记录不再写入；调用方应使用 operation/status/retryCount/errorCode 渲染。
+   */
+  content?: string;
   /** warmup 开始时间（Unix ms） */
   startTime: number;
   /** warmup 结束时间（Unix ms），进行中为 undefined */
@@ -179,6 +189,12 @@ export interface WarmupIter {
    */
   toolCalls: [];
 }
+
+/** TurnRecord 上由 Agent 明确识别、可供调用方翻译或分支处理的错误码。 */
+export type TurnErrorCode =
+  | "TURN_INCOMPLETE"
+  | "TURN_LOOP_DETECTED"
+  | "CONTEXT_COMPACTION_FAILED";
 
 // ─── TurnSender ───────────────────────────────────────────────────────────────
 
@@ -312,6 +328,8 @@ export interface TurnRecord {
   status: "success" | "abort" | "error";
   /** 错误信息（status === 'error' 时有值） */
   error?: string;
+  /** Agent 明确识别的稳定业务错误码；未知异常仅保留 error 原文。 */
+  errorCode?: TurnErrorCode;
   /**
    * 是否已被 retry 替代（仅对 iterations 为空的 error turn 有效）。
    * 标记后该 turn 不再参与 LLM 上下文构建，但保留在历史记录中供 UI 展示。

@@ -10,6 +10,7 @@ import type { ActivePlanFile } from "../../../../../agent/src/mode-manager";
 import { SenderActivePlanCard, usePlanState } from "../../components/plan";
 import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
 import { usePluginDisabled } from "../../../utils/use-plugin-disabled";
+import { lang } from "../../../i18n";
 import { isHttpAgent } from "../chat-panel/http-agent";
 import { useAgent, type ChatAgent } from "../chat-panel/use-agent";
 import type { SessionStageTextResolver } from "../chat-panel/session-status";
@@ -60,8 +61,8 @@ const ChatStartView = ({
   agent,
   comId,
   onUpload,
-  placeholder = "请尽量详细描述您的需求，或者上传图片作为补充。完成后您可以导出源码或者Figma设计稿。",
-  welcomeTitle = "在这里，开始您的需求",
+  placeholder = lang.chat.startPlaceholder(),
+  welcomeTitle = lang.chat.startTitle(),
   attachProcessors,
   mentions = context.pluginParams.mentions ?? [],
   resolveSessionStageText,

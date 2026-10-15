@@ -2,6 +2,7 @@ import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo
 import classNames from "classnames";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
+import { lang } from "../../../i18n";
 import { chipRegistry } from "../../../sandbox/setup";
 import { mentionRegistry } from "../../../sandbox/mention-registry";
 import type { AgentMode } from "../../../../../agent/src";
@@ -312,7 +313,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     <Sender
       ref={senderRef}
       loading={loading}
-      placeholder={placeholder ?? `您好，我是${context.name}，请详细描述您的需求`}
+      placeholder={placeholder ?? lang.chat.defaultPlaceholder(context.name)}
       defaultFocusPlaceholder={defaultFocusPlaceholder}
       disabled={isDisabled}
       mode="mention"
@@ -380,11 +381,11 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
         <div className={css["body-area"]}>
           <div className={css["messages-area"]}>
             {historyLoading ? (
-              <div className={css["history-status"]}>正在加载历史记录...</div>
+              <div className={css["history-status"]}>{lang.chat.historyLoading()}</div>
             ) : null}
             {historyFailed ? (
               <div className={css["history-status"]}>
-                历史记录加载失败，请刷新后重试
+                {lang.chat.historyLoadFailed()}
               </div>
             ) : null}
             <MessageList

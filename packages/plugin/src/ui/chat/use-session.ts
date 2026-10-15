@@ -279,7 +279,7 @@ function useAgentEvents(
         opts?.onTurnEnd?.();
       }),
 
-      a.events.on("turn:error", ({ error }) => {
+      a.events.on("turn:error", ({ error, errorCode }) => {
         cancelCommit();
         const turn = streamingRef.current;
         if (!turn) return;
@@ -289,6 +289,7 @@ function useAgentEvents(
           ...turn,
           status: "error",
           error: errorMsg,
+          errorCode,
           iterations: turn.iterations.map((iter) => {
             if (isWarmupIteration(iter)) return iter;
             return {
@@ -414,31 +415,31 @@ function useAgentEvents(
         scheduleCommit();
       }),
 
-      a.events.on("warmup:start", ({ iterId, startTime, content }) => {
+      a.events.on("warmup:start", ({ iterId, startTime, operation }) => {
         flushCommit();
         const turn = streamingRef.current;
         if (!turn) return;
-        turn.iterations.push({ iterId, type: "warmup", status: "loading", content, startTime, toolCalls: [] });
+        turn.iterations.push({ iterId, type: "warmup", operation, status: "loading", startTime, toolCalls: [] });
         commit();
       }),
 
-      a.events.on("warmup:content", ({ content }) => {
+      a.events.on("warmup:content", ({ retryCount }) => {
         const turn = streamingRef.current;
         if (!turn) return;
         const last = turn.iterations[turn.iterations.length - 1];
         if (!last || !isWarmupIteration(last)) return;
-        last.content = content;
+        last.retryCount = retryCount;
         scheduleCommit();
       }),
 
-      a.events.on("warmup:complete", ({ iterId, status, content, endTime }) => {
+      a.events.on("warmup:complete", ({ iterId, status, errorCode, endTime }) => {
         flushCommit();
         const turn = streamingRef.current;
         if (!turn) return;
         const iter = findWarmupIterById(turn, iterId);
         if (!iter) return;
         iter.status = status;
-        iter.content = content;
+        iter.errorCode = errorCode;
         iter.endTime = endTime;
         commit();
       }),

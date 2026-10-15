@@ -15,6 +15,7 @@ import {
 } from "./use-session-state";
 import type { SenderActionSlashCommand, SenderPromptTemplateSlashCommand, SenderSlashCommand } from "../../components/sender/slash-command";
 import { jsonStringifySafe } from "../../../utils/json";
+import { lang } from "../../../i18n";
 import { ChatModeIcon } from "../../components/chat-mode";
 import { Skill } from "../../components/icons";
 
@@ -252,7 +253,7 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
     context.aiQueue.send(
       agent,
       () => selection ? agent.retry({ turnId, ...selection }) : agent.retry(turnId),
-      { message: "重试" },
+      { message: lang.common.retry() },
     );
   }, [agent, isDisabled]);
 

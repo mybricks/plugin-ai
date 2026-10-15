@@ -3,27 +3,28 @@ import { Eye } from "../../../../components/icons";
 import type { ToolRecord } from "../index";
 import { useChatPanel } from "../../../chat-panel/context";
 import { PendingCodeCard, CodeCard, LineToolRenderer } from "../shared";
+import { lang } from "../../../../../i18n";
 
 export const GrepSearchRenderer = ({ tool }: { tool: ToolRecord }) => {
   const { messagesRenderVariant } = useChatPanel();
   const pattern: string = tool.args?.pattern ?? "";
-  const title = pattern ? `内容搜索 ${pattern}` : "内容搜索中";
+  const title = lang.tool.searchContent(pattern || undefined);
 
   let lineMeta: string | null = null;
   if (tool.status === "success" && tool.result) {
     const metadata = tool.result.metadata;
     if (metadata != null) {
       const total = metadata.totalCount ?? 0;
-      lineMeta = `${total} 个结果`;
+      lineMeta = lang.tool.searchResults(total);
     }
   }
 
   if (messagesRenderVariant === "line") {
     const detail = [
-      pattern ? `关键词: ${pattern}` : "",
-      lineMeta ? `结果: ${lineMeta}` : "",
+      pattern ? `${lang.tool.keyword()}: ${pattern}` : "",
+      lineMeta ? `${lang.tool.result()}: ${lineMeta}` : "",
       tool.result?.output ? String(tool.result.output) : "",
-      tool.error ? `错误: ${tool.error}` : "",
+      tool.error ? `${lang.tool.error()}: ${tool.error}` : "",
     ].filter(Boolean).join("\n\n");
 
     return (

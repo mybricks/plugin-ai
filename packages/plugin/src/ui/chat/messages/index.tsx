@@ -8,6 +8,7 @@ import { ElapsedTime } from "../../components/elapsed-time";
 import type { MessageRecord } from "../use-session";
 import type {
   ToolCallRecord,
+  TurnErrorCode,
   WarmupIter,
 } from "../../../../../agent/src/types";
 import type { ToolUIChannel } from "../../../../../agent/src";
@@ -35,16 +36,41 @@ import { ActionBar } from "./action-bar";
 import { context } from "../../../context";
 import { ModelSelector } from "../../components/model-selector";
 import type { ModelSelection } from "../../../../../request/src";
+import { lang } from "../../../i18n";
 
 /** 将通用网络失败映射为用户友好的提示；其余错误保留原始 message。 */
-function toUserFriendlyError(msg: string): string {
+function toUserFriendlyError(msg?: string, errorCode?: TurnErrorCode): string {
+  const rawCode = errorCode ?? msg;
+  const code = rawCode === "TURN_INCOMPLETE" || rawCode === "TURN_INTERRUPTED"
+    ? "TURN_INCOMPLETE"
+    : rawCode === "TURN_LOOP_DETECTED" || rawCode === "MODEL_AUTO_INTERRUPTED"
+      ? "TURN_LOOP_DETECTED"
+      : rawCode === "CONTEXT_COMPACTION_FAILED"
+        ? rawCode
+        : undefined;
+  if (code === "TURN_INCOMPLETE") return lang.chat.turnInterrupted();
+  if (code === "TURN_LOOP_DETECTED") return lang.chat.modelAutoInterrupted();
+  if (code === "CONTEXT_COMPACTION_FAILED") return lang.chat.contextCompactionFailed();
+  if (!msg) return lang.chat.serviceFailed();
   if (msg === 'Failed to fetch' || msg === 'Load failed') {
-    return '模型服务连接失败，请检查网络或重试';
+    return lang.chat.connectionFailed();
   }
   if (msg.includes('Invalid value')) {
-    return '模型服务异常，请重试或切换模型';
+    return lang.chat.serviceFailed();
   }
   return msg;
+}
+
+function getWarmupText(iter: WarmupIter): string {
+  if (iter.operation === "context_compaction") {
+    if (iter.status === "loading") {
+      return iter.retryCount ? lang.chat.contextCompactionRetrying(iter.retryCount) : lang.chat.contextCompacting();
+    }
+    if (iter.status === "success") return lang.chat.contextCompactionCompleted();
+    if (iter.status === "abort") return lang.chat.contextCompactionCancelled();
+    if (iter.errorCode === "CONTEXT_COMPACTION_FAILED") return lang.chat.contextCompactionFailed();
+  }
+  return iter.content ?? "";
 }
 
 
@@ -118,13 +144,13 @@ const CollapseBar = ({
   <div className={css["collapse-bar"]}>
     <div className={css["collapse-bar-line"]} />
     <span className={css["collapse-bar-text"]}>
-      {isLoadingMore ? "加载中..." : (collapsedCount > 0 ? `已折叠 ${collapsedCount} 轮历史对话` : "更多历史对话记录")}
+      {isLoadingMore ? lang.common.loading() : (collapsedCount > 0 ? lang.chat.historyCollapsed(collapsedCount) : lang.chat.moreHistory())}
     </span>
     {!isLoadingMore && (
       <div className={css["collapse-bar-actions"]}>
-        <button className={css["collapse-bar-btn"]} onClick={() => { void onExpandOne(); }}>展开一条</button>
+        <button className={css["collapse-bar-btn"]} onClick={() => { void onExpandOne(); }}>{lang.chat.expandOne()}</button>
         <button className={css["collapse-bar-btn"]} onClick={() => { void onExpandSecondary(); }}>
-          {collapsedCount > 0 ? "展开全部" : "展开 10 条"}
+          {collapsedCount > 0 ? lang.chat.expandAll() : lang.chat.expandTen()}
         </button>
       </div>
     )}
@@ -288,7 +314,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
         if (selection) await agent.retry({ turnId: record.id, ...selection });
         else await agent.retry(record.id);
       },
-      { message: "重试" }
+      { message: lang.common.retry() }
     );
   };
   const handleRetryWithModel = (selection: Parameters<NonNullable<typeof modelSelector>["onSelect"]>[0]) => {
@@ -332,7 +358,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
       <div className={classNames(css["chat-bubble"], css["user-bubble"])}>
         {shouldShowUserHeader && (
           <header className={css["chat-bubble-header"]}>
-            <span className={css["chat-bubble-header-name"]}>{userName ?? "用户"}</span>
+            <span className={css["chat-bubble-header-name"]}>{userName ?? lang.common.user()}</span>
             {userAvatar && (
               <div className={css["chat-bubble-header-avatar"]}>
                 <img className={css["user-avatar"]} src={userAvatar} />
@@ -380,10 +406,10 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
                 <div className={css["iter-header-content"]}>
                   {retryState && (
                     <span className={css["retry-info"]}>
-                      重试 {retryState.attempt}/{retryState.maxRetries}
+                      {lang.chat.retryProgress(retryState.attempt, retryState.maxRetries)}
                     </span>
                   )}
-                  <TextShimmer className={css["iter-header-placeholder"]}>{stageText ?? "等待模型响应..."}</TextShimmer>
+                  <TextShimmer className={css["iter-header-placeholder"]}>{stageText ?? lang.chat.waitingForModel()}</TextShimmer>
                 </div>
               </div>
             )}
@@ -406,14 +432,14 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
 
             {/* 已取消 */}
             {record.status === "abort" && (
-              <div className={css["ai-chat-abort-tip"]}>已取消</div>
+              <div className={css["ai-chat-abort-tip"]}>{lang.chat.cancelled()}</div>
             )}
 
             {/* 错误 */}
-            {record.status === "error" && record.error && (
+            {record.status === "error" && (record.error || record.errorCode) && (
               <div className={css["ai-chat-error-code-block"]}>
-                <div className={css["ai-chat-error-content"]}>{toUserFriendlyError(record.error)}</div>
-                {(onRetry || agent) && !record.error.includes("连续调用，已自动中断") && (
+                <div className={css["ai-chat-error-content"]}>{toUserFriendlyError(record.error, record.errorCode)}</div>
+                {onRetry && (
                   <div className={css["ai-chat-error-actions"]}>
                     {modelSelector && modelSelector.models.length > 1 && (
                       <ModelSelector
@@ -426,7 +452,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
                         placement="top"
                         trigger={
                           <button className={css["retry-other-model-button"]}>
-                            用其他模型重试
+                            {lang.chat.retryWithOtherModel()}
                           </button>
                         }
                       />
@@ -435,7 +461,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
                       className={css["retry-button"]}
                       onClick={() => handleRetryTurn()}
                     >
-                      重试
+                      {lang.common.retry()}
                     </button>
                   </div>
                 )}
@@ -515,15 +541,18 @@ const MessageIteration = React.memo(function MessageIteration({
 }) {
   if (iter.type === "warmup") {
     const warmupIter = iter as WarmupIter;
-    if (warmupIter.status === "error") return null;
+    // 与旧版行为一致：失败和取消由 turn 级错误/取消提示统一表达，
+    // 不在 warmup 记录中重复展示。
+    if (warmupIter.status === "error" || warmupIter.status === "abort") return null;
     const isLoading = warmupIter.status === "loading";
+    const warmupText = getWarmupText(warmupIter);
     return (
       <div className={css["iter-header"]}>
         <div className={css["iter-header-content"]}>
           {isLoading ? (
-            <TextShimmer className={css["iter-header-placeholder"]}>{warmupIter.content}</TextShimmer>
+            <TextShimmer className={css["iter-header-placeholder"]}>{warmupText}</TextShimmer>
           ) : (
-            <span>{warmupIter.content}</span>
+            <span>{warmupText}</span>
           )}
         </div>
         <ElapsedTime startTime={warmupIter.startTime} endTime={warmupIter.endTime} className={css["planning-elapsed"]} />
@@ -546,7 +575,7 @@ const MessageIteration = React.memo(function MessageIteration({
             <div className={css["iter-header-content"]}>
               {retryState && isLastItem && isPending && (
                 <span className={css["retry-info"]}>
-                  重试 {retryState.attempt}/{retryState.maxRetries}
+                  {lang.chat.retryProgress(retryState.attempt, retryState.maxRetries)}
                 </span>
               )}
               <MarkdownMessage message={iter.content} />
@@ -558,10 +587,10 @@ const MessageIteration = React.memo(function MessageIteration({
             <div className={css["iter-header-content"]}>
               {retryState && isLastItem && (
                 <span className={css["retry-info"]}>
-                  重试 {retryState.attempt}/{retryState.maxRetries}
+                  {lang.chat.retryProgress(retryState.attempt, retryState.maxRetries)}
                 </span>
               )}
-              <TextShimmer className={css["iter-header-placeholder"]}>{stageText ?? "等待模型响应..."}</TextShimmer>
+              <TextShimmer className={css["iter-header-placeholder"]}>{stageText ?? lang.chat.waitingForModel()}</TextShimmer>
             </div>
             {iter.startTime && <ElapsedTime startTime={iter.startTime} endTime={iter.endTime} className={css["planning-elapsed"]} />}
           </>
@@ -616,7 +645,7 @@ const CollapsibleUserMessage = ({ text, renderFull, renderPreview }: Collapsible
         className={css["collapsible-toggle"]}
         onClick={() => setCollapsed((c) => !c)}
       >
-        {collapsed ? "展开" : "收起"}
+        {collapsed ? lang.chat.expand() : lang.chat.collapse()}
       </button>
     </div>
   );
@@ -847,9 +876,9 @@ const ThinkingCard = ({
     <div className={css["think-card"]}>
       <div className={css["think-card-header"]}>
         {llmStreaming ? (
-          <TextShimmer className={css["think-card-title"]}>思考中</TextShimmer>
+          <TextShimmer className={css["think-card-title"]}>{lang.chat.thinkingInProgress()}</TextShimmer>
         ) : (
-          <span className={css["think-card-title"]}>思考</span>
+          <span className={css["think-card-title"]}>{lang.chat.thinking()}</span>
         )}
       </div>
       <div ref={bodyRef} className={css["think-card-body"]}>

@@ -1,3 +1,5 @@
+import { lang } from "../../i18n";
+
 const FULLSCREEN_ICON =
   `<svg viewBox="0 0 1024 1024" width="14" height="14"><path fill="currentColor" d="M136 384h56a8 8 0 0 0 8-8V200h176a8 8 0 0 0 8-8v-56a8 8 0 0 0-8-8H120a8 8 0 0 0-8 8v240a8 8 0 0 0 8 8zM888 640h-56a8 8 0 0 0-8 8v176H648a8 8 0 0 0-8 8v56a8 8 0 0 0 8 8h240a8 8 0 0 0 8-8V648a8 8 0 0 0-8-8zM384 824H200V648a8 8 0 0 0-8-8h-56a8 8 0 0 0-8 8v240a8 8 0 0 0 8 8h240a8 8 0 0 0 8-8v-56a8 8 0 0 0-8-8zM648 200h176v176a8 8 0 0 0 8 8h56a8 8 0 0 0 8-8V136a8 8 0 0 0-8-8H648a8 8 0 0 0-8 8v56a8 8 0 0 0 8 8z"/></svg>`;
 
@@ -19,7 +21,7 @@ function openMermaidFullscreen(svg: SVGElement, darkMode: boolean): void {
 
   const header = document.createElement("div");
   header.className = "mermaid-fullscreen-header";
-  header.innerHTML = `<div class="mermaid-fullscreen-title">流程图</div><div class="mermaid-fullscreen-close" title="关闭">${CLOSE_ICON}</div>`;
+  header.innerHTML = `<div class="mermaid-fullscreen-title">${lang.markdown.diagram()}</div><div class="mermaid-fullscreen-close" title="${lang.common.close()}">${CLOSE_ICON}</div>`;
 
   const body = document.createElement("div");
   body.className = "mermaid-fullscreen-body";
@@ -44,7 +46,6 @@ function openMermaidFullscreen(svg: SVGElement, darkMode: boolean): void {
 
   document.body.appendChild(mask);
 }
-
 /**
  * 扫描 DOM 中的 mermaid 代码块并原地渲染为 SVG 图表，同时挂载右上角全屏按钮。
  * 被 MarkdownMessage 和 PrdRender 共用。
@@ -110,14 +111,14 @@ export async function renderMermaidInContainer(
       const svgEl = wrapper.querySelector("svg");
       if (svgEl) {
         wrapper.classList.add("mermaid-diagram-clickable");
-        wrapper.title = "点击全屏查看";
+        wrapper.title = lang.markdown.clickToViewFullscreen();
         wrapper.addEventListener("click", () => {
           openMermaidFullscreen(svgEl, darkMode);
         });
 
         const fullscreenBtn = document.createElement("div");
         fullscreenBtn.className = "mermaid-diagram-fullscreen-btn";
-        fullscreenBtn.title = "全屏查看";
+        fullscreenBtn.title = lang.markdown.viewFullscreen();
         fullscreenBtn.innerHTML = FULLSCREEN_ICON;
         fullscreenBtn.addEventListener("click", (e) => {
           e.stopPropagation();

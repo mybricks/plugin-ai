@@ -8,6 +8,7 @@ import { TextShimmer } from "../../../components/text-shimmer";
 import { ElapsedTime } from "../../../components/elapsed-time";
 import type { ToolRecord } from "./index";
 import { useChatPanel } from "../../chat-panel/context";
+import { lang } from "../../../../i18n";
 import css from "./render.less";
 
 const ChevronRightIcon = () => (
@@ -177,7 +178,7 @@ const LineDuration = ({ tool }: { tool: ToolRecord }) => {
   if (!tool.execStartTime) return null;
   if (tool.status !== "pending" && elapsed < minVisibleElapsed) return null;
 
-  return <span className={css["tool-line-duration"]}>耗时 {formatLineElapsed(elapsed)}</span>;
+  return <span className={css["tool-line-duration"]}>{lang.tool.elapsed(formatLineElapsed(elapsed))}</span>;
 };
 
 function formatLineElapsed(elapsed: number): string {
@@ -189,21 +190,21 @@ function formatLineElapsed(elapsed: number): string {
 export function formatToolDetail(tool: ToolRecord): string {
   const parts: string[] = [];
   if (tool.args && Object.keys(tool.args).length > 0) {
-    parts.push(`参数:\n${safeStringify(tool.args)}`);
+    parts.push(`${lang.tool.arguments()}:\n${safeStringify(tool.args)}`);
   } else if (tool.argsContent) {
-    parts.push(`参数:\n${tool.argsContent}`);
+    parts.push(`${lang.tool.arguments()}:\n${tool.argsContent}`);
   }
   if (tool.progress && Object.keys(tool.progress).length > 0) {
-    parts.push(`进度:\n${safeStringify(tool.progress)}`);
+    parts.push(`${lang.tool.progress()}:\n${safeStringify(tool.progress)}`);
   }
   if (tool.result?.output) {
-    parts.push(`结果:\n${String(tool.result.output)}`);
+    parts.push(`${lang.tool.result()}:\n${String(tool.result.output)}`);
   }
   if (tool.result?.metadata && Object.keys(tool.result.metadata).length > 0) {
-    parts.push(`元数据:\n${safeStringify(tool.result.metadata)}`);
+    parts.push(`${lang.tool.metadata()}:\n${safeStringify(tool.result.metadata)}`);
   }
   if (tool.error) {
-    parts.push(`错误:\n${String(tool.error)}`);
+    parts.push(`${lang.tool.error()}:\n${String(tool.error)}`);
   }
   return parts.join("\n\n");
 }
@@ -359,7 +360,7 @@ export const StreamingCodeCard = ({ tool, icon, title, content, lang: langOverri
         </span>
         <span className={css["code-card-filename"]}><TextShimmer>{title}</TextShimmer></span>
         {lineCount > 0 && (
-          <span className={css["code-card-lines"]}>{lineCount} 行</span>
+          <span className={css["code-card-lines"]}>{lang.tool.lines(lineCount)}</span>
         )}
         <Duration tool={tool} />
       </div>
@@ -394,7 +395,7 @@ export const CodeCard = ({ tool, icon, title, content, lineMeta, diffMode, showC
         <span className={css["code-card-filename"]}>{title}</span>
         {lineMeta && <span className={css["code-card-lines"]}>{lineMeta}</span>}
         {!lineMeta && lineCount > 0 && !isError && showCode && (
-          <span className={css["code-card-lines"]}>{lineCount} 行</span>
+          <span className={css["code-card-lines"]}>{lang.tool.lines(lineCount)}</span>
         )}
         <Duration tool={tool} />
         {canToggle && (
@@ -459,7 +460,7 @@ export const BatchItem = ({ tool, path, name, content, diffMode, streaming, erro
           ? <span className={css["batch-item-filename"]}><TextShimmer>{name + "..."}</TextShimmer></span>
           : <span className={css["batch-item-filename"]} style={error ? { color: "#c0392b" } : undefined}>{name}</span>}
         {lineCount > 0 && (
-          <span className={css["batch-item-lines"]}>{lineCount} 行</span>
+          <span className={css["batch-item-lines"]}>{lang.tool.lines(lineCount)}</span>
         )}
         {canToggle && (
           <span className={css["batch-item-toggle"]}>{isCollapsed ? "▶" : "▼"}</span>
@@ -500,7 +501,7 @@ export const BatchGroup = ({ tool, icon, verb, items, count, hasPartialError }: 
     ? `${verb}...`
     : verb;
 
-  const metaLabel = count > 0 ? `${count} 个文件` : undefined;
+  const metaLabel = count > 0 ? lang.tool.files(count) : undefined;
 
   return (
     <div className={css["batch-group"]}>

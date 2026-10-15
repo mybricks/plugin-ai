@@ -10,6 +10,7 @@ import { useRequestInspector, type RequestSnapshot } from "./lib/use-request-ins
 import type { MemFS } from "./lib/mem-fs";
 import { getWebFetchUrl, setWebFetchUrl, getDefaultUrlForCase } from "./lib/web-fetch-state";
 import { ToolContractLab } from "./tool-contract-lab";
+import { getPlaygroundLocale, navigateToPlaygroundLocale, type PlaygroundLocale } from "./locale";
 import "./app.css";
 import markdownSkinSpecial from "./markdown-skin-special.module.css";
 
@@ -54,6 +55,24 @@ function ThemeToggle({ mode, onCycle }: { mode: ThemeMode; onCycle: () => void }
     <button className="pg-theme-toggle" onClick={onCycle} title={THEME_TIPS[mode]}>
       {THEME_ICONS[mode]}
     </button>
+  );
+}
+
+function LocaleToggle() {
+  const locale = getPlaygroundLocale();
+
+  return (
+    <label className="pg-locale-toggle">
+      <span className="pg-sr-only">Language</span>
+      <select
+        aria-label="Language"
+        value={locale}
+        onChange={(event) => navigateToPlaygroundLocale(event.target.value as PlaygroundLocale)}
+      >
+        <option value="zh">中文</option>
+        <option value="en">English</option>
+      </select>
+    </label>
   );
 }
 
@@ -400,6 +419,7 @@ export default function App() {
           <DisabledToggle disabled={chatDisabled} onToggle={toggleDisabled} />
           <PanelWidthToggle width={panelWidth} onToggle={togglePanelWidth} />
           <ThemeToggle mode={mode} onCycle={cycleTheme} />
+          <LocaleToggle />
         </div>
       </header>
 

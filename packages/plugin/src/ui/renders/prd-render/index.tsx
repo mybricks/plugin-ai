@@ -5,6 +5,7 @@ import prdSkinCss from "../../markdown/skin-prd.less";
 import { renderMermaidInContainer } from "../../markdown/mermaid";
 import { alertsPlugin } from "../../markdown/alerts";
 import classNames from "classnames";
+import { lang } from "../../../i18n";
 
 const md = markdownit({
   html: true,
@@ -35,7 +36,7 @@ const PrdRender = ({
   style,
   maxHeight,
   showTitle = false,
-  title = "需求文档",
+  title = lang.prd.title(),
   darkMode = false,
 }: PrdRenderProps) => {
   const bodyRef = useRef<HTMLDivElement>(null);

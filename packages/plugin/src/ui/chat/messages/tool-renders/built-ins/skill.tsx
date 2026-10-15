@@ -4,12 +4,13 @@ import type { ToolRecord } from "../index";
 import { StatusIcon, Label, Duration, LineToolRenderer } from "../shared";
 import { useChatPanel } from "../../../chat-panel/context";
 import css from "../render.less";
+import { lang } from "../../../../../i18n";
 
 export const SkillRenderer = ({ tool }: { tool: ToolRecord }) => {
   const { messagesRenderVariant } = useChatPanel();
   const skillName: string = tool.args?.skill ?? "";
   const displayName: string = tool.result?.metadata?.displayName ?? skillName;
-  const title = displayName ? `使用技能 ${displayName}` : "使用技能";
+  const title = lang.tool.useSkill(displayName || undefined);
 
   if (messagesRenderVariant === "line") {
     return (
