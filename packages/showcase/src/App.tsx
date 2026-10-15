@@ -5,6 +5,7 @@ import { loadDesigner, type DesignerComponent, type DesignerInstance } from "./d
 import { deleteDump, listDumps, loadDump, saveDump, type DumpSummary } from "./storage";
 import { mybricksConfig } from "./config";
 import { createTestAIPluginParams } from "./test-ai";
+import { applyShowcaseLocale, getShowcaseLocale, type ShowcaseLocale } from "./locale";
 import "./styles.css";
 
 function getWorkspaceId() {
@@ -14,13 +15,13 @@ function getWorkspaceId() {
 }
 
 function createConfig(dump: unknown, aiPlugin: unknown) {
+  console.log('mybricksConfig.aiComLib.url', mybricksConfig.aiComLib.url)
   return {
     vibeCoding: { for: "pd", useIframe: false },
-    comLibLoader: () => mybricksConfig.aiComLib.url ? [mybricksConfig.aiComLib.url] : [],
+    comLibLoader: async () => mybricksConfig.aiComLib.url ? [mybricksConfig.aiComLib.url] : [],
     pageContentLoader: () => dump || "{}",
     toplView: {},
     editView: {
-      editorAppender: () => null,
       items: (_props: unknown, category: { title?: string; items?: unknown[] }) => {
         category.title = "";
         category.items = [];
@@ -49,6 +50,11 @@ function createConfig(dump: unknown, aiPlugin: unknown) {
 
 export default function App() {
   const id = useMemo(getWorkspaceId, []);
+  const [locale] = useState(() => {
+    const initialLocale = getShowcaseLocale();
+    applyShowcaseLocale(initialLocale);
+    return initialLocale;
+  });
   const designerRef = useRef<DesignerInstance | null>(null);
   const [Designer, setDesigner] = useState<DesignerComponent | null>(null);
   const [initialDump, setInitialDump] = useState<unknown | null>(null);
@@ -57,6 +63,7 @@ export default function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
+  const [isLocaleOpen, setIsLocaleOpen] = useState(false);
   const [dumps, setDumps] = useState<DumpSummary[]>([]);
 
   useEffect(() => {
@@ -78,6 +85,7 @@ export default function App() {
     // Plugin AI 直接从 packages/plugin/src 导入；每个 id 使用独立的 IndexedDB history。
     return pluginAI({
       ...createTestAIPluginParams(),
+      key: `@mybricks/plugin-ai/showcase/${id}`,
       history: new IDBHistory({ dbName: `@mybricks/plugin-ai/showcase/history/${id}` }),
       codingConfig: { availableLibraries: [] }
     });
@@ -128,6 +136,17 @@ export default function App() {
     window.location.assign(nextUrl.toString());
   };
 
+  const changeLocale = (nextLocale: ShowcaseLocale) => {
+    if (nextLocale === locale) return;
+    applyShowcaseLocale(nextLocale);
+    window.location.reload();
+  };
+
+  const selectLocale = (nextLocale: ShowcaseLocale) => {
+    setIsLocaleOpen(false);
+    changeLocale(nextLocale);
+  };
+
   if (!id) return <main className="route-error">使用 <code>/app/你的-id</code> 或 <code>/app?id=你的-id</code> 打开一个设计器工作区。</main>;
   if (isLoading) return <main className="status">正在载入设计器…</main>;
   if (error && !config) return <main className="status error">{error}</main>;
@@ -135,15 +154,31 @@ export default function App() {
 
   return (
     <main className="designer-page">
+      <div className="locale-switcher">
+        <button
+          className="text-button"
+          aria-expanded={isLocaleOpen}
+          aria-haspopup="menu"
+          onClick={() => setIsLocaleOpen((open) => !open)}
+        >
+          {locale === "zh" ? "中文" : "EN"} <span aria-hidden="true">⌄</span>
+        </button>
+        {isLocaleOpen && (
+          <div className="locale-menu" role="menu">
+            <button role="menuitem" disabled={locale === "zh"} onClick={() => selectLocale("zh")}>中文</button>
+            <button role="menuitem" disabled={locale === "en"} onClick={() => selectLocale("en")}>EN</button>
+          </div>
+        )}
+      </div>
       <Designer
         ref={designerRef}
         config={config}
         toolbar={() => (
           <div className="toolbar">
-            <button disabled={isSaving} onClick={() => void save()}>{isSaving ? "保存中…" : "保存"}</button>
-            <button className="secondary" disabled={isClearing} onClick={() => void clear()}>{isClearing ? "清空中…" : "清空"}</button>
+            <button className="text-button" disabled={isSaving} onClick={() => void save()}>{isSaving ? "保存中…" : "保存"}</button>
+            <button className="text-button" disabled={isClearing} onClick={() => void clear()}>{isClearing ? "清空中…" : "清空"}</button>
             <div className="switcher">
-              <button className="secondary" onClick={() => void openSwitcher()}>切换</button>
+              <button className="text-button" onClick={() => void openSwitcher()}>切换</button>
               {isSwitcherOpen && (
                 <div className="switcher-menu">
                   <div className="switcher-title">已保存的文件</div>
