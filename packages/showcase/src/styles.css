@@ -15,6 +15,7 @@ body { color: #1f2937; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI
 .toolbar .text-button { font: inherit; line-height: inherit; }
 .toolbar .text-button:hover:not(:disabled) { color: #2563eb; }
 .toolbar .text-button:disabled { cursor: default; opacity: .65; }
+.file-input { position: fixed; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 .switcher { position: relative; }
 .switcher-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; width: 250px; overflow: hidden; border: 1px solid #e4e7ec; border-radius: 7px; background: #fff; box-shadow: 0 8px 18px rgb(16 24 40 / 14%); }
 .switcher-title, .switcher-empty { padding: 9px 11px; color: #667085; font-size: 12px; }

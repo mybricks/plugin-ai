@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import pluginAI from "@plugin/index";
 import { IDBHistory } from "@agent/index";
 import { loadDesigner, type DesignerComponent, type DesignerInstance } from "./designer-runtime";
@@ -44,8 +44,43 @@ function createConfig(dump: unknown, aiPlugin: unknown) {
         }]
       }
     },
-    plugins: [aiPlugin]
+    plugins: [aiPlugin],
+    promptSections: {
+      documentGuide: {
+        firstOfAll: '',
+        requirementGuide: '',
+      }
+    },
+    componentRuntime: {
+      eslint: {
+        rules: {
+          'requirement-check': 'off',
+          'jsdoc-check': 'off',
+        },
+      },
+    },
   };
+}
+
+function readUIFile(text: string): Record<string, unknown> {
+  let project: unknown;
+  try {
+    project = JSON.parse(text);
+  } catch {
+    throw new Error("文件内容不是合法的 JSON，请检查后重试。");
+  }
+
+  if (
+    !project
+    || typeof project !== "object"
+    || Array.isArray(project)
+    || !("content" in project)
+    || !(project as { content?: unknown }).content
+  ) {
+    throw new Error("数据格式不正确，请导入从 MyBricks 导出的 .ui 文件。");
+  }
+
+  return project as Record<string, unknown>;
 }
 
 export default function App() {
@@ -56,12 +91,14 @@ export default function App() {
     return initialLocale;
   });
   const designerRef = useRef<DesignerInstance | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const [Designer, setDesigner] = useState<DesignerComponent | null>(null);
   const [initialDump, setInitialDump] = useState<unknown | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
   const [isLocaleOpen, setIsLocaleOpen] = useState(false);
   const [dumps, setDumps] = useState<DumpSummary[]>([]);
@@ -117,6 +154,27 @@ export default function App() {
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "清空 dump 失败。");
       setIsClearing(false);
+    }
+  };
+
+  const importUI = async (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    // 允许用户连续选择同一份文件。
+    input.value = "";
+    if (!file) return;
+
+    setError("");
+    setIsImporting(true);
+    try {
+      const project = readUIFile(await file.text());
+      if (!window.confirm("导入会覆盖当前工作区中已保存的设计器数据，是否继续？")) return;
+      await saveDump(id, project);
+      window.location.reload();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "导入 .ui 文件失败。");
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -176,6 +234,7 @@ export default function App() {
         toolbar={() => (
           <div className="toolbar">
             <button className="text-button" disabled={isSaving} onClick={() => void save()}>{isSaving ? "保存中…" : "保存"}</button>
+            <button className="text-button" disabled={isImporting} onClick={() => importInputRef.current?.click()}>{isImporting ? "导入中…" : "导入 .ui"}</button>
             <button className="text-button" disabled={isClearing} onClick={() => void clear()}>{isClearing ? "清空中…" : "清空"}</button>
             <div className="switcher">
               <button className="text-button" onClick={() => void openSwitcher()}>切换</button>
@@ -199,6 +258,7 @@ export default function App() {
           </div>
         )}
       />
+      <input ref={importInputRef} className="file-input" type="file" accept=".ui" onChange={(event) => void importUI(event)} />
       {error && <p className="toast">{error}</p>}
     </main>
   );
