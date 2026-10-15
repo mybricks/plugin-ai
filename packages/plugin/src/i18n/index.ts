@@ -259,5 +259,10 @@ export const lang = {
     toolCalls: (count: number) => i18n({ zh: `${count} 次调用`, en: `${count} calls` }),
     invokedTools: () => i18n({ zh: "调用工具", en: "Tool calls" }),
     expandCalls: () => i18n({ zh: "展开调用", en: "Show calls" }),
+    subAgentRound: (index: number) => i18n({ zh: `第 ${index} 轮`, en: `Round ${index}` }),
+    subAgentExpandRounds: () => i18n({ zh: "展开全部过程", en: "Show all rounds" }),
+    subAgentCollapseRounds: () => i18n({ zh: "收起过程", en: "Hide rounds" }),
+    subAgentArgs: () => i18n({ zh: "参数", en: "Arguments" }),
+    subAgentOutput: () => i18n({ zh: "输出", en: "Output" }),
   },
 };
