@@ -718,6 +718,7 @@ export class WebSocketAgent {
       execStartTime: startTime,
       execEndTime: 0,
     });
+    this.toolIterMap.set(data.callId, iter);
     this.events.emit("tool:call", {
       callId: data.callId,
       name: data.name ?? "",
@@ -876,7 +877,7 @@ export class WebSocketAgent {
     const cached = this.toolResults.get(requestId);
     if (cached) { this.sendToolResult(requestId, cached); return; }
 
-    const iter = this.currentIter();
+    const iter = this.toolIterMap.get(requestId) ?? this.currentIter();
     const startTime = Date.now();
     let result: ToolResult;
     let toolRecord: ToolCallRecord | undefined;
@@ -884,31 +885,35 @@ export class WebSocketAgent {
       const tool = this.tools.find((item) => item.name === payload.toolName);
       const turn = this.turns.find((item) => item.id === this.activeTurnId);
       if (!tool) throw new Error(`Tool not found: ${payload.toolName}`);
-      if (!turn || !iter) throw new Error("Active turn not found");
+      if (!turn || !iter) {
+        console.warn(`[WebSocketAgent] TOOL_CALL ${requestId} arrived after turn ended, executing without UI binding`);
+      }
 
-      toolRecord = {
-        callId: requestId,
-        name: payload.toolName,
-        args: payload.arguments ?? {},
-        status: "pending",
-        execStartTime: startTime,
-        execEndTime: 0,
-      };
-      iter.toolCalls.push(toolRecord);
-      this.toolIterMap.set(requestId, iter);
-      this.events.emit("tool:call", { callId: requestId, name: payload.toolName, args: payload.arguments ?? {}, step: 1, startTime, iterId: iter.iterId });
+      if (iter) {
+        toolRecord = {
+          callId: requestId,
+          name: payload.toolName,
+          args: payload.arguments ?? {},
+          status: "pending",
+          execStartTime: startTime,
+          execEndTime: 0,
+        };
+        iter.toolCalls.push(toolRecord);
+        this.toolIterMap.set(requestId, iter);
+      }
+      this.events.emit("tool:call", { callId: requestId, name: payload.toolName, args: payload.arguments ?? {}, step: 1, startTime, iterId: iter?.iterId ?? "" });
 
       const context: ToolExecutionContext = {
-        turnId: turn.id,
-        iterations: turn.iterations,
-        getUserMessage: () => ({ message: turn.userText, attachments: turn.userAttachments }),
+        turnId: turn?.id ?? "unknown",
+        iterations: turn?.iterations ?? [],
+        getUserMessage: () => ({ message: turn?.userText ?? "", attachments: turn?.userAttachments ?? [] }),
         getAgent: () => this as any,
         getAiRole: () => undefined,
         setAiRole: () => undefined,
         mode: this.mode,
         getMode: () => this.mode,
         setMode: (mode: AgentMode, reason?: string) => this.setMode(mode, reason),
-        emitProgress: (data: any) => this.events.emit("tool:progress", { callId: requestId, name: payload.toolName, data, step: 1, iterId: iter.iterId }),
+        emitProgress: (data: any) => this.events.emit("tool:progress", { callId: requestId, name: payload.toolName, data, step: 1, iterId: iter?.iterId ?? "" }),
         waitUIRender: <T>() => this.toolUI.wait<T>(requestId, {}),
       };
       tool.validate?.(payload.arguments ?? {}, context);
@@ -919,7 +924,7 @@ export class WebSocketAgent {
         toolRecord.result = { output: output.output, metadata: output.metadata };
         toolRecord.execEndTime = Date.now();
       }
-      this.events.emit("tool:result", { callId: requestId, name: payload.toolName, result: result.result, step: 1, endTime: Date.now(), iterId: iter.iterId });
+      this.events.emit("tool:result", { callId: requestId, name: payload.toolName, result: result.result, step: 1, endTime: Date.now(), iterId: iter?.iterId ?? "" });
     } catch (error) {
       const messageText = String((error as any)?.message ?? error);
       result = { ok: false, error: { code: "TOOL_EXECUTION_FAILED", message: messageText } };
@@ -982,7 +987,9 @@ export class WebSocketAgent {
     turn.endTime = Date.now();
     if (error) turn.error = String((error as any)?.message ?? error);
     this.toolResults.clear();
-    this.toolIterMap.clear();
+    // 延迟清理 toolIterMap：给迟到的 TOOL_CALL 一个短暂窗口，避免竞争条件导致找不到 iter
+    const iterMap = this.toolIterMap;
+    setTimeout(() => { iterMap.clear(); }, 5000);
     void this.persistTurn(turn);
     this.setState({ running: false, ...(error ? { error } : {}) });
     if (status === "success") this.events.emit("turn:complete", {});
