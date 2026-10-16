@@ -90,7 +90,7 @@ export const SettingModal: React.FC<SettingModalProps> = ({
   version,
   aboutItems,
 }) => {
-  const [activeTab, setActiveTab] = useState<TabKey>("about");
+  const [activeTab, setActiveTab] = useState<TabKey>('model');
   const [localValue, setLocalValue] = useState<SettingValue>(value);
   const localValueRef = useRef(localValue);
   const effectiveChannel = resolveChannel(localValue.channel, channels);
@@ -106,8 +106,8 @@ export const SettingModal: React.FC<SettingModalProps> = ({
   };
 
   const tabs: Array<{ key: TabKey; label: string }> = [
-    { key: "about", label: "关于" },
-    { key: "model", label: "模型服务" },
+    { key: 'model', label: '模型服务' },
+    { key: 'about', label: '关于' },
   ];
 
   return (
