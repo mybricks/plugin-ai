@@ -178,6 +178,13 @@ export default function App() {
     }
   };
 
+  const importRxAI = async () => {
+    const importHistory = (window as typeof window & {
+      __importRxAIJson__?: () => Promise<boolean>;
+    }).__importRxAIJson__;
+    if (await importHistory?.()) window.location.reload();
+  };
+
   const openSwitcher = async () => {
     setIsSwitcherOpen(true);
     try {
@@ -235,6 +242,7 @@ export default function App() {
           <div className="toolbar">
             <button className="text-button" disabled={isSaving} onClick={() => void save()}>{isSaving ? "保存中…" : "保存"}</button>
             <button className="text-button" disabled={isImporting} onClick={() => importInputRef.current?.click()}>{isImporting ? "导入中…" : "导入 .ui"}</button>
+            <button className="text-button" onClick={() => void importRxAI()}>导入 .rxai</button>
             <button className="text-button" disabled={isClearing} onClick={() => void clear()}>{isClearing ? "清空中…" : "清空"}</button>
             <div className="switcher">
               <button className="text-button" onClick={() => void openSwitcher()}>切换</button>

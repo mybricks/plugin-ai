@@ -329,13 +329,16 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
 
   // ── 调试工具：导入历史记录 ─────────────────────────────────────────────────
 
-  (window as any).__importRxAIJson__ = async () => {
+  (window as any).__importRxAIJson__ = () => new Promise<boolean>((resolve) => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".json,.rxai";
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
+      if (!file) {
+        resolve(false);
+        return;
+      }
       
       try {
         const text = await file.text();
@@ -343,33 +346,40 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
         
         if (!Array.isArray(data.turns)) {
           alert("无效的历史记录文件格式");
+          resolve(false);
           return;
         }
         
         const currentAgentKey = context.getAgentKey();
         if (!currentAgentKey) {
           alert("当前没有聚焦的组件，请先点击一个组件后再导入");
+          resolve(false);
           return;
         }
         const currentAgent = context.agentMap.get(currentAgentKey);
         if (currentAgent?.kind === "http") {
           alert("当前是服务端 Agent，历史导入需要走服务端 history 接口，不能写入本地 IDB。");
+          resolve(false);
           return;
         }
         
-        const history = new IDBHistory({ dbName: "@plugin-ai/plugin/messages" });
-        await history.import(currentAgentKey, data.turns);
-        if (data.compactRecord) {
-          await history.saveCompact(currentAgentKey, data.compactRecord);
-        }
+        // 使用宿主注入的 history，保证 showcase 等按工作区隔离历史的场景写回正确的存储。
+        const importHistory = history ?? new IDBHistory({ dbName: "@plugin-ai/plugin/messages" });
+        await importHistory.import(currentAgentKey, data.turns);
+        // 导入是覆盖操作：文件未包含 compact 时也要清除目标工作区旧的摘要，
+        // 否则摘要游标可能指向已不存在的 turn。
+        await importHistory.saveCompact(currentAgentKey, data.compactRecord ?? null);
         alert(`导入成功！agentKey: ${currentAgentKey}, turns: ${data.turns.length}`);
+        resolve(true);
       } catch (err) {
         console.error("导入失败:", err);
         alert(`导入失败: ${err instanceof Error ? err.message : String(err)}`);
+        resolve(false);
       }
     };
+    input.oncancel = () => resolve(false);
     input.click();
-  };
+  });
 
   // ── window._sandbox_：sandbox 与 Plugin 的统一交互 API ─────────────────────
 

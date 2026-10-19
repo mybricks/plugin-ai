@@ -482,10 +482,10 @@ export interface History {
    */
   loadCompact(key: string): Promise<CompactRecord | null>;
   /**
-   * 保存（覆盖写）该 agentKey 的 compact 记录。
+   * 保存（覆盖写）该 agentKey 的 compact 记录；传入 null 时清除已有记录。
    * 一个 agent 只保留一条最新的 compact 记录。
    */
-  saveCompact(key: string, record: CompactRecord): Promise<void>;
+  saveCompact(key: string, record: CompactRecord | null): Promise<void>;
 
   // ── 版本快照 ──────────────────────────────────────────────────────────────
   //

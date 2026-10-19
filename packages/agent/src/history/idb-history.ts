@@ -160,11 +160,12 @@ export class IDBHistory implements History {
     });
   }
 
-  async saveCompact(key: string, record: CompactRecord): Promise<void> {
+  async saveCompact(key: string, record: CompactRecord | null): Promise<void> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(this.compactStoreName, "readwrite");
-      const req = tx.objectStore(this.compactStoreName).put({ key, record });
+      const store = tx.objectStore(this.compactStoreName);
+      const req = record === null ? store.delete(key) : store.put({ key, record });
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
     });
