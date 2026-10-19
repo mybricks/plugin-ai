@@ -86,12 +86,14 @@ export function createAuditPowerPlugin(options: AuditPowerPluginOptions): CodeAg
   const configDirName = options.configDirName.replace(/^\/+|\/+$/g, "");
   if (!configDirName) throw new Error("audit-power: configDirName is required");
 
+  const desc = `提供画布级的审计能力，支持对页面、弹窗的「接口、事件」进行审计，通过维护 ${configDirName}/graph/*.yaml 文件，形成可视化分析视图，你只需告知生成哪个部分的审计视图即可，仅在主动提及时使用。`
+
   return {
     name: "audit-power",
-    description: options.description ?? "按需审计页面或组件的接口、状态与事件。",
+    description: desc,
     agents: [{
       name: "audit-power",
-      description: options.description ?? "按需审计页面或组件的接口、状态与事件。",
+      description: desc,
       title: "页面审计",
       system: auditPowerWorkflow.replaceAll("<configDirName>", configDirName),
       allowedTools: [

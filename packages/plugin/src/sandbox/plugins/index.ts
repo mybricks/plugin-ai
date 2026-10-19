@@ -14,7 +14,7 @@ export function createBuiltInSandboxPlugins(params: {
 }): CodeAgentPlugin[] {
   return [
     designerPlugin,
-    // createAuditPowerPlugin({ configDirName: params.configDirName, implementation: params.pageAnalysis }),
+    createAuditPowerPlugin({ configDirName: params.configDirName, implementation: params.pageAnalysis }),
   ];
 }
 
