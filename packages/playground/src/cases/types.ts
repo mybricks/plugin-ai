@@ -1,7 +1,7 @@
 import type { HistoryPersistMode, TurnRecord, AgentMode } from "@agent/types";
 import type { RequestAsStreamFn } from "@request/types";
 import type { ProviderConfig } from "@request";
-import type { Tool } from "@agent/types";
+import type { Tool, ToolUIChannel } from "@agent/index";
 import type { CodeAgent } from "@agent/code-agent";
 import type { CodeAgentPluginInput, SkillFile } from "@agent/code-agent";
 import type { AgentSandbox } from "@agent/agent-sandbox";
@@ -52,6 +52,8 @@ export interface TestCase {
     providers?: ProviderConfig[];
   };
   tools?: Tool[] | ((fs: import("../lib/mem-fs").MemFS) => Tool[]);
+  /** 可覆盖消息列表的工具 UI 回传通道，用于模拟远端 Browser Tool。 */
+  toolUI?: ToolUIChannel;
   /** 预设技能文件列表，传入 CodeAgent.skills */
   skills?: SkillFile[];
   /** 插件资源，包含 promptTemplates 等 CodeAgentPlugin 级配置。 */
