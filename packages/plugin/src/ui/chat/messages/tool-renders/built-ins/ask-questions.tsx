@@ -10,10 +10,11 @@ import css from "../render.less";
 type DraftAnswer = { selected: string[]; other: boolean; otherText: string };
 type RenderOption = AskQuestionsQuestion["options"][number] & { isOther?: boolean };
 
-const OTHER_LIKE_OPTION_PATTERN = /其他|其它|其余|别的|未(?:列出|涵盖)|(?:上述|以上)(?:之外|以外|均?不|都不|没有)|(?:均|都)不适用|(?:没有|无)合适|自定义|自由填写|自行(?:填写|输入)|任意(?:填写|输入)|(?:补充|填写|输入)(?:说明|内容|选项)?|\b(?:other|something\s+else|custom|none\s+of\s+the\s+above|none\s+of\s+these)\b/i;
+// 仅将完整的兜底选项识别为“其他”。不要用子串匹配，否则“其他模型”等普通选项会被误判。
+const OTHER_LIKE_OPTION_PATTERN = /^(?:其他|其它|其余|别的|未(?:列出|涵盖)|(?:上述|以上)(?:之外|以外|均?不|都不|没有)|(?:均|都)不适用|(?:没有|无)合适|自定义|自由填写|自行(?:填写|输入)|任意(?:填写|输入)|(?:补充|填写|输入)(?:说明|内容|选项)?|other|something\s+else|custom|none\s+of\s+the\s+above|none\s+of\s+these)$/i;
 
 function isOtherLikeOption(label: string): boolean {
-  return OTHER_LIKE_OPTION_PATTERN.test(label);
+  return OTHER_LIKE_OPTION_PATTERN.test(label.trim());
 }
 
 function getRenderOptions(options: AskQuestionsQuestion["options"]): RenderOption[] {
