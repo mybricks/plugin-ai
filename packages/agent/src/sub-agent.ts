@@ -1,5 +1,5 @@
 import type { Agent } from "./agent";
-import type { SubAgentTurnRecord, Tool, TurnRecord } from "./types";
+import type { SubAgentTurnRecord, TokenUsage, Tool, TurnRecord } from "./types";
 
 // TODO: 将 SubAgent 迁移为 CodeAgent 的内置运行时插件。
 // 这样任务队列、beforeRequest 回传与动态工具创建都由插件自身管理，避免 CodeAgent 了解 SubAgent 细节。
@@ -198,6 +198,11 @@ export function createSubAgentTool(
         iterId: string;
         content: string;
         thinkingContent?: string;
+        model?: string;
+        usage?: TokenUsage;
+        finishReason?: string;
+        startTime?: number;
+        endTime?: number;
         toolCalls: ProgressToolCall[];
       }
       const iterOrder: string[] = [];
@@ -232,12 +237,15 @@ export function createSubAgentTool(
             })();
         return output ? `${output}\n\n${summary}` : summary;
       };
+      // 进度事件采用完整覆盖快照：事件存储只保留同一工具调用的最新 progress，
+      // 因此最终快照必须保留全部子 Agent iteration，供 Trace 回放。
       const emitSubAgentProgress = (data: Record<string, unknown> = {}) => {
         ctx?.emitProgress({
           status: "running",
           agentKey,
           subAgentType: type,
           title: config.title,
+          startTime: subAgentTurnRecord.startTime,
           iterations: getIterations(),
           ...data,
         });
@@ -246,6 +254,10 @@ export function createSubAgentTool(
 
       const run = async () => {
         let lastProgressAt = 0;
+        const unsubscribeLLMStart = subAgent.events.on("llm:start", ({ iterId, startTime }) => {
+          ensureIter(iterId).startTime ??= startTime;
+          emitSubAgentProgress();
+        });
         const unsubscribeLLMContent = subAgent.events.on("llm:content", ({ content, thinkingContent, iterId }) => {
           const iter = ensureIter(iterId);
           iter.content = content ?? "";
@@ -253,6 +265,17 @@ export function createSubAgentTool(
           const now = Date.now();
           if (now - lastProgressAt < 250) return;
           lastProgressAt = now;
+          emitSubAgentProgress();
+        });
+        const unsubscribeLLMComplete = subAgent.events.on("llm:complete", ({ iterId, finishReason, usage, endTime }) => {
+          const iter = ensureIter(iterId);
+          iter.endTime = endTime;
+          iter.finishReason = finishReason;
+          if (usage) {
+            iter.usage = usage;
+            iter.model = usage.model;
+          }
+          // LLM complete 通常不会再有 content；必须强制发送，避免最终用量丢失。
           emitSubAgentProgress();
         });
         const unsubscribeToolCall = subAgent.events.on("tool:call", ({ callId, name, title, args, iterId }) => {
@@ -296,6 +319,7 @@ export function createSubAgentTool(
           const output = (lastLLMIter as any)?.content ?? "";
           const status = lastTurn?.status === "abort" ? "aborted" : lastTurn?.status === "error" ? "error" : "success";
           applySubAgentTurn(lastTurn, status === "aborted" ? "abort" : lastTurn?.status ?? "success");
+          emitSubAgentProgress({ status, endTime: subAgentTurnRecord.endTime });
           return {
             agentKey,
             type,
@@ -305,6 +329,7 @@ export function createSubAgentTool(
           };
         } catch (error) {
           applySubAgentTurn(undefined, "error", String((error as Error)?.message ?? error));
+          emitSubAgentProgress({ status: "error", endTime: subAgentTurnRecord.endTime });
           return {
             agentKey,
             type,
@@ -313,7 +338,9 @@ export function createSubAgentTool(
             output: appendToolCallSummary(`SubAgent 执行失败: ${String((error as Error)?.message ?? error)}`),
           };
         } finally {
+          unsubscribeLLMStart();
           unsubscribeLLMContent();
+          unsubscribeLLMComplete();
           unsubscribeToolCall();
           unsubscribeToolResult();
           unsubscribeToolError();
