@@ -141,7 +141,7 @@ export function createAskQuestionsTool(): Tool {
 
       if (isSkip(response)) {
         return {
-          output: "The user skipped these questions without submitting answers.",
+          output: "The user skipped these questions. Do not ask these questions again.",
           metadata: { skipped: true },
         };
       }
