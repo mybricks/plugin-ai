@@ -54,6 +54,8 @@ export type {
   DisplayModelRequestAIOptions,
   RequestAIOptions,
   ToolExecutionContext,
+  ToolExecutionParams,
+  ToolExecutor,
   BoundHistory,
 } from "./types";
 export type { MaskOptions } from "./mask";
@@ -1072,6 +1074,7 @@ export class Agent {
 
           const { message: toolResultMessage } = await executeToolCall(prepared, {
             hooks: this.options.hooks,
+            toolExecutor: this.options.toolExecutor,
             // 执行前就挂进当前 iter，使执行期间的 pending 记录对工具和持久化可见
             onRecordCreated: record => iterToolCallRecords.push(record),
             createToolContext: ({ callId, name }) => ({

@@ -3,6 +3,7 @@ import type {
   Tool,
   ToolCallRecord,
   ToolExecutionContext,
+  ToolExecutor,
   TurnRecord,
 } from "./types";
 import type { AgentEvents } from "./events";
@@ -49,6 +50,7 @@ export interface PreparedToolCall {
 
 export interface ExecuteToolCallParams {
   hooks?: Pick<AgentHooks, "afterToolCall">;
+  toolExecutor?: ToolExecutor;
   /**
    * 由调用方构造工具执行上下文。
    * 上下文依赖 turn 级可变状态（aiRole、用户输入、UI 通道等），
@@ -182,7 +184,13 @@ export async function executeToolCall(
   try {
     tool.validate?.(record.args, toolContext);
     executed = true;
-    const result = await tool.execute(record.args, toolContext);
+    const execute = () => tool.execute(record.args, toolContext);
+    const result = params.toolExecutor
+      ? await params.toolExecutor(
+          { tool, args: record.args, context: toolContext },
+          execute,
+        )
+      : await execute();
     // 即使用户在 execute 期间取消，也保留工具已完成的部分结果。最终 message
     // 会由统一 formatter 标为“部分结果 + 已取消”，而不会误判为完整成功。
     record.result = result;

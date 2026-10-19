@@ -14,6 +14,7 @@ import type {
   TokenUsage,
   Tool,
   ToolCallRecord,
+  ToolResult,
   TurnRecord,
   TurnSender,
   WarmupIter,
@@ -66,6 +67,22 @@ export interface ToolExecutionContext {
   waitUIRender?: <T>() => Promise<T | null>;
 }
 
+/** 工具已完成参数校验、即将执行时的上下文。 */
+export interface ToolExecutionParams {
+  tool: Tool;
+  args: unknown;
+  context: ToolExecutionContext;
+}
+
+/**
+ * 工具执行中间件。调用 next() 执行工具原始实现；也可直接返回结果以接管执行。
+ * 该配置属于 AgentOptions，因此会随 fork / SubAgent 继承。
+ */
+export type ToolExecutor = (
+  params: ToolExecutionParams,
+  next: () => Promise<ToolResult>,
+) => Promise<ToolResult>;
+
 export type { AgentHooks } from "../hooks";
 
 // ─── MessageSection ───────────────────────────────────────────────────────────
@@ -111,6 +128,8 @@ export interface AgentOptions {
   }) => MessageSection[] | Promise<MessageSection[]>;
   /** 工具列表（plugin 初始化时注册额外工具） */
   tools?: Tool[];
+  /** 在 validate 后、工具原始 execute 前运行的执行中间件。 */
+  toolExecutor?: ToolExecutor;
   /** 历史记录实现 */
   history?: History;
   /** 流式请求函数 */

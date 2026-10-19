@@ -826,6 +826,8 @@ export type {
   MessageRequestAIOptions,
   DisplayModelRequestAIOptions,
   ToolExecutionContext,
+  ToolExecutionParams,
+  ToolExecutor,
   TurnMessageSnapshot,
   TurnPersistMode,
 } from "./agent";
