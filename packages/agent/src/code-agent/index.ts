@@ -56,11 +56,10 @@ import { collectPluginPromptTemplates, createMbsTemplates, expandMbsTemplateMess
 import type { MbsTemplateDescriptor } from "./mbs";
 import {
   createSubAgentTool,
-  SubAgentTaskManager,
   type SubAgentConfig,
   CALL_SUB_AGENT_TOOL_NAME,
 } from "../sub-agent";
-export type { SubAgentConfig, CompletedSubAgentTask } from "../sub-agent";
+export type { SubAgentConfig } from "../sub-agent";
 
 export type { SkillActivation, SkillFile, SkillMeta };
 export type { PromptTemplateFile } from "./prompt-templates";
@@ -640,8 +639,6 @@ export class CodeAgent extends Agent {
    * 不参与动态重算，始终全量参与每次 turn 的资源合并。
    */
   private _base: { skills: SkillFile[]; subAgents: SubAgentConfig[]; tools: Tool[] };
-  /** 运行中的异步 SubAgent 的完成结果，会在下一次 LLM 请求前注入。 */
-  private _subAgentTaskManager: SubAgentTaskManager;
 
   constructor(options: CodeAgentOptions) {
     const {
@@ -679,17 +676,7 @@ export class CodeAgent extends Agent {
     const baseSkills = skills ?? [];
     const baseSubAgents = subAgents ?? [];
     const baseUserTools = agentOptions.tools ?? [];
-    const subAgentTaskManager = new SubAgentTaskManager();
-
-    const hooks = composePluginHooks({
-      ...agentOptions.hooks,
-      async beforeRequest(params) {
-        const messages = subAgentTaskManager.takeCompletedMessages();
-        const base = await agentOptions.hooks?.beforeRequest?.(params);
-        const additionalMessages = [...(base?.additionalMessages ?? []), ...messages];
-        return additionalMessages.length ? { additionalMessages } : undefined;
-      },
-    }, plugins, pluginFactories.length > 0);
+    const hooks = composePluginHooks(agentOptions.hooks, plugins, pluginFactories.length > 0);
 
     const getPluginSkills = (): SkillFile[] => plugins.flatMap((plugin) => plugin.skills ?? []);
 
@@ -749,12 +736,14 @@ export class CodeAgent extends Agent {
       tools: [...builtinToolInstances, ...baseUserTools],
     };
 
-    const getStableContextMessages = async (): Promise<Message[]> => {
+    const getStableContextMessages = async (
+      { includeSandboxContext = true }: { includeSandboxContext?: boolean } = {},
+    ): Promise<Message[]> => {
       const skills = [...baseSkills, ...getPluginSkills()];
       const [agentsMdMessage, alwaysLoadedSkillsContent, ctx] = await Promise.all([
         createAgentsMdContextMessage(toolSandbox, configDirName),
         buildAlwaysLoadedSkillsContent(skills, configDirName),
-        toolSandbox.getContext?.() ?? null,
+        includeSandboxContext ? (toolSandbox.getContext?.() ?? null) : null,
       ]);
       return [
         ...(agentsMdMessage ? [agentsMdMessage] : []),
@@ -825,7 +814,6 @@ export class CodeAgent extends Agent {
     this._base = base;
     this._sandbox = toolSandbox;
     this.configDirName = configDirName;
-    this._subAgentTaskManager = subAgentTaskManager;
     this._rebuildDynamicTools();
   }
 
@@ -895,7 +883,6 @@ export class CodeAgent extends Agent {
           () => this,
           subAgents,
           skills.length ? skills : undefined,
-          this._subAgentTaskManager,
         )
       : null;
 

@@ -10,6 +10,7 @@ import type {
   CompactRecord,
   History,
   Message,
+  SubAgentTurnRecord,
   TokenUsage,
   Tool,
   ToolCallRecord,
@@ -27,6 +28,8 @@ import type {
 export interface ToolExecutionContext {
   /** 当前 turn 的唯一 ID */
   turnId: string;
+  /** 本次工具调用的唯一 ID，对应 ToolCallRecord.callId */
+  callId: string;
   /**
    * 当前 turn 到此刻为止的迭代记录（只读快照）。
    * 供工具自行做重试/重复调用检测等策略判断。
@@ -51,6 +54,12 @@ export interface ToolExecutionContext {
    * @param data 自定义进度数据，由工具定义结构（如 SubAgent 可传递子 agent 的流式输出）
    */
   emitProgress: (data: any) => void;
+  /**
+   * 将子 Agent（call-sub-agent）产生的 SubAgentTurnRecord 挂到当前 iteration 的
+   * `turns` 字段上。供 call-sub-agent 工具在子 Agent 执行完毕（或异步启动时先挂一条
+   * running 占位记录）后调用，随父 Agent 现有的 turn/iter 持久化路径一起落盘。
+   */
+  attachSubAgentTurn: (record: SubAgentTurnRecord) => void;
   /**
    * 等待当前工具卡片通过 Agent 持有的运行期通道回传数据。
    */
@@ -88,7 +97,7 @@ export interface AgentOptions {
    * 适合注入几乎不变的背景信息（如开发规范、设计风格）。
    * 享受 prompt cache 断点，命中率较高。
    */
-  getStableContextMessages?: () => Promise<Message[]>;
+  getStableContextMessages?: (options?: { includeSandboxContext?: boolean }) => Promise<Message[]>;
   /**
    * 随消息携带的动态上下文注入（异步，带模式上下文）。
    * 每个 turn 开始时获取一次，返回的字符串数组会拼接为一条 user 消息插在用户消息正前方，
@@ -264,6 +273,14 @@ export interface ForkOptions {
    * 目前主要用于 SubAgent 场景，通过 beforeRequest 在每次请求前注入动态上下文。
    */
   hooks?: AgentHooks;
+  /**
+   * 是否保留宿主 sandbox 通过 getContext 注入的开发指南上下文。
+   * 不传时继承父 Agent；SubAgent 默认关闭，避免携带主工程的开发规范。
+   *
+   * 这是当前 fork 基础设施下的临时隔离措施。只有支持该参数的
+   * getStableContextMessages provider 会据此移除 sandbox context。
+   */
+  includeSandboxContext?: boolean;
 }
 
 // ─── ForkAgent ────────────────────────────────────────────────────────────────

@@ -321,6 +321,12 @@ export interface TurnRecord {
         usage?: TokenUsage;
         /** 本次 LLM 请求构建时记录的上下文追踪信息 */
         trace?: IterationTrace;
+        /**
+         * 本次迭代中调用的子 Agent（call-sub-agent）各自产生的完整 TurnRecord。
+         * 与 toolCalls 按 callId 一一对应；子 Agent 本身也是一次独立的 ReAct 循环，
+         * 其记录天然长得和本层 iterations 一样，故直接复用 TurnRecord 结构递归嵌套。
+         */
+        turns?: SubAgentTurnRecord[];
       }
   >;
 
@@ -371,6 +377,29 @@ export interface TurnRecord {
 }
 
 export type LLMIteration = Exclude<TurnRecord["iterations"][number], WarmupIter>;
+
+// ─── SubAgentTurnRecord ────────────────────────────────────────────────────────
+
+/**
+ * 子 Agent（call-sub-agent）执行产生的 TurnRecord。
+ *
+ * 结构上仍然是一个完整的 TurnRecord（可复用所有现有的历史重建 / UI 渲染逻辑），
+ * 只是额外补充了几个用于和父级 toolCall、父子 Agent 关联的显式字段，
+ * 避免把这类结构性信息塞进 `extra`（extra 仅用于业务方透传的裸数据）。
+ */
+export interface SubAgentTurnRecord extends TurnRecord {
+  /** 本次子 Agent 的唯一标识（ForkAgent.key，由 createFork 分配） */
+  agentKey: string;
+  /** 子 Agent 类型，对应 SubAgentConfig.name */
+  subAgentType: string;
+  /** 关联的父级 toolCall（call-sub-agent 那条 ToolCallRecord 的 callId），与同一 iteration 下的 toolCalls 一一对应 */
+  callId: string;
+  /**
+   * 父级 Agent 的 agentKey；顶层 Agent 发起的子 Agent 为 undefined。
+   * 多级嵌套时用于快速定位，不是关联关系的唯一来源（树形嵌套位置本身已经体现父子关系）。
+   */
+  parentAgentKey?: string;
+}
 
 // ─── VersionRecord ───────────────────────────────────────────────────────────
 

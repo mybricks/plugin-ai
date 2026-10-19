@@ -16,6 +16,7 @@ import type {
   Message,
   MessageSection,
   RequestAIOptions,
+  SubAgentTurnRecord,
   TokenUsage,
   Tool,
   ToolCallRecord,
@@ -1075,6 +1076,7 @@ export class Agent {
             onRecordCreated: record => iterToolCallRecords.push(record),
             createToolContext: ({ callId, name }) => ({
               turnId: turn.id,
+              callId,
               iterations: turn.iterations,
               getUserMessage: () => ({
                 message: userParams.message,
@@ -1089,6 +1091,11 @@ export class Agent {
               },
               emitProgress: (data: any) => {
                 this.events.emit("tool:progress", { callId, name, data, step, iterId: currentIterId });
+              },
+              attachSubAgentTurn: (record) => {
+                // TODO: 不要将子 Agent 的完整 turn 嵌套进父 iteration；后续考虑将其表达为单独的 iteration。
+                const iter = currentIter as { turns?: SubAgentTurnRecord[] };
+                iter.turns = iter.turns ? [...iter.turns, record] : [record];
               },
               waitUIRender: <T>() => this.toolUI.wait<T>(callId, { signal }),
             }),
@@ -1329,7 +1336,7 @@ export class Agent {
    *   真正的 subAgent 机制应该 fork 出一个完整的 CodeAgent 实例，需要重新设计。
    */
   createFork(forkOptions?: ForkAgentOptions): ForkAgent {
-    const { turnsSlice, tools, aiRole, mask, handoff, retry, mode, hooks } = forkOptions ?? {};
+    const { turnsSlice, tools, aiRole, mask, handoff, retry, mode, hooks, includeSandboxContext } = forkOptions ?? {};
 
     // turns + compactRecord 联动截取：
     // turnsSlice 截取后，compactRecord 游标若仍在截取范围内则保留，否则置 null
@@ -1382,6 +1389,14 @@ export class Agent {
       // hooks：不继承父 Agent hooks（避免 afterTurn 等重复执行）；
       // 通过 forkOptions.hooks 可显式注入新 hooks（如 SubAgent 的 beforeRequest）
       hooks: "hooks" in (forkOptions ?? {}) ? hooks : undefined,
+      // 临时支持从 fork 控制宿主 sandbox 的开发指南上下文。主 Agent 与普通 fork
+      // 保持继承；SubAgent 默认传 false，以免携带与专用任务无关的开发规范。
+      ...(includeSandboxContext !== undefined && this.options.getStableContextMessages
+        ? {
+            getStableContextMessages: () =>
+              this.options.getStableContextMessages!({ includeSandboxContext }),
+          }
+        : {}),
       // fork 是 worker agent，不需要计划或询问模式
       disabledModes: [AgentModeEnum.Plan, AgentModeEnum.Ask],
       // fork 强制关闭 summary/compact，防止 summary fork / compact fork 再递归创建 fork。
@@ -1412,6 +1427,7 @@ export class Agent {
       tools,
       ...(config.system !== undefined ? { system: config.system } : {}),
       ...(config.aiRole !== undefined ? { aiRole: config.aiRole } : {}),
+      includeSandboxContext: config.includeSandboxContext ?? false,
     });
   }
 
