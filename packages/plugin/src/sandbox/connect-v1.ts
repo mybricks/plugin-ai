@@ -30,6 +30,12 @@ function collectBrowserTools(params: { baseTools: Tool[]; plugins?: CodeAgentPlu
   return [
     ...params.baseTools,
     ...(params.plugins ?? []).flatMap((plugin) => plugin.tools ?? []),
+    // SubAgent tools execute in the same remote workspace session. When the
+    // server proxies one back to the browser, BrowserToolBridge therefore
+    // needs its implementation too; plugin.tools only covers the parent.
+    ...(params.plugins ?? []).flatMap((plugin) =>
+      (plugin.agents ?? []).flatMap((agent) => agent.tools ?? []),
+    ),
   ];
 }
 
@@ -174,7 +180,14 @@ export function connectToAIFromV1(
   if (remoteAgent) {
     const agent = new HttpAgent(
       { baseUrl: remoteAgent.baseUrl, workspaceId: remoteAgent.workspaceId, agentId: remoteAgent.agentId },
-      { disabledHandler, ...(disabledModes ? { disabledModes } : {}), browserTools, hooks, plugins: staticPlugins }
+      {
+        disabledHandler,
+        ...(disabledModes ? { disabledModes } : {}),
+        browserTools,
+        hooks,
+        plugins: staticPlugins,
+        ...(sender ? { sender } : {}),
+      }
     );
     if (llmPluginKey) context.createLLMRequest(llmPluginKey, agent.key);
     context.aiQueue.setRequestGuard(agent, requestGuard);

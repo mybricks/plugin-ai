@@ -13,6 +13,7 @@ import {
   type ToolCallRecord,
   type ToolUIChannel,
   type TurnRecord,
+  type TurnSender,
   type VersionFile,
   type VersionRecord,
 } from "../../../../../agent/src";
@@ -107,6 +108,8 @@ interface HttpAgentRuntimeOptions {
   hooks?: AgentHooks;
   /** 与本地 CodeAgent 一致，插件 hooks 在顶层 hooks 之后执行。 */
   plugins?: CodeAgentPlugin[];
+  /** 当前浏览器用户，写入每轮 /run 与本地 turn:start，对齐本地 CodeAgent。 */
+  sender?: TurnSender;
 }
 
 interface HttpAgentRequestAICommonParams {
@@ -115,6 +118,7 @@ interface HttpAgentRequestAICommonParams {
   mode?: AgentMode;
   meta?: Record<string, any>;
   extra?: Record<string, any>;
+  sender?: TurnSender;
   aiRole?: string;
   providerId?: string;
   modelId?: string;
@@ -194,6 +198,7 @@ export class HttpAgent {
   private readonly disabledModes: AgentMode[];
   private readonly hooks?: AgentHooks;
   private readonly plugins: CodeAgentPlugin[];
+  private readonly sender?: TurnSender;
   private readonly workspaceBridge: WorkspaceBridge<HttpAgent>;
   private mode: AgentMode = AgentModeEnum.Build;
   private turns: TurnRecord[] = [];
@@ -233,6 +238,7 @@ export class HttpAgent {
     this.disabledHandler = runtime.disabledHandler;
     this.disabledModes = runtime.disabledModes ?? [];
     this.plugins = runtime.plugins ?? [];
+    this.sender = runtime.sender;
     this.hooks = composePluginHooks(runtime.hooks, this.plugins);
     this.workspaceBridge = new WorkspaceBridge<HttpAgent>({
       workspaceId: this.workspaceId,
@@ -353,6 +359,7 @@ export class HttpAgent {
     const displayMessage = params.displayMessage ?? params.message!;
     const modelMessage = params.modelMessage ?? params.message!;
     const turnId = params.turnId ?? createTurnId();
+    const sender = params.sender ?? this.sender;
     this.setSessionState({
       running: true,
       turnId,
@@ -390,6 +397,7 @@ export class HttpAgent {
             message: displayMessage,
             attachments: params.attachments ?? [],
             ...(params.meta ? { meta: params.meta } : {}),
+            ...(sender ? { sender } : {}),
             ...(modelMessage !== displayMessage
               ? { userFormattedText: modelMessage }
               : {}),
@@ -421,6 +429,7 @@ export class HttpAgent {
             ...(params.aiRole ? { aiRole: params.aiRole } : {}),
             ...(providerId ? { providerId } : {}),
             ...(modelId ? { modelId } : {}),
+            ...(sender ? { sender } : {}),
           }),
         },
         { signal: params.signal, skipTurnStartId: turnId },
