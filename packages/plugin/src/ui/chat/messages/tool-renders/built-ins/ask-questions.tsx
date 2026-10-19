@@ -38,6 +38,10 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
   const questions: AskQuestionsQuestion[] = Array.isArray(tool.args?.questions) ? tool.args.questions : [];
   const [drafts, setDrafts] = useState<Record<number, DraftAnswer>>({});
   const [currentStep, setCurrentStep] = useState(0);
+  // 提交后（尤其远端 Browser Task 尚未下发时）submit() 的 Promise 可能会挂起一段时间，
+  // 这里在操作区右侧展示“提交中/跳过中”，避免用户误以为点击无效而重复操作。
+  const [submittingAction, setSubmittingAction] = useState<"confirm" | "skip" | null>(null);
+  const submitting = submittingAction !== null;
   const answers = useMemo(() => getAnswers(tool), [tool.result?.metadata]);
   const pending = tool.status === "pending";
   const { blockingToolSlot } = useChatPanel();
@@ -85,7 +89,7 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
   const isLastStep = currentStep === questions.length - 1;
 
   const handleNext = () => {
-    if (!canProceed) return;
+    if (!canProceed || submitting) return;
     if (isLastStep) {
       const result: AskQuestionsAnswers = {};
       questions.forEach((question, index) => {
@@ -96,10 +100,17 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
         ];
         result[question.question] = question.multiSelect ? values : values[0];
       });
-      submit(result);
+      setSubmittingAction("confirm");
+      submit(result).finally(() => setSubmittingAction(null));
     } else {
       setCurrentStep((s) => s + 1);
     }
+  };
+
+  const handleSkip = () => {
+    if (submitting) return;
+    setSubmittingAction("skip");
+    submit({ skipped: true }).finally(() => setSubmittingAction(null));
   };
 
   if (!pending) {
@@ -156,6 +167,7 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
                   <button
                     type="button"
                     className={`${css["ask-question-option"]} ${selected ? css["ask-question-option-selected"] : ""}`}
+                    disabled={submitting}
                     onClick={() => (option.isOther
                       ? toggleOther(currentQuestion, currentStep)
                       : toggleOption(currentQuestion, currentStep, option.label))}
@@ -168,6 +180,7 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
                       className={css["ask-question-other-input"]}
                       value={draft.otherText}
                       placeholder={lang.askQuestions.otherPlaceholder()}
+                      disabled={submitting}
                       onChange={(event) => updateDraft(currentStep, (current) => ({ ...current, otherText: event.target.value }))}
                       onKeyDown={(event) => { if (event.key === "Enter") handleNext(); }}
                     />
@@ -180,13 +193,21 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
       )}
       {questions.length > 0 && (
         <div className={css["ask-question-actions"]}>
-          <button type="button" className={css["ask-question-skip"]} onClick={() => submit({ skipped: true })}>{lang.askQuestions.skip()}</button>
-          {multiStep && currentStep > 0 && (
-            <button type="button" className={css["ask-question-back"]} onClick={() => setCurrentStep((s) => s - 1)}>{lang.askQuestions.previous()}</button>
+          {submitting ? (
+            <span className={css["ask-question-submitting"]}>
+              <TextShimmer>{submittingAction === "skip" ? lang.askQuestions.skipping() : lang.askQuestions.submitting()}</TextShimmer>
+            </span>
+          ) : (
+            <>
+              <button type="button" className={css["ask-question-skip"]} onClick={handleSkip}>{lang.askQuestions.skip()}</button>
+              {multiStep && currentStep > 0 && (
+                <button type="button" className={css["ask-question-back"]} onClick={() => setCurrentStep((s) => s - 1)}>{lang.askQuestions.previous()}</button>
+              )}
+              <button type="button" className={css["ask-question-submit"]} disabled={!canProceed} onClick={handleNext}>
+                {isLastStep ? lang.askQuestions.confirm() : lang.askQuestions.next()}
+              </button>
+            </>
           )}
-          <button type="button" className={css["ask-question-submit"]} disabled={!canProceed} onClick={handleNext}>
-            {isLastStep ? lang.askQuestions.confirm() : lang.askQuestions.next()}
-          </button>
         </div>
       )}
     </div>

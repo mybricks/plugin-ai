@@ -27,6 +27,13 @@ type PendingUIResponse = {
   resolve: (value: unknown | null) => void;
 };
 
+/** 任务尚未下发时的提交先被缓冲，等 wait() 真正到来再消费。 */
+type BufferedUIResponse = {
+  requestId: string;
+  value: unknown | null;
+  resolveSubmit: (ok: boolean) => void;
+};
+
 type RequestJson = <T = unknown>(
   path: string,
   init?: RequestInit,
@@ -39,12 +46,18 @@ export class BrowserToolBridge<TAgent> {
    * 因此单个 pending slot 足以将聊天卡片的操作回传给当前 browser task。
    */
   private pendingUIResponse: PendingUIResponse | null = null;
+  /** 任务下发前就提交时的缓冲，确保不会被静默丢弃。 */
+  private bufferedResponse: BufferedUIResponse | null = null;
   private readonly toolUI: ToolUIChannel = {
     wait: <T>(requestId: string) => this.waitForUIResponse<T>(requestId),
-    respond: (_toolCallId, value) => this.settleUIResponse(value),
-    cancel: (_toolCallId) => this.settleUIResponse(null),
+    respond: (_toolCallId, value) => this.submitUIResponse(_toolCallId, value),
+    cancel: (_toolCallId) => this.submitUIResponse(_toolCallId, null),
     dispose: () => {
       this.settleUIResponse(null);
+      if (this.bufferedResponse) {
+        this.bufferedResponse.resolveSubmit(false);
+        this.bufferedResponse = null;
+      }
     },
   };
 
@@ -156,6 +169,12 @@ export class BrowserToolBridge<TAgent> {
   }
 
   private waitForUIResponse<T>(requestId: string): Promise<T | null> {
+    if (this.bufferedResponse) {
+      const { value, resolveSubmit } = this.bufferedResponse;
+      this.bufferedResponse = null;
+      resolveSubmit(true);
+      return Promise.resolve(value as T | null);
+    }
     if (this.pendingUIResponse) {
       return Promise.reject(
         new Error(
@@ -168,6 +187,26 @@ export class BrowserToolBridge<TAgent> {
         requestId,
         resolve: resolve as (value: unknown | null) => void,
       };
+    });
+  }
+
+  /**
+   * 提交结果。Browser Tool 串行执行，始终最多只有一个 pending slot；
+   * 若任务已下发（pendingUIResponse 存在）则立即消费并 resolve true，
+   * 否则先缓冲（与 toolCallId/requestId 具体取值无关），直到 waitForUIResponse 真正到来时才 resolve。
+   */
+  private submitUIResponse(toolCallId: string, value: unknown | null): Promise<boolean> {
+    if (this.pendingUIResponse) {
+      const pending = this.pendingUIResponse;
+      this.pendingUIResponse = null;
+      pending.resolve(value);
+      return Promise.resolve(true);
+    }
+    if (this.bufferedResponse) {
+      this.bufferedResponse.resolveSubmit(false);
+    }
+    return new Promise<boolean>((resolve) => {
+      this.bufferedResponse = { requestId: toolCallId, value, resolveSubmit: resolve };
     });
   }
 

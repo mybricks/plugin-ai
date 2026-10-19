@@ -6,8 +6,13 @@
  */
 export interface ToolUIChannel {
   wait<T>(toolCallId: string, options?: { signal?: AbortSignal }): Promise<T | null>;
-  respond(toolCallId: string, value: unknown): boolean;
-  cancel(toolCallId: string): boolean;
+  /**
+   * 提交结果。返回的 Promise 在“提交被真正消费”时才 resolve：
+   * 多数场景下 wait() 已经在等待，提交会同步被消费，Promise 几乎立即 resolve；
+   * 少数场景（如远端 Browser Tool 尚未下发）下，Promise 会挂起直到 wait() 真正到来。
+   */
+  respond(toolCallId: string, value: unknown): Promise<boolean>;
+  cancel(toolCallId: string): Promise<boolean>;
   dispose(): void;
 }
 
@@ -48,8 +53,8 @@ export function createToolUIChannel(): ToolUIChannel {
       });
     },
 
-    respond: (toolCallId, value) => settle(toolCallId, value),
-    cancel: (toolCallId) => settle(toolCallId, null),
+    respond: (toolCallId, value) => Promise.resolve(settle(toolCallId, value)),
+    cancel: (toolCallId) => Promise.resolve(settle(toolCallId, null)),
     dispose: () => {
       for (const toolCallId of [...pending.keys()]) settle(toolCallId, null);
     },

@@ -30,8 +30,9 @@ export interface ToolRendererContext {
   toolCallId: string;
   /** 所属消息 turn 的只读展示上下文。 */
   turn?: { status: "pending" | "success" | "error" | "abort" };
-  submit: (value: unknown) => boolean;
-  cancel: () => boolean;
+  /** 提交结果；返回的 Promise 在提交被真正消费（如远端任务已下发）时才 resolve。 */
+  submit: (value: unknown) => Promise<boolean>;
+  cancel: () => Promise<boolean>;
   configDirName: string;
 }
 
@@ -46,8 +47,8 @@ export function createToolRendererContext(
   return {
     toolCallId,
     turn,
-    submit: (value) => toolUI?.respond(toolCallId, value) ?? false,
-    cancel: () => toolUI?.cancel(toolCallId) ?? false,
+    submit: (value) => toolUI?.respond(toolCallId, value) ?? Promise.resolve(false),
+    cancel: () => toolUI?.cancel(toolCallId) ?? Promise.resolve(false),
     configDirName: getConfigDirNameFromAgent(agent),
   };
 }

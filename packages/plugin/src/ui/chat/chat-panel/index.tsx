@@ -6,6 +6,7 @@ import { lang } from "../../../i18n";
 import { chipRegistry } from "../../../sandbox/setup";
 import { mentionRegistry } from "../../../sandbox/mention-registry";
 import type { AgentMode } from "../../../../../agent/src";
+import type { ToolUIChannel } from "../../../../../agent/src";
 import type { AttachProcessor } from "../../../content-limits";
 import type { MentionProvider } from "../../components/types";
 import { MessageList } from "../messages";
@@ -33,6 +34,8 @@ export interface ChatPanelProps {
   header?: boolean | (() => React.ReactNode);
   /** agent 实例 */
   agent?: ChatAgent;
+  /** 覆盖消息列表使用的工具 UI 回传通道。 */
+  toolUI?: ToolUIChannel;
   /** 上传文件回调，不传时回退到 context.pluginParams.onUpload */
   onUpload?: (file: File) => Promise<string>;
   /** Header 标题，不传时读 context.name */
@@ -170,6 +173,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   copilot,
   header = true,
   agent,
+  toolUI,
   onUpload,
   title,
   renderUserMessage,
@@ -392,7 +396,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
               ref={messageListRef}
               messages={messages}
               agent={chatAgent.agent}
-              toolUI={chatAgent.agent?.getToolUI()}
+              toolUI={toolUI ?? chatAgent.agent?.getToolUI()}
               activeStageText={loadingTip}
               activeTurnId={loadingTurnId}
               actionBar={actionBar}

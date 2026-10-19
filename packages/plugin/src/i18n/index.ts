@@ -219,6 +219,8 @@ export const lang = {
     previous: () => i18n({ zh: "上一题", en: "Previous" }),
     confirm: () => i18n({ zh: "确认选择", en: "Confirm" }),
     next: () => i18n({ zh: "下一题", en: "Next" }),
+    submitting: () => i18n({ zh: "提交中…", en: "Submitting…" }),
+    skipping: () => i18n({ zh: "跳过中…", en: "Skipping…" }),
   },
   tool: {
     running: () => i18n({ zh: "执行中", en: "Running" }),
