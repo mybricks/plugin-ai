@@ -33,6 +33,8 @@ export interface WebSocketAgentOptions {
   projectId?: string | number;
   /** 业务变量：用户 ID，随 /chat/stream 的 variables 发送。 */
   userId?: string | number;
+  /** 业务变量：应用类型，随 /chat/stream 的 variables 发送。 */
+  appType?: string | number;
   /** 客户端类型标识，仅作记录。 */
   clientType?: string;
   /** 业务元数据，创建会话时原样落库。 */
@@ -477,6 +479,7 @@ export class WebSocketAgent {
     const variables: Record<string, any> = { ...(params.variables ?? {}) };
     if (this.options.projectId !== undefined) variables.projectId = this.options.projectId;
     if (this.options.userId !== undefined) variables.userId = this.options.userId;
+    if (this.options.appType !== undefined) variables.appType = this.options.appType;
     if (!variables.extra_prompt && this.getSeedMessages) {
       try {
         const seeds = (await this.getSeedMessages()) ?? [];

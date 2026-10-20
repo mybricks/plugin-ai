@@ -192,6 +192,8 @@ export interface RemoteAgentConfig {
   projectId?: string | number;
   /** 用户 ID（仅 websocket 类型），随 /chat/stream 的 variables 发送。 */
   userId?: string | number;
+  /** 应用类型（仅 websocket 类型），随 /chat/stream 的 variables 发送。 */
+  appType?: string | number;
   /** 客户端类型标识（仅 websocket 类型）。 */
   clientType?: string;
   /** 业务元数据（仅 websocket 类型）。 */
@@ -815,6 +817,7 @@ function connectToAI(
         agentCode: remoteAgent.agentCode,
         projectId: remoteAgent.projectId,
         userId: remoteAgent.userId,
+        appType: remoteAgent.appType,
         clientType: remoteAgent.clientType,
         meta: remoteAgent.meta,
       }, {
