@@ -7,6 +7,7 @@ import { mybricksConfig } from "./config";
 import { createTestAIPluginParams } from "./test-ai";
 import { applyShowcaseLocale, getShowcaseLocale, type ShowcaseLocale } from "./locale";
 import "./styles.css";
+import { createTaskFirstPlugin } from "../../kit/src";
 
 function getWorkspaceId() {
   const pathId = window.location.pathname.match(/^\/app\/([^/]+)/)?.[1];
@@ -124,7 +125,10 @@ export default function App() {
       ...createTestAIPluginParams(),
       key: `@mybricks/plugin-ai/showcase/${id}`,
       history: new IDBHistory({ dbName: `@mybricks/plugin-ai/showcase/history/${id}` }),
-      codingConfig: { availableLibraries: [] }
+      codingConfig: { availableLibraries: [] },
+      plugins: [
+        createTaskFirstPlugin()
+      ]
     });
   }, [id]);
 
