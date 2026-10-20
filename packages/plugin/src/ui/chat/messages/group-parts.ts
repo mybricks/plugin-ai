@@ -62,11 +62,12 @@ function isWarmupIteration(iter: TurnIteration): boolean {
   return "type" in iter && (iter as any).type === "warmup";
 }
 
-/** 判断某个 iter 是否需要渲染「头部」（文本 / 思考 / warmup / 规划中占位），没有则不产生 iter-head part。 */
+/** 判断某个 iter 是否需要渲染「头部」（文本 / 当前思考 / warmup / 规划中占位），没有则不产生 iter-head part。 */
 function hasIterHead(iter: TurnIteration, isLastItem: boolean, isTurnPending: boolean): boolean {
   if (isWarmupIteration(iter)) return true;
   if ((iter as any).content) return true;
-  if ((iter as any).thinkingContent) return true;
+  // 思考只在当前仍流式输出的 iter 中展示；完成后不保留历史卡片，也不打断后续工具聚合。
+  if ((iter as any).thinkingContent && iter.endTime === undefined && isTurnPending && isLastItem) return true;
   if (iter.toolCalls.length === 0 && isTurnPending && isLastItem) return true;
   return false;
 }
