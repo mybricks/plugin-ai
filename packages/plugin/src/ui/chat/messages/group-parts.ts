@@ -62,17 +62,23 @@ function isWarmupIteration(iter: TurnIteration): boolean {
   return "type" in iter && (iter as any).type === "warmup";
 }
 
-/** 判断某个 iter 是否需要渲染「头部」（文本 / warmup / 规划中占位），没有则不产生 iter-head part。 */
+/** 判断某个 iter 是否需要渲染「头部」（文本 / 思考 / warmup / 规划中占位），没有则不产生 iter-head part。 */
 function hasIterHead(iter: TurnIteration, isLastItem: boolean, isTurnPending: boolean): boolean {
   if (isWarmupIteration(iter)) return true;
   if ((iter as any).content) return true;
+  if ((iter as any).thinkingContent) return true;
   if (iter.toolCalls.length === 0 && isTurnPending && isLastItem) return true;
   return false;
 }
 
 /** 判断是否是「工具执行完、模型还没决定下一步」这种末尾空占位（见 IterHeadPart.awaitingNext 注释）。 */
 function isAwaitingNextPlaceholder(iter: TurnIteration, isLastItem: boolean, isTurnPending: boolean): boolean {
-  return !isWarmupIteration(iter) && !(iter as any).content && iter.toolCalls.length === 0 && isTurnPending && isLastItem;
+  return !isWarmupIteration(iter)
+    && !(iter as any).content
+    && !(iter as any).thinkingContent
+    && iter.toolCalls.length === 0
+    && isTurnPending
+    && isLastItem;
 }
 
 /** 把一个 turn 的 iterations 摊平为 Part 序列：某个 iter 的头部先于它自己的 toolCalls。 */

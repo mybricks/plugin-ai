@@ -590,10 +590,13 @@ const MessageIteration = React.memo(function MessageIteration({
 
   const llmDone = iter.endTime !== undefined;
   const llmStreaming = isLastItem && isPending && !llmDone;
+  // 有思考内容时，它是「模型响应中」之后的下一个阶段；正文开始输出后不再展示。
+  // 三个状态共用 iter.startTime 做累计计时，因此只需互斥展示，不需要额外的时间字段。
+  const isThinking = Boolean(iter.thinkingContent) && !iter.content;
 
   return (
     <>
-      {iter.thinkingContent && (
+      {isThinking && iter.thinkingContent && (
         <ThinkingCard
           thinkingContent={iter.thinkingContent}
           llmStreaming={llmStreaming}
@@ -615,7 +618,7 @@ const MessageIteration = React.memo(function MessageIteration({
             </div>
             {iter.startTime && <ElapsedTime startTime={iter.startTime} endTime={iter.endTime} className={css["planning-elapsed"]} />}
           </>
-        ) : iter.toolCalls.length === 0 && isPending ? (
+        ) : !isThinking && iter.toolCalls.length === 0 && isPending ? (
           <>
             <div className={css["iter-header-content"]}>
               {retryState && isLastItem && (
