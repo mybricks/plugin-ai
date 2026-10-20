@@ -5,8 +5,10 @@ export const ASK_QUESTIONS_TOOL_NAME = "ask_questions";
 
 export interface AskQuestionsOption {
   label: string;
-  description: string;
+  description?: string;
   preview?: string;
+  /** 选中该项后，追加一个文本输入框，由用户输入自由文本；description 会被复用为输入框的提示文案。 */
+  input?: boolean;
 }
 
 export interface AskQuestionsQuestion {
@@ -36,7 +38,7 @@ function formatAnswers(answers: AskQuestionsAnswers): string {
     .join("\n");
 }
 
-const DESCRIPTION = `在执行过程中向用户提出 1 至 4 个多选题，以澄清需求、收集偏好或让用户作出决策。
+const DESCRIPTION = `在执行过程中向用户提出 1 至 4 个问题，用于澄清需求、收集偏好、让用户作出决策，或请用户验证确认。
 
 规则：
 - 每次调用提 1 至 4 题，每题提供 1 至 4 个选项。
@@ -46,7 +48,9 @@ const DESCRIPTION = `在执行过程中向用户提出 1 至 4 个多选题，�
 - multiSelect 为 true 时，问题措辞应使用可多选、非互斥的复数表达。
 - header 是用于展示的短标签，最多 12 个字符。
 - preview 为可选的纯文本预览内容，仅允许用于单选题。
-- plan 模式下仅用于澄清需求或方案取舍，不能用于请求确认计划。`;
+- plan 模式下仅用于澄清需求或方案取舍，不能用于请求确认计划。
+- 某个选项选中后需要用户补充一段自由文本时（如“不通过”要说明具体问题），在该选项上设置 input: true；description 会被复用为输入框的提示文案，此时 description 可以不填。
+- 验证确认场景：提供「确认通过」与「不通过」（input: true）两个选项即可，不要为“不通过”编造具体问题，交给用户自己输入。`;
 
 function validateParams(params: AskQuestionsParams): void {
   if (!Array.isArray(params?.questions) || params.questions.length < 1 || params.questions.length > 4) {
@@ -71,8 +75,14 @@ function validateParams(params: AskQuestionsParams): void {
       throw new ToolValidationError("preview 仅支持单选题");
     }
     for (const option of item.options) {
-      if (!option || typeof option.label !== "string" || !option.label.trim() || typeof option.description !== "string") {
-        throw new ToolValidationError("每个选项都必须包含 label 和 description");
+      if (!option || typeof option.label !== "string" || !option.label.trim()) {
+        throw new ToolValidationError("每个选项都必须包含非空的 label");
+      }
+      if (option.description !== undefined && typeof option.description !== "string") {
+        throw new ToolValidationError("选项 description 必须是字符串");
+      }
+      if (option.input !== undefined && typeof option.input !== "boolean") {
+        throw new ToolValidationError("选项 input 必须是布尔值");
       }
       if (labels.has(option.label)) throw new ToolValidationError("所有问题的选项 label 必须全局唯一");
       labels.add(option.label);
@@ -114,11 +124,12 @@ export function createAskQuestionsTool(): Tool {
                 items: {
                   type: "object",
                   additionalProperties: false,
-                  required: ["label", "description"],
+                  required: ["label"],
                   properties: {
                     label: { type: "string", description: "简洁的可见选项名称。" },
-                    description: { type: "string", description: "该选项的具体影响、理由、取舍。" },
+                    description: { type: "string", description: "该选项的具体影响、理由、取舍；当 input 为 true 时复用为输入框提示文案，可不填。" },
                     preview: { type: "string", description: "仅单选题可用的纯文本预览内容，不支持 Markdown 或 HTML。" },
+                    input: { type: "boolean", description: "选中该项后是否追加一个文本输入框，由用户输入自由文本（如说明未通过验证的具体问题）。" },
                   },
                 },
               },

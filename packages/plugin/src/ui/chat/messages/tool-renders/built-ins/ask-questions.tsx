@@ -18,11 +18,9 @@ function isOtherLikeOption(label: string): boolean {
 }
 
 function getRenderOptions(options: AskQuestionsQuestion["options"]): RenderOption[] {
-  const otherIndex = options.findIndex((option) => isOtherLikeOption(option.label));
-  if (otherIndex >= 0) {
-    return options.map((option, index) => ({ ...option, isOther: index === otherIndex }));
-  }
-  return [...options, { label: lang.askQuestions.otherOption(), description: lang.askQuestions.otherOptionDescription(), isOther: true }];
+  const marked = options.map((option) => ({ ...option, isOther: option.input === true || isOtherLikeOption(option.label) }));
+  if (marked.some((option) => option.isOther)) return marked;
+  return [...marked, { label: lang.askQuestions.otherOption(), description: lang.askQuestions.otherOptionDescription(), isOther: true }];
 }
 
 function getAnswers(tool: ToolRecord): AskQuestionsAnswers | null {
@@ -179,11 +177,14 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
                     <input
                       className={css["ask-question-other-input"]}
                       value={draft.otherText}
-                      placeholder={lang.askQuestions.otherPlaceholder()}
+                      placeholder={option.description?.trim() || lang.askQuestions.otherPlaceholder()}
                       disabled={submitting}
                       onChange={(event) => updateDraft(currentStep, (current) => ({ ...current, otherText: event.target.value }))}
                       onKeyDown={(event) => { if (event.key === "Enter") handleNext(); }}
                     />
+                  )}
+                  {!option.isOther && option.preview && selected && (
+                    <pre className={css["ask-question-option-preview"]}>{option.preview}</pre>
                   )}
                 </React.Fragment>
               );

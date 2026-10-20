@@ -37,6 +37,7 @@ import {
   customToolValidationErrorThenSlowStreamCase,
 } from "./custom-tool";
 import { askQuestionsCase } from "./ask-questions";
+import { askQuestionsInputCase } from "./ask-questions-input";
 import { askQuestionsDelayedBrowserTaskCase } from "./ask-questions-delayed-browser-task";
 import { askQuestionsQueueCase } from "./ask-questions-queue";
 import { senderQueueCase } from "./sender-queue";
@@ -192,6 +193,7 @@ export const ALL_CASES: TestCase[] = [
   interruptedTurnRetryCase,
   customToolRendererErrorBoundaryCase,
   askQuestionsCase,
+  askQuestionsInputCase,
   askQuestionsDelayedBrowserTaskCase,
   askQuestionsQueueCase,
   senderQueueCase,
