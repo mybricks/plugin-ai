@@ -350,7 +350,7 @@ export const PendingCodeCard = ({ tool, icon, title }: { tool: ToolRecord; icon:
 );
 
 export const StreamingCodeCard = ({ tool, icon, title, content, lang: langOverride }: { tool: ToolRecord; icon: React.ReactElement; title: string; content: string; lang?: string }) => {
-  const lang = langOverride ?? detectLang(tool.args?.path ?? "");
+  const codeLang = langOverride ?? detectLang(tool.args?.path ?? "");
   const lineCount = content ? content.split("\n").length : 0;
   return (
     <div className={css["code-card"]}>
@@ -365,7 +365,7 @@ export const StreamingCodeCard = ({ tool, icon, title, content, lang: langOverri
         <Duration tool={tool} />
       </div>
       <pre className={css["code-card-body"]}>
-        <code className={`language-${lang}`}>{content}</code>
+        <code className={`language-${codeLang}`}>{content}</code>
       </pre>
     </div>
   );
@@ -374,7 +374,7 @@ export const StreamingCodeCard = ({ tool, icon, title, content, lang: langOverri
 export const CodeCard = ({ tool, icon, title, content, lineMeta, diffMode, showCode = true }: CodeCardProps) => {
   const [collapsed, setCollapsed] = useState(false);
   const [diffBroken, setDiffBroken] = useState(false);
-  const lang = detectLang(tool.args?.path ?? "");
+  const codeLang = detectLang(tool.args?.path ?? "");
   const lineCount = content ? content.split("\n").length : 0;
 
   const isError = tool.status === "error";
@@ -411,7 +411,7 @@ export const CodeCard = ({ tool, icon, title, content, lineMeta, diffMode, showC
           />
         ) : content ? (
           <pre className={css["code-card-body"]}>
-            <code className={`language-${lang}`}>{content}</code>
+            <code className={`language-${codeLang}`}>{content}</code>
           </pre>
         ) : null
       )}
@@ -434,7 +434,7 @@ export interface BatchItemProps {
 export const BatchItem = ({ tool, path, name, content, diffMode, streaming, error }: BatchItemProps) => {
   const [collapsed, setCollapsed] = useState(false);
   const [diffBroken, setDiffBroken] = useState(false);
-  const lang = detectLang(path);
+  const codeLang = detectLang(path);
   const lineCount = content ? content.split("\n").length : 0;
   const isError = tool.status === "error";
 
@@ -476,7 +476,7 @@ export const BatchItem = ({ tool, path, name, content, diffMode, streaming, erro
           />
         ) : content ? (
           <pre className={`${css["code-card-body"]} ${css["batch-item-body"]}`}>
-            <code className={`language-${lang}`}>{content}</code>
+            <code className={`language-${codeLang}`}>{content}</code>
           </pre>
         ) : null
       )}
