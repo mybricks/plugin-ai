@@ -655,6 +655,13 @@ export interface Tool {
    * 注意：ToolRecord 类型在 UI 包中定义（@plugin-ai/plugin），此处用 any 避免循环依赖。
    */
   render?: (tool: any) => any;
+  /**
+   * 摘要渲染函数（可选）。用于「连续工具调用聚合折叠」场景下，折叠行里展示的一句话摘要。
+   * 与 render 是两个独立的函数：不传表示该工具不支持被聚合展示（聚合时会单独成一段，
+   * 不会影响相邻工具的聚合判断），传了就返回一段纯文本摘要（不支持返回 React 节点）。
+   * 注意：ToolRecord 类型在 UI 包中定义（@plugin-ai/plugin），此处用 any 避免循环依赖。
+   */
+  summaryRender?: (tool: any) => string | null;
 }
 
 /**

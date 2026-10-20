@@ -374,28 +374,65 @@
 .think-card {
   margin-bottom: var(--chat-block-gap, 6px);
   background: transparent;
-  opacity: 0.7;
 }
 
 .think-card-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
+  width: 100%;
   min-height: 20px;
-  margin-bottom: var(--chat-message-group-gap, 4px);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  box-shadow: none;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  opacity: 0.7;
 }
 
 .think-card-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: var(--chat-font-size, 12px);
-  color: var(--mybricks-text-color-main, #333);
+  white-space: nowrap;
+}
+
+.think-card-duration {
+  flex: 0 0 auto;
+  min-width: 3ch;
+  text-align: right;
+  font-size: var(--chat-font-size-sm, 12px);
+  white-space: nowrap;
+}
+
+.think-card-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  font-size: 14px;
+  line-height: 1;
 }
 
 .think-card-body {
   font-size: var(--chat-font-size, 12px);
   line-height: var(--chat-line-height, 20px);
-  color: var(--mybricks-text-color-main, #333);
+  margin-top: var(--chat-message-group-gap, 4px);
   max-height: calc(var(--chat-line-height, 20px) * 3);
   overflow: auto;
+  user-select: text;
+  opacity: 0.4;
 
   &::-webkit-scrollbar { display: none; }
   scrollbar-width: none;

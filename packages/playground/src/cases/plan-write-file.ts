@@ -40,9 +40,11 @@ desc: "验证计划模式过程中写入计划文件"
  * 使用方式：
  *  1. 在输入框左侧手动切换到「计划」模式
  *  2. 发送任意需求，例如「先帮我写一个计划」
- *  3. LLM 调用 write_file 写入 .agent/plans/ 下的 active 计划文件
+ *  3. LLM 先并行读取 App 和 Button 两个相关文件，不输出正文
+ *  4. LLM 调用 write_file 写入 .agent/plans/ 下的 active 计划文件
  *
  * 验证要点：
+ *  - 首轮显示两个 read_file 工具卡片，且没有正文输出
  *  - write_file 工具卡片成功
  *  - 计划文件卡片正常渲染
  *  - FS Viewer 中新增 .agent/plans/2026-06-25/generate-plan-file.md
@@ -53,11 +55,27 @@ export const planWriteGeneratedFileCase: TestCase = {
   group: "计划模式",
   priority: "P0",
   description:
-    "先手动切换到「计划」模式，再发送消息。LLM 在计划模式过程中调用 write_file，写入 .agent/plans/ 下的 active 计划文件，验证计划文件生成和卡片渲染。",
+    "先手动切换到「计划」模式，再发送消息。LLM 首轮读取两个相关文件且不输出正文，第二轮调用 write_file 写入 .agent/plans/ 下的 active 计划文件，第三轮确认计划文件已写入，验证计划文件生成和卡片渲染。",
   expectedBehavior:
-    "手动切到计划模式后发送消息，write_file 工具卡片成功，并以计划卡片样式展示；右侧 FS Viewer 出现 .agent/plans/2026-06-25/generate-plan-file.md，文件内容包含 active frontmatter。",
+    "手动切到计划模式后发送消息，首轮依次出现两个 read_file 工具卡片且没有正文；第二轮 write_file 工具卡片成功并以计划卡片样式展示；第三轮显示“已在计划模式中写入计划文件”；右侧 FS Viewer 出现 .agent/plans/2026-06-25/generate-plan-file.md，文件内容包含 active frontmatter。",
   initialTurns: [],
   request: makeScriptedRequest([
+    {
+      type: "tool_calls",
+      calls: [
+        {
+          id: "c_plan_read_app_1",
+          name: "read_file",
+          args: { path: "src/App.tsx" },
+        },
+        {
+          id: "c_plan_read_button_1",
+          name: "read_file",
+          args: { path: "src/components/Button.tsx" },
+        },
+      ],
+      delayMs: 400,
+    },
     {
       type: "tool_calls",
       calls: [

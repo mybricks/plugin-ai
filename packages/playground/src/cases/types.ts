@@ -95,6 +95,8 @@ export interface TestCase {
   scrollWithSender?: boolean;
   /** ChatPanel 工具消息展示形态。 */
   messagesRenderVariant?: ChatPanelProps["messagesRenderVariant"];
+  /** ChatPanel 连续工具调用聚合展示开关。 */
+  groupToolCalls?: ChatPanelProps["groupToolCalls"];
   /** ChatPanel messages 专用 Markdown 扩展配置。 */
   markdownit?: ChatPanelProps["markdownit"];
   /** 在 Sender 下方渲染的自定义内容。 */

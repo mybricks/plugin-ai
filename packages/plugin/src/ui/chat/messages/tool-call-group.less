@@ -1,0 +1,94 @@
+/*! plugin-ai-comp-view-anchor */
+
+// ── 连续工具调用聚合展示 ─────────────────────────────────────────────────────
+
+.tool-group {
+  margin: 4px 0;
+  font-size: var(--chat-font-size, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  user-select: none;
+}
+
+.tool-group-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.tool-group-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--chat-icon-size, 12px);
+  height: var(--chat-icon-size, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.62;
+
+  svg { width: var(--chat-icon-size, 12px); height: var(--chat-icon-size, 12px); }
+}
+
+.tool-group-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--chat-font-size-sm, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.62;
+}
+
+.tool-group-duration {
+  flex: 0 0 auto;
+  min-width: 3ch;
+  text-align: right;
+  white-space: nowrap;
+  font-size: var(--chat-font-size-sm, 12px);
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.45;
+}
+
+.tool-group-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--mybricks-text-color-main, #333);
+  opacity: 0.38;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.tool-group-body {
+  margin-top: 2px;
+}
+
+// 下一轮模型尚未产出内容时的临时状态；不参与工具分组，也不影响后续工具继续聚合。
+.tool-group-awaiting-next {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--chat-block-gap, 6px);
+  margin-top: 2px;
+  font-size: var(--chat-font-size, 12px);
+  color: var(--mybricks-text-color-main, #333);
+}
+
+.tool-group-awaiting-next-title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--chat-font-size, 12px);
+}
+
+.tool-group-awaiting-next-duration {
+  flex-shrink: 0;
+  font-size: var(--chat-font-size-sm, 12px);
+  color: var(--mybricks-text-color-main, #333);
+}

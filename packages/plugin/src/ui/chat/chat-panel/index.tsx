@@ -79,6 +79,11 @@ export interface ChatPanelProps {
   /** 消息内工具调用的展示形态，默认 card。 */
   messagesRenderVariant?: MessagesRenderVariant;
   /**
+   * 是否把同一 turn 内连续的工具调用（中间没有被文本打断）合并为一个可折叠分组，
+   * 收起时只展示状态图标 + 最新工具名 + 聚合耗时，与 messagesRenderVariant 正交。默认 false。
+   */
+  groupToolCalls?: boolean;
+  /**
    * 是否让消息滚动容器包含 Sender 区域。
    * 默认 false，保持 Sender 位于消息滚动容器外部的旧布局；
    * 开启后 Sender 会作为 sticky footer 渲染在消息滚动容器底部，同时保留 MessageList.scrollToBottom 能力。
@@ -187,6 +192,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   renderSenderFooter,
   size = "small",
   messagesRenderVariant = "card",
+  groupToolCalls = false,
   scrollWithSender = false,
   className,
   style,
@@ -373,6 +379,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       markdownSkin,
       markdownit,
       messagesRenderVariant,
+      groupToolCalls,
       modelSelector,
       blockingToolSlot: { target: blockingToolTarget, setActive: setBlockingToolActive },
     }}>

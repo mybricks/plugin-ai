@@ -78,6 +78,7 @@ import {
   compactMidTurnErrorRetryCase,
 } from "./compact";
 import { markdownRichCase, userMessageWithLinksCase, userMessageWithTenImagesCase, oversizedUserMessageWithTenImagesCase, assistantMessageWithMarkdownImageCase, streamingMarkdownCase, toolThenEmptyContentCase, assistantMessageWithLinksCase, assistantMessageLinkOpenCase } from "./ui-render";
+import { toolCallGroupingCase } from "./tool-call-grouping";
 import { renderEmptyAboveCase } from "./ui-render-empty-above";
 import { selectorRenderInTopCase } from "./ui-selector-render-in-top";
 import { multiEditSameFileCase, multiEditPartialSuccessCase } from "./multi-edit";
@@ -288,6 +289,7 @@ export const ALL_CASES: TestCase[] = [
   streamingMarkdownCase,
   assistantMessageWithLinksCase,
   assistantMessageLinkOpenCase,
+  toolCallGroupingCase,
   renderEmptyAboveCase,
   selectorRenderInTopCase,
   renderAttachmentSuffixCase,

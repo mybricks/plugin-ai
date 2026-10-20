@@ -137,6 +137,37 @@ function PanelWidthToggle({ width, onToggle }: { width: PanelWidth; onToggle: ()
   );
 }
 
+// ─── Group Tool Calls Toggle ────────────────────────────────────────────────────
+
+const GROUP_TOOL_CALLS_KEY = "pg-group-tool-calls";
+
+function useGroupToolCalls() {
+  const [enabled, setEnabled] = useState(() => localStorage.getItem(GROUP_TOOL_CALLS_KEY) === "1");
+
+  const toggle = useCallback(() => {
+    setEnabled((v) => {
+      const next = !v;
+      localStorage.setItem(GROUP_TOOL_CALLS_KEY, next ? "1" : "0");
+      return next;
+    });
+  }, []);
+
+  return { enabled, toggle };
+}
+
+function GroupToolCallsToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) {
+  return (
+    <button
+      className={`pg-disabled-toggle${enabled ? " active" : ""}`}
+      onClick={onToggle}
+      title={enabled ? "已开启：连续工具调用会聚合折叠展示（对所有 case 生效）" : "已关闭：工具调用逐条展示"}
+    >
+      <span className="pg-disabled-label">Group</span>
+      <span className="pg-disabled-state">{enabled ? "ON" : "OFF"}</span>
+    </button>
+  );
+}
+
 const P0_CASES = ALL_CASES.filter(c => c.priority === "P0");
 const P0_GROUPS = groupCases(P0_CASES);
 const OTHER_CASES = ALL_CASES.filter(c => c.priority !== "P0");
@@ -347,6 +378,7 @@ export default function App() {
   const { mode, cycle: cycleTheme } = useTheme();
   const { disabled: chatDisabled, toggle: toggleDisabled } = useChatDisabled();
   const { width: panelWidth, toggle: togglePanelWidth } = usePanelWidth();
+  const { enabled: groupToolCallsEnabled, toggle: toggleGroupToolCalls } = useGroupToolCalls();
   const chatPanelRef = useRef<ChatPanelRef | null>(null);
 
   // 从 URL 读取初始 case（?case=xxx）
@@ -418,6 +450,7 @@ export default function App() {
           )}
           <DisabledToggle disabled={chatDisabled} onToggle={toggleDisabled} />
           <PanelWidthToggle width={panelWidth} onToggle={togglePanelWidth} />
+          <GroupToolCallsToggle enabled={groupToolCallsEnabled} onToggle={toggleGroupToolCalls} />
           <ThemeToggle mode={mode} onCycle={cycleTheme} />
           <LocaleToggle />
         </div>
@@ -547,6 +580,7 @@ export default function App() {
                   scrollWithSender={activeCase?.scrollWithSender}
                   renderSenderFooter={activeCase?.renderSenderFooter}
                   messagesRenderVariant={activeCase?.messagesRenderVariant}
+                  groupToolCalls={groupToolCallsEnabled || activeCase?.groupToolCalls}
                   markdownit={activeCase?.markdownit}
                   actionBar={["copy", "delete", "retry"]}
                   placeholder={isDefaultChatPanelSkin ? "输入一句话，继续检查默认皮肤下的 ChatPanel" : "输入一句话，继续检查 large + 自定义变量下的 ChatPanel"}
@@ -565,7 +599,7 @@ export default function App() {
             {/* ChatPanel 列 */}
             <div className="pg-chat-col" style={{ width: panelWidth }}>
               {agent ? (
-                <ChatPanel ref={chatPanelRef} agent={agent as any} toolUI={activeCase?.toolUI} title="playground" header={true} disabled={chatDisabled} renderEmpty={activeCase?.renderEmpty} renderFocus={activeCase?.renderFocus} historyCollapse={activeCase?.historyCollapse} selectorRenderInTop={activeCase?.selectorRenderInTop} attachProcessors={activeCase?.attachProcessors} mentions={activeCase?.mentions} renderAttachmentSuffix={activeCase?.renderAttachmentSuffix} actionBar={activeCase?.actionBar} />
+                <ChatPanel ref={chatPanelRef} agent={agent as any} toolUI={activeCase?.toolUI} title="playground" header={true} disabled={chatDisabled} renderEmpty={activeCase?.renderEmpty} renderFocus={activeCase?.renderFocus} historyCollapse={activeCase?.historyCollapse} selectorRenderInTop={activeCase?.selectorRenderInTop} attachProcessors={activeCase?.attachProcessors} mentions={activeCase?.mentions} renderAttachmentSuffix={activeCase?.renderAttachmentSuffix} actionBar={activeCase?.actionBar} messagesRenderVariant={activeCase?.messagesRenderVariant} groupToolCalls={groupToolCallsEnabled || activeCase?.groupToolCalls} />
               ) : (
                 <div className="pg-loading">加载中…</div>
               )}

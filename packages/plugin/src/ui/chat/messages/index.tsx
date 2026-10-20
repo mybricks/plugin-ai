@@ -19,9 +19,9 @@ import { WRITE_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/write
 import { EDIT_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/edit";
 import { MULTI_WRITE_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/multi-write";
 import { MULTI_EDIT_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/multi-edit";
-import { createToolRendererContext, getToolRenderer } from "./tool-renders/index";
-import type { ToolRenderer } from "./tool-renders/index";
-import { DefaultToolRenderer } from "./tool-renders/renders";
+import type { ToolRenderer, ToolSummaryRenderer } from "./tool-renders/index";
+import { flattenTurnParts, groupTurnParts } from "./group-parts";
+import { ToolCallGroup } from "./tool-call-group";
 import { DefaultUserMessage } from "../chat-panel/user-message";
 import { useChatPanel } from "../chat-panel/context";
 import { isPlanFilePath, usePlanState } from "../../components/plan";
@@ -187,6 +187,21 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
 
     return map;
   }, [agent]);
+  const toolSummaryRendererMap = useMemo(() => {
+    const map = new Map<string, ToolSummaryRenderer>();
+
+    // 自定义工具的聚合摘要渲染器（与 render 是两个独立字段）
+    if (agent) {
+      const tools = agent.getTools();
+      for (const tool of tools) {
+        if ((tool as any).summaryRender) {
+          map.set(tool.name, (tool as any).summaryRender);
+        }
+      }
+    }
+
+    return map;
+  }, [agent]);
 
   useEffect(() => {
     const s = new AutoScroller(mainRef.current!);
@@ -227,6 +242,7 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
                   key={record.id}
                   record={record}
                   toolRendererMap={toolRendererMap}
+                  toolSummaryRendererMap={toolSummaryRendererMap}
                   actionBar={resolvedActionBar}
                   onRetry={isLast && record.status !== "pending" ? onRetry : undefined}
                   onDelete={onDelete}
@@ -252,9 +268,10 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
 
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
-const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMap, actionBar, onRetry, onDelete, isLast, agent, toolUI, stageText, onExecutePlan, canExecutePlan = true, activePlan }: {
+const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMap, toolSummaryRendererMap, actionBar, onRetry, onDelete, isLast, agent, toolUI, stageText, onExecutePlan, canExecutePlan = true, activePlan }: {
   record: MessageRecord;
   toolRendererMap: Map<string, ToolRenderer>;
+  toolSummaryRendererMap: Map<string, ToolSummaryRenderer>;
   actionBar: ActionBarItem[];
 
   onRetry?: (turnId: string, selection?: ModelSelection) => void;
@@ -267,7 +284,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
   canExecutePlan?: boolean;
   activePlan: ActivePlanFile | null;
 }) {
-  const { user, renderUserMessage, modelSelector } = useChatPanel();
+  const { user, renderUserMessage, modelSelector, groupToolCalls } = useChatPanel();
   const userName = record.sender?.name ?? user?.name;
   const userAvatar = record.sender?.avatar ?? user?.avatar;
   const shouldShowUserHeader = Boolean(record.sender || user);
@@ -286,6 +303,14 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
     isCompletedPlanRecord &&
     Boolean(planFile?.content?.trim());
   const canOperatePlanCard = Boolean(isLast) && Boolean(agent);
+
+  const turnBlocks = useMemo(
+    () => groupTurnParts(
+      flattenTurnParts(record.iterations, record.status === "pending"),
+      groupToolCalls,
+    ),
+    [record.iterations, record.status, groupToolCalls],
+  );
 
   // 重试状态只属于触发它的 LLM iter，不能延续到工具执行后的下一轮 iter。
   const [retryState, setRetryState] = useState<{ step: number; attempt: number; maxRetries: number } | null>(null);
@@ -414,21 +439,32 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
               </div>
             )}
 
-            {/* completed iter 与流式 iter 都以独立 memo 单元渲染。 */}
-            {record.iterations.map((iter, iterIdx) => (
-              <MessageIteration
-                key={iter.iterId}
-                iter={iter}
-                isLastItem={iterIdx === record.iterations.length - 1}
-                isPending={record.status === "pending"}
-                turn={record}
-                retryState={retryState}
-                toolRendererMap={toolRendererMap}
-                agent={agent}
-                toolUI={toolUI}
-                stageText={stageText}
-              />
-            ))}
+            {/* 把 iterations 摊平为「文本/占位头部」与「连续工具调用」两种 block：
+                只要中间没被文本打断，跨多个 iteration 的连续工具调用也会合并成一个 tool-group，
+                是否折叠展示由 ChatPanel 的 groupToolCalls 开关决定（见 tool-call-group.tsx）。 */}
+            {turnBlocks.map((block) =>
+              block.kind === "tool-group" ? (
+                <ToolCallGroup
+                  key={block.key}
+                  tools={block.tools}
+                  turn={record}
+                  toolRendererMap={toolRendererMap}
+                  toolSummaryRendererMap={toolSummaryRendererMap}
+                  agent={agent}
+                  toolUI={toolUI}
+                  awaitingNext={block.awaitingNext}
+                />
+              ) : (
+                <MessageIteration
+                  key={block.key}
+                  iter={block.part.iter}
+                  isLastItem={block.part.isLastItem}
+                  isPending={record.status === "pending"}
+                  retryState={retryState}
+                  stageText={stageText}
+                />
+              )
+            )}
 
             {/* 已取消 */}
             {record.status === "abort" && (
@@ -517,26 +553,18 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
   )
 });
 
-/** 单个 iter 是流式更新的最小 React 边界；completed iter 会因引用稳定而直接 memo bailout。 */
+/** 单个 iter 的「头部」：文本 / warmup / 规划中占位。不再负责渲染 toolCalls（已上移到 MessageBubble 的 turnBlocks）。 */
 const MessageIteration = React.memo(function MessageIteration({
   iter,
   isLastItem,
   isPending,
-  turn,
   retryState,
-  toolRendererMap,
-  agent,
-  toolUI,
   stageText,
 }: {
   iter: MessageRecord["iterations"][number];
   isLastItem: boolean;
   isPending: boolean;
-  turn: MessageRecord,
   retryState: { step: number; attempt: number; maxRetries: number } | null;
-  toolRendererMap: Map<string, ToolRenderer>;
-  agent?: ChatAgent;
-  toolUI?: ToolUIChannel;
   stageText?: string;
 }) {
   if (iter.type === "warmup") {
@@ -566,7 +594,12 @@ const MessageIteration = React.memo(function MessageIteration({
   return (
     <>
       {iter.thinkingContent && (
-        <ThinkingCard thinkingContent={iter.thinkingContent} llmStreaming={llmStreaming} />
+        <ThinkingCard
+          thinkingContent={iter.thinkingContent}
+          llmStreaming={llmStreaming}
+          startTime={iter.startTime}
+          endTime={iter.endTime}
+        />
       )}
 
       <div className={css["iter-header"]}>
@@ -596,20 +629,10 @@ const MessageIteration = React.memo(function MessageIteration({
           </>
         ) : null}
       </div>
-
-      {iter.toolCalls.map((tool) => (
-        <ToolBubble
-          key={tool.callId}
-          tool={tool}
-          turn={turn}
-          toolRendererMap={toolRendererMap}
-          agent={agent}
-          toolUI={toolUI}
-        />
-      ))}
     </>
   );
 });
+
 
 /** 字符数超过此值时折叠，避免长文本首次渲染开销 */
 const COLLAPSE_CHAR_THRESHOLD = 300;
@@ -719,171 +742,48 @@ function getPlanPathsFromTool(tool: ToolCallRecord, configDirName?: string): str
   return [];
 }
 
-// ─── ToolBubble ───────────────────────────────────────────────────────────────
-
-type UIToolRecord = Omit<ToolCallRecord, "status"> & { status: "pending" | "success" | "error" };
-
-/**
- * ToolCallRecord 的 status 在 agent 层允许缺省；渲染层统一收敛为三种展示状态。
- * memo 让同一 iter 内未改变的工具卡片跳过本次流式更新。
- */
-const ToolBubble = React.memo(function ToolBubble({
-  tool,
-  turn,
-  toolRendererMap,
-  agent,
-  toolUI,
-}: {
-  tool: ToolCallRecord;
-  turn: Pick<MessageRecord, "status">;
-  toolRendererMap: Map<string, ToolRenderer>;
-  agent?: ChatAgent;
-  toolUI?: ToolUIChannel;
-}) {
-  const uiTool: UIToolRecord = {
-    ...tool,
-    status: tool.status === "success" || tool.status === "error" ? tool.status : "pending",
-  };
-  // 优先从 agent 的工具列表中查找自定义渲染函数（已缓存）
-  const customRenderer = toolRendererMap.get(uiTool.name);
-  if (customRenderer) {
-    return renderToolWithErrorBoundary(
-      customRenderer,
-      uiTool,
-      turn,
-      "custom",
-      agent,
-      toolUI,
-    );
-  }
-
-  // 降级到全局 registry（用于内置工具）
-  const globalRenderer = getToolRenderer(uiTool.name);
-  if (globalRenderer) {
-    return renderToolWithErrorBoundary(
-      globalRenderer,
-      uiTool,
-      turn,
-      "registry",
-      agent,
-      toolUI,
-    );
-  }
-
-  // 最终降级到默认渲染器
-  return <DefaultToolRenderer tool={uiTool as any} />;
-});
-
-function renderToolWithErrorBoundary(
-  renderer: ToolRenderer,
-  tool: UIToolRecord,
-  turn: Pick<MessageRecord, "status">,
-  source: "custom" | "registry",
-  agent?: ChatAgent,
-  toolUI?: ToolUIChannel,
-) {
-  return React.createElement(
-    ToolRendererErrorBoundary as any,
-    { tool, source, resetKey: getToolRendererResetKey(tool) },
-    <ToolRendererInvoker
-      renderer={renderer}
-      tool={tool as any}
-      turn={turn}
-      agent={agent}
-      toolUI={toolUI}
-    />
-  );
-}
-
-const ToolRendererInvoker = ({
-  renderer,
-  tool,
-  turn,
-  agent,
-  toolUI,
-}: {
-  renderer: ToolRenderer;
-  tool: ToolCallRecord;
-  turn: Pick<MessageRecord, "status">;
-  agent?: ChatAgent;
-  toolUI?: ToolUIChannel;
-}) => {
-  return renderer(
-    tool as any,
-    createToolRendererContext(
-      tool.callId,
-      toolUI ?? agent?.getToolUI(),
-      agent,
-      turn,
-    ),
-  );
-};
-
-class ToolRendererErrorBoundary extends React.Component<
-  { tool: ToolCallRecord; source: "custom" | "registry"; resetKey: string; children: React.ReactNode },
-  { hasError: boolean }
-> {
-  state = { hasError: false };
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: unknown) {
-    console.warn("[ToolRenderer] render failed, fallback to default renderer", {
-      toolName: this.props.tool.name,
-      callId: this.props.tool.callId,
-      source: this.props.source,
-      error,
-    });
-  }
-
-  componentDidUpdate(prevProps: { resetKey: string }) {
-    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
-      this.setState({ hasError: false });
-    }
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return <DefaultToolRenderer tool={this.props.tool as any} />;
-    }
-    return this.props.children;
-  }
-}
-
-function getToolRendererResetKey(tool: UIToolRecord): string {
-  return `${tool.callId}:${tool.status}:${tool.execEndTime}`;
-}
-
 const ThinkingCard = ({
   thinkingContent,
   llmStreaming,
+  startTime,
+  endTime,
 }: {
   thinkingContent: string;
   llmStreaming: boolean;
+  startTime: number;
+  endTime?: number;
 }) => {
-  const bodyRef = useRef<HTMLDivElement>(null);
-  const message = `${thinkingContent}${llmStreaming ? "..." : ""}`;
-
-  useEffect(() => {
-    if (bodyRef.current) {
-      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
-    }
-  }, [message]);
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <div className={css["think-card"]}>
-      <div className={css["think-card-header"]}>
+      <button
+        type="button"
+        className={css["think-card-header"]}
+        onClick={() => setExpanded((value) => !value)}
+        aria-expanded={expanded}
+        aria-label={expanded ? lang.chat.collapse() : lang.chat.expand()}
+      >
         {llmStreaming ? (
           <TextShimmer className={css["think-card-title"]}>{lang.chat.thinkingInProgress()}</TextShimmer>
         ) : (
           <span className={css["think-card-title"]}>{lang.chat.thinking()}</span>
         )}
-      </div>
-      <div ref={bodyRef} className={css["think-card-body"]}>
-        <MarkdownMessage message={message} />
-      </div>
+        <ElapsedTime
+          startTime={startTime}
+          endTime={llmStreaming ? undefined : endTime}
+          className={css["think-card-duration"]}
+          showImmediately
+        />
+        <span className={css["think-card-toggle"]} aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.2s" }} width="1em" height="1em"><path d="m9 6 6 6-6 6" /></svg>
+        </span>
+      </button>
+      {expanded && (
+        <div className={css["think-card-body"]}>
+          <MarkdownMessage message={thinkingContent} />
+        </div>
+      )}
     </div>
   );
 };

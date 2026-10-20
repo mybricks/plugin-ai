@@ -60,6 +60,12 @@ interface ChatPanelContextValue {
   markdownit?: ChatMarkdownItConfig;
   /** 消息内工具调用的展示形态，默认 card。 */
   messagesRenderVariant: MessagesRenderVariant;
+  /**
+   * 是否把同一 turn 内「相邻、且中间没有被文本打断」的连续工具调用合并为一个可折叠分组。
+   * 与 messagesRenderVariant 正交：收起时只展示状态图标 + 最新工具名 + 聚合耗时；
+   * 展开后内部仍按 messagesRenderVariant 配置渲染每个工具。默认 false。
+   */
+  groupToolCalls?: boolean;
   /** 多模型选择器数据；用于错误重试时切换模型。 */
   modelSelector?: SenderProps["modelSelector"];
   /** 阻塞式工具卡片在 Sender 区域的挂载点。 */

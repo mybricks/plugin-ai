@@ -242,6 +242,7 @@ export const lang = {
     editFile: (path?: string) => i18n({ zh: path ? `修改文件 ${path}` : "修改文件", en: path ? `Edit file ${path}` : "Edit file" }),
     writeFile: (path?: string) => i18n({ zh: path ? `写文件 ${path}` : "写文件", en: path ? `Write file ${path}` : "Write file" }),
     readFile: (path?: string) => i18n({ zh: path ? `查看文件 ${path}` : "查看文件", en: path ? `View file ${path}` : "View file" }),
+    searchFiles: (pattern?: string) => i18n({ zh: pattern ? `查找文件 ${pattern}` : "查找文件", en: pattern ? `Find files: ${pattern}` : "Find files" }),
     searchContent: (pattern?: string) => i18n({ zh: pattern ? `内容搜索 ${pattern}` : "内容搜索中", en: pattern ? `Search: ${pattern}` : "Searching" }),
     searchResults: (count: number) => i18n({ zh: `${count} 个结果`, en: `${count} results` }),
     keyword: () => i18n({ zh: "关键词", en: "Keyword" }),

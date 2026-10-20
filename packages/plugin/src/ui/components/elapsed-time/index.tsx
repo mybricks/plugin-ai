@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
  * 耗时展示组件。
  *   - endTime 有值：展示静态耗时（endTime - startTime）
  *   - endTime 无值：实时计时（每 200ms 刷新）
+ *   - showImmediately=true：不足 1 秒时保留空的计时区域，避免动态插入计时导致布局跳动
  *
  * 小于 1 秒不展示；分钟级保留一位小数，秒级取整。
  */
@@ -11,10 +12,12 @@ const ElapsedTime = ({
   startTime,
   endTime,
   className,
+  showImmediately = false,
 }: {
   startTime: number;
   endTime?: number;
   className: string;
+  showImmediately?: boolean;
 }) => {
   const [elapsed, setElapsed] = useState(() => (endTime ?? Date.now()) - startTime);
 
@@ -36,7 +39,9 @@ const ElapsedTime = ({
       ? (elapsed / 60000).toFixed(1) + "m"
       : Math.floor(elapsed / 1000) + "s";
 
-  if (!text) return null;
+  if (!text) {
+    return showImmediately ? <span className={className} aria-hidden="true" /> : null;
+  }
   return <span className={className}>{text}</span>;
 };
 
