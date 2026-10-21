@@ -7,8 +7,10 @@ export interface AskQuestionsOption {
   label: string;
   description?: string;
   preview?: string;
-  /** 选中该项后，追加一个文本输入框，由用户输入自由文本；description 会被复用为输入框的提示文案。 */
+  /** 为该普通选项显示一项可选的补充说明输入框。 */
   input?: boolean;
+  /** input 为 true 时的输入框提示文案；未提供时回退到 description。 */
+  inputPlaceholder?: string;
 }
 
 export interface AskQuestionsQuestion {
@@ -49,8 +51,12 @@ const DESCRIPTION = `在执行过程中向用户提出 1 至 4 个问题，用�
 - header 是用于展示的短标签，最多 12 个字符。
 - preview 为可选的纯文本预览内容，仅允许用于单选题。
 - plan 模式下仅用于澄清需求或方案取舍，不能用于请求确认计划。
-- 某个选项选中后需要用户补充一段自由文本时（如“不通过”要说明具体问题），在该选项上设置 input: true；description 会被复用为输入框的提示文案，此时 description 可以不填。
-- 验证确认场景：提供「确认通过」与「不通过」（input: true）两个选项即可，不要为“不通过”编造具体问题，交给用户自己输入。`;
+- 单选题未提供 input: true 选项时，UI 会在选项后提供一个“或者，告诉我应该怎么做”的自由输入框；用户填写后即可提交，无需先点击选项。
+- 多选题不会自动追加自由输入框。
+- 普通选项可设置 input: true，以始终展示一项可选的补充说明输入框。填写说明会自动选择该选项，回传结果保留选项名称和补充说明。
+- 单选题已有 input: true 选项时，UI 不会自动追加“其他”，以免出现重复的自由文本入口。
+- inputPlaceholder 可指定该输入框的提示文案；未提供时回退到 description。description 仍用于解释普通选项的影响或取舍。
+- 验证确认场景：提供「确认通过」与「不通过」（input: true）两个选项即可；用户可直接填写“不通过”的具体问题。`;
 
 function validateParams(params: AskQuestionsParams): void {
   if (!Array.isArray(params?.questions) || params.questions.length < 1 || params.questions.length > 4) {
@@ -83,6 +89,9 @@ function validateParams(params: AskQuestionsParams): void {
       }
       if (option.input !== undefined && typeof option.input !== "boolean") {
         throw new ToolValidationError("选项 input 必须是布尔值");
+      }
+      if (option.inputPlaceholder !== undefined && typeof option.inputPlaceholder !== "string") {
+        throw new ToolValidationError("选项 inputPlaceholder 必须是字符串");
       }
       if (labels.has(option.label)) throw new ToolValidationError("所有问题的选项 label 必须全局唯一");
       labels.add(option.label);
@@ -127,9 +136,10 @@ export function createAskQuestionsTool(): Tool {
                   required: ["label"],
                   properties: {
                     label: { type: "string", description: "简洁的可见选项名称。" },
-                    description: { type: "string", description: "该选项的具体影响、理由、取舍；当 input 为 true 时复用为输入框提示文案，可不填。" },
+                    description: { type: "string", description: "该选项的具体影响、理由或取舍，可不填。" },
                     preview: { type: "string", description: "仅单选题可用的纯文本预览内容，不支持 Markdown 或 HTML。" },
-                    input: { type: "boolean", description: "选中该项后是否追加一个文本输入框，由用户输入自由文本（如说明未通过验证的具体问题）。" },
+                    input: { type: "boolean", description: "是否为该普通选项始终展示一个可选的补充说明输入框；填写说明会自动选择该选项。" },
+                    inputPlaceholder: { type: "string", description: "input 为 true 时的输入框提示文案；未提供时回退到 description。" },
                   },
                 },
               },
