@@ -117,6 +117,7 @@ import {
   initProjectPartialUpdateFailureCase,
   initProjectSubAgentLengthContinueCase,
   initProjectThirdCallWarnLargeCase,
+  initProjectIgnoreOutOfScopeFilesCase,
   initProjectSlowAbortCase,
 } from "./init-project-error";
 import { chatPanelSkinHistoryCase, chatPanelDefaultSkinCase, chatPanelSkinEmptyCase } from "./chat-panel-skin";
@@ -187,6 +188,7 @@ export const ALL_CASES: TestCase[] = [
   initProjectPartialUpdateFailureCase,
   initProjectSubAgentLengthContinueCase,
   initProjectThirdCallWarnLargeCase,
+  initProjectIgnoreOutOfScopeFilesCase,
   initProjectSlowAbortCase,
   suggestionsDisplayCase,
   abortThenNextTurnAwarenessCase,

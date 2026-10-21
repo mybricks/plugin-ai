@@ -25,7 +25,7 @@ export function usePlaygroundAgent(
     context.agentMap.delete(AGENT_KEY);
     context.setPluginKey("playground");
 
-    const fs = new MemFS(testCase.initialFiles);
+    const fs = testCase.memFSFactory?.(testCase.initialFiles) ?? new MemFS(testCase.initialFiles);
     const mockHistory = new MockHistory(testCase.initialTurns, (testCase as any)._mockCompact ?? null, testCase.historyOptions);
     // playground 复用 plugin 层的模型服务，但模型选择按 Agent 隔离。
     context.configureLLMProvider("playground", testCase.llm?.providers);

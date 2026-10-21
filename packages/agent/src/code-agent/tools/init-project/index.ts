@@ -1,5 +1,8 @@
-import type { Agent } from "../../../agent";
-import type { ToolExecutionContext } from "../../../agent";
+import type { Agent, ToolExecutionContext } from "../../../agent";
+import {
+  createChildAgentBridge,
+  type ChildAgentBridgeContext,
+} from "../../../child-agent";
 import type { Tool } from "../../../types";
 import type { Sandbox } from "../../index";
 
@@ -113,15 +116,13 @@ import React from 'react';
 const LARGE_GENERATION_WARNING = '本轮生成内容较多，请注意是否继续生成。';
 
 /**
- * SubAgent 的 execute 逻辑
+ * SubAgent 的 execute 逻辑。
+ * 子 turn / progress 走 createChildAgentBridge，与 call-sub-agent 共用。
  */
 async function executeSubAgent(
   parentAgent: Agent,
   prompt: string,
-  ctx: {
-    emitProgress: (data: any) => void;
-    signal: AbortSignal;
-  },
+  ctx: ChildAgentBridgeContext,
   sandbox: Sandbox,
   expectedFiles: string[],
   shouldWarnLargeGeneration = false
@@ -149,6 +150,19 @@ ${prompt}
   const writtenFiles = new Set<string>();
   const fileStatuses = new Map<string, "success" | "error">();
   const generatedFiles = new Map<string, string>();
+  const expectedFilesSet = new Set(expectedFiles);
+
+  /**
+   * init-project 只能写入调用方声明的目标文件。模型偶尔会附带说明文件或
+   * 擅自扩展目录；这类代码块会被静默忽略，不能进入 sandbox。
+   */
+  const collectGeneratedFile = (file: { path: string; content: string }) => {
+    if (!expectedFilesSet.has(file.path)) {
+      return false;
+    }
+    if (!generatedFiles.has(file.path)) generatedFiles.set(file.path, file.content);
+    return true;
+  };
 
   // 创建 SubAgent fork
   // 继承父 Agent 的 system、工具定义和模型路由，以复用相同的请求前缀。
@@ -180,116 +194,73 @@ ${prompt}
       },
     },
   });
-  const abortSubAgent = () => subAgent.abort();
-  if (ctx.signal.aborted) {
-    abortSubAgent();
-  } else {
-    ctx.signal.addEventListener("abort", abortSubAgent, { once: true });
+  const bridge = createChildAgentBridge({
+    subAgent,
+    parentAgent,
+    ctx,
+    subAgentType: INIT_PROJECT_TOOL_NAME,
+    title: "生成项目文件",
+    userText: prompt,
+    getProgressExtra: () => progressState,
+  });
+  if ("error" in bridge) {
+    return { output: bridge.error, metadata: { files: [] } };
   }
 
   // 节流 emitProgress，800ms 内最多触发一次（leading + trailing）
-  let _emitTimer: ReturnType<typeof setTimeout> | null = null;
-  let _emitLastTime = 0;
-  let _emitLastArg: any = null;
-  const throttledEmitProgress = (data: any) => {
-    _emitLastArg = data;
-    const remaining = 800 - (Date.now() - _emitLastTime);
-    if (remaining <= 0) {
-      if (_emitTimer) { clearTimeout(_emitTimer); _emitTimer = null; }
-      _emitLastTime = Date.now();
-      ctx.emitProgress(data);
-    } else if (!_emitTimer) {
-      _emitTimer = setTimeout(() => {
-        _emitTimer = null;
-        _emitLastTime = Date.now();
-        ctx.emitProgress(_emitLastArg);
-      }, remaining);
-    }
-  };
-  const flushEmitProgress = () => {
-    if (_emitTimer) { clearTimeout(_emitTimer); _emitTimer = null; }
-    if (_emitLastArg) { ctx.emitProgress(_emitLastArg); }
-  };
+  bridge.subscribe({
+    contentThrottleMs: 800,
+    onContent: async ({ content, thinkingContent }) => {
+      progressState.content = content || "";
+      if (thinkingContent !== undefined) {
+        progressState.thinkingContent = thinkingContent;
+      }
 
-  // 监听 llm:content 事件
-  const unsubscribe = subAgent.events.on("llm:content", async ({ content, thinkingContent }) => {
-    progressState.content = content || "";
-    if (thinkingContent !== undefined) {
-      progressState.thinkingContent = thinkingContent;
-    }
+      // 同一个 fork 可能因工具调用被拒绝而续跑；各次回复的文件都要保留。
+      const fileBlocks = parseFileBlocks(content || "");
+      for (const file of fileBlocks) {
+        collectGeneratedFile(file);
+      }
+      const parsedFiles = parseFilesFromStreamingContent(content || "")
+        .filter((file) => expectedFilesSet.has(file.path));
 
-    // 同一个 fork 可能因工具调用被拒绝而续跑；各次回复的文件都要保留。
-    const fileBlocks = parseFileBlocks(content || "");
-    for (const file of fileBlocks) {
-      if (!generatedFiles.has(file.path)) generatedFiles.set(file.path, file.content);
-    }
-    const parsedFiles = parseFilesFromStreamingContent(content || "");
-
-    // 检测新完成的文件并立即写入
-    for (const file of parsedFiles) {
-      if (file.status === "complete" && !writtenFiles.has(file.path)) {
-        // 解析文件内容
-        const fileData = fileBlocks.find((f) => f.path === file.path);
-
-        if (fileData) {
+      // 检测新完成的文件并立即写入
+      for (const file of parsedFiles) {
+        if (expectedFilesSet.has(file.path) && file.status === "complete" && !writtenFiles.has(file.path)) {
+          // 解析文件内容
+          const fileData = fileBlocks.find((item) => item.path === file.path);
+          if (!fileData) continue;
           writtenFiles.add(file.path);
-
           try {
             // 立即写入文件
             await sandbox.updateFiles([fileData]);
             fileStatuses.set(file.path, "success");
-
             // 更新状态为 success
-            const fileIndex = parsedFiles.findIndex((f) => f.path === file.path);
+            const fileIndex = parsedFiles.findIndex((item) => item.path === file.path);
             if (fileIndex !== -1) {
               parsedFiles[fileIndex] = { ...parsedFiles[fileIndex], status: "success" };
             }
-          } catch (err) {
+          } catch {
             fileStatuses.set(file.path, "error");
             // 写入失败，标记为 error
-            const fileIndex = parsedFiles.findIndex((f) => f.path === file.path);
+            const fileIndex = parsedFiles.findIndex((item) => item.path === file.path);
             if (fileIndex !== -1) {
               parsedFiles[fileIndex] = { ...parsedFiles[fileIndex], status: "error" };
             }
           }
         }
       }
-    }
 
-    progressState.files = parsedFiles;
-    throttledEmitProgress({ ...progressState });
+      progressState.files = parsedFiles;
+    },
   });
 
-  // llm:complete 时 flush，确保最终状态立即上报
-  const unsubFlush = subAgent.events.on("llm:complete", () => {
-    flushEmitProgress();
-  });
-
-  let requestError: Error | null = null;
-  // 取消是控制流状态，不从 Error.message 反推，避免展示文案参与业务判断。
-  let wasCancelled = false;
-
-  try {
-    await subAgent.requestAI({
-      message: fullPrompt,
-    });
-    const turns = await subAgent.getTurns();
-    const lastTurn = turns[turns.length - 1];
-    if (ctx.signal.aborted || lastTurn?.status === "abort") {
-      wasCancelled = true;
-      requestError = new Error("用户已手动取消");
-    }
-  } catch (err: any) {
-    wasCancelled = ctx.signal.aborted;
-    requestError = err instanceof Error ? err : new Error(String(err));
-  } finally {
-    unsubscribe();
-    unsubFlush();
-    ctx.signal.removeEventListener("abort", abortSubAgent);
-  }
+  const { lastTurn, status, error, wasCancelled } = await bridge.runRequest(fullPrompt);
+  const finished = bridge.finish(lastTurn, status, error);
+  const childMetadata = bridge.metadata(finished.status);
 
   // 请求中途出错或用户取消：保留已写入文件，并把中断说明拼进 output。
-  if (requestError) {
+  if (error || wasCancelled) {
     const writtenList = Array.from(fileStatuses)
       .filter(([, status]) => status === "success")
       .map(([path]) => path);
@@ -308,7 +279,7 @@ ${prompt}
     const lines: string[] = [
       wasCancelled
         ? "生成过程中断"
-        : `生成过程中断（${requestError.message}）`,
+        : `生成过程中断（${error}）`,
     ];
     if (writtenList.length > 0) {
       lines.push(`已成功写入 ${writtenList.length} 个文件：${writtenList.join(', ')}`);
@@ -336,27 +307,19 @@ ${prompt}
       output: lines.join('\n\n'),
       metadata: {
         files: filesMetadataOnError,
+        ...childMetadata,
       },
     };
   }
 
   // 处理输出
-  const turns = await subAgent.getTurns();
-  const lastTurn = turns[turns.length - 1];
   for (const iter of lastTurn?.iterations ?? []) {
     if ("type" in iter) continue;
     for (const file of parseFileBlocks(iter.content ?? "")) {
-      if (!generatedFiles.has(file.path)) generatedFiles.set(file.path, file.content);
+      collectGeneratedFile(file);
     }
   }
   const files = Array.from(generatedFiles, ([path, content]) => ({ path, content }));
-
-  if (files.length === 0) {
-    return {
-      output: "未解析到任何文件，请检查输出格式是否正确。",
-      metadata: { files: [] },
-    };
-  }
 
   // 已写入状态跨多次 LLM 回复保留，避免只统计最后一步的文件。
   const successPaths = new Set<string>();
@@ -382,9 +345,7 @@ ${prompt}
   const filesFailed = failedPaths.size;
 
   // 检查是否所有期望的文件都已生成
-  const expectedFilesSet = new Set(expectedFiles);
   const missingFiles = expectedFiles.filter((file) => !successPaths.has(file));
-  const extraFiles = Array.from(successPaths).filter((file) => !expectedFilesSet.has(file));
 
   // 构建带内容的文件列表
   const successFilesWithContent = files
@@ -406,12 +367,9 @@ ${prompt}
     output += `\n\n${LARGE_GENERATION_WARNING}`;
   }
 
-  // 提示缺失和额外的文件
+  // 提示缺失文件
   if (missingFiles.length > 0) {
     output += `\n\n缺少以下文件：\n${missingFiles.map((f) => `- ${f}`).join("\n")}`;
-  }
-  if (extraFiles.length > 0) {
-    output += `\n\n额外生成的文件：\n${extraFiles.map((f) => `- ${f}`).join("\n")}`;
   }
 
   // 根据写入情况补充提示
@@ -434,6 +392,7 @@ ${prompt}
     output,
     metadata: {
       files: filesMetadata,
+      ...childMetadata,
     },
   };
 }
@@ -495,6 +454,8 @@ export function createInitProjectTool(sandbox: Sandbox): Tool {
         {
           emitProgress: toolContext.emitProgress,
           signal: toolContext.signal,
+          callId: toolContext.callId,
+          attachSubAgentTurn: toolContext.attachSubAgentTurn,
         },
         sandbox,
         filesToGenerate,

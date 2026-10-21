@@ -56,8 +56,8 @@ export interface ToolExecutionContext {
    */
   emitProgress: (data: any) => void;
   /**
-   * 将子 Agent（call-sub-agent）产生的 SubAgentTurnRecord 挂到当前 iteration 的
-   * `turns` 字段上。供 call-sub-agent 工具在子 Agent 执行完毕（或异步启动时先挂一条
+   * 将子 Agent（call-sub-agent / init-project）产生的 SubAgentTurnRecord 挂到当前 iteration 的
+   * `turns` 字段上。供工具在子 Agent 执行完毕（或异步启动时先挂一条
    * running 占位记录）后调用，随父 Agent 现有的 turn/iter 持久化路径一起落盘。
    */
   attachSubAgentTurn: (record: SubAgentTurnRecord) => void;

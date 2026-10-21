@@ -34,7 +34,9 @@ export const initProjectSubAgentErrorCase: TestCase = {
     "FS Viewer 出现 index.jsx / App.jsx / utils.js（3个文件）；tool 卡片展示 output 包含「生成过程中断」；外层 Agent 继续回复「已了解，将继续生成剩余文件」。",
   initialTurns: [],
   initialFiles: [],
-  tools: [createInitProjectTool(new MemFS([]))],
+  // 必须使用 playground 为当前 case 创建的同一份 MemFS；否则工具写入的
+  // 文件不会出现在右侧 FS Viewer 中。
+  tools: (fs) => [createInitProjectTool(fs)],
   agentOptions: { retry: { maxRetries: 0 } },
   request: (() => {
     let callIndex = 0;
@@ -114,7 +116,8 @@ export const initProjectSubAgentImmediateErrorCase: TestCase = {
     "FS Viewer 无新文件；tool 卡片 output 包含「生成过程中断」和「无文件写入」；外层 Agent 继续回复。",
   initialTurns: [],
   initialFiles: [],
-  tools: [createInitProjectTool(new MemFS([]))],
+  // 与 FS Viewer 共用当前 case 的 MemFS，确保工具写入结果可见。
+  tools: (fs) => [createInitProjectTool(fs)],
   agentOptions: { retry: { maxRetries: 0 } },
   request: (() => {
     let callIndex = 0;
@@ -183,7 +186,8 @@ export const initProjectMissingClosingFenceCase: TestCase = {
     "FS Viewer 只出现已闭合的 App.jsx；styles.css 应出现在 tool output 的缺失文件列表里；Request Inspector 可观察外层 Agent 是否再次发起 init-project。",
   initialTurns: [],
   initialFiles: [],
-  tools: [createInitProjectTool(new MemFS([]))],
+  // 与 FS Viewer 共用当前 case 的 MemFS，确保已闭合的 App.jsx 能即时显示。
+  tools: (fs) => [createInitProjectTool(fs)],
   agentOptions: { retry: { maxRetries: 0 } },
   request: (() => {
     let callIndex = 0;
@@ -273,7 +277,9 @@ export const initProjectPartialUpdateFailureCase: TestCase = {
     "FS Viewer 出现 healthy.js，不应出现 broken.js；tool output 应准确标记 broken.js 写入失败（当前实现存在 bug：broken.js 可能被误报为成功）。",
   initialTurns: [],
   initialFiles: [],
-  tools: [createInitProjectTool(new PartialFailureMemFS())],
+  // 失败模拟与 FS Viewer 必须指向同一份文件系统。
+  memFSFactory: (initialFiles) => new PartialFailureMemFS(initialFiles),
+  tools: (fs) => [createInitProjectTool(fs)],
   agentOptions: { retry: { maxRetries: 0 } },
   request: (() => {
     let callIndex = 0;
@@ -348,7 +354,7 @@ export const initProjectSubAgentLengthContinueCase: TestCase = {
     "Request Inspector 第3次请求 messages 里出现「已写入: App.jsx / 待写入: styles.css」的 user 消息；FS Viewer 出现 App.jsx 和 styles.css；App.jsx 内容以最后一次输出为准（不重复写入）。",
   initialTurns: [],
   initialFiles: [],
-  tools: [createInitProjectTool(new MemFS([]))],
+  tools: (fs) => [createInitProjectTool(fs)],
   agentOptions: { retry: { maxRetries: 0 } },
   request: (() => {
     let callIndex = 0;
@@ -431,7 +437,7 @@ export const initProjectThirdCallWarnLargeCase: TestCase = {
     "FS Viewer 出现 step-one.jsx / step-two.jsx / step-three.jsx；第3个 init-project tool 卡片 output 包含「已写入文件」和「本轮生成内容较多，请注意是否继续生成」。",
   initialTurns: [],
   initialFiles: [],
-  tools: [createInitProjectTool(new MemFS([]))],
+  tools: (fs) => [createInitProjectTool(fs)],
   agentOptions: { retry: { maxRetries: 0 } },
   request: (() => {
     let callIndex = 0;
@@ -477,6 +483,91 @@ export const initProjectThirdCallWarnLargeCase: TestCase = {
       params.emits.complete?.("");
     };
   })(),
+};
+
+/**
+ * P0 测试用例：SubAgent 生成范围外文件时静默忽略。
+ *
+ * init-project 的 filesToGenerate 是本次允许写入的文件白名单。模型即使输出
+ * 额外代码块，也不能把它写进 sandbox，且工具完成摘要应保持正常。
+ */
+export const initProjectIgnoreOutOfScopeFilesCase: TestCase = {
+  id: "init-project-ignore-out-of-scope-files",
+  name: "忽略范围外文件",
+  group: "init-project",
+  priority: "P0",
+  description:
+    "SubAgent 在生成目标 App.jsx 的同时额外输出 README.md。验证范围外文件不会写入 MemFS，工具仍按正常流程完成。",
+  expectedBehavior:
+    "FS Viewer 只出现 App.jsx；README.md 不会写入，也不会出现在 init-project 的最终 output 或文件列表中。",
+  initialTurns: [],
+  initialFiles: [],
+  tools: (fs) => [createInitProjectTool(fs)],
+  agentOptions: { retry: { maxRetries: 0 } },
+  request: (() => {
+    let callIndex = 0;
+    return async (params: Parameters<import("@request/types").RequestAsStreamFn>[0]) => {
+      const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+      const idx = callIndex++;
+
+      if (idx === 0) {
+        const args = { filesToGenerate: ["App.jsx"] };
+        await delay(200);
+        params.emits.onToolCallStream?.({ index: 0, id: "call_init_out_of_scope", name: INIT_PROJECT_TOOL_NAME, argsChunk: "" });
+        params.emits.onToolCallStream?.({ index: 0, argsChunk: JSON.stringify(args) });
+        params.emits.onToolCalls?.([{ id: "call_init_out_of_scope", name: INIT_PROJECT_TOOL_NAME, args }]);
+        params.emits.onFinishReason?.("tool_calls");
+        params.emits.complete?.("");
+        return;
+      }
+
+      if (idx === 1) {
+        const content =
+          "```App.jsx\nexport default function App() {\n  return <main>App</main>;\n}\n```\n\n" +
+          "```README.md\n# 这是范围外的文件\n```";
+        await delay(200);
+        for (let i = 0; i < content.length; i += 16) {
+          await delay(20);
+          params.emits.write?.(content.slice(i, i + 16));
+        }
+        params.emits.onFinishReason?.("stop");
+        params.emits.complete?.("");
+        return;
+      }
+
+      await delay(200);
+      params.emits.write?.("App.jsx 已生成。");
+      params.emits.onFinishReason?.("stop");
+      params.emits.complete?.("");
+    };
+  })(),
+  assertions: [
+    {
+      name: "范围外文件不会写入或出现在工具结果",
+      run: ({ agent, memFS }) => {
+        const lastTurn = (agent as any)?.turns?.at?.(-1);
+        if (!lastTurn || lastTurn.status !== "success" || !memFS) return null;
+        const toolCall = lastTurn.iterations
+          ?.flatMap((iteration: any) => iteration.toolCalls ?? [])
+          ?.find((tool: any) => tool.name === INIT_PROJECT_TOOL_NAME);
+        if (!toolCall || toolCall.status !== "success") return null;
+
+        const paths = new Set(memFS.snapshot().map((file) => file.path));
+        const resultFiles = toolCall.result?.metadata?.files ?? [];
+        const output = String(toolCall.result?.output ?? "");
+        const pass = paths.has("App.jsx")
+          && !paths.has("README.md")
+          && !resultFiles.some((file: { path?: string }) => file.path === "README.md")
+          && !output.includes("README.md");
+        return {
+          pass,
+          message: pass
+            ? "范围外文件已被静默忽略"
+            : `当前文件: ${Array.from(paths).join(", ")}；工具 output: ${output}`,
+        };
+      },
+    },
+  ],
 };
 
 /**

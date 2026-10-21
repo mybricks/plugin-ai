@@ -1,5 +1,6 @@
 import type { Agent } from "./agent";
-import type { SubAgentTurnRecord, TokenUsage, Tool, TurnRecord } from "./types";
+import { createChildAgentBridge } from "./child-agent";
+import type { Tool } from "./types";
 
 // TODO: 将 SubAgent 迁移为 CodeAgent 的内置运行时插件。
 // 这样任务队列、beforeRequest 回传与动态工具创建都由插件自身管理，避免 CodeAgent 了解 SubAgent 细节。
@@ -148,216 +149,30 @@ export function createSubAgentTool(
         tools: subAgentTools,
         aiRole,
       });
-      const agentKey = subAgent.key;
-      if (!agentKey) return { output: "Error: SubAgent 未分配 agentKey。" };
-
-      // 子 Agent 执行记录（SubAgentTurnRecord）：先挂一条 running 占位，
-      // 随父 Agent 当前 iteration 正常持久化；子 Agent 执行完毕后原地更新同一个对象。
-      const callId = ctx?.callId ?? agentKey;
-      const parentAgentKey: string | undefined = (parentAgent as any).key;
-      const subAgentTurnRecord: SubAgentTurnRecord = {
-        id: agentKey,
-        agentKey,
+      const bridge = createChildAgentBridge({
+        subAgent,
+        parentAgent,
+        ctx,
         subAgentType: type,
-        callId: callId,
-        parentAgentKey,
-        startTime: Date.now(),
+        title: config.title,
         userText: prompt,
-        userAttachments: [],
-        iterations: [],
-        status: "success",
-      };
-      ctx?.attachSubAgentTurn?.(subAgentTurnRecord);
+      });
+      if ("error" in bridge) return { output: bridge.error };
 
-      const applySubAgentTurn = (
-        lastTurn: TurnRecord | undefined,
-        status: TurnRecord["status"],
-        error?: string,
-      ) => {
-        subAgentTurnRecord.endTime = Date.now();
-        subAgentTurnRecord.status = status;
-        subAgentTurnRecord.iterations = lastTurn?.iterations ?? [];
-        if (error) subAgentTurnRecord.error = error;
-        // 工具执行返回后，父 Agent 的常规落盘流程会一并保存这条记录。
-      };
-
-      /**
-       * 按 iterId 分组的子 Agent 执行进度。每个元素对应子 Agent 一次 LLM 迭代，
-       * 供 UI 做"默认只展示最新一条，点击展开看全部 iter，每个 iter 下的工具再可单独展开"。
-       */
-      interface ProgressToolCall {
-        callId: string;
-        name: string;
-        title?: string;
-        args?: any;
-        output?: string;
-        error?: string;
-        status: "running" | "success" | "error";
+      bridge.subscribe({ contentThrottleMs: 250 });
+      const { lastTurn, status, error } = await bridge.runRequest(prompt);
+      const finished = bridge.finish(lastTurn, status, error);
+      if (error) {
+        return {
+          output: bridge.summarizeToolCalls(`SubAgent 执行失败: ${error}`),
+          metadata: bridge.metadata(finished.status),
+        };
       }
-      interface ProgressIteration {
-        iterId: string;
-        content: string;
-        thinkingContent?: string;
-        model?: string;
-        usage?: TokenUsage;
-        finishReason?: string;
-        startTime?: number;
-        endTime?: number;
-        toolCalls: ProgressToolCall[];
-      }
-      const iterOrder: string[] = [];
-      const iterMap = new Map<string, ProgressIteration>();
-      const toolCallIterIndex = new Map<string, string>();
-      const ensureIter = (iterId: string): ProgressIteration => {
-        let iter = iterMap.get(iterId);
-        if (!iter) {
-          iter = { iterId, content: "", toolCalls: [] };
-          iterMap.set(iterId, iter);
-          iterOrder.push(iterId);
-        }
-        return iter;
-      };
-      const getIterations = (): ProgressIteration[] => iterOrder.map((id) => iterMap.get(id)!);
-      const getAllToolCalls = (): ProgressToolCall[] => getIterations().flatMap((iter) => iter.toolCalls);
-      const appendToolCallSummary = (output: string) => {
-        const calls = getAllToolCalls();
-        const summary = calls.length === 0
-          ? "工具调用总结：未调用工具。"
-          : (() => {
-              const counts = new Map<string, { name: string; title?: string; count: number }>();
-              for (const toolCall of calls) {
-                const current = counts.get(toolCall.name);
-                if (current) current.count += 1;
-                else counts.set(toolCall.name, { name: toolCall.name, title: toolCall.title, count: 1 });
-              }
-              const details = [...counts.values()]
-                .map(({ name, title, count }) => `${title ? `${title}（${name}）` : name} × ${count}`)
-                .join("、");
-              return `工具调用总结：共调用 ${calls.length} 次：${details}。`;
-            })();
-        return output ? `${output}\n\n${summary}` : summary;
-      };
-      // 进度事件采用完整覆盖快照：事件存储只保留同一工具调用的最新 progress，
-      // 因此最终快照必须保留全部子 Agent iteration，供 Trace 回放。
-      const emitSubAgentProgress = (data: Record<string, unknown> = {}) => {
-        ctx?.emitProgress({
-          status: "running",
-          agentKey,
-          subAgentType: type,
-          title: config.title,
-          startTime: subAgentTurnRecord.startTime,
-          iterations: getIterations(),
-          ...data,
-        });
-      };
-      emitSubAgentProgress();
-
-      const run = async () => {
-        let lastProgressAt = 0;
-        const unsubscribeLLMStart = subAgent.events.on("llm:start", ({ iterId, startTime }) => {
-          ensureIter(iterId).startTime ??= startTime;
-          emitSubAgentProgress();
-        });
-        const unsubscribeLLMContent = subAgent.events.on("llm:content", ({ content, thinkingContent, iterId }) => {
-          const iter = ensureIter(iterId);
-          iter.content = content ?? "";
-          if (thinkingContent !== undefined) iter.thinkingContent = thinkingContent;
-          const now = Date.now();
-          if (now - lastProgressAt < 250) return;
-          lastProgressAt = now;
-          emitSubAgentProgress();
-        });
-        const unsubscribeLLMComplete = subAgent.events.on("llm:complete", ({ iterId, finishReason, usage, endTime }) => {
-          const iter = ensureIter(iterId);
-          iter.endTime = endTime;
-          iter.finishReason = finishReason;
-          if (usage) {
-            iter.usage = usage;
-            iter.model = usage.model;
-          }
-          // LLM complete 通常不会再有 content；必须强制发送，避免最终用量丢失。
-          emitSubAgentProgress();
-        });
-        const unsubscribeToolCall = subAgent.events.on("tool:call", ({ callId, name, title, args, iterId }) => {
-          const iter = ensureIter(iterId);
-          iter.toolCalls.push({ callId, name, ...(title ? { title } : {}), args, status: "running" });
-          toolCallIterIndex.set(callId, iterId);
-          emitSubAgentProgress();
-        });
-        const unsubscribeToolResult = subAgent.events.on("tool:result", ({ callId, name, title, result }) => {
-          const iterId = toolCallIterIndex.get(callId);
-          const iter = iterId ? iterMap.get(iterId) : undefined;
-          const toolCall = iter?.toolCalls.find((t) => t.callId === callId);
-          if (toolCall) {
-            toolCall.name = name;
-            if (title) toolCall.title = title;
-            toolCall.status = "success";
-            toolCall.output = typeof result?.output === "string" ? result.output : undefined;
-          }
-          emitSubAgentProgress();
-        });
-        const unsubscribeToolError = subAgent.events.on("tool:error", ({ callId, name, title, error }) => {
-          const iterId = toolCallIterIndex.get(callId);
-          const iter = iterId ? iterMap.get(iterId) : undefined;
-          const toolCall = iter?.toolCalls.find((t) => t.callId === callId);
-          if (toolCall) {
-            toolCall.name = name;
-            if (title) toolCall.title = title;
-            toolCall.status = "error";
-            toolCall.error = error;
-          }
-          emitSubAgentProgress();
-        });
-        const abort = () => subAgent.abort();
-        ctx?.signal?.addEventListener("abort", abort, { once: true });
-
-        try {
-          await subAgent.requestAI({ message: prompt });
-          const turns = await subAgent.getTurns();
-          const lastTurn = turns[turns.length - 1];
-          const lastLLMIter = lastTurn?.iterations?.slice().reverse().find((iter) => !("type" in iter));
-          const output = (lastLLMIter as any)?.content ?? "";
-          const status = lastTurn?.status === "abort" ? "aborted" : lastTurn?.status === "error" ? "error" : "success";
-          applySubAgentTurn(lastTurn, status === "aborted" ? "abort" : lastTurn?.status ?? "success");
-          emitSubAgentProgress({ status, endTime: subAgentTurnRecord.endTime });
-          return {
-            agentKey,
-            type,
-            title: config.title,
-            status,
-            output: appendToolCallSummary(output || "(SubAgent 未产生输出)"),
-          };
-        } catch (error) {
-          applySubAgentTurn(undefined, "error", String((error as Error)?.message ?? error));
-          emitSubAgentProgress({ status: "error", endTime: subAgentTurnRecord.endTime });
-          return {
-            agentKey,
-            type,
-            title: config.title,
-            status: "error",
-            output: appendToolCallSummary(`SubAgent 执行失败: ${String((error as Error)?.message ?? error)}`),
-          };
-        } finally {
-          unsubscribeLLMStart();
-          unsubscribeLLMContent();
-          unsubscribeLLMComplete();
-          unsubscribeToolCall();
-          unsubscribeToolResult();
-          unsubscribeToolError();
-          ctx?.signal?.removeEventListener("abort", abort);
-        }
-      };
-
-      const task = await run();
+      const lastLLMIter = lastTurn?.iterations?.slice().reverse().find((iter) => !("type" in iter));
+      const output = (lastLLMIter as { content?: string } | undefined)?.content ?? "";
       return {
-        output: task.output,
-        metadata: {
-          subAgentType: type,
-          title: config.title,
-          agentKey,
-          status: task.status,
-          iterations: getIterations(),
-        },
+        output: bridge.summarizeToolCalls(output || "(SubAgent 未产生输出)"),
+        metadata: bridge.metadata(finished.status),
       };
     },
   };

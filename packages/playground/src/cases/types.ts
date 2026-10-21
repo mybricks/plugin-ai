@@ -42,6 +42,8 @@ export interface TestCase {
   initialTurns: TurnRecord[];
   /** 预设文件系统（不传则使用 DEFAULT_FILES） */
   initialFiles?: FsFile[];
+  /** 创建当前 case 使用的 MemFS；用于保留定制的读写行为，同时供 FS Viewer 观察。 */
+  memFSFactory?: (initialFiles?: FsFile[]) => import("../lib/mem-fs").MemFS;
   /** 选择 CodeAgent 的 sandbox 路径；默认保持 V1。 */
   sandboxKind?: "v1" | "agent";
   /** 为 AgentSandbox 用例提供原生实现，用于覆盖命令 transport 等能力。 */

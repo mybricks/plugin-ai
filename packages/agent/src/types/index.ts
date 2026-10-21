@@ -16,6 +16,8 @@ export type TokenUsage = {
     cacheWriteTokens?: number;
   };
   model?: string;
+  /** 上游模型网关的请求 ID，供 Trace 回查日志。 */
+  requestId?: string;
 };
 
 export interface IterationTrace {
@@ -322,7 +324,7 @@ export interface TurnRecord {
         /** 本次 LLM 请求构建时记录的上下文追踪信息 */
         trace?: IterationTrace;
         /**
-         * 本次迭代中调用的子 Agent（call-sub-agent）各自产生的完整 TurnRecord。
+         * 本次迭代中调用的子 Agent（call-sub-agent / init-project）各自产生的完整 TurnRecord。
          * 与 toolCalls 按 callId 一一对应；子 Agent 本身也是一次独立的 ReAct 循环，
          * 其记录天然长得和本层 iterations 一样，故直接复用 TurnRecord 结构递归嵌套。
          */
@@ -381,7 +383,7 @@ export type LLMIteration = Exclude<TurnRecord["iterations"][number], WarmupIter>
 // ─── SubAgentTurnRecord ────────────────────────────────────────────────────────
 
 /**
- * 子 Agent（call-sub-agent）执行产生的 TurnRecord。
+ * 子 Agent（call-sub-agent / init-project）执行产生的 TurnRecord。
  *
  * 结构上仍然是一个完整的 TurnRecord（可复用所有现有的历史重建 / UI 渲染逻辑），
  * 只是额外补充了几个用于和父级 toolCall、父子 Agent 关联的显式字段，
@@ -390,9 +392,9 @@ export type LLMIteration = Exclude<TurnRecord["iterations"][number], WarmupIter>
 export interface SubAgentTurnRecord extends TurnRecord {
   /** 本次子 Agent 的唯一标识（ForkAgent.key，由 createFork 分配） */
   agentKey: string;
-  /** 子 Agent 类型，对应 SubAgentConfig.name */
+  /** 子 Agent 类型，对应 SubAgentConfig.name；init-project 为工具名 */
   subAgentType: string;
-  /** 关联的父级 toolCall（call-sub-agent 那条 ToolCallRecord 的 callId），与同一 iteration 下的 toolCalls 一一对应 */
+  /** 关联的父级 toolCall（call-sub-agent / init-project 那条 ToolCallRecord 的 callId），与同一 iteration 下的 toolCalls 一一对应 */
   callId: string;
   /**
    * 父级 Agent 的 agentKey；顶层 Agent 发起的子 Agent 为 undefined。
