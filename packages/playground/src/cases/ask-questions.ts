@@ -8,7 +8,7 @@ export const askQuestionsCase: TestCase = {
   group: "工具调用",
   priority: "P0",
   description: "调用 ask_questions，验证工具卡片收集选项，以及 AI 已提供“其它”选项时的自定义输入兼容。",
-  expectedBehavior: "待回答卡片显示在 Sender 位置，Sender 草稿保留；第一题的“其它”选项仅显示一次，选中后在该选项下展示输入框，提交时回传输入文本。提交或点击「跳过」后 Sender 恢复，卡片结果留在消息历史中，当前 turn 继续执行。跳过时工具结果使用英文。",
+  expectedBehavior: "待回答卡片显示在 Sender 位置，Sender 草稿保留；第一题的“其它”输入框默认显示且仅显示一次，填写后即可提交并回传输入文本。点击「跳过」只跳过当前题并进入下一题；所有题目结束后卡片结果留在消息历史中，当前 turn 继续执行。",
   initialTurns: [],
   tools: [Tools.createAskQuestions()],
   request: makeScriptedRequest([

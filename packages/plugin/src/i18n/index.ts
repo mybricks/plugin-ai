@@ -201,7 +201,7 @@ export const lang = {
   askQuestions: {
     title: () => i18n({ zh: "以下问题需要您确认", en: "Please confirm" }),
     otherOption: () => i18n({ zh: "其他", en: "Other" }),
-    otherOptionDescription: () => i18n({ zh: "你有其他想法", en: "Another idea" }),
+    otherOptionDescription: () => i18n({ zh: "或者，告诉我应该怎么做", en: "Or tell me how I should proceed" }),
     skippedPrompt: () => i18n({ zh: "本次提问已跳过", en: "Questions skipped" }),
     answersReceived: () => i18n({ zh: "已收到您的选择", en: "Choices received" }),
     skipped: () => i18n({ zh: "已跳过", en: "Skipped" }),

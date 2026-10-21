@@ -19,7 +19,7 @@ let queuedBrowserTask: {
 
 const browserToolBridge = new BrowserToolBridge<object>({
   workspaceId: "playground-http-agent",
-  requestJson: async <T>(path: string, init?: RequestInit): Promise<T> => {
+  requestJson: async <T,>(path: string, init?: RequestInit): Promise<T> => {
     if (init?.method === "POST" && path.includes("/browser/tasks/")) {
       const requestId = decodeURIComponent(path.split("/").pop() ?? "");
       taskResults.set(requestId, JSON.parse(String(init.body ?? "{}")) as SimulatedBrowserToolResult);

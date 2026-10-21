@@ -4,12 +4,12 @@ import { makeScriptedRequest } from "../lib/scripted-request";
 
 export const askQuestionsInputCase: TestCase = {
   id: "ask-questions-input",
-  name: "询问用户（单选+preview、多选、input 追问）",
+  name: "询问用户（单选+preview、多选、补充说明）",
   group: "工具调用",
   priority: "P0",
-  description: "调用 ask_questions，覆盖单选+preview、多选，以及选项级 input:true 追问（典型用于验证确认场景的「不通过」选项）。",
+  description: "调用 ask_questions，覆盖单选+preview、多选，以及普通选项的 input:true 补充说明。",
   expectedBehavior:
-    "第一题为单选+preview，第二题为多选；第三题模拟验证确认场景，提供「确认通过」与「不通过」两个选项，「不通过」设置了 input: true——选中后直接在该选项下展示输入框（placeholder 复用其 description），无需 UI 自动追加「其他」；提交时「不通过」的回传值为用户输入的文本。",
+    "第一题为单选+preview，第二题为多选；第三题模拟验证确认场景，提供「确认通过」与「不通过」两个普通选项。「不通过」设置 input: true 后，其补充说明输入框默认展开，且单选题不会再自动追加“其他”；填写说明会自动选择「不通过」，提交时回传值保留选项名称和说明。",
   initialTurns: [],
   tools: [Tools.createAskQuestions()],
   request: makeScriptedRequest(
@@ -54,7 +54,7 @@ export const askQuestionsInputCase: TestCase = {
                   header: "验证确认",
                   options: [
                     { label: "确认通过" },
-                    { label: "不通过", description: "请描述具体问题", input: true },
+                    { label: "不通过", description: "请描述具体问题", input: true, inputPlaceholder: "例如：悬停状态仍显示旧颜色" },
                   ],
                 },
               ],

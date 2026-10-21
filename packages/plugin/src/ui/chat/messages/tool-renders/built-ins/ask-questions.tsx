@@ -7,7 +7,7 @@ import { useChatPanel } from "../../../chat-panel/context";
 import { lang } from "../../../../../i18n";
 import css from "../render.less";
 
-type DraftAnswer = { selected: string[]; other: boolean; otherText: string };
+type DraftAnswer = { selected: string[]; otherText: string; optionInputs: Record<string, string> };
 type RenderOption = AskQuestionsQuestion["options"][number] & { isOther?: boolean };
 
 // 仅将完整的兜底选项识别为“其他”。不要用子串匹配，否则“其他模型”等普通选项会被误判。
@@ -17,9 +17,11 @@ function isOtherLikeOption(label: string): boolean {
   return OTHER_LIKE_OPTION_PATTERN.test(label.trim());
 }
 
-function getRenderOptions(options: AskQuestionsQuestion["options"]): RenderOption[] {
-  const marked = options.map((option) => ({ ...option, isOther: option.input === true || isOtherLikeOption(option.label) }));
+function getRenderOptions(question: AskQuestionsQuestion): RenderOption[] {
+  const marked = question.options.map((option) => ({ ...option, isOther: isOtherLikeOption(option.label) }));
   if (marked.some((option) => option.isOther)) return marked;
+  // 多选题不追加自由输入；单选题已有补充说明入口时也不追加，避免出现两个自由文本入口。
+  if (question.multiSelect || marked.some((option) => option.input)) return marked;
   return [...marked, { label: lang.askQuestions.otherOption(), description: lang.askQuestions.otherOptionDescription(), isOther: true }];
 }
 
@@ -35,10 +37,11 @@ function formatAnswer(answer: string | string[]): string {
 export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRendererContext) {
   const questions: AskQuestionsQuestion[] = Array.isArray(tool.args?.questions) ? tool.args.questions : [];
   const [drafts, setDrafts] = useState<Record<number, DraftAnswer>>({});
+  const [skippedSteps, setSkippedSteps] = useState<number[]>([]);
   const [currentStep, setCurrentStep] = useState(0);
   // 提交后（尤其远端 Browser Task 尚未下发时）submit() 的 Promise 可能会挂起一段时间，
-  // 这里在操作区右侧展示“提交中/跳过中”，避免用户误以为点击无效而重复操作。
-  const [submittingAction, setSubmittingAction] = useState<"confirm" | "skip" | null>(null);
+  // 这里在操作区右侧展示“提交中”，避免用户误以为点击无效而重复操作。
+  const [submittingAction, setSubmittingAction] = useState<"confirm" | null>(null);
   const submitting = submittingAction !== null;
   const answers = useMemo(() => getAnswers(tool), [tool.result?.metadata]);
   const pending = tool.status === "pending";
@@ -55,14 +58,14 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
   const title = lang.askQuestions.title();
   const multiStep = questions.length > 1;
 
-  const getDraft = (index: number): DraftAnswer => drafts[index] ?? { selected: [], other: false, otherText: "" };
+  const getDraft = (index: number): DraftAnswer => drafts[index] ?? { selected: [], otherText: "", optionInputs: {} };
   const updateDraft = (index: number, updater: (current: DraftAnswer) => DraftAnswer) => {
-    setDrafts((current) => ({ ...current, [index]: updater(current[index] ?? { selected: [], other: false, otherText: "" }) }));
+    setDrafts((current) => ({ ...current, [index]: updater(current[index] ?? { selected: [], otherText: "", optionInputs: {} }) }));
   };
 
   const toggleOption = (question: AskQuestionsQuestion, questionIndex: number, label: string) => {
     updateDraft(questionIndex, (current) => {
-      if (!question.multiSelect) return { ...current, selected: [label], other: false };
+      if (!question.multiSelect) return { ...current, selected: [label], otherText: "" };
       const selected = current.selected.includes(label)
         ? current.selected.filter((item) => item !== label)
         : [...current.selected, label];
@@ -70,36 +73,41 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
     });
   };
 
-  const toggleOther = (question: AskQuestionsQuestion, questionIndex: number) => {
-    updateDraft(questionIndex, (current) => ({
-      ...current,
-      selected: question.multiSelect ? current.selected : [],
-      other: !current.other,
-    }));
-  };
-
   const isStepAnswered = (index: number) => {
     const draft = getDraft(index);
-    return draft.selected.length > 0 || (draft.other && draft.otherText.trim().length > 0);
+    return draft.selected.length > 0 || draft.otherText.trim().length > 0;
   };
 
   const canProceed = isStepAnswered(currentStep);
   const isLastStep = currentStep === questions.length - 1;
 
-  const handleNext = () => {
-    if (!canProceed || submitting) return;
-    if (isLastStep) {
-      const result: AskQuestionsAnswers = {};
-      questions.forEach((question, index) => {
+  const submitAnswers = (skipped: number[]) => {
+    const result: AskQuestionsAnswers = {};
+    questions.forEach((question, index) => {
+      if (skipped.includes(index)) {
+        result[question.question] = lang.askQuestions.skipped();
+        return;
+      }
         const draft = getDraft(index);
         const values = [
-          ...draft.selected,
-          ...(draft.other ? [draft.otherText.trim()] : []),
+          ...draft.selected.map((label) => {
+            const input = draft.optionInputs[label]?.trim();
+            return input ? `${label}：${input}` : label;
+          }),
+          ...(draft.otherText.trim() ? [draft.otherText.trim()] : []),
         ];
         result[question.question] = question.multiSelect ? values : values[0];
-      });
-      setSubmittingAction("confirm");
-      submit(result).finally(() => setSubmittingAction(null));
+    });
+    setSubmittingAction("confirm");
+    submit(result).finally(() => setSubmittingAction(null));
+  };
+
+  const handleNext = () => {
+    if (!canProceed || submitting) return;
+    const nextSkippedSteps = skippedSteps.filter((index) => index !== currentStep);
+    setSkippedSteps(nextSkippedSteps);
+    if (isLastStep) {
+      submitAnswers(nextSkippedSteps);
     } else {
       setCurrentStep((s) => s + 1);
     }
@@ -107,8 +115,15 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
 
   const handleSkip = () => {
     if (submitting) return;
-    setSubmittingAction("skip");
-    submit({ skipped: true }).finally(() => setSubmittingAction(null));
+    const nextSkippedSteps = skippedSteps.includes(currentStep)
+      ? skippedSteps
+      : [...skippedSteps, currentStep];
+    setSkippedSteps(nextSkippedSteps);
+    if (isLastStep) {
+      submitAnswers(nextSkippedSteps);
+    } else {
+      setCurrentStep((s) => s + 1);
+    }
   };
 
   if (!pending) {
@@ -140,48 +155,81 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
       </div>
       {multiStep && questions.length > 0 && (
         <div className={css["ask-question-progress"]}>
-          <div className={css["ask-question-progress-track"]}>
-            <div
-              className={css["ask-question-progress-fill"]}
-              style={{ width: `${((currentStep) / questions.length) * 100}%` }}
-            />
-          </div>
-          <span className={css["ask-question-progress-label"]}>{currentStep + 1} / {questions.length}</span>
+          {questions.map((question, index) => (
+            <React.Fragment key={question.question}>
+              <span
+                className={`${css["ask-question-progress-item"]} ${index === currentStep ? css["ask-question-progress-item-current"] : ""} ${index < currentStep ? css["ask-question-progress-item-completed"] : ""}`}
+              >
+                {question.header}
+              </span>
+              {index < questions.length - 1 && <span className={css["ask-question-progress-separator"]}>›</span>}
+            </React.Fragment>
+          ))}
         </div>
       )}
       {questions.length === 0 && <div className={css["ask-question-loading"]}><TextShimmer>{lang.askQuestions.preparingQuestions()}</TextShimmer></div>}
       {currentQuestion && (
         <section className={css["ask-question-item"]} key={currentQuestion.question}>
           <div className={css["ask-question-header"]}>
-            <span className={css["ask-question-chip"]}>{currentQuestion.header}</span>
             <span className={css["ask-question-question"]}>{currentQuestion.question}</span>
           </div>
           <div className={css["ask-question-options"]}>
-            {getRenderOptions(currentQuestion.options).map((option) => {
+            {getRenderOptions(currentQuestion).map((option) => {
               const draft = getDraft(currentStep);
-              const selected = option.isOther ? draft.other : draft.selected.includes(option.label);
+              const selected = draft.selected.includes(option.label);
+              const optionInput = draft.optionInputs[option.label] ?? "";
               return (
                 <React.Fragment key={option.label}>
-                  <button
-                    type="button"
-                    className={`${css["ask-question-option"]} ${selected ? css["ask-question-option-selected"] : ""}`}
-                    disabled={submitting}
-                    onClick={() => (option.isOther
-                      ? toggleOther(currentQuestion, currentStep)
-                      : toggleOption(currentQuestion, currentStep, option.label))}
-                  >
-                    <span className={css["ask-question-option-label"]}>{option.label}</span>
-                    <span className={css["ask-question-option-description"]}>{option.description}</span>
-                  </button>
-                  {option.isOther && draft.other && (
+                  {option.isOther ? (
                     <input
+                      aria-label={option.label}
                       className={css["ask-question-other-input"]}
                       value={draft.otherText}
                       placeholder={option.description?.trim() || lang.askQuestions.otherPlaceholder()}
                       disabled={submitting}
-                      onChange={(event) => updateDraft(currentStep, (current) => ({ ...current, otherText: event.target.value }))}
+                      onChange={(event) => updateDraft(currentStep, (current) => ({
+                        ...current,
+                        selected: !currentQuestion.multiSelect && event.target.value.trim() ? [] : current.selected,
+                        otherText: event.target.value,
+                      }))}
                       onKeyDown={(event) => { if (event.key === "Enter") handleNext(); }}
                     />
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className={`${css["ask-question-option"]} ${selected ? css["ask-question-option-selected"] : ""}`}
+                        disabled={submitting}
+                        onClick={() => toggleOption(currentQuestion, currentStep, option.label)}
+                      >
+                        <span className={css["ask-question-option-label"]}>{option.label}</span>
+                        {option.description && <span className={css["ask-question-option-description"]}>{option.description}</span>}
+                      </button>
+                      {option.input && (
+                        <input
+                          aria-label={`${option.label} 补充说明`}
+                          className={css["ask-question-other-input"]}
+                          value={optionInput}
+                          placeholder={option.inputPlaceholder?.trim() || option.description?.trim() || lang.askQuestions.otherPlaceholder()}
+                          disabled={submitting}
+                          onChange={(event) => updateDraft(currentStep, (current) => {
+                            const text = event.target.value;
+                            const selected = text.trim()
+                              ? (currentQuestion.multiSelect
+                                ? (current.selected.includes(option.label) ? current.selected : [...current.selected, option.label])
+                                : [option.label])
+                              : current.selected;
+                            return {
+                              ...current,
+                              selected,
+                              otherText: !currentQuestion.multiSelect && text.trim() ? "" : current.otherText,
+                              optionInputs: { ...current.optionInputs, [option.label]: text },
+                            };
+                          })}
+                          onKeyDown={(event) => { if (event.key === "Enter") handleNext(); }}
+                        />
+                      )}
+                    </>
                   )}
                   {!option.isOther && option.preview && selected && (
                     <pre className={css["ask-question-option-preview"]}>{option.preview}</pre>
@@ -196,7 +244,7 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
         <div className={css["ask-question-actions"]}>
           {submitting ? (
             <span className={css["ask-question-submitting"]}>
-              <TextShimmer>{submittingAction === "skip" ? lang.askQuestions.skipping() : lang.askQuestions.submitting()}</TextShimmer>
+              <TextShimmer>{lang.askQuestions.submitting()}</TextShimmer>
             </span>
           ) : (
             <>
