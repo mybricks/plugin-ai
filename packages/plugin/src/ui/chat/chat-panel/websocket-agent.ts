@@ -100,6 +100,14 @@ type LLMIter = {
   mode?: AgentMode;
 };
 
+/** /chat/stream 的流式状态：iter 为当前活跃迭代，segment 为该 iter 内的正文累积。 */
+interface ChatStreamState {
+  iter: LLMIter;
+  segment: string;
+  /** 整轮累积的全部正文，仅用于 done 事件兜底判断（流内无 delta 时取 data.answer）。 */
+  answer: string;
+}
+
 interface PersistedSession {
   /** POST /api/v1/sessions 返回的会话 ID（sess_ 前缀），同时用作对话 sessionId。 */
   sessionId: string;
@@ -502,17 +510,11 @@ export class WebSocketAgent {
       signal,
     );
 
-    const iterId = createId("iter");
-    const iter: LLMIter = { iterId, content: "", toolCalls: [], startTime: Date.now(), mode: this.mode };
-    turn.iterations.push(iter);
-    this.events.emit("llm:start", { step: 1, startTime: iter.startTime, iterId });
-
-    let answer = "";
-    const terminal = await this.readChatStream(response, signal, (event) => {
-      const result = this.applyChatEvent(turn, iter, event, answer);
-      answer = result.answer;
-      return result.terminal;
-    });
+    // 远程平台整轮只走一条 SSE，正文与工具交替到达：工具执行后正文重新出现
+    // 视为新一轮 LLM 输出，届时切新 iter（见 applyChatEvent 的 delta 分支），
+    // 保证渲染层按时间顺序交错展示正文与工具（对齐本地 CodeAgent 每 step 一个 iter）。
+    const state: ChatStreamState = { iter: this.startLLMIter(turn), segment: "", answer: "" };
+    const terminal = await this.readChatStream(response, signal, (event) => this.applyChatEvent(turn, state, event));
     if (!terminal) {
       if (signal.aborted) return; // 被 abort，交由上层 finishTurn(abort)
       throw new Error("Chat stream closed before a terminal event");
@@ -660,7 +662,7 @@ export class WebSocketAgent {
     return terminal;
   }
 
-  private applyChatEvent(turn: TurnRecord, iter: LLMIter, event: ChatEvent, answer: string): { answer: string; terminal: boolean } {
+  private applyChatEvent(turn: TurnRecord, state: ChatStreamState, event: ChatEvent): boolean {
     switch (event.name) {
       case "meta":
         // seed 阶段已确定 sessionId；这里只做对齐（平台理论上应回传同一个 id）。
@@ -672,46 +674,68 @@ export class WebSocketAgent {
           this.conversationSessionId = event.data.sessionId;
           this.persistSession();
         }
-        return { answer, terminal: false };
+        return false;
       case "delta": {
         const delta = typeof event.data === "string" ? event.data : String(event.data ?? "");
-        const next = answer + delta;
-        iter.content = next;
-        this.events.emit("llm:content", { delta, content: next, step: 1, iterId: iter.iterId });
-        return { answer: next, terminal: false };
+        // 当前 iter 已承载工具调用时，正文重新出现意味着新一轮 LLM 输出：
+        // 关闭旧 iter 并新开一个，正文按段累积，避免整轮正文压平到顶部、工具堆到底部。
+        if (state.iter.toolCalls.length > 0) {
+          this.closeLLMIter(state.iter);
+          state.iter = this.startLLMIter(turn);
+          state.segment = "";
+        }
+        state.segment += delta;
+        state.answer += delta;
+        state.iter.content = state.segment;
+        this.events.emit("llm:content", { delta, content: state.segment, step: 1, iterId: state.iter.iterId });
+        return false;
       }
       case "tool_start":
-        this.onRemoteToolStart(iter, event.data ?? {});
-        return { answer, terminal: false };
+        this.onRemoteToolStart(state.iter, event.data ?? {});
+        return false;
       case "tool_result":
-        this.onRemoteToolResult(iter, event.data ?? {});
-        return { answer, terminal: false };
+        this.onRemoteToolResult(event.data ?? {});
+        return false;
       case "done": {
         const finalAnswer = event.data?.answer;
-        if (!answer && typeof finalAnswer === "string") {
-          iter.content = finalAnswer;
-          this.events.emit("llm:content", { delta: finalAnswer, content: finalAnswer, step: 1, iterId: iter.iterId });
+        if (!state.answer && typeof finalAnswer === "string") {
+          state.iter.content = finalAnswer;
+          this.events.emit("llm:content", { delta: finalAnswer, content: finalAnswer, step: 1, iterId: state.iter.iterId });
         }
-        iter.endTime = Date.now();
-        this.events.emit("llm:complete", { step: 1, finishReason: "stop", done: true, endTime: iter.endTime, iterId: iter.iterId });
+        this.closeLLMIter(state.iter, true);
         this.finishTurn(turn, "success");
-        return { answer: answer || finalAnswer || "", terminal: true };
+        return true;
       }
       case "stopped":
-        iter.endTime = Date.now();
+        state.iter.endTime = Date.now();
         this.finishTurn(turn, "abort");
-        return { answer, terminal: true };
+        return true;
       case "error":
         throw new Error(String(event.data?.message ?? event.data ?? "Remote agent error"));
       default:
-        return { answer, terminal: false };
+        return false;
     }
+  }
+
+  /** 新开一个 LLM 迭代并广播 llm:start（对齐本地 CodeAgent 每 step 一个 iter 的结构）。 */
+  private startLLMIter(turn: TurnRecord): LLMIter {
+    const iter: LLMIter = { iterId: createId("iter"), content: "", toolCalls: [], startTime: Date.now(), mode: this.mode };
+    turn.iterations.push(iter);
+    this.events.emit("llm:start", { step: 1, startTime: iter.startTime, iterId: iter.iterId });
+    return iter;
+  }
+
+  /** 关闭一个 LLM 迭代；done=true 表示整轮最后一个 iter。 */
+  private closeLLMIter(iter: LLMIter, done = false): void {
+    iter.endTime = Date.now();
+    this.events.emit("llm:complete", { step: 1, finishReason: "stop", done, endTime: iter.endTime, iterId: iter.iterId });
   }
 
   /** 远程侧已执行的工具（如 manatee-connector）：只做进度展示。 */
   private onRemoteToolStart(iter: LLMIter, data: any): void {
     if (!data.callId) return;
-    if (iter.toolCalls.some((item) => item.callId === data.callId)) return;
+    // 跨 iter 全局去重：WS TOOL_CALL（executeTool）可能先注册同一 callId。
+    if (this.toolIterMap.has(data.callId)) return;
     const startTime = Date.now();
     iter.toolCalls.push({
       callId: data.callId,
@@ -732,8 +756,11 @@ export class WebSocketAgent {
     });
   }
 
-  private onRemoteToolResult(iter: LLMIter, data: any): void {
+  private onRemoteToolResult(data: any): void {
     if (!data.callId) return;
+    // 结果可能晚于 iter 切换到达，按 callId 找回承载它的 iter。
+    const iter = this.toolIterMap.get(data.callId);
+    if (!iter) return;
     const call = iter.toolCalls.find((item) => item.callId === data.callId);
     const endTime = Date.now();
     if (data.success === false) {
