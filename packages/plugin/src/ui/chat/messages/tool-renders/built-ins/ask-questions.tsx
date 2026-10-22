@@ -35,7 +35,10 @@ function formatAnswer(answer: string | string[]): string {
 }
 
 export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRendererContext) {
-  const questions: AskQuestionsQuestion[] = Array.isArray(tool.args?.questions) ? tool.args.questions : [];
+  // 正常的 tool:call 会清除 argsContent 并写入完整 args；解析失败时保留原文，避免半截参数进入交互态。
+  // 准备阶段不能让半截参数占用 Sender，也不能展示半截的问题或选项。
+  const preparing = tool.status === "pending" && tool.argsContent !== undefined;
+  const questions: AskQuestionsQuestion[] = !preparing && Array.isArray(tool.args?.questions) ? tool.args.questions : [];
   const [drafts, setDrafts] = useState<Record<number, DraftAnswer>>({});
   const [skippedSteps, setSkippedSteps] = useState<number[]>([]);
   const [currentStep, setCurrentStep] = useState(0);
@@ -45,14 +48,15 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
   const submitting = submittingAction !== null;
   const answers = useMemo(() => getAnswers(tool), [tool.result?.metadata]);
   const pending = tool.status === "pending";
+  const waitingForAnswer = pending && !preparing;
   const { blockingToolSlot } = useChatPanel();
   const blockingToolTarget = blockingToolSlot?.target;
   const setBlockingToolActive = blockingToolSlot?.setActive;
   useLayoutEffect(() => {
-    if (!pending || !blockingToolTarget || !setBlockingToolActive) return;
+    if (!waitingForAnswer || !blockingToolTarget || !setBlockingToolActive) return;
     setBlockingToolActive(tool.callId, true);
     return () => setBlockingToolActive(tool.callId, false);
-  }, [pending, blockingToolTarget, setBlockingToolActive, tool.callId]);
+  }, [waitingForAnswer, blockingToolTarget, setBlockingToolActive, tool.callId]);
   const cancelled = tool.status === "error" && turn?.status === "abort";
   const skipped = tool.result?.metadata?.skipped === true;
   const title = lang.askQuestions.title();
@@ -148,10 +152,10 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
   const currentQuestion = questions[currentStep];
 
   const questionCard = (
-    <div className={`${css["ask-question-card"]} ${blockingToolTarget ? css["ask-question-card-in-sender"] : ""}`}>
+    <div className={`${css["ask-question-card"]} ${waitingForAnswer && blockingToolTarget ? css["ask-question-card-in-sender"] : ""}`}>
       <div className={css["ask-question-toolbar"]}>
         <span className={css["ask-question-command"]}>{title}</span>
-        <span className={css["ask-question-state"]}>{questions.length > 0 ? lang.askQuestions.waitingForSelection() : lang.askQuestions.preparing()}</span>
+        <span className={css["ask-question-state"]}>{waitingForAnswer ? lang.askQuestions.waitingForSelection() : lang.askQuestions.preparing()}</span>
       </div>
       {multiStep && questions.length > 0 && (
         <div className={css["ask-question-progress"]}>
@@ -261,5 +265,5 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
       )}
     </div>
   );
-  return pending && blockingToolTarget ? createPortal(questionCard, blockingToolTarget) : questionCard;
+  return waitingForAnswer && blockingToolTarget ? createPortal(questionCard, blockingToolTarget) : questionCard;
 }
