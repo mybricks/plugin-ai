@@ -1052,7 +1052,7 @@ function parseSseEvent(raw: string): ChatEvent | null {
   for (const line of raw.split(/\r?\n/)) {
     if (line.startsWith(":")) continue; // 忽略 SSE 注释行（如心跳 : ping）
     if (line.startsWith("event:")) name = line.slice(6).trim();
-    else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
+    else if (line.startsWith("data:")) data.push(line.slice(5));
   }
   if (!data.length) return null;
   const text = data.join("\n");
