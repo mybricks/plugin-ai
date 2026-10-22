@@ -44,19 +44,13 @@ const DESCRIPTION = `在执行过程中向用户提出 1 至 4 个问题，用�
 
 规则：
 - 每次调用提 1 至 4 题，每题提供 1 至 4 个选项。
-- 同一次调用中的问题文本和选项 label 必须全局唯一。
-- 不要自行添加“其他”选项，UI 会自动提供。
 - 如有推荐项，放在第一项，并在 label 末尾添加 (推荐)。
 - multiSelect 为 true 时，问题措辞应使用可多选、非互斥的复数表达。
 - header 是用于展示的短标签，最多 12 个字符。
 - preview 为可选的纯文本预览内容，仅允许用于单选题。
 - plan 模式下仅用于澄清需求或方案取舍，不能用于请求确认计划。
-- 单选题未提供 input: true 选项时，UI 会在选项后提供一个“或者，告诉我应该怎么做”的自由输入框；用户填写后即可提交，无需先点击选项。
-- 多选题不会自动追加自由输入框。
-- 普通选项可设置 input: true，以始终展示一项可选的补充说明输入框。填写说明会自动选择该选项，回传结果保留选项名称和补充说明。
-- 单选题已有 input: true 选项时，UI 不会自动追加“其他”，以免出现重复的自由文本入口。
-- inputPlaceholder 可指定该输入框的提示文案；未提供时回退到 description。description 仍用于解释普通选项的影响或取舍。
-- 验证确认场景：提供「确认通过」与「不通过」（input: true）两个选项即可；用户可直接填写“不通过”的具体问题。`;
+- 单选题未提供 input: true 选项时，UI 会在选项后提供一个“或者，告诉我应该怎么做”的自由输入框，不要自行添加“其他”选项。
+- 普通选项可设置 input: true，以始终展示一项可选的补充说明输入框。填写说明会自动选择该选项，回传结果保留选项名称和补充说明。`;
 
 function validateParams(params: AskQuestionsParams): void {
   if (!Array.isArray(params?.questions) || params.questions.length < 1 || params.questions.length > 4) {

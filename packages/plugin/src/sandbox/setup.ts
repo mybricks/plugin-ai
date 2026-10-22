@@ -318,7 +318,7 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
         }
         if (options.modelId) {
           context
-            .getModelSelection(agentKey)
+            .getModelSelection(agent?.key ?? agentKey)
             ?.setSelected(options.providerId, options.modelId);
         }
       },
