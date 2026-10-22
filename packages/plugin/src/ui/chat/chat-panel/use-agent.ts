@@ -249,13 +249,15 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
   }, [agent, canExecutePlan]);
 
   const retry = useCallback((turnId: string, selection?: ModelSelection) => {
-    if (!agent || isDisabled) return;
+    if (!agent) return;
+    // 交给 aiQueue 的 request guard 统一处理禁用态并提示用户；在这里
+    // 提前返回会让消息气泡的“重试”按钮变成无反馈的静默操作。
     context.aiQueue.send(
       agent,
       () => selection ? agent.retry({ turnId, ...selection }) : agent.retry(turnId),
       { message: lang.common.retry() },
     );
-  }, [agent, isDisabled]);
+  }, [agent]);
 
   const setChatMode = useCallback((mode: AgentMode | null) => {
     if (mode) agent?.setMode(mode, "ui-change");

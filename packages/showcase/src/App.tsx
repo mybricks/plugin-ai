@@ -125,6 +125,11 @@ export default function App() {
       ...createTestAIPluginParams(),
       key: `@mybricks/plugin-ai/showcase/${id}`,
       history: new IDBHistory({ dbName: `@mybricks/plugin-ai/showcase/history/${id}` }),
+      // // 本地联调 aicode-agents。注释此块即可恢复 Showcase 的本地 CodeAgent。
+      // remoteAgent: {
+      //   baseUrl: "http://localhost:3001/agents/api",
+      //   workspaceId: id,
+      // },
       codingConfig: { availableLibraries: [] },
       plugins: [
         createTaskFirstPlugin()

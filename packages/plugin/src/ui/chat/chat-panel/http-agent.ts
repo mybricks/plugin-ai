@@ -470,14 +470,18 @@ export class HttpAgent {
       // 本地该 turn，避免本地状态与服务端不一致。
       await this.calibrateLastTurn(turnId);
       const turn = this.findTurn(turnId);
-      if (turn?.endTime != null) return;
+      // endTime 只表示上一轮 attempt 已经结束；error turn 仍必须把 retry
+      // 请求交给服务端处理。否则模型异常会在客户端静默 return，根本不会
+      // 发起 /retry 请求。
       await this.hooks?.beforeTurn?.({
         message: turn?.userText ?? "",
         formattedMessage: turn?.userFormattedText ?? turn?.userText ?? "",
         attachments: (turn?.userAttachments as any[]) ?? [],
       });
       await this.hooks?.beforeRequest?.({});
-      if (this.isDisabled()) return;
+      // 禁用状态可能在异步 hooks 执行期间发生变化；这仍是用户主动触发
+      // 的 retry，必须走统一提示而不能静默返回。
+      if (this.blockIfDisabled()) return;
       await this.connectBrowserTools(params.signal).catch((error) => {
         console.warn("[plugin-ai] browser tool connection failed", error);
       });
