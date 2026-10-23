@@ -5,6 +5,7 @@ import usingToolsSection from "./using-tools-section.md";
 import GIT_PUSH_PROMPT from "./git-push.md";
 import { createTaskFirstPlugin } from "../../plugins/task-first";
 import { createImpactDocumentPlugin } from "../../plugins/impact-document";
+import { createDevEnvPrepPlugin, type ProjectRunnerImplementation } from "../../plugins/dev-env-prep";
 
 /** CLI PDE owns its task, review, and audit documents under this directory. */
 const CLI_PDE_CONFIG_DIR_NAME = ".lingchuang";
@@ -45,10 +46,12 @@ interface CliPdeAgentOptionBuilderOptions {
   plugins?: CodeAgentPluginInput[];
   /** 追加到 CLI PDE 的工具；ask_questions 始终由 preset 内置。 */
   tools?: Tool[];
+  /** 「开发环境准备」SubAgent 的 project-runner 实现；不传时工具仍注册，调用会报错。 */
+  projectRunnerImplementation?: ProjectRunnerImplementation;
 }
 
 type CliPdeAgentOptionBuilderResult<T extends CliPdeAgentOptionBuilderOptions> =
-  Omit<T, "configDirName" | "promptSections" | "plugins" | "tools"> & {
+  Omit<T, "configDirName" | "promptSections" | "plugins" | "tools" | "projectRunnerImplementation"> & {
     configDirName: string;
     promptSections: PromptSections;
     plugins: CodeAgentPluginInput[];
@@ -63,7 +66,7 @@ type CliPdeAgentOptionBuilderResult<T extends CliPdeAgentOptionBuilderOptions> =
 export function cliPdeAgentOptionBuilder<T extends CliPdeAgentOptionBuilderOptions>(
   options: T,
 ): CliPdeAgentOptionBuilderResult<T> {
-  const { configDirName, plugins, tools, ...restOptions } = options;
+  const { configDirName, plugins, tools, projectRunnerImplementation, ...restOptions } = options;
   const resolvedConfigDirName = configDirName ?? CLI_PDE_CONFIG_DIR_NAME;
 
   return {
@@ -75,6 +78,7 @@ export function cliPdeAgentOptionBuilder<T extends CliPdeAgentOptionBuilderOptio
     },
     plugins: [
       cliPdePlugin,
+      createDevEnvPrepPlugin({ projectRunnerImplementation }),
       createTaskFirstPlugin(),
       createImpactDocumentPlugin({ configDirName: resolvedConfigDirName }),
       ...(plugins ?? []),
