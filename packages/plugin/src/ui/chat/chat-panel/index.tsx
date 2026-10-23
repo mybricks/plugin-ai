@@ -156,7 +156,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   renderEmpty,
   renderSenderFooter,
   size = "small",
-  messagesRenderVariant = "card",
+  messagesRenderVariant = "line",
   scrollWithSender = false,
   className,
   style,
