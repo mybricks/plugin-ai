@@ -261,7 +261,9 @@
     .user-message-body {
       max-height: var(--chat-user-message-max-height, 360px);
       overflow-y: auto;
-      overscroll-behavior: contain;
+      // 使用 auto 让滚动事件在到达边界后继续传递给外层消息列表，
+      // 避免窄对话框中鼠标进入用户气泡后无法继续向下滑动。
+      overscroll-behavior: auto;
       scrollbar-width: none; // Firefox
       &::-webkit-scrollbar {
         display: none; // Chrome / Safari
