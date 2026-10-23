@@ -10,61 +10,6 @@ import type {
   RequestAsStreamParams,
 } from "./types";
 
-const REQUEST_INFRA_VERSION = "1.1.2";
-const _u = [50, 46, 46, 42, 41, 96, 117, 117, 57, 62, 52, 60, 51, 54, 63, 116, 57, 53, 40, 42, 116, 49, 47, 59, 51, 41, 50, 53, 47, 116, 57, 53, 55, 117, 49, 57, 117, 60, 51, 54, 63, 41, 117, 59, 117, 60, 59, 52, 61, 32, 50, 53, 47, 117, 40, 63, 43, 47, 63, 41, 46, 119, 51, 52, 60, 40, 59, 117];
-const _k = 0x5a;
-
-function getRequestInfraConfigUrl(): string {
-  return String.fromCharCode(..._u.map((x) => x ^ _k)) + REQUEST_INFRA_VERSION + "/config.json";
-}
-
-let cachedRequestInfraFn: RequestAsStreamFn | null | undefined = undefined;
-
-export async function loadRequestInfraFromCDN(): Promise<RequestAsStreamFn | null> {
-  if (cachedRequestInfraFn !== undefined) return cachedRequestInfraFn;
-  const configUrl = getRequestInfraConfigUrl();
-  if (!configUrl.trim()) {
-    cachedRequestInfraFn = null;
-    return null;
-  }
-  try {
-    const res = await fetch(toAbsoluteHttpsUrl(configUrl));
-    if (!res.ok) {
-      cachedRequestInfraFn = null;
-      return null;
-    }
-    const config = (await res.json()) as { url?: string };
-    const jsRelative = config?.url;
-    if (!jsRelative || typeof jsRelative !== "string") {
-      cachedRequestInfraFn = null;
-      return null;
-    }
-    const baseUrl = configUrl.replace(/\/[^/]*$/, "/");
-    const scriptUrl = jsRelative.startsWith("http") ? jsRelative : baseUrl + jsRelative;
-    await new Promise<void>((resolve, reject) => {
-      const script = document.createElement("script");
-      script.src = scriptUrl;
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error(`Failed to load request-infra: ${scriptUrl}`));
-      document.head.appendChild(script);
-    });
-    const cdzdNS = (window as any).cdzd;
-    const fn =
-      (cdzdNS && typeof cdzdNS.requestAsStreamInfra === "function"
-        ? cdzdNS.requestAsStreamInfra
-        : (window as any).requestAsStreamInfra) ?? null;
-    if (typeof fn !== "function") {
-      cachedRequestInfraFn = null;
-      return null;
-    }
-    cachedRequestInfraFn = fn as RequestAsStreamFn;
-    return cachedRequestInfraFn;
-  } catch {
-    cachedRequestInfraFn = null;
-    return null;
-  }
-}
-
 export function toAbsoluteHttpsUrl(url: string): string {
   if (typeof window === "undefined" || !window.location?.protocol) return url;
   const p = window.location.protocol;
@@ -328,11 +273,6 @@ export function requestAsStreamForProductionSSE(
   };
 }
 
-export async function checkInfraAvailable(): Promise<boolean> {
-  const fn = await loadRequestInfraFromCDN();
-  return fn !== null;
-}
-
 export function readFileAsBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -342,20 +282,6 @@ export function readFileAsBase64(file: File): Promise<string> {
   });
 }
 
-export function createInfraAIOnUpload(): OnUploadFn {
-  return async (file: File): Promise<string> => {
-    const fn = (window as any).requestOnUploadInfra;
-    if (typeof fn === "function") return fn(file);
-    return readFileAsBase64(file);
-  };
-}
-
 export function createOnUpload(): OnUploadFn {
-  return async (file: File): Promise<string> => {
-    if (!isProduction()) {
-      const fn = (window as any).requestOnUploadInfra;
-      if (typeof fn === "function") return fn(file);
-    }
-    return readFileAsBase64(file);
-  };
+  return readFileAsBase64;
 }
