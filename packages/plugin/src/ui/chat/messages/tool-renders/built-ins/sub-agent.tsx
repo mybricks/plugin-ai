@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState } from "react";
 import type { ToolRecord } from "../index";
 import { TextShimmer } from "../../../../components/text-shimmer";
 import { ChevronRight } from "../../../../components/icons";
+import { ElapsedTime } from "../../../../components/elapsed-time";
 import { Duration, StatusIcon } from "../shared";
 import { InitProjectRenderer } from "./init-project";
 import { lang } from "../../../../../i18n";
@@ -15,6 +16,8 @@ type SubAgentToolCall = {
   output?: string;
   error?: string;
   status: "running" | "success" | "error";
+  startTime?: number;
+  endTime?: number;
 };
 
 type SubAgentIteration = {
@@ -34,7 +37,8 @@ function basename(p: string): string {
   return p.replace(/\\/g, "/").split("/").pop() ?? p;
 }
 
-function getToolLabel(name: string, args: any): string {
+function getToolLabel(name: string, args: any, title?: string): string {
+  if (title) return title;
   const a = args ?? {};
   switch (name) {
     case "read_file":    return `读取 ${basename(a.path ?? a.file ?? "文件")}`;
@@ -48,13 +52,17 @@ function getToolLabel(name: string, args: any): string {
     case "glob_search":  return a.pattern ? `查找 ${String(a.pattern).slice(0, 30)}` : "查找文件";
     case "web_fetch":    return a.url ? `获取 ${String(a.url).slice(0, 40)}` : "网络请求";
     case "use_skill":    return a.name ? `使用技能 ${a.name}` : "使用技能";
+    case "project-runner": return a.command ? `运行 ${a.command}` : "项目运行时";
     default: {
-      // 有自定义 title 直接用
       const pathLike = a.path ?? a.file ?? a.filePath;
       if (pathLike) return `${name} ${basename(pathLike)}`;
       return name;
     }
   }
+}
+
+function hasIterationPeek(iteration: SubAgentIteration): boolean {
+  return Boolean(iteration.content?.trim()) || iteration.toolCalls.length > 0;
 }
 
 export const SubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
@@ -70,25 +78,30 @@ const DefaultSubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
 
   const agentType: string = tool.args?.type ?? "";
   const taskName = tool.args?.name ?? "";
-  const displayTool = tool;
-  const isPending = displayTool.status === "pending";
+  const isPending = tool.status === "pending";
 
   const iterations = getIterations(tool);
+  const visibleIterations = isPending
+    ? iterations
+    : iterations.filter(hasIterationPeek);
   const allToolCalls = iterations.flatMap((it) => it.toolCalls);
   const toolCallCount = allToolCalls.length;
-  const latestIteration = iterations[iterations.length - 1];
+  const hasRunningTool = allToolCalls.some((toolCall) => toolCall.status === "running");
+  const canExpand = visibleIterations.length > 1 || visibleIterations.some((it) => it.content.trim().length > 80);
 
   const headerTitle = isPending
-    ? taskName ? `${taskName}…` : agentType ? `${agentType}…` : lang.tool.processing()
+    ? hasRunningTool ? lang.tool.executingTools() : taskName ? `${taskName}…` : agentType ? `${agentType}…` : lang.tool.processing()
     : taskName || agentType || lang.tool.completed();
 
   const finalOutput = tool.result?.output ?? "";
+  const lastContent = visibleIterations[visibleIterations.length - 1]?.content?.trim() ?? "";
+  const showResult = !isPending && !!finalOutput && (!lastContent || !finalOutput.startsWith(lastContent));
 
   return (
     <div className={css["sub-agent-card"]}>
       <div className={css["sub-agent-header"]}>
         <span className={css["sub-agent-header-icon"]}>
-          <StatusIcon tool={displayTool} />
+          <StatusIcon tool={tool} />
         </span>
         <span className={css["sub-agent-header-title"]}>
           {isPending ? <TextShimmer>{headerTitle}</TextShimmer> : headerTitle}
@@ -96,36 +109,30 @@ const DefaultSubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
         {toolCallCount > 0 && (
           <span className={css["sub-agent-header-meta"]}>{lang.tool.toolCalls(toolCallCount)}</span>
         )}
-        <Duration tool={displayTool} />
+        <Duration tool={tool} />
       </div>
 
-      {iterations.length > 0 && (
+      {visibleIterations.length > 0 && (
         <div className={css["sub-agent-steps"]}>
-          {isPending && latestIteration ? (
-            <IterationLive iteration={latestIteration} />
-          ) : (
-            <>
-              <IterationList
-                iterations={expanded ? iterations : []}
-                latestIteration={latestIteration}
-                isPending={isPending}
-                expanded={expanded}
-              />
-              {toolCallCount > 1 && (
-                <button
-                  type="button"
-                  className={css["sub-agent-expand-btn"]}
-                  onClick={() => setExpanded((v) => !v)}
-                >
-                  {expanded ? lang.tool.subAgentCollapseRounds() : lang.tool.subAgentExpandRounds()}
-                </button>
-              )}
-            </>
+          <IterationTimeline
+            iterations={visibleIterations}
+            live={isPending}
+            hasRunningTool={hasRunningTool}
+            expanded={expanded}
+          />
+          {!isPending && canExpand && (
+            <button
+              type="button"
+              className={css["sub-agent-expand-btn"]}
+              onClick={() => setExpanded((v) => !v)}
+            >
+              {expanded ? lang.tool.subAgentCollapseRounds() : lang.tool.subAgentExpandRounds()}
+            </button>
           )}
         </div>
       )}
 
-      {!isPending && finalOutput && (
+      {showResult && (
         <div className={css["sub-agent-result"]}>
           <pre className={css["sub-agent-result-content"]}>
             <code>{finalOutput}</code>
@@ -136,57 +143,111 @@ const DefaultSubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
   );
 };
 
-const IterationList = ({
+const IterationTimeline = ({
   iterations,
-  latestIteration,
-  isPending,
+  live,
+  hasRunningTool,
   expanded,
 }: {
   iterations: SubAgentIteration[];
-  latestIteration?: SubAgentIteration;
-  isPending: boolean;
+  live: boolean;
+  hasRunningTool: boolean;
   expanded: boolean;
 }) => {
-  if (expanded) {
-    return (
-      <>
-        {iterations.map((iter) => (
-          <IterationSection key={iter.iterId} iteration={iter} />
-        ))}
-      </>
-    );
-  }
-  if (latestIteration) {
-    return <IterationSection iteration={latestIteration} />;
-  }
-  return null;
-};
-
-const IterationSection = ({ iteration }: { iteration: SubAgentIteration }) => (
-  <>
-    {iteration.toolCalls.map((tc) => (
-      <ToolCallRow key={tc.callId} toolCall={tc} />
-    ))}
-  </>
-);
-
-const IterationLive = ({ iteration }: { iteration: SubAgentIteration }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    if (!live || !scrollRef.current) return;
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   });
 
-  const completedCalls = iteration.toolCalls.filter((tc) => tc.status !== "running");
-  const runningCall = iteration.toolCalls.find((tc) => tc.status === "running");
+  return (
+    <div
+      className={live || !expanded ? css["sub-agent-live"] : undefined}
+      ref={scrollRef}
+    >
+      {iterations.map((iteration, index) => (
+        <IterationSection
+          key={iteration.iterId}
+          iteration={iteration}
+          index={index}
+          isLive={live && index === iterations.length - 1}
+          hasRunningTool={hasRunningTool}
+          expanded={expanded}
+        />
+      ))}
+    </div>
+  );
+};
+
+const IterationSection = ({
+  iteration,
+  index,
+  isLive,
+  hasRunningTool,
+  expanded,
+}: {
+  iteration: SubAgentIteration;
+  index: number;
+  isLive: boolean;
+  hasRunningTool: boolean;
+  expanded: boolean;
+}) => {
+  const content = iteration.content?.trim() ?? "";
+  const awaiting = isLive && !content && iteration.toolCalls.length === 0 && !hasRunningTool;
 
   return (
-    <div className={css["sub-agent-live"]} ref={scrollRef}>
-      {completedCalls.map((tc) => (
-        <ToolCallRow key={tc.callId} toolCall={tc} />
+    <div className={css["sa-iter"]}>
+      {expanded && (
+        <div className={css["sa-iter-round"]}>{lang.tool.subAgentRound(index + 1)}</div>
+      )}
+      {(content || awaiting) && (
+        <IterationContent content={content} isLive={isLive} expanded={expanded} awaiting={awaiting} />
+      )}
+      {iteration.toolCalls.map((tc) => (
+        <ToolCallRow
+          key={tc.callId}
+          toolCall={tc}
+          isLatest={tc.status === "running"}
+        />
       ))}
-      {runningCall && <ToolCallRow toolCall={runningCall} isLatest />}
+    </div>
+  );
+};
+
+const IterationContent = ({
+  content,
+  isLive,
+  expanded,
+  awaiting,
+}: {
+  content: string;
+  isLive: boolean;
+  expanded: boolean;
+  awaiting: boolean;
+}) => {
+  const tailRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isLive || !tailRef.current) return;
+    tailRef.current.scrollTop = tailRef.current.scrollHeight;
+  });
+
+  if (awaiting) {
+    return (
+      <div className={css["sa-iter-content"]}>
+        <TextShimmer>{lang.tool.awaitingModelOutput()}</TextShimmer>
+      </div>
+    );
+  }
+
+  const className = [
+    css["sa-iter-content"],
+    isLive ? css["sa-iter-content-live"] : "",
+    expanded && !isLive ? css["sa-iter-content-full"] : "",
+  ].filter(Boolean).join(" ");
+
+  return (
+    <div className={className} ref={isLive ? tailRef : undefined}>
+      {content}
     </div>
   );
 };
@@ -199,9 +260,7 @@ const ToolCallRow = ({
   isLatest?: boolean;
 }) => {
   const [detailOpen, setDetailOpen] = useState(false);
-  const label = toolCall.title
-    ? `${toolCall.title}`
-    : getToolLabel(toolCall.name, toolCall.args);
+  const label = getToolLabel(toolCall.name, toolCall.args, toolCall.title);
   const hasDetail = toolCall.args !== undefined || !!toolCall.output || !!toolCall.error;
 
   return (
@@ -214,6 +273,14 @@ const ToolCallRow = ({
         <span className={css["sa-row-label"]}>
           {isLatest ? <TextShimmer>{label}</TextShimmer> : label}
         </span>
+        {toolCall.startTime && (
+          <ElapsedTime
+            startTime={toolCall.startTime}
+            endTime={toolCall.status === "running" ? undefined : toolCall.endTime}
+            className={css["tool-duration"]}
+            showImmediately={toolCall.status === "running"}
+          />
+        )}
         {toolCall.status === "error" && (
           <span className={css["sa-row-error-badge"]}>{lang.tool.failed()}</span>
         )}

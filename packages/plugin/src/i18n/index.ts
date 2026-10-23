@@ -259,6 +259,7 @@ export const lang = {
     latestOutput: () => i18n({ zh: "最新输出", en: "Latest output" }),
     executionResult: () => i18n({ zh: "执行结果", en: "Result" }),
     awaitingModelOutput: () => i18n({ zh: "等待模型输出…", en: "Waiting for output…" }),
+    executingTools: () => i18n({ zh: "正在执行工具…", en: "Running tools…" }),
     toolCalls: (count: number) => i18n({ zh: `${count} 次调用`, en: `${count} calls` }),
     invokedTools: () => i18n({ zh: "调用工具", en: "Tool calls" }),
     expandCalls: () => i18n({ zh: "展开调用", en: "Show calls" }),
