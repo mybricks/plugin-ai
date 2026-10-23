@@ -371,7 +371,7 @@ export const StreamingCodeCard = ({ tool, icon, title, content, lang: langOverri
 };
 
 export const CodeCard = ({ tool, icon, title, content, lineMeta, diffMode, showCode = true }: CodeCardProps) => {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [diffBroken, setDiffBroken] = useState(false);
   const lang = detectLang(tool.args?.path ?? "");
   const lineCount = content ? content.split("\n").length : 0;
@@ -431,7 +431,7 @@ export interface BatchItemProps {
 }
 
 export const BatchItem = ({ tool, path, name, content, diffMode, streaming, error }: BatchItemProps) => {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [diffBroken, setDiffBroken] = useState(false);
   const lang = detectLang(path);
   const lineCount = content ? content.split("\n").length : 0;

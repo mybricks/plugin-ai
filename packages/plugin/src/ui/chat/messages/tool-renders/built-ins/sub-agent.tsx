@@ -20,7 +20,7 @@ export const SubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
 // ─── 默认 SubAgent 渲染器 ─────────────────────────────────────────────────────
 
 const DefaultSubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
 
   const agentType: string = tool.args?.type ?? "";
   const taskName = tool.args?.name ?? "";
