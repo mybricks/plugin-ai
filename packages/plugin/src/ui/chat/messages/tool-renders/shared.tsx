@@ -115,10 +115,12 @@ export interface LineToolRendererProps {
   meta?: React.ReactNode;
   detail?: React.ReactNode;
   children?: React.ReactNode;
+  /** 流式场景下默认展开内容，不要求用户手动点击。 */
+  defaultExpanded?: boolean;
 }
 
-export const LineToolRenderer = ({ tool, icon, title, meta, detail, children }: LineToolRendererProps) => {
-  const [expanded, setExpanded] = useState(false);
+export const LineToolRenderer = ({ tool, icon, title, meta, detail, children, defaultExpanded = false }: LineToolRendererProps) => {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const content = children ?? detail;
   const canExpand = content !== undefined && content !== null && content !== false && content !== "";
   const isPending = tool.status === "pending";
@@ -336,21 +338,40 @@ export interface CodeCardProps {
   showCode?: boolean;
 }
 
-export const PendingCodeCard = ({ tool, icon, title }: { tool: ToolRecord; icon: React.ReactElement; title: string }) => (
-  <div className={css["code-card"]}>
-    <div className={css["code-card-header"]} style={{ cursor: "default" }}>
-      <span className={css["code-card-icon"]}>
-        <StatusIcon tool={tool} icon={icon} />
-      </span>
-      <span className={css["code-card-filename"]}><TextShimmer>{title}</TextShimmer></span>
-      <Duration tool={tool} />
+export const PendingCodeCard = ({ tool, icon, title }: { tool: ToolRecord; icon: React.ReactElement; title: string }) => {
+  const { messagesRenderVariant } = useChatPanel();
+  if (messagesRenderVariant === "line") {
+    return <LineToolRenderer tool={tool} icon={icon} title={title} />;
+  }
+  return (
+    <div className={css["code-card"]}>
+      <div className={css["code-card-header"]} style={{ cursor: "default" }}>
+        <span className={css["code-card-icon"]}>
+          <StatusIcon tool={tool} icon={icon} />
+        </span>
+        <span className={css["code-card-filename"]}><TextShimmer>{title}</TextShimmer></span>
+        <Duration tool={tool} />
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 export const StreamingCodeCard = ({ tool, icon, title, content, lang: langOverride }: { tool: ToolRecord; icon: React.ReactElement; title: string; content: string; lang?: string }) => {
-  const lang = langOverride ?? detectLang(tool.args?.path ?? "");
+  const { messagesRenderVariant } = useChatPanel();
   const lineCount = content ? content.split("\n").length : 0;
+  if (messagesRenderVariant === "line") {
+    return (
+      <LineToolRenderer
+        tool={tool}
+        icon={icon}
+        title={title}
+        meta={lineCount > 0 ? `${lineCount} 行` : undefined}
+        detail={content || undefined}
+        defaultExpanded
+      />
+    );
+  }
+  const lang = langOverride ?? detectLang(tool.args?.path ?? "");
   return (
     <div className={css["code-card"]}>
       <div className={`${css["code-card-header"]} ${css["code-card-header-with-body"]}`} style={{ cursor: "default" }}>
@@ -371,12 +392,33 @@ export const StreamingCodeCard = ({ tool, icon, title, content, lang: langOverri
 };
 
 export const CodeCard = ({ tool, icon, title, content, lineMeta, diffMode, showCode = true }: CodeCardProps) => {
+  const { messagesRenderVariant } = useChatPanel();
   const [collapsed, setCollapsed] = useState(true);
   const [diffBroken, setDiffBroken] = useState(false);
   const lang = detectLang(tool.args?.path ?? "");
   const lineCount = content ? content.split("\n").length : 0;
 
   const isError = tool.status === "error";
+
+  if (messagesRenderVariant === "line") {
+    const hasBody = showCode && (diffMode || content);
+    const meta = lineMeta
+      ?? (lineCount > 0 && !isError && showCode ? `${lineCount} 行` : undefined);
+    return (
+      <LineToolRenderer
+        tool={tool}
+        icon={isError ? <ErrorIcon /> : icon}
+        title={title}
+        meta={meta}
+        detail={hasBody
+          ? (diffMode && !diffBroken
+              ? <DiffView oldStr={diffMode.oldStr} newStr={diffMode.newStr} onError={() => setDiffBroken(true)} />
+              : content)
+          : undefined}
+      />
+    );
+  }
+
   const hasBody = showCode && (diffMode || content);
   const isCollapsed = !showCode || collapsed || diffBroken || isError;
   const canToggle = showCode && !diffBroken && !isError && hasBody;
@@ -433,9 +475,28 @@ export interface BatchItemProps {
 export const BatchItem = ({ tool, path, name, content, diffMode, streaming, error }: BatchItemProps) => {
   const [collapsed, setCollapsed] = useState(true);
   const [diffBroken, setDiffBroken] = useState(false);
+  const { messagesRenderVariant } = useChatPanel();
   const lang = detectLang(path);
   const lineCount = content ? content.split("\n").length : 0;
   const isError = tool.status === "error";
+
+  if (messagesRenderVariant === "line") {
+    const hasBody = !!(diffMode || content) && !error;
+    return (
+      <LineToolRenderer
+        tool={tool}
+        icon={streaming ? <Loading /> : error ? <ErrorIcon /> : <Success />}
+        title={streaming ? `${name}...` : name}
+        meta={lineCount > 0 ? `${lineCount} 行` : undefined}
+        detail={hasBody
+          ? (diffMode && !diffBroken
+              ? <DiffView oldStr={diffMode.oldStr} newStr={diffMode.newStr} onError={() => setDiffBroken(true)} />
+              : content)
+          : undefined}
+        defaultExpanded={streaming}
+      />
+    );
+  }
 
   const hasBody = !!(diffMode || content) && !error;
   const isCollapsed = streaming ? false : (collapsed || diffBroken || !!error);
@@ -495,12 +556,27 @@ export interface BatchGroupProps {
 export const BatchGroup = ({ tool, icon, verb, items, count, hasPartialError }: BatchGroupProps) => {
   const isError = tool.status === "error";
   const isPending = tool.status === "pending";
+  const { messagesRenderVariant } = useChatPanel();
 
   const headerTitle = isPending
     ? `${verb}...`
     : verb;
 
   const metaLabel = count > 0 ? `${count} 个文件` : undefined;
+
+  if (messagesRenderVariant === "line") {
+    return (
+      <div className={css["tool-line-group"]}>
+        <LineToolRenderer
+          tool={tool}
+          icon={isPending ? <Loading /> : isError ? <ErrorIcon /> : hasPartialError ? <ErrorIcon /> : icon}
+          title={headerTitle}
+          meta={metaLabel}
+        />
+        {(hasPartialError || !isError) && items}
+      </div>
+    );
+  }
 
   return (
     <div className={css["batch-group"]}>
