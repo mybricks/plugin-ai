@@ -63,7 +63,7 @@ function createConfig(dump: unknown, aiPlugin: unknown) {
   };
 }
 
-function readUIFile(text: string): Record<string, unknown> {
+function readProjectFile(text: string): Record<string, unknown> {
   let project: unknown;
   try {
     project = JSON.parse(text);
@@ -78,7 +78,7 @@ function readUIFile(text: string): Record<string, unknown> {
     || !("content" in project)
     || !(project as { content?: unknown }).content
   ) {
-    throw new Error("数据格式不正确，请导入从 MyBricks 导出的 .ui 文件。");
+    throw new Error("数据格式不正确，请导入从 MyBricks 导出的 .ui 或 dumpJson（.json）文件。");
   }
 
   return project as Record<string, unknown>;
@@ -166,7 +166,7 @@ export default function App() {
     }
   };
 
-  const importUI = async (event: ChangeEvent<HTMLInputElement>) => {
+  const importProject = async (event: ChangeEvent<HTMLInputElement>) => {
     const input = event.currentTarget;
     const file = input.files?.[0];
     // 允许用户连续选择同一份文件。
@@ -176,12 +176,12 @@ export default function App() {
     setError("");
     setIsImporting(true);
     try {
-      const project = readUIFile(await file.text());
+      const project = readProjectFile(await file.text());
       if (!window.confirm("导入会覆盖当前工作区中已保存的设计器数据，是否继续？")) return;
       await saveDump(id, project);
       window.location.reload();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "导入 .ui 文件失败。");
+      setError(reason instanceof Error ? reason.message : "导入文件失败。");
     } finally {
       setIsImporting(false);
     }
@@ -250,7 +250,7 @@ export default function App() {
         toolbar={() => (
           <div className="toolbar">
             <button className="text-button" disabled={isSaving} onClick={() => void save()}>{isSaving ? "保存中…" : "保存"}</button>
-            <button className="text-button" disabled={isImporting} onClick={() => importInputRef.current?.click()}>{isImporting ? "导入中…" : "导入 .ui"}</button>
+            <button className="text-button" disabled={isImporting} onClick={() => importInputRef.current?.click()}>{isImporting ? "导入中…" : "导入 .ui / JSON"}</button>
             <button className="text-button" onClick={() => void importRxAI()}>导入 .rxai</button>
             <button className="text-button" disabled={isClearing} onClick={() => void clear()}>{isClearing ? "清空中…" : "清空"}</button>
             <div className="switcher">
@@ -275,7 +275,7 @@ export default function App() {
           </div>
         )}
       />
-      <input ref={importInputRef} className="file-input" type="file" accept=".ui" onChange={(event) => void importUI(event)} />
+      <input ref={importInputRef} className="file-input" type="file" accept=".ui,.json,application/json" onChange={(event) => void importProject(event)} />
       {error && <p className="toast">{error}</p>}
     </main>
   );
