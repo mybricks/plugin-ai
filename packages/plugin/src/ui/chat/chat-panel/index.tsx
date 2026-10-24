@@ -278,6 +278,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       onStop={chatAgent.stop}
       pendingQueue={pendingQueue}
       onRemoveFromQueue={chatAgent.removeFromQueue}
+      onSendNowFromQueue={chatAgent.sendNowFromQueue}
       renderFocus={renderFocus}
       renderAttachmentSuffix={renderAttachmentSuffix}
       modelSelector={modelSelector}

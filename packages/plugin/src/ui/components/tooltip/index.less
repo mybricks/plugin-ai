@@ -1,0 +1,289 @@
+/* 构建配置对 .less 开启了 CSS Modules（scripts/build-plugin.mjs 里 postcss modules: true），
+   会把所有类名选择器哈希——包括 .ant-tooltip-inner 这种 antd 全局类，导致选择器永远匹配不上。
+
+   ⚠️ 宿主管道实测（多次验证）：选择器最多只能两段——
+     ✅ .tooltipOverlay_x .ant-tooltip-inner        （本地 + 全局）
+     ✅ .topRight_x .ant-tooltip-arrow              （本地 + 全局）
+     ✅ .tooltipOverlay_x.topRight_y { padding }    （本地 + 本地）
+     ❌ .tooltipOverlay_x.topRight_y .ant-tooltip-arrow （三段，静默失效）
+   所以箭头定位策略是：组件按 placement 附加顶层本地类（index.tsx 的 PLACEMENT_CLASS），
+   由下面顶层的 .topRight 等块完成容器与三角定位，全部保持两段。 */
+.tooltipOverlay {
+  /* antd 4.24 会按 placement 在根部预留 14.31px 箭头空间（.ant-tooltip-placement-*
+     的 padding 规则），对齐时把整块 padding 也算进气泡，导致可见气泡悬空一段距离。
+     原生箭头已被隐藏，这里按方向清零对应 padding，让根盒子就是可见气泡本身。 */
+  &.top,
+  &.topLeft,
+  &.topRight {
+    padding-bottom: 0 !important;
+  }
+
+  &.bottom,
+  &.bottomLeft,
+  &.bottomRight {
+    padding-top: 0 !important;
+  }
+
+  &.left,
+  &.leftTop,
+  &.leftBottom {
+    padding-right: 0 !important;
+  }
+
+  &.right,
+  &.rightTop,
+  &.rightBottom {
+    padding-left: 0 !important;
+  }
+
+  :global {
+    .ant-tooltip-inner {
+      min-height: unset;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: rgba(82, 92, 110, 0.92);
+      font-size: 12px;
+      line-height: 20px;
+      box-shadow: none;
+    }
+
+    /* 隐藏 antd 自带三角（它由 ::before + 固定坐标 clip-path 画出，尺寸改不动） */
+    .ant-tooltip-arrow-content {
+      display: none;
+    }
+
+    /* 三角基础形态（默认 top 居中）：6px 方块旋转 45°，中心压在容器贴住气泡的边上
+       并上移 0.5px（margin-top -3.5px），上半角与气泡同色，露出的下半角即小三角，
+       同时底边锯齿藏进气泡后面。调 width/height 改大小（margin 同步取一半）。 */
+    .ant-tooltip-arrow::after {
+      content: '';
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      border-radius: 1px;
+      background: rgba(82, 92, 110, 0.92);
+      left: 50%;
+      top: 0;
+      margin: -3.5px 0 0 -3px;
+      transform: rotate(45deg);
+    }
+  }
+}
+
+/* —— 按 placement 定位箭头（两段形态：本地类 + .ant-tooltip-arrow）——
+   容器定位带 !important：本管道里 antd 的 placement 规则若生效会以同特异性竞争，
+   !important 保证我们的值唯一生效。 */
+
+/* top：容器居中挂在气泡下方，三角贴容器顶边居中 */
+.top {
+  :global {
+    .ant-tooltip-arrow {
+      top: 100% !important;
+      left: 50% !important;
+      right: auto !important;
+      bottom: auto !important;
+      margin-left: -11px;
+      transform: none !important;
+    }
+  }
+}
+
+/* topLeft / topRight：容器挂在气泡下方，靠左 / 靠右，三角随边对准目标 */
+.topLeft {
+  :global {
+    .ant-tooltip-arrow {
+      top: 100% !important;
+      left: 13px !important;
+      right: auto !important;
+      bottom: auto !important;
+      transform: none !important;
+    }
+    .ant-tooltip-arrow::after {
+      left: 11px;
+      margin: -3.5px 0 0 -3px;
+    }
+  }
+}
+
+/* antd topRight 把气泡右缘对齐按钮右缘，✈ 按钮中心约在气泡右缘内 7px：
+   容器贴到 0、三角右偏 7px，尖端正对按钮中心 */
+.topRight {
+  :global {
+    .ant-tooltip-arrow {
+      top: 100% !important;
+      right: 0 !important;
+      left: auto !important;
+      bottom: auto !important;
+      transform: none !important;
+    }
+    .ant-tooltip-arrow::after {
+      left: auto;
+      right: 7px;
+      margin: -3.5px -3px 0 0;
+    }
+  }
+}
+
+/* bottom 系：容器悬在气泡上方，三角贴容器底边 */
+.bottom {
+  :global {
+    .ant-tooltip-arrow {
+      bottom: 100% !important;
+      left: 50% !important;
+      right: auto !important;
+      top: auto !important;
+      margin-left: -11px;
+      transform: none !important;
+    }
+    .ant-tooltip-arrow::after {
+      top: auto;
+      bottom: 0;
+      margin: 0 0 -3.5px -3px;
+    }
+  }
+}
+
+.bottomLeft {
+  :global {
+    .ant-tooltip-arrow {
+      bottom: 100% !important;
+      left: 13px !important;
+      right: auto !important;
+      top: auto !important;
+      transform: none !important;
+    }
+    .ant-tooltip-arrow::after {
+      top: auto;
+      bottom: 0;
+      left: 11px;
+      margin: 0 0 -3.5px -3px;
+    }
+  }
+}
+
+.bottomRight {
+  :global {
+    .ant-tooltip-arrow {
+      bottom: 100% !important;
+      right: 13px !important;
+      left: auto !important;
+      top: auto !important;
+      transform: none !important;
+    }
+    .ant-tooltip-arrow::after {
+      top: auto;
+      bottom: 0;
+      left: auto;
+      right: 11px;
+      margin: 0 -3px -3.5px 0;
+    }
+  }
+}
+
+/* left 系（气泡在目标左侧）：容器在气泡右边，三角贴容器左边垂直居中 */
+.left {
+  :global {
+    .ant-tooltip-arrow {
+      left: 100% !important;
+      top: 50% !important;
+      right: auto !important;
+      bottom: auto !important;
+      margin-top: -11px;
+      transform: none !important;
+    }
+    .ant-tooltip-arrow::after {
+      left: 0;
+      top: 50%;
+      margin: -3px 0 0 -3.5px;
+    }
+  }
+}
+
+.leftTop {
+  :global {
+    .ant-tooltip-arrow {
+      left: 100% !important;
+      top: 5px !important;
+      right: auto !important;
+      bottom: auto !important;
+      transform: none !important;
+    }
+    .ant-tooltip-arrow::after {
+      left: 0;
+      top: 11px;
+      margin: -3px 0 0 -3.5px;
+    }
+  }
+}
+
+.leftBottom {
+  :global {
+    .ant-tooltip-arrow {
+      left: 100% !important;
+      bottom: 5px !important;
+      right: auto !important;
+      top: auto !important;
+      transform: none !important;
+    }
+    .ant-tooltip-arrow::after {
+      left: 0;
+      top: auto;
+      bottom: 11px;
+      margin: -3px 0 0 -3.5px;
+    }
+  }
+}
+
+/* right 系（气泡在目标右侧）：容器在气泡左边，三角贴容器右边垂直居中 */
+.right {
+  :global {
+    .ant-tooltip-arrow {
+      right: 100% !important;
+      top: 50% !important;
+      left: auto !important;
+      bottom: auto !important;
+      margin-top: -11px;
+      transform: none !important;
+    }
+    .ant-tooltip-arrow::after {
+      right: 0;
+      top: 50%;
+      margin: -3px -3.5px 0 0;
+    }
+  }
+}
+
+.rightTop {
+  :global {
+    .ant-tooltip-arrow {
+      right: 100% !important;
+      top: 5px !important;
+      left: auto !important;
+      bottom: auto !important;
+      transform: none !important;
+    }
+    .ant-tooltip-arrow::after {
+      right: 0;
+      top: 11px;
+      margin: -3px -3.5px 0 0;
+    }
+  }
+}
+
+.rightBottom {
+  :global {
+    .ant-tooltip-arrow {
+      right: 100% !important;
+      bottom: 5px !important;
+      left: auto !important;
+      top: auto !important;
+      transform: none !important;
+    }
+    .ant-tooltip-arrow::after {
+      right: 0;
+      top: auto;
+      bottom: 11px;
+      margin: -3px -3.5px 0 0;
+    }
+  }
+}

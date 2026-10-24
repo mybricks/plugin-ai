@@ -118,6 +118,22 @@ export class AgentQueue {
     this.notify(entry);
   }
 
+  /** 插队：把指定排队消息提到队头立即发送；当前有请求在跑时先中止，结束后由 drain 自动发出。 */
+  sendNow(agent: RuntimeAgent, id: string) {
+    const entry = this.ensureEntry(agent);
+    const index = entry.queue.findIndex((item) => item.id === id);
+    if (index === -1) return;
+    const [item] = entry.queue.splice(index, 1);
+    entry.queue.unshift(item);
+    this.notify(entry);
+    if (this.isRunning(entry)) {
+      // abort 后 runtime 忙→闲转换会触发 drain，取到的正是刚提到队头的这条。
+      void entry.runtime.abort();
+    } else {
+      this.drain(entry);
+    }
+  }
+
   private blockIfDisabled(agent: RuntimeAgent): boolean {
     const guard = this.requestGuards.get(agent);
     if (!guard?.disabledHandler.isDisabled()) return false;
