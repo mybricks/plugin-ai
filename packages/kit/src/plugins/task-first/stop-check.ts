@@ -186,7 +186,7 @@ export function createTaskFirstStopCheck({ sandbox, configDirName, taskPath }: T
       return {
         additionalMessages: [{
           role: "user" as const,
-          content: "本轮新增了待验证任务，但尚未调用 `ask_questions` 邀请用户验证。请使用该工具说明验证步骤和观察点，并向用户确认是否验证通过，再结束。",
+          content: "A task pending verification was added in this turn. Based on the complexity of the changes and the verification progress, decide whether to call `ask_questions` to invite the user to verify it. If needed, use the tool to explain the verification steps and observation points, then ask the user to confirm whether verification passed before ending the turn.",
         }],
       };
     },
