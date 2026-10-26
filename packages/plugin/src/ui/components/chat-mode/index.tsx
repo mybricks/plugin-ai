@@ -8,10 +8,11 @@ import css from "./index.less";
 
 // build = 智能体（默认执行）| plan = 计划（先规划再执行）| ask = 询问（先澄清再决定）
 export type ChatModeType = typeof AgentModeEnum.Build | typeof AgentModeEnum.Plan | typeof AgentModeEnum.Ask | null;
+export type ChatModePresentation = { triggerTitle: string; title: string; description: string };
 
 function getChatModeMap(): Record<
   NonNullable<ChatModeType>,
-  { triggerTitle: string; title: string; description: string }
+  ChatModePresentation
 > {
   return {
   [AgentModeEnum.Build]: {
@@ -30,6 +31,11 @@ function getChatModeMap(): Record<
     description: lang.chatMode.askDescription(),
   },
   };
+}
+
+/** Localized UI copy for the mode picker and sender slash actions. */
+export function getChatModePresentation(mode: NonNullable<ChatModeType>): ChatModePresentation {
+  return getChatModeMap()[mode];
 }
 
 const ALL_CHAT_MODE_OPTIONS = Object.values(AgentModeEnum) as NonNullable<ChatModeType>[];
@@ -133,7 +139,7 @@ const ChatMode = (props: ChatModeProps) => {
     return null;
   }
 
-  const current = chatModeMap[chatMode];
+  const current = getChatModePresentation(chatMode);
 
   return (
     <Popup

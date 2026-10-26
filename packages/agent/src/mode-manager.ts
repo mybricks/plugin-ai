@@ -29,37 +29,21 @@ export interface AgentModeAvailabilityOptions {
 export interface AgentModeMetadata {
   label: string;
   description: string;
-  slash: {
-    displayName: string;
-    description: string;
-  };
 }
 
-/** 每种模式的用户可见元数据；模式选择器、提示词和 slash action 共用此定义。 */
+/** Agent 运行时使用的模式元信息，会进入模型提示词和运行时约束。 */
 export const AGENT_MODE_METADATA: Record<AgentMode, AgentModeMetadata> = {
   [AgentModeEnum.Build]: {
     label: "智能体模式",
     description: "按用户需求直接执行修改项目文件",
-    slash: {
-      displayName: "智能体",
-      description: "切换到智能体模式，直接执行任务",
-    },
   },
   [AgentModeEnum.Plan]: {
     label: "计划模式",
     description: "阅读、分析、维护计划文件，并向用户澄清问题，不改项目文件",
-    slash: {
-      displayName: "计划",
-      description: "切换到计划模式，先制定可执行方案",
-    },
   },
   [AgentModeEnum.Ask]: {
     label: "询问模式",
     description: "只读地澄清、质询需求和方案，不创建计划或修改项目文件",
-    slash: {
-      displayName: "询问",
-      description: "切换到询问模式，",
-    },
   },
 };
 

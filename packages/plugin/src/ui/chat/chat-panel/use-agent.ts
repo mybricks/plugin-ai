@@ -4,7 +4,7 @@ import { chipRegistry } from "../../../sandbox/setup";
 import type { QueueItem } from "../../../context/queue";
 import type { SenderProps } from "../../components/sender";
 import type { AgentMode, CodeAgent } from "../../../../../agent/src";
-import { AgentModeEnum, getAgentModeMetadata } from "../../../../../agent/src";
+import { AgentModeEnum } from "../../../../../agent/src";
 import type { HistoryStatus } from "../../../../../agent/src";
 import type { ModelSelection } from "../../../../../request/src";
 import { useSession } from "../use-session";
@@ -16,7 +16,7 @@ import {
 import type { SenderActionSlashCommand, SenderPromptTemplateSlashCommand, SenderSlashCommand } from "../../components/sender/slash-command";
 import { jsonStringifySafe } from "../../../utils/json";
 import { lang } from "../../../i18n";
-import { ChatModeIcon } from "../../components/chat-mode";
+import { ChatModeIcon, getChatModePresentation } from "../../components/chat-mode";
 import { Skill } from "../../components/icons";
 
 export type ChatAgent = CodeAgent | HttpAgent;
@@ -154,12 +154,12 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
     return agent.getAvailableModes()
       .filter((mode) => mode !== currentMode)
       .map((mode) => {
-        const metadata = getAgentModeMetadata(mode);
+        const presentation = getChatModePresentation(mode);
         return {
           kind: "action",
           name: mode,
-          displayName: metadata.slash.displayName,
-          description: metadata.slash.description,
+          displayName: presentation.triggerTitle,
+          description: presentation.description,
           scope: "builtin",
           icon: createElement(ChatModeIcon, { mode }),
           execute: () => agent.setMode(mode, "slash-command"),

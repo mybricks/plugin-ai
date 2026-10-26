@@ -9,7 +9,7 @@ export const slashModeCase: TestCase = {
   priority: "P0",
   description: "在输入框依次输入 /ask、/询问、/plan、/计划、/build、/智能体并选择菜单项，验证 action slash 即时切换模式。",
   expectedBehavior:
-    "模式 slash 固定排在模板命令之后，以中文展示并同时支持英文 name 或中文 displayName 检索；当前模式不会出现在列表中，例如 Plan 下只显示 /询问 和 /智能体。选择任一项立即更新模式选择器，不创建 MBS token，也不触发模型请求。随后发送普通消息时，以所选模式执行。",
+    "模式 slash 固定排在模板命令之后，并跟随界面语言展示；英文界面显示 Agent mode、Plan、Ask。当前模式不会出现在列表中，例如 Plan 下只显示其余两个模式。选择任一项立即更新模式选择器，不创建 MBS token，也不触发模型请求。随后发送普通消息时，以所选模式执行。",
   initialTurns: [],
   request: makeScriptedRequest([
     {
