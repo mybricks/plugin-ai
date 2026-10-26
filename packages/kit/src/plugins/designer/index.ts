@@ -7,7 +7,16 @@ export const designerPlugin = {
   promptTemplates: [
     {
       name: "analyze-selection",
-      files: [{ path: "PROMPT.md", content: analyzeSelectionPrompt }],
+      files: [
+        { path: "PROMPT.md", content: analyzeSelectionPrompt },
+        {
+          path: "PROMPT.en.md",
+          content: `---
+displayName: Analyze selection
+description: Understand how the selected area works
+---`,
+        },
+      ],
     },
   ],
 } satisfies CodeAgentPlugin;

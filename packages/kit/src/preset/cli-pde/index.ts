@@ -28,6 +28,13 @@ export const cliPdePlugin = {
           path: "PROMPT.md",
           content: GIT_PUSH_PROMPT,
         },
+        {
+          path: "PROMPT.en.md",
+          content: `---
+displayName: Push code
+description: Commit and push current changes to the remote branch
+---`,
+        },
       ],
     },
   ],

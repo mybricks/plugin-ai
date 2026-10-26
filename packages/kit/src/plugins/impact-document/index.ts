@@ -16,7 +16,16 @@ export function createImpactDocumentPlugin(options: ImpactDocumentPluginOptions)
     description: "按需分析分支改动并维护 REVIEW.md。",
     promptTemplates: [{
       name: "evaluate-impact",
-      files: [{ path: "PROMPT.md", content: prompt }],
+      files: [
+        { path: "PROMPT.md", content: prompt },
+        {
+          path: "PROMPT.en.md",
+          content: `---
+displayName: Assess impact
+description: Assess the impact of all current changes
+---`,
+        },
+      ],
     }],
   };
 }

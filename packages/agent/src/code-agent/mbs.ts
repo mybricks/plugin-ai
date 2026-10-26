@@ -63,13 +63,14 @@ export function collectPluginPromptTemplates(
 /** Resolve plugin template files into MBS descriptors. Invalid or duplicate names are skipped. */
 export function createMbsTemplates(
   templates: Array<{ template: PromptTemplateFile; scope: PromptTemplateScope }>,
+  locale = "zh",
 ): MbsTemplate[] {
   const names = new Set<string>();
   const result: MbsTemplate[] = [];
   for (const { template, scope } of templates) {
     let resolved;
     try {
-      resolved = resolvePromptTemplate(template, scope);
+      resolved = resolvePromptTemplate(template, scope, locale);
     } catch (error) {
       console.warn(`[CodeAgent] skipped prompt template "${template.name}":`, error);
       continue;

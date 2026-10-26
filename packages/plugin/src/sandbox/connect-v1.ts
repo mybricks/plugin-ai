@@ -11,6 +11,7 @@ import { createCheckStatusTool } from "./tools/check-status";
 import { createBuiltInSandboxPlugins } from "./plugins";
 import { HttpAgent } from "../ui/chat/chat-panel/http-agent";
 import { context } from "../context";
+import { getPluginLocale } from "../i18n";
 import type { Designer } from "./types";
 import {
   type ConnectToAIResult,
@@ -212,6 +213,7 @@ export function connectToAIFromV1(
 
   const agent = new CodeAgent({
     key: agentKey,
+    locale: getPluginLocale(),
     history: history ?? new IDBHistory({ dbName: "@plugin-ai/plugin/messages" }),
     request: (llmPluginKey ? context.createLLMRequest(llmPluginKey, agentKey) : undefined) ?? requestAsStream,
     sandbox,

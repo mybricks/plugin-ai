@@ -6,6 +6,7 @@ import { MemFS } from "./mem-fs";
 import type { TestCase } from "../cases/types";
 import { context } from "@plugin/context";
 import { chipRegistry } from "@plugin/sandbox/setup";
+import { getPlaygroundLocale } from "../locale";
 
 const AGENT_KEY = "playground_agent";
 
@@ -40,6 +41,7 @@ export function usePlaygroundAgent(
         : fs;
     const newAgent = new CodeAgent({
       key: AGENT_KEY,
+      locale: getPlaygroundLocale(),
       history: mockHistory,
       request,
       sandbox,

@@ -100,6 +100,11 @@ export interface AgentOptions {
   /** 系统 prompt */
   system?: string;
   /**
+   * Agent 的语言环境，用于解析本地化资源和元信息。默认 `zh`。
+   * Agent 本身不读取浏览器或宿主全局变量；调用方在创建实例时传入。
+   */
+  locale?: string;
+  /**
    * 初始运行模式。
    * - build：智能体模式，允许直接修改
    * - plan：计划模式，先制定方案，方案通过后再操作

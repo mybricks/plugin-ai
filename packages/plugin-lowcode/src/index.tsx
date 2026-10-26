@@ -9,6 +9,7 @@ import type { ChatPanelRef } from "../../plugin/src/ui/chat/chat-panel";
 import { context as pluginContext } from "../../plugin/src/context";
 import { DisabledHandler, type DisabledRequestHandler } from "../../plugin/src/disabled-handler";
 import { chipRegistry } from "../../plugin/src/sandbox/setup";
+import { getPluginLocale } from "../../plugin/src/i18n";
 
 import type {
   LowCodeDesignerAPI,
@@ -235,6 +236,7 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
 
     agentRef = new CodeAgent({
       key: agentKey,
+      locale: getPluginLocale(),
       history: history ?? new IDBHistory({ dbName: "@plugin-ai/plugin-lowcode/messages" }),
       request: requestAsStream,
       sandbox,

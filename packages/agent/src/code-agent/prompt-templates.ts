@@ -5,13 +5,14 @@ export type PromptTemplateScope = "config" | "plugin" | "project" | "builtin";
 
 /**
  * A prompt template packaged in memory, mirroring SkillFile's virtual-file
- * shape. PROMPT.md is the required entry point; template files stay in plugin
- * memory and are not injected into the Agent sandbox.
+ * shape. PROMPT.md is the required default entry point; PROMPT.<locale>.md
+ * files optionally override its metadata and body for a locale. Template files
+ * stay in plugin memory and are not injected into the Agent sandbox.
  */
 export interface PromptTemplateFile {
   /** Stable identifier used in `[$mbs-template:<name>]` records. */
   name: string;
-  /** Programmatic fallback when PROMPT.md does not declare displayName. */
+  /** Programmatic fallback when Markdown files do not declare displayName. */
   displayName?: string;
   files: Array<{
     path: string;
@@ -28,6 +29,26 @@ export interface PromptTemplate {
 }
 
 const TEMPLATE_ENTRY_FILE = "PROMPT.md";
+const TEMPLATE_LOCALE_FILE_PATTERN = /^PROMPT\.([a-z]{2,3}(?:[-_][a-z0-9]{2,8})*)\.md$/i;
+
+function normalizeLocale(locale: string): string {
+  return locale.trim().replace(/_/g, "-").toLowerCase();
+}
+
+function getLocaleEntry(template: PromptTemplateFile, locale: string): { path: string; content: string } | undefined {
+  const normalizedLocale = normalizeLocale(locale);
+  const localeParts = normalizedLocale.split("-");
+  const candidates = localeParts.map((_part, index) => localeParts.slice(0, localeParts.length - index).join("-"));
+
+  for (const candidate of candidates) {
+    const entry = template.files.find((file) => {
+      const match = file.path.match(TEMPLATE_LOCALE_FILE_PATTERN);
+      return match ? normalizeLocale(match[1]!) === candidate : false;
+    });
+    if (entry) return entry;
+  }
+  return undefined;
+}
 
 export function getPromptTemplateEntry(template: PromptTemplateFile): { path: string; content: string } | undefined {
   return template.files.find((file) => file.path === TEMPLATE_ENTRY_FILE);
@@ -37,22 +58,34 @@ export function getPromptTemplateEntry(template: PromptTemplateFile): { path: st
 export function resolvePromptTemplate(
   template: PromptTemplateFile,
   scope: PromptTemplateScope = "config",
+  locale = "zh",
 ): PromptTemplate {
-  const entry = getPromptTemplateEntry(template);
-  if (!entry) {
+  const defaultEntry = getPromptTemplateEntry(template);
+  if (!defaultEntry) {
     throw new Error(`PROMPT.md not found in prompt template "${template.name}".`);
   }
 
-  const { fmText, body } = splitFrontmatter(entry.content);
-  // Keep `name` stable and machine-readable. The author-facing label belongs
-  // in PROMPT.md so packaged templates can provide Chinese display names.
+  const localeEntry = getLocaleEntry(template, locale);
+  const { fmText: defaultFmText, body: defaultBody } = splitFrontmatter(defaultEntry.content);
+  const { fmText: localeFmText, body: localeBody } = localeEntry
+    ? splitFrontmatter(localeEntry.content)
+    : { fmText: "", body: "" };
+
+  // PROMPT.md is the complete default. A locale file only overrides fields it
+  // declares and supplies a body when it has non-whitespace content.
+  const body = localeBody.trim() ? localeBody : defaultBody;
+
+  // Keep `name` stable and machine-readable. Labels are presentation metadata.
   const displayName =
-    getFrontmatterString(fmText, "displayName") ??
+    getFrontmatterString(localeFmText, "displayName") ??
+    getFrontmatterString(localeFmText, "name") ??
+    getFrontmatterString(defaultFmText, "displayName") ??
     template.displayName ??
-    getFrontmatterString(fmText, "name") ??
+    getFrontmatterString(defaultFmText, "name") ??
     template.name;
   const description =
-    getFrontmatterString(fmText, "description") ??
+    getFrontmatterString(localeFmText, "description") ??
+    getFrontmatterString(defaultFmText, "description") ??
     body.match(/^#\s+(.+)/m)?.[1]?.trim() ??
     displayName;
 

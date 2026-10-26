@@ -1,4 +1,4 @@
-import { Agent, type AgentHooks, type AgentOptions } from "../agent";
+import { Agent, normalizeAgentLocale, type AgentHooks, type AgentOptions } from "../agent";
 import type { Message, Tool } from "../types";
 import {
   createAfterToolCallParams,
@@ -652,6 +652,7 @@ export class CodeAgent extends Agent {
       bash,
       ...agentOptions
     } = options;
+    const locale = normalizeAgentLocale(options.locale);
     const configDirName = normalizeConfigDirName(configDirNameOption);
     const skillsPrefix = getSkillsDir(configDirName);
 
@@ -683,7 +684,7 @@ export class CodeAgent extends Agent {
     const formatUserMessage = async (params: Parameters<NonNullable<AgentOptions["formatUserMessage"]>>[0]) => {
       const mbsMessage = expandMbsTemplateMessage(
         params.message,
-        createMbsTemplates(collectPluginTemplates(plugins)),
+        createMbsTemplates(collectPluginTemplates(plugins), locale),
       );
       const formattedParams = { ...params, message: mbsMessage ?? params.message };
       return agentOptions.formatUserMessage
@@ -763,6 +764,7 @@ export class CodeAgent extends Agent {
 
     super({
       ...agentOptions,
+      locale,
       hooks,
       formatUserMessage,
       system: finalSystem,
@@ -828,7 +830,7 @@ export class CodeAgent extends Agent {
 
   /** Active MBS templates. UI may present these through any interaction it owns. */
   getMbsTemplates(): MbsTemplateDescriptor[] {
-    return createMbsTemplates(collectPluginTemplates(this._pluginRuntime.plugins)).map((item) => item.descriptor);
+    return createMbsTemplates(collectPluginTemplates(this._pluginRuntime.plugins), this.locale).map((item) => item.descriptor);
   }
 
   /**

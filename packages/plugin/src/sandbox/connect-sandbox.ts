@@ -5,6 +5,7 @@ import { buildDirectoryInfoSection, buildProjectInfoSection, promptSectionsAdapt
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { Hooks, SandboxChipsConfig, MentionProvider } from "./types";
 import { context } from "../context";
+import { getPluginLocale } from "../i18n";
 import { createBuiltInSandboxPlugins } from "./plugins";
 import {
   type ConnectToAIResult,
@@ -204,6 +205,7 @@ export function connectToAIFromSandbox(
 
   const agent = new CodeAgent({
     key: agentKey,
+    locale: getPluginLocale(),
     history: history ?? new IDBHistory({ dbName: "@plugin-ai/plugin/messages" }),
     request: (llmPluginKey ? context.createLLMRequest(llmPluginKey, agentKey) : undefined) ?? requestAsStream,
     sandbox: codeAgentSandbox,

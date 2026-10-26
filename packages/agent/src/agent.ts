@@ -82,6 +82,7 @@ const DEFAULT_SUMMARY = { enabled: true as const };
 const DEFAULT_HANDOFF = { enabled: false as const };
 /** 默认 compact 配置 */
 const DEFAULT_COMPACT = { enabled: true as const, maxTurns: 15 };
+export const DEFAULT_AGENT_LOCALE = "zh";
 /** 自动摘要和压缩使用的 flash 路由角色。 */
 const FLASH_AI_ROLE = "flash";
 const TURN_INCOMPLETE_ERROR_CODE = "TURN_INCOMPLETE" as const;
@@ -128,6 +129,12 @@ function normalizeAllowedAgentMode(mode: any, options: AgentOptions): AgentMode 
   const availableModes = getAvailableAgentModes(options);
   const normalized = normalizeAgentMode(mode);
   return availableModes.includes(normalized) ? normalized : availableModes[0];
+}
+
+export function normalizeAgentLocale(locale: unknown): string {
+  if (typeof locale !== "string") return DEFAULT_AGENT_LOCALE;
+  const normalized = locale.trim().replace(/_/g, "-");
+  return normalized || DEFAULT_AGENT_LOCALE;
 }
 
 /**
@@ -472,6 +479,8 @@ function getLastRecordedMode(turns: TurnRecord[]): AgentMode | null {
 export class Agent {
   readonly events = new AgentEvents();
   readonly key: string | undefined;
+  /** Immutable runtime locale inherited by forks and subagents. */
+  readonly locale: string;
   readonly historyManager: HistoryManager;
   protected options: InternalAgentOptions;
   private _mode: AgentMode;
@@ -509,6 +518,7 @@ export class Agent {
     const hasRetry = Object.prototype.hasOwnProperty.call(options, "retry");
 
     const retryOpts = hasRetry ? (options.retry ?? DEFAULT_RETRY) : DEFAULT_RETRY;
+    const locale = normalizeAgentLocale(options.locale);
     this.temporaryStorageKey = options.key && options.history
       ? `${AGENT_TEMPORARY_STATE_KEY_PREFIX}${options.key}`
       : undefined;
@@ -521,6 +531,7 @@ export class Agent {
 
     this.options = {
       ...options,
+      locale,
       mode: normalizeAllowedAgentMode(initialMode, options),
       request: wrapRequestWithRetry(this.rawRequest, retryOpts, this.events),
       ...(hasSummary ? {} : { summary: DEFAULT_SUMMARY }),
@@ -530,6 +541,7 @@ export class Agent {
     };
     this._mode = normalizeAllowedAgentMode(initialMode, options);
     this.key = options.key;
+    this.locale = locale;
     this.historyManager = new HistoryManager({ history: this.options.history, key: this.key });
     // 构造时立即启动历史加载，UI 订阅后能直接感知 ready 通知，无需 UI 主动触发。
     void this.ensureHistoryReady().catch(() => {

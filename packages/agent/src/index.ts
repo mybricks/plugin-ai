@@ -1,4 +1,4 @@
-export { Agent, AgentEvents, ForkAgent } from "./agent";
+export { Agent, AgentEvents, ForkAgent, DEFAULT_AGENT_LOCALE, normalizeAgentLocale } from "./agent";
 export type {
   AfterToolCallParams,
   BeforeToolCallParams,

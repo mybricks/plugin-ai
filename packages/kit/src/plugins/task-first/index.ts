@@ -32,7 +32,16 @@ export function createTaskFirstPlugin(): CodeAgentPluginFactory {
     promptSections: { workflowSection: taskFirstWorkflow },
     promptTemplates: branchInfo ? [{
           name: "revoke-task",
-          files: [{ path: "PROMPT.md", content: revokeTaskPrompt }],
+          files: [
+            { path: "PROMPT.md", content: revokeTaskPrompt },
+            {
+              path: "PROMPT.en.md",
+              content: `---
+displayName: Delete task
+description: Delete a task and revert its related code
+---`,
+            },
+          ],
         }] : [],
     async getAttachmentContextMessages() {
       currentTaskPath = taskPath;

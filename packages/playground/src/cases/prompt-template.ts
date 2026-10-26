@@ -1,6 +1,7 @@
 import type { CodeAgentPlugin } from "@agent/code-agent";
 import type { TestCase } from "./types";
 import { makeScriptedRequest } from "../lib/scripted-request";
+import { getPlaygroundLocale } from "../locale";
 
 const TEMPLATE_NAME = "release-notes";
 const TEMPLATE_RECORD = `[$mbs-template:${TEMPLATE_NAME}]`;
@@ -15,12 +16,22 @@ description: 将变更整理为面向用户的发布说明
 
 请按「亮点」「修复」「升级提示」三个小节，用简洁的中文输出。`;
 
+// This file intentionally has no body. With lang=en, it localizes the slash
+// command while the model still receives the default PROMPT.md body above.
+const TEMPLATE_PROMPT_EN = `---
+displayName: Release notes
+description: Turn changes into user-facing release notes
+---`;
+
 const promptTemplatePlugin: CodeAgentPlugin = {
   name: "playground-prompts",
   promptTemplates: [
     {
       name: TEMPLATE_NAME,
-      files: [{ path: "PROMPT.md", content: TEMPLATE_PROMPT }],
+      files: [
+        { path: "PROMPT.md", content: TEMPLATE_PROMPT },
+        { path: "PROMPT.en.md", content: TEMPLATE_PROMPT_EN },
+      ],
     },
   ],
 };
@@ -37,9 +48,9 @@ export const promptTemplateMbsCase: TestCase = {
   group: "Prompt Template",
   priority: "P0",
   description:
-    "输入 / 后选择 /release-notes，输入框会变成 [$mbs-template:release-notes]。追加变更说明并发送，验证 UI 只处理 slash，CodeAgent 仅展开 MBS template。",
+    "输入 / 后选择 /release-notes，输入框会变成 [$mbs-template:release-notes]。追加变更说明并发送，验证 UI 只处理 slash，CodeAgent 仅展开 MBS template。lang=en 时菜单显示英文元信息，正文仍回退到 PROMPT.md。",
   expectedBehavior:
-    "聊天历史显示并保留 [$mbs-template:release-notes] 加参数；Request Inspector 的 user 消息是展开后的发布说明提示词，不含该 marker。复制这条 marker 文本后再次粘贴发送，行为相同。",
+    "聊天历史显示并保留 [$mbs-template:release-notes] 加参数；Request Inspector 的 user 消息是展开后的发布说明提示词，不含该 marker。lang=en 时菜单显示 Release notes，但 Request Inspector 仍使用默认中文正文。复制这条 marker 文本后再次粘贴发送，行为相同。",
   initialTurns: [],
   plugins: [promptTemplatePlugin],
   request: makeScriptedRequest([
@@ -60,7 +71,11 @@ export const promptTemplateMbsCase: TestCase = {
       run: ({ agent }) => {
         if (!agent) return null;
         const template = agent.getMbsTemplates().find((item) => item.reference === `mbs-template:${TEMPLATE_NAME}`);
-        return template
+        const isEnglish = getPlaygroundLocale() === "en";
+        const expected = isEnglish
+          ? { displayName: "Release notes", description: "Turn changes into user-facing release notes" }
+          : { displayName: "发布说明", description: "将变更整理为面向用户的发布说明" };
+        return template?.displayName === expected.displayName && template.description === expected.description
           ? { pass: true }
           : { pass: false, message: "未找到 mbs-template:release-notes" };
       },
