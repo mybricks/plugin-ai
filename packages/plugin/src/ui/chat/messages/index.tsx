@@ -36,7 +36,7 @@ import { ActionBar } from "./action-bar";
 import { context } from "../../../context";
 import { ModelSelector } from "../../components/model-selector";
 import type { ModelSelection } from "../../../../../request/src";
-import { lang } from "../../../i18n";
+import { getPluginLocale, lang } from "../../../i18n";
 
 /** 将通用网络失败映射为用户友好的提示；其余错误保留原始 message。 */
 function toUserFriendlyError(msg?: string, errorCode?: TurnErrorCode): string {
@@ -919,23 +919,18 @@ function getTurnText(record: MessageRecord): string {
 function formatTime(ts: number): string {
   const d = new Date(ts);
   const now = new Date();
-  const time = `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
   const isSameDay =
     d.getFullYear() === now.getFullYear() &&
     d.getMonth() === now.getMonth() &&
     d.getDate() === now.getDate();
 
-  if (isSameDay) {
-    return time;
-  }
-
-  const date = `${d.getMonth() + 1}月${d.getDate()}日`;
-
-  if (d.getFullYear() === now.getFullYear()) {
-    return `${date} ${time}`;
-  }
-
-  return `${d.getFullYear()}年${date} ${time}`;
+  const locale = getPluginLocale() === "en" ? "en-US" : "zh-CN";
+  const options: Intl.DateTimeFormatOptions = isSameDay
+    ? { hour: "2-digit", minute: "2-digit" }
+    : d.getFullYear() === now.getFullYear()
+      ? { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }
+      : { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" };
+  return new Intl.DateTimeFormat(locale, options).format(d);
 }
 
 // ─── AutoScroller ─────────────────────────────────────────────────────────────

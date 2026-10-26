@@ -41,18 +41,18 @@ function getToolLabel(name: string, args: any, title?: string): string {
   if (title) return title;
   const a = args ?? {};
   switch (name) {
-    case "read_file":    return `读取 ${basename(a.path ?? a.file ?? "文件")}`;
-    case "write_file":   return `写入 ${basename(a.path ?? a.file ?? "文件")}`;
-    case "edit_file":    return `修改 ${basename(a.path ?? a.file ?? "文件")}`;
-    case "delete_file":  return `删除 ${basename(a.path ?? a.file ?? "文件")}`;
-    case "multi_write":  return `批量写文件`;
-    case "multi_edit":   return `批量修改`;
-    case "bash":         return a.command ? `执行 ${String(a.command).slice(0, 40)}` : "执行命令";
-    case "grep_search":  return a.pattern ? `搜索 ${String(a.pattern).slice(0, 30)}` : "搜索";
-    case "glob_search":  return a.pattern ? `查找 ${String(a.pattern).slice(0, 30)}` : "查找文件";
-    case "web_fetch":    return a.url ? `获取 ${String(a.url).slice(0, 40)}` : "网络请求";
-    case "use_skill":    return a.name ? `使用技能 ${a.name}` : "使用技能";
-    case "project-runner": return a.command ? `运行 ${a.command}` : "项目运行时";
+    case "read_file":    return lang.tool.subAgentReadFile(basename(a.path ?? a.file ?? lang.tool.file()));
+    case "write_file":   return lang.tool.subAgentWriteFile(basename(a.path ?? a.file ?? lang.tool.file()));
+    case "edit_file":    return lang.tool.subAgentEditFile(basename(a.path ?? a.file ?? lang.tool.file()));
+    case "delete_file":  return lang.tool.subAgentDeleteFile(basename(a.path ?? a.file ?? lang.tool.file()));
+    case "multi_write":  return lang.tool.subAgentBatchWrite();
+    case "multi_edit":   return lang.tool.subAgentBatchEdit();
+    case "bash":         return lang.tool.subAgentRun(a.command ? String(a.command).slice(0, 40) : undefined);
+    case "grep_search":  return lang.tool.subAgentSearch(a.pattern ? String(a.pattern).slice(0, 30) : undefined);
+    case "glob_search":  return lang.tool.subAgentFindFiles(a.pattern ? String(a.pattern).slice(0, 30) : undefined);
+    case "web_fetch":    return lang.tool.subAgentFetch(a.url ? String(a.url).slice(0, 40) : undefined);
+    case "use_skill":    return lang.tool.subAgentUseSkill(a.name ? String(a.name) : undefined);
+    case "project-runner": return lang.tool.subAgentProjectRunner(a.command ? String(a.command) : undefined);
     default: {
       const pathLike = a.path ?? a.file ?? a.filePath;
       if (pathLike) return `${name} ${basename(pathLike)}`;

@@ -10,6 +10,7 @@ import type { AttachProcessor, LinkAttachment, FileContent, FileReference } from
 import { FILE_CHIP_TRUNCATE_BYTES, FILE_CHIP_REJECT_BYTES } from "../../../content-limits";
 import { cleanMhtml } from "../../../utils/clean-mhtml";
 import type { Sandbox } from "../../../../../agent/src";
+import { lang } from "../../../i18n";
 import { inferLanguage, getFileExt } from "./upload";
 
 // ─── 前置处理器 ───────────────────────────────────────────────────────────────
@@ -33,7 +34,7 @@ export async function applyFileProcessors(
     return await proc.process(file);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    antdMessage.error(`处理「${file.name}」失败：${msg}`);
+    antdMessage.error(lang.sender.fileProcessorFailed(file.name, msg));
     return null;
   }
 }
@@ -57,7 +58,7 @@ export async function applyLinkProcessors(
     return await proc.process(link);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    antdMessage.error(`处理链接「${link.url}」失败：${msg}`);
+    antdMessage.error(lang.sender.linkProcessorFailed(link.url, msg));
     return null;
   }
 }
@@ -72,6 +73,10 @@ export async function applyLinkProcessors(
 const MHTML_REJECT_BYTES = 30 * 1024 * 1024;
 /** MHTML 清理后截断目标（2MB） */
 const MHTML_TRUNCATE_BYTES = 2 * 1024 * 1024;
+
+function getTruncatedContentNotice(lineCount: number): string {
+  return `...(Content truncated; showing the first ${lineCount} lines)`;
+}
 
 function isMhtml(fileName: string): boolean {
   return /\.mht(ml)?$/i.test(fileName);
@@ -127,7 +132,7 @@ async function writeFileReference(file: File, sandbox: Sandbox): Promise<FileRef
       text: `[${file.name}](${fsPath})`,
     };
   } catch (err) {
-    antdMessage.error(`写入沙箱失败：${err instanceof Error ? err.message : String(err)}`);
+    antdMessage.error(lang.sender.sandboxWriteFailed(err instanceof Error ? err.message : String(err)));
     return null;
   }
 }
@@ -176,7 +181,7 @@ export async function processFileDefault(
   // MHTML 原始大小不代表最终文本大小，因此使用独立限制，不走普通文件阈值。
   if (isMhtml(file.name)) {
     if (file.size > MHTML_REJECT_BYTES) {
-      antdMessage.info(`文件「${file.name}」超过大小限制（${Math.round(MHTML_REJECT_BYTES / 1024 / 1024)}MB），已跳过`);
+      antdMessage.info(lang.sender.fileTooLarge(file.name, `${Math.round(MHTML_REJECT_BYTES / 1024 / 1024)} MB`));
       return null;
     }
     const { content, truncated } = await processMhtmlFile(file);
@@ -184,20 +189,20 @@ export async function processFileDefault(
     return {
       type: "content",
       fileName: file.name,
-      content: truncated ? `${content}\n...(内容已截断，仅展示前 ${lineCount} 行)` : content,
+      content: truncated ? `${content}\n${getTruncatedContentNotice(lineCount)}` : content,
       language: "html",
     };
   }
 
   if (file.size > FILE_CHIP_REJECT_BYTES) {
-    antdMessage.info(`文件「${file.name}」超过大小限制（${Math.round(FILE_CHIP_REJECT_BYTES / 1024)}KB），已跳过`);
+    antdMessage.info(lang.sender.fileTooLarge(file.name, `${Math.round(FILE_CHIP_REJECT_BYTES / 1024)} KB`));
     return null;
   }
 
   const { content, truncated, originalLines } = await readFileWithTruncate(file);
   const ext = getFileExt(file.name);
   const finalContent = truncated
-    ? `${content}\n...(内容已截断，仅展示前 ${originalLines} 行)`
+    ? `${content}\n${getTruncatedContentNotice(originalLines)}`
     : content;
 
   return {
@@ -230,7 +235,7 @@ export async function processFileInSandbox(
   // MHTML 原始大小不代表最终文本大小，因此使用独立限制，不走普通文件阈值。
   if (isMhtml(file.name)) {
     if (file.size > MHTML_REJECT_BYTES) {
-      antdMessage.info(`文件「${file.name}」超过大小限制（${Math.round(MHTML_REJECT_BYTES / 1024 / 1024)}MB），已跳过`);
+      antdMessage.info(lang.sender.fileTooLarge(file.name, `${Math.round(MHTML_REJECT_BYTES / 1024 / 1024)} MB`));
       return null;
     }
     const { content, truncated } = await processMhtmlFile(file);
@@ -238,7 +243,7 @@ export async function processFileInSandbox(
     return {
       type: "content",
       fileName: file.name,
-      content: truncated ? `${content}\n...(内容已截断，仅展示前 ${lineCount} 行)` : content,
+      content: truncated ? `${content}\n${getTruncatedContentNotice(lineCount)}` : content,
       language: "html",
     };
   }
@@ -256,7 +261,7 @@ export async function processFileInSandbox(
 
   const ext = getFileExt(file.name);
   const finalContent = truncated
-    ? `${content}\n...(内容已截断，仅展示前 ${originalLines} 行)`
+    ? `${content}\n${getTruncatedContentNotice(originalLines)}`
     : content;
 
   return {

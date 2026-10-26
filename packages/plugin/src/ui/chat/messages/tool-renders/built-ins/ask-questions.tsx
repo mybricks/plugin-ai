@@ -211,7 +211,7 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
                       </button>
                       {option.input && (
                         <input
-                          aria-label={`${option.label} 补充说明`}
+                          aria-label={lang.askQuestions.additionalDescription(option.label)}
                           className={css["ask-question-other-input"]}
                           value={optionInput}
                           placeholder={option.inputPlaceholder?.trim() || option.description?.trim() || lang.askQuestions.otherPlaceholder()}
