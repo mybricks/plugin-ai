@@ -67,6 +67,11 @@ export interface WebSocketAgentRuntimeOptions {
    * 在 SessionHTTPHistory 等需要先有 agent 实例才能拿到 sessionId 的场景下使用。
    */
   getSessionId?: () => string | undefined;
+  /**
+   * 本地会话被重置/清除时触发；调用方可在此通知后端清理其保存的 sessionId。
+   * 入参为被重置前的 sessionId。
+   */
+  onSessionReset?: (sessionId: string) => void | Promise<void>;
 }
 
 interface WebSocketAgentRequestAICommonParams {
@@ -173,6 +178,7 @@ export class WebSocketAgent {
   private chatAbort?: AbortController;
   private state: AgentRuntimeState = { running: false };
   private readonly getSessionIdForHistory?: () => string | undefined;
+  private readonly onSessionReset?: (sessionId: string) => void | Promise<void>;
 
   constructor(options: WebSocketAgentOptions, runtime: WebSocketAgentRuntimeOptions = {}) {
     this.options = { ...options, baseUrl: trimRight(options.baseUrl, "/") };
@@ -185,6 +191,7 @@ export class WebSocketAgent {
     this.hooks = runtime.hooks;
     this.getSeedMessages = runtime.getSeedMessages;
     this.getSessionIdForHistory = runtime.getSessionId;
+    this.onSessionReset = runtime.onSessionReset;
     this.historyManager = new HistoryManager({
       history: runtime.history ?? null,
       key: runtime.history ? (runtime.historyKey ?? this.key) : undefined,
@@ -219,6 +226,7 @@ export class WebSocketAgent {
 
   /** 清空本地会话痕迹，下一轮重新走 POST /sessions。 */
   private resetSession(): void {
+    const previousSessionId = this._sessionId;
     this._sessionId = undefined;
     this.sessionToken = undefined;
     this.channelUrl = undefined;
@@ -226,6 +234,16 @@ export class WebSocketAgent {
     this.conversationSessionId = undefined;
     this.legacySynced = false;
     kv.remove(this.persistedSessionKey());
+    if (previousSessionId && this.onSessionReset) {
+      try {
+        const result = this.onSessionReset(previousSessionId);
+        if (result && typeof result.then === "function") {
+          result.catch((error) => console.warn("[WebSocketAgent] onSessionReset failed:", error));
+        }
+      } catch (error) {
+        console.warn("[WebSocketAgent] onSessionReset failed:", error);
+      }
+    }
   }
 
   // ─── UI 依赖的公开面（对齐 HttpAgent） ──────────────────────────────────

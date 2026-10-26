@@ -200,6 +200,11 @@ export interface RemoteAgentConfig {
   meta?: Record<string, any>;
   /** 服务端 sessionId（仅 websocket 类型）；传入时复用该会话。 */
   sessionId?: string;
+  /**
+   * 本地会话被重置/清除时触发；调用方可在此通知后端清理其保存的 sessionId。
+   * 入参为被重置前的 sessionId。
+   */
+  onSessionReset?: (sessionId: string) => void | Promise<void>;
 }
 
 /** @internal 由 pluginAI controller 使用的运行配置管理器。 */
@@ -841,6 +846,7 @@ function connectToAI(
         history: wsHistory,
         historyKey: agentKey,
         getSeedMessages: buildSeedMessages,
+        onSessionReset: remoteAgent.onSessionReset,
       });
       agentRef.current = agent;
       agent.start(); // 依赖绑定完成后再触发历史加载
