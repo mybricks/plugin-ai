@@ -1,5 +1,5 @@
 import React from "react";
-import { AGENT_INTERNAL_FILE_EXCLUDE, CodeAgent, IDBHistory, isFileExcluded } from "../../../agent/src";
+import { AGENT_INTERNAL_FILE_EXCLUDE, CodeAgent, IDBHistory, isFileExcluded, SessionHTTPHistory } from "../../../agent/src";
 import { DisabledHandler, type DisabledRequestHandler } from "../disabled-handler";
 import { ChipRegistry } from "../../../agent/src";
 import { splitFrontmatter, getFrontmatterString, getFrontmatterStringArray } from "../../../agent/src/utils/frontmatter";
@@ -198,6 +198,8 @@ export interface RemoteAgentConfig {
   clientType?: string;
   /** 业务元数据（仅 websocket 类型）。 */
   meta?: Record<string, any>;
+  /** 服务端 sessionId（仅 websocket 类型）；传入时复用该会话。 */
+  sessionId?: string;
 }
 
 /** @internal 由 pluginAI controller 使用的运行配置管理器。 */
@@ -771,7 +773,13 @@ function connectToAI(
         ...browserToolsWithoutInit,
       ];
 
-      const wsHistory = history ?? new IDBHistory({ dbName: "@plugin-ai/plugin/messages" });
+      const agentRef: { current?: WebSocketAgent } = {};
+      const sessionHistory = new SessionHTTPHistory({
+        baseUrl: remoteAgent.baseUrl ?? 'http://112.17.139.222:8106',
+        apiKey: remoteAgent.apiKey,
+        getSessionId: () => agentRef.current?.sessionId,
+      });
+      const wsHistory = history ?? sessionHistory;
       // seed 对应 prompt.js 中 system 之后、用户输入之前的两条动态 user 内容（系统提示词由平台侧固定配置，不重复注入）：
       //   user[1] = 前端开发指南（getContext），本地 CodeAgent 由 getStableContextMessages 注入；
       //   user[2] = 环境信息(skills/日期/模式) + 项目空间元信息，本地由 getAttachmentContextMessages 注入。
@@ -820,6 +828,7 @@ function connectToAI(
         appType: remoteAgent.appType,
         clientType: remoteAgent.clientType,
         meta: remoteAgent.meta,
+        sessionId: remoteAgent.sessionId,
       }, {
         // disabled 状态由统一的 DisabledHandler 判断，与 HttpAgent / CodeAgent 保持一致。
         disabled: () => disabledHandler.isDisabled(),
@@ -833,6 +842,8 @@ function connectToAI(
         historyKey: agentKey,
         getSeedMessages: buildSeedMessages,
       });
+      agentRef.current = agent;
+      agent.start(); // 依赖绑定完成后再触发历史加载
 
       if (llmPluginKey) {
         context.createLLMRequest(llmPluginKey, agent.key);

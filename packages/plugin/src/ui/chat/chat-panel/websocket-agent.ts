@@ -27,6 +27,8 @@ export interface WebSocketAgentOptions {
   apiKey: string;
   /** 工作空间 ID，写入会话 meta 供审计。 */
   workspaceId: string;
+  /** 服务端会话 ID；传入时复用该会话，否则新建。 */
+  sessionId?: string;
   /** 目标智能体 code；留空走默认智能体。 */
   agentCode?: string;
   /** 业务变量：项目 ID，随 /chat/stream 的 variables 发送。 */
@@ -60,6 +62,11 @@ export interface WebSocketAgentRuntimeOptions {
    * 首个远程会话建立后，会通过追加消息端点一次性 seed 进会话。
    */
   getSeedMessages?: () => Promise<string[]> | string[];
+  /**
+   * 动态获取当前服务端会话 ID，供外部历史读取实现使用。
+   * 在 SessionHTTPHistory 等需要先有 agent 实例才能拿到 sessionId 的场景下使用。
+   */
+  getSessionId?: () => string | undefined;
 }
 
 interface WebSocketAgentRequestAICommonParams {
@@ -101,16 +108,8 @@ type LLMIter = {
 };
 
 interface PersistedSession {
-  /** POST /api/v1/sessions 返回的会话 ID（sess_ 前缀），同时用作对话 sessionId。 */
-  sessionId: string;
-  /** 会话 JWT，用于 DELETE /sessions/{id}（wsUrl 里已内嵌一份）。 */
-  token?: string;
-  /** 服务端拼好的 WebSocket 通道地址，刷新后直接复用。 */
-  wsUrl: string;
-  /** 会话绝对到期时间（ms epoch），过期后不再复用缓存。 */
-  expiresAt?: number;
-  /** 平台实际采用的对话 sessionId（一般与 sessionId 相同）。 */
-  conversationSessionId?: string;
+  /** 服务端会话 ID */
+  sessionId?: string;
   /** 旧 history 是否已同步到该会话。 */
   legacySynced: boolean;
 }
@@ -134,13 +133,14 @@ export class WebSocketAgent {
   private readonly toolUI: ToolUIChannel = createToolUIChannel();
   private readonly turns: TurnRecord[] = [];
   private readonly stateListeners = new Set<(state: AgentRuntimeState) => void>();
+  /** 服务端会话 ID，供外部历史读取实现使用。 */
+  get sessionId(): string | undefined { return this._sessionId ?? this.getSessionIdForHistory?.(); }
+  private _sessionId?: string;
   private socket: WebSocket | null = null;
   private socketPromise: Promise<void> | null = null;
   private socketReady = false;
   /** 服务端返回的 WebSocket 通道地址（已内嵌 sessionId 与 token）。 */
   private channelUrl?: string;
-  /** POST /sessions 返回的会话 ID（sess_ 前缀）。 */
-  private sessionId?: string;
   /** 会话 JWT，用于 DELETE /sessions/{id}。 */
   private sessionToken?: string;
   /** 会话绝对到期时间（ms epoch）。 */
@@ -164,10 +164,11 @@ export class WebSocketAgent {
   private activeTurnId?: string;
   private chatAbort?: AbortController;
   private state: AgentRuntimeState = { running: false };
+  private readonly getSessionIdForHistory?: () => string | undefined;
 
   constructor(options: WebSocketAgentOptions, runtime: WebSocketAgentRuntimeOptions = {}) {
     this.options = { ...options, baseUrl: trimRight(options.baseUrl, "/") };
-    this.key = `websocket:${options.baseUrl}:${options.workspaceId}:${options.agentCode ?? "default"}`;
+    this.key = `sessionId:${options.workspaceId}`;
     this.tools = runtime.tools ?? [];
     this.sandbox = runtime.sandbox;
     this.disabled = runtime.disabled ?? (() => false);
@@ -175,47 +176,42 @@ export class WebSocketAgent {
     this.disabledModes = runtime.disabledModes ?? [];
     this.hooks = runtime.hooks;
     this.getSeedMessages = runtime.getSeedMessages;
+    this.getSessionIdForHistory = runtime.getSessionId;
     this.historyManager = new HistoryManager({
       history: runtime.history ?? null,
       key: runtime.history ? (runtime.historyKey ?? this.key) : undefined,
     });
-    // 从持久化 KV 恢复会话：未过期时直接复用 sessionId / wsUrl，避免刷新页面重建会话。
-    const persisted = kv.get<PersistedSession>(this.persistedSessionKey());
-    if (persisted?.sessionId && persisted.wsUrl && !isExpired(persisted.expiresAt)) {
-      this.sessionId = persisted.sessionId;
-      this.sessionToken = persisted.token;
-      this.channelUrl = persisted.wsUrl;
-      this.sessionExpiresAt = persisted.expiresAt;
-      this.conversationSessionId = persisted.conversationSessionId ?? persisted.sessionId;
-      this.legacySynced = !!persisted.legacySynced;
-    } else if (persisted) {
-      kv.remove(this.persistedSessionKey());
+    // 优先使用传入的 sessionId，其次从持久化 KV 读取。
+    const initialSessionId = options.sessionId ?? kv.get<PersistedSession>(this.persistedSessionKey())?.sessionId;
+    if (initialSessionId) {
+      this._sessionId = initialSessionId;
+      this.conversationSessionId = initialSessionId;
     }
+  }
+
+  /** 外部完成依赖绑定（如 sessionId getter）后调用，触发历史加载。 */
+  start(): void {
     void this.ensureHistoryReady();
   }
 
   private persistedSessionKey(): string {
-    return `@plugin-ai/websocket-session:${this.key}`;
+    return this.key;
   }
 
   private persistSession(): void {
-    if (!this.sessionId || !this.channelUrl) {
+    if (!this.sessionId) {
       kv.remove(this.persistedSessionKey());
       return;
     }
     kv.set<PersistedSession>(this.persistedSessionKey(), {
       sessionId: this.sessionId,
-      ...(this.sessionToken ? { token: this.sessionToken } : {}),
-      wsUrl: this.channelUrl,
-      ...(this.sessionExpiresAt ? { expiresAt: this.sessionExpiresAt } : {}),
-      ...(this.conversationSessionId ? { conversationSessionId: this.conversationSessionId } : {}),
       legacySynced: this.legacySynced,
     });
   }
 
   /** 清空本地会话痕迹，下一轮重新走 POST /sessions。 */
   private resetSession(): void {
-    this.sessionId = undefined;
+    this._sessionId = undefined;
     this.sessionToken = undefined;
     this.channelUrl = undefined;
     this.sessionExpiresAt = undefined;
@@ -762,12 +758,12 @@ export class WebSocketAgent {
 
   private async openToolChannel(resolve: () => void, reject: (error: Error) => void): Promise<void> {
     try {
-      if (!this.channelUrl || isExpired(this.sessionExpiresAt)) {
+      if (!this._sessionId) {
         const response = await fetch(`${this.options.baseUrl}/api/v1/sessions`, {
           method: "POST",
           headers: { Authorization: `Bearer ${this.options.apiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({
-            clientType: this.options.clientType ?? "mybricks-designer",
+            clientType: this.options.clientType,
             meta: { workspaceId: this.options.workspaceId, ...(this.options.meta ?? {}) },
           }),
         });
@@ -777,16 +773,36 @@ export class WebSocketAgent {
           throw new Error("MCP session response missing sessionId/wsUrl");
         }
         // 直接采用服务端返回的 sessionId 与 wsUrl（wsUrl 已内嵌 sessionId 与 token）。
-        this.sessionId = session.sessionId as string;
+        this._sessionId = session.sessionId as string;
         this.sessionToken = session.token as string | undefined;
         this.channelUrl = session.wsUrl as string;
         this.sessionExpiresAt = parseExpiresAt(session.expiresAt);
-        // 首次建会话时，对话 sessionId 默认沿用返回的 sessionId；后续 /chat/stream 的 meta 若不同再对齐。
         this.conversationSessionId = this.conversationSessionId ?? session.sessionId;
         if (Number(session.heartbeatIntervalMs) > 0) this.heartbeatIntervalMs = Number(session.heartbeatIntervalMs);
         // 新会话意味着旧 history 同步标记失效，需要重新同步。
         this.legacySynced = false;
         this.persistSession();
+      } else if (!this.channelUrl || isExpired(this.sessionExpiresAt)) {
+        // 复用传入或缓存的 sessionId，通过 sessions 接口获取 wsUrl 等连接信息。
+        const response = await fetch(`${this.options.baseUrl}/api/v1/sessions`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${this.options.apiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: this._sessionId,
+            clientType: this.options.clientType ?? "mybricks-designer",
+            meta: { workspaceId: this.options.workspaceId, ...(this.options.meta ?? {}) },
+          }),
+        });
+        if (!response.ok) throw new Error(`MCP session creation failed: ${response.status} ${response.statusText}`);
+        const session = await response.json();
+        if (!session?.wsUrl || !session?.sessionId) {
+          throw new Error("MCP session response missing sessionId/wsUrl");
+        }
+        this.sessionToken = session.token as string | undefined;
+        this.channelUrl = session.wsUrl as string;
+        this.sessionExpiresAt = parseExpiresAt(session.expiresAt);
+        this.conversationSessionId = this.conversationSessionId ?? session.sessionId;
+        if (Number(session.heartbeatIntervalMs) > 0) this.heartbeatIntervalMs = Number(session.heartbeatIntervalMs);
       }
       const url = this.channelUrl;
       if (!url) throw new Error("Missing channel url");
