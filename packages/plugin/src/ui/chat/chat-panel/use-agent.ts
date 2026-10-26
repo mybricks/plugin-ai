@@ -39,6 +39,7 @@ export interface ChatPanelAgentState {
   send: SenderProps["onSend"];
   stop: () => void;
   removeFromQueue: (id: string) => void;
+  sendNowFromQueue: (id: string) => void;
   clear: () => Promise<void>;
   exportHistory: () => Promise<void>;
   executePlan: (title: string) => void;
@@ -157,6 +158,10 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
     if (agent) context.aiQueue.remove(agent, id);
   }, [agent]);
 
+  const sendNowFromQueue = useCallback((id: string) => {
+    if (agent) context.aiQueue.sendNow(agent, id);
+  }, [agent]);
+
   const clear = useCallback(async () => {
     if (!agent || isDisabled) return;
     await agent.clearHistory();
@@ -231,6 +236,7 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
     send,
     stop,
     removeFromQueue,
+    sendNowFromQueue,
     clear,
     exportHistory,
     executePlan,

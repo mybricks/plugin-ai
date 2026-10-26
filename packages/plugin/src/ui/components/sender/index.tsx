@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback } from "react"
 import classNames from "classnames";
 import { message } from "antd";
+import { Tooltip } from "../tooltip";
 import { Loading, Plus, Send } from "../icons";
 import { Popup } from "../popup";
 import { AttachmentsList } from "../attachments";
@@ -140,7 +141,7 @@ function flyToTarget(targetEl: HTMLElement, label: string, onLanded: () => void)
 
 // ─── PendingQueue ─────────────────────────────────────────────────────────────
 
-const PendingQueue = ({ queue, onRemove }: { queue: QueueItem[]; onRemove?: (id: string) => void }) => {
+const PendingQueue = ({ queue, onRemove, onSendNow }: { queue: QueueItem[]; onRemove?: (id: string) => void; onSendNow?: (id: string) => void }) => {
   const [expanded, setExpanded] = useState(true);
   if (!queue.length) return null;
   return (
@@ -165,9 +166,16 @@ const PendingQueue = ({ queue, onRemove }: { queue: QueueItem[]; onRemove?: (id:
               {item.attachments && item.attachments.length > 0 && (
                 <span className={css.pendingQueueBadge}>{item.attachments.length} 个附件</span>
               )}
-              <button className={css.pendingQueueDel} onClick={() => onRemove?.(item.id)}>
-                <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" fill="none"><path d="M874.666667 241.066667h-202.666667V170.666667c0-40.533333-34.133333-74.666667-74.666667-74.666667h-170.666666c-40.533333 0-74.666667 34.133333-74.666667 74.666667v70.4H149.333333c-17.066667 0-32 14.933333-32 32s14.933333 32 32 32h53.333334V853.333333c0 40.533333 34.133333 74.666667 74.666666 74.666667h469.333334c40.533333 0 74.666667-34.133333 74.666666-74.666667V305.066667H874.666667c17.066667 0 32-14.933333 32-32s-14.933333-32-32-32zM416 170.666667c0-6.4 4.266667-10.666667 10.666667-10.666667h170.666666c6.4 0 10.666667 4.266667 10.666667 10.666667v70.4h-192V170.666667z m341.333333 682.666666c0 6.4-4.266667 10.666667-10.666666 10.666667H277.333333c-6.4 0-10.666667-4.266667-10.666666-10.666667V309.333333h490.666666V853.333333z" fill="currentColor"/><path d="M426.666667 736c17.066667 0 32-14.933333 32-32V490.666667c0-17.066667-14.933333-32-32-32s-32 14.933333-32 32v213.333333c0 17.066667 14.933333 32 32 32zM597.333333 736c17.066667 0 32-14.933333 32-32V490.666667c0-17.066667-14.933333-32-32-32s-32 14.933333-32 32v213.333333c0 17.066667 14.933333 32 32 32z" fill="currentColor"/></svg>
-              </button>
+              <Tooltip title="立即发送（中止当前请求）" placement="topRight">
+                <button className={css.pendingQueueSend} onClick={() => onSendNow?.(item.id)}>
+                  <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M86 896L981 512 86 128l-1 299 640 85-640 85z"/></svg>
+                </button>
+              </Tooltip>
+              <Tooltip title="移除">
+                <button className={css.pendingQueueDel} onClick={() => onRemove?.(item.id)}>
+                  <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" fill="none"><path d="M874.666667 241.066667h-202.666667V170.666667c0-40.533333-34.133333-74.666667-74.666667-74.666667h-170.666666c-40.533333 0-74.666667 34.133333-74.666667 74.666667v70.4H149.333333c-17.066667 0-32 14.933333-32 32s14.933333 32 32 32h53.333334V853.333333c0 40.533333 34.133333 74.666667 74.666666 74.666667h469.333334c40.533333 0 74.666667-34.133333 74.666666-74.666667V305.066667H874.666667c17.066667 0 32-14.933333 32-32s-14.933333-32-32-32zM416 170.666667c0-6.4 4.266667-10.666667 10.666667-10.666667h170.666666c6.4 0 10.666667 4.266667 10.666667 10.666667v70.4h-192V170.666667z m341.333333 682.666666c0 6.4-4.266667 10.666667-10.666666 10.666667H277.333333c-6.4 0-10.666667-4.266667-10.666666-10.666667V309.333333h490.666666V853.333333z" fill="currentColor"/><path d="M426.666667 736c17.066667 0 32-14.933333 32-32V490.666667c0-17.066667-14.933333-32-32-32s-32 14.933333-32 32v213.333333c0 17.066667 14.933333 32 32 32zM597.333333 736c17.066667 0 32-14.933333 32-32V490.666667c0-17.066667-14.933333-32-32-32s-32 14.933333-32 32v213.333333c0 17.066667 14.933333 32 32 32z" fill="currentColor"/></svg>
+                </button>
+              </Tooltip>
             </div>
           ))}
         </div>
@@ -252,6 +260,8 @@ interface SenderProps {
   onStop?: () => void;
   pendingQueue?: QueueItem[];
   onRemoveFromQueue?: (id: string) => void;
+  /** 插队：中止当前请求并立即发送指定排队消息。 */
+  onSendNowFromQueue?: (id: string) => void;
   /** 输入框上方的 focus 信息渲染（mention 区域展示） */
   renderFocus?: () => React.ReactNode;
   /** 在 Sender 顶部渲染一组 panel，Sender 负责统一外壳与分割线 */
@@ -348,7 +358,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const {
     loading, placeholder = "请输入", defaultFocusPlaceholder, disabled,
     onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange,
-    variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue,
+    variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue, onSendNowFromQueue,
     renderFocus, abovePanels, renderActionPrefix, renderAttachmentSuffix,
     modelSelector, className, chipTypes = [], matchDefaultFocusContent,
     selectorRenderInTop = false,
@@ -1514,7 +1524,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         </div>
       ) : null}
       {pendingQueue && pendingQueue.length > 0 && (
-        <PendingQueue queue={pendingQueue} onRemove={onRemoveFromQueue} />
+        <PendingQueue queue={pendingQueue} onRemove={onRemoveFromQueue} onSendNow={onSendNowFromQueue} />
       )}
       <div className={classNames(css.editor, {
         [css.noMentions]: mode === "mention" && !renderFocus,

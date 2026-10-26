@@ -242,8 +242,16 @@
   }
 }
 
-// ── 代码卡片（write / edit 完成后展示）────────────────────────────────────────
+// ── 批量行式渲染（line 模式下的分组容器，仅用于视觉分组）────────────────────
+.tool-line-group {
+  display: flex;
+  flex-direction: column;
+  > .tool-line {
+    margin-left: 0;
+  }
+}
 
+// ── 代码卡片（write / edit 完成后展示）────────────────────────────────────────
 .code-card {
   border-radius: 6px;
   border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
