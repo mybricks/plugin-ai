@@ -162,6 +162,19 @@ export class SessionHTTPHistory implements History {
     }
 
     if (current) turns.push(current);
+
+    // 兜底：历史接口返回的都是已结束的回合，给每个没有 endTime 的 turn 补上结束时间，
+    // 避免 UI 层 `!turn.endTime && turn.status === "success"` 将其误判为 pending。
+    for (const turn of turns) {
+      if (!turn.endTime) {
+        turn.endTime = Date.now();
+      }
+      const iter = turn.iterations[turn.iterations.length - 1];
+      if (iter && !("type" in iter) && !iter.endTime) {
+        iter.endTime = Date.now();
+      }
+    }
+
     return turns;
   }
 
