@@ -34,8 +34,7 @@ const isProjectSourcePath = (path: string, configDirName: string) => {
 };
 
 /**
- * TASKS.md 中「待验证」是需要用户确认的状态。以标题加同名序号作为任务标识，
- * 既能识别新建任务，也能识别已有任务从其他状态流转到待验证。
+ * 优先使用任务 ID；旧文档没有 ID 时仍按标题和同名序号识别。
  */
 function collectPendingVerificationTaskIds(content: string): Set<string> {
   const taskIds = new Set<string>();
@@ -48,9 +47,11 @@ function collectPendingVerificationTaskIds(content: string): Set<string> {
 
     const occurrence = titleOccurrences.get(title) ?? 0;
     titleOccurrences.set(title, occurrence + 1);
+    const id = title.match(/^(T-\d+)\b/)?.[1] ?? `${title}\u0000${occurrence}`;
+
     const status = section.match(/^\s*-\s*\*{1,2}\s*状态\s*\*{0,2}\s*[：:]\s*([^\n]+)/m)?.[1]
       ?.replace(/[\s*_`]/g, "");
-    if (status === "待验证") taskIds.add(`${title}\u0000${occurrence}`);
+    if (status === "待验证") taskIds.add(id);
   }
 
   return taskIds;

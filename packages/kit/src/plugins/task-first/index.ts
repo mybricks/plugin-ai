@@ -4,6 +4,7 @@ import revokeTaskPrompt from "./revoke-task-git.md";
 import type { GitBranchInfo } from "../branch-info";
 import { readGitBranchInfoFromSandbox } from "../branch-info";
 import { createTaskFirstStopCheck } from "./stop-check";
+import { createTaskTransitionHook } from "./task-transition";
 
 export function getTaskDocumentPath(
   branchInfo: GitBranchInfo | undefined,
@@ -24,6 +25,7 @@ export function createTaskFirstPlugin(): CodeAgentPluginFactory {
     let currentTaskPath: string | undefined;
     const taskPath = getTaskDocumentPath(branchInfo, configDirName);
     const stopCheck = createTaskFirstStopCheck({ sandbox, configDirName, taskPath });
+    const transitionHook = createTaskTransitionHook({ sandbox, taskPath });
 
     return {
     name: "task-first",
@@ -61,6 +63,9 @@ description: Delete a task and revert its related code
       async beforeTurn() {
         currentTaskPath = undefined;
         await stopCheck.beforeTurn();
+      },
+      async afterToolCall({ toolCall }) {
+        return transitionHook.afterToolCall(toolCall);
       },
       async beforeTurnStop({ turn }) {
         return stopCheck.beforeTurnStop(turn, currentTaskPath);
