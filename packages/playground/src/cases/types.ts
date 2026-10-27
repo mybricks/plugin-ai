@@ -7,6 +7,7 @@ import type { CodeAgentPluginInput, SkillFile } from "@agent/code-agent";
 import type { AgentSandbox } from "@agent/agent-sandbox";
 import type { ChatPanelProps, ChatPanelRef } from "@plugin/ui/chat";
 import type { MentionProvider } from "@plugin/index";
+import type { ReferResolver } from "@plugin/sandbox/setup";
 import type { AttachProcessor } from "@plugin/content-limits";
 import type { FsFile } from "../lib/mem-fs";
 import type { RequestSnapshot } from "../lib/use-request-inspector";
@@ -151,6 +152,11 @@ export interface TestCase {
    * 对应 ChatPanelProps.mentions。
    */
   mentions?: MentionProvider[];
+  /**
+   * 注册到 playground 的全局 refer resolver。
+   * 用于覆盖 Markdown / ask_questions 中的 `[标签](scheme://id)` 引用渲染。
+   */
+  referResolvers?: ReferResolver[];
   /**
    * 在 Sender 附件 / + 按钮之后渲染自定义内容。
    * 对应 ChatPanelProps.renderAttachmentSuffix。

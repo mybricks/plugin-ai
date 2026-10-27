@@ -30,6 +30,7 @@ export const lang = {
     loading: () => i18n({ zh: "加载中...", en: "Loading..." }),
     user: () => i18n({ zh: "用户", en: "User" }),
     assistant: () => i18n({ zh: "智能助手", en: "AI Assistant" }),
+    taskReferencePrefix: () => i18n({ zh: "任务：", en: "Task: " }),
     noPermission: () => i18n({ zh: "当前没有操作权限", en: "You don’t have permission" }),
   },
   header: {

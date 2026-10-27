@@ -5,7 +5,7 @@ import { MockHistory } from "./mock-history";
 import { MemFS } from "./mem-fs";
 import type { TestCase } from "../cases/types";
 import { context } from "@plugin/context";
-import { chipRegistry } from "@plugin/sandbox/setup";
+import { chipRegistry, referRegistry } from "@plugin/sandbox/setup";
 import { getPlaygroundLocale } from "../locale";
 
 const AGENT_KEY = "playground_agent";
@@ -17,6 +17,7 @@ export function usePlaygroundAgent(
   const [agent, setAgent] = useState<CodeAgent | null>(null);
   const [memFS, setMemFS] = useState<MemFS | null>(null);
   const agentRef = useRef<CodeAgent | null>(null);
+  const referSchemesRef = useRef<string[]>([]);
 
   const resetAgent = useCallback(async (
     testCase: TestCase,
@@ -25,6 +26,15 @@ export function usePlaygroundAgent(
     agentRef.current?.abort();
     context.agentMap.delete(AGENT_KEY);
     context.setPluginKey("playground");
+
+    // refer registry 是 plugin 层的全局状态。切换 case 时先移除上个 case 的
+    // resolver，防止某个协议意外影响其他 playground 用例。
+    referSchemesRef.current.forEach((scheme) => referRegistry.unregister(scheme));
+    referSchemesRef.current = [];
+    testCase.referResolvers?.forEach((resolver) => {
+      referRegistry.register(resolver);
+      referSchemesRef.current.push(resolver.scheme);
+    });
 
     const fs = testCase.memFSFactory?.(testCase.initialFiles) ?? new MemFS(testCase.initialFiles);
     const mockHistory = new MockHistory(testCase.initialTurns, (testCase as any)._mockCompact ?? null, testCase.historyOptions);
@@ -70,6 +80,10 @@ export function usePlaygroundAgent(
     if (!activeCase) return;
     resetAgent(activeCase, overrideRequest);
   }, [activeCase, overrideRequest, resetAgent]);
+
+  useEffect(() => () => {
+    referSchemesRef.current.forEach((scheme) => referRegistry.unregister(scheme));
+  }, []);
 
   return { agent, memFS, resetAgent };
 }

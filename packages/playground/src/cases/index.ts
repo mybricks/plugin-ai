@@ -137,7 +137,7 @@ import {
   fileUploadProcessorContentCase,
   fileUploadSlowProcessorCase,
 } from "./file-upload";
-import { mentionCustomCase } from "./mention";
+import { mentionCustomCase, referMentionCase } from "./mention";
 import { longChipCase } from "./long-chip";
 import { renderAttachmentSuffixCase } from "./attachment-suffix";
 import { renderFocusCase } from "./render-focus";
@@ -300,6 +300,7 @@ export const ALL_CASES: TestCase[] = [
   renderFocusCase,
   customActionBarCase,
   mentionCustomCase,
+  referMentionCase,
   longChipCase,
   // 异常检测—工具后空 content
   toolThenEmptyContentCase,
