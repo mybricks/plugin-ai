@@ -100,7 +100,7 @@ export interface AgentOptions {
   /** 系统 prompt */
   system?: string;
   /**
-   * Agent 的语言环境，用于解析本地化资源和元信息。默认 `zh`。
+   * Agent 的语言环境，用于解析本地化资源和声明输出语言。默认 `zh`。
    * Agent 本身不读取浏览器或宿主全局变量；调用方在创建实例时传入。
    */
   locale?: string;

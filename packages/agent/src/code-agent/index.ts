@@ -362,6 +362,7 @@ function composeSystemPrompt(
   promptOptions: CodeAgentPromptOptions | false | undefined,
   customSystem: string | undefined,
   plugins: CodeAgentPlugin[],
+  locale: string,
 ): string {
   const workflowSections = [
     promptOptions === false ? undefined : promptOptions?.workflowSection,
@@ -372,7 +373,7 @@ function composeSystemPrompt(
     : getCodeAgentSystemPrompt({
       ...promptOptions,
       workflowSection: workflowSections.join("\n\n") || undefined,
-    });
+    }, locale);
   return [builtin, customSystem].filter(Boolean).join("\n\n");
 }
 
@@ -525,27 +526,21 @@ export function composePluginHooks(
  * 用 <system-reminder>环境信息</system-reminder> 包裹，返回字符串。
  * 如果无任何内容则返回空字符串。
  */
-function buildEnvironmentSection(skills?: SkillFile[], subAgents?: SubAgentConfig[]): string {
+function buildEnvironmentSection(locale: string, skills?: SkillFile[], subAgents?: SubAgentConfig[]): string {
   const sections: string[] = [];
 
   // ── 当前日期 ──────────────────────────────────────────────────────────────
   const now = new Date();
-  const dateStr = now.toLocaleDateString("zh-CN", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    weekday: "long",
-  });
-  const timeStr = now.toLocaleTimeString("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const tzOffset = -now.getTimezoneOffset() / 60;
-  const tzOffsetStr = `UTC${tzOffset >= 0 ? "+" : ""}${tzOffset}`;
-  sections.push(`当前时间：${dateStr} ${timeStr} (${tzOffsetStr}, ${tz})`);
+  const english = /^en(?:-|$)/i.test(locale);
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const dateTime = new Intl.DateTimeFormat(english ? "en-US" : "zh-CN", {
+    timeZone: tz, year: "numeric", month: "long", day: "numeric", weekday: "long",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+    timeZoneName: "shortOffset",
+  }).format(now);
+  sections.push(english
+    ? `Current time: ${dateTime} (${tz}).\nAlways use English to communicate with the user and generate content.`
+    : `当前时间：${dateTime}（${tz}）。\n永远使用中文与用户交流并生成内容。`);
 
   // ── Skills 目录 ───────────────────────────────────────────────────────────
   if (skills?.length) {
@@ -760,6 +755,7 @@ export class CodeAgent extends Agent {
       options.promptOptions,
       system,
       plugins,
+      locale,
     );
 
     super({
@@ -775,6 +771,7 @@ export class CodeAgent extends Agent {
         // 1. 环境信息：skills/subAgents/日期 + 模式提示词
         const { skills, subAgents } = this._getPluginResources();
         const baseSection = buildEnvironmentSection(
+          locale,
           skills.length ? skills : undefined,
           subAgents.length ? subAgents : undefined,
         );
@@ -941,6 +938,7 @@ export class CodeAgent extends Agent {
       this._systemPrompt.options,
       this._systemPrompt.customSystem,
       this._pluginRuntime.plugins,
+      this.locale,
     );
   }
 
