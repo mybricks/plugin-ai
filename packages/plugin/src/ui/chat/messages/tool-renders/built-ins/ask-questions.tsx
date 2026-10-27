@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { AskQuestionsQuestion, AskQuestionsAnswers } from "../../../../../../../agent/src";
 import type { ToolRecord, ToolRendererContext } from "../index";
 import { TextShimmer } from "../../../../components/text-shimmer";
+import { ReferMarkdown } from "../../../../components/refer-mention";
 import { useChatPanel } from "../../../chat-panel/context";
 import { lang } from "../../../../../i18n";
 import css from "../render.less";
@@ -140,7 +141,7 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
         </div>
         {questions.map((question) => (
           <div className={css["ask-question-result"]} key={question.question}>
-            <span>{question.question}</span>
+            <span><ReferMarkdown text={question.question} /></span>
             {answers ? <strong>{formatAnswer(answers[question.question] ?? lang.askQuestions.unanswered())}</strong> : skipped ? <em>{lang.askQuestions.skipped()}</em> : cancelled ? <em>{lang.askQuestions.notAnswered()}</em> : null}
           </div>
         ))}
@@ -175,7 +176,7 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
       {currentQuestion && (
         <section className={css["ask-question-item"]} key={currentQuestion.question}>
           <div className={css["ask-question-header"]}>
-            <span className={css["ask-question-question"]}>{currentQuestion.question}</span>
+            <span className={css["ask-question-question"]}><ReferMarkdown text={currentQuestion.question} /></span>
           </div>
           <div className={css["ask-question-options"]}>
             {getRenderOptions(currentQuestion).map((option) => {

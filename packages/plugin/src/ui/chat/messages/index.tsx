@@ -25,6 +25,7 @@ import { ToolCallGroup } from "./tool-call-group";
 import { DefaultUserMessage } from "../chat-panel/user-message";
 import { useChatPanel } from "../chat-panel/context";
 import { isPlanFilePath, usePlanState } from "../../components/plan";
+import { mountReferMentionsInContainer, unmountReferMentionsInContainer } from "../../components/refer-mention";
 import "./tool-renders/register";
 import css from "./index.less";
 import messageSkinCss from "../../markdown/skin-message.less";
@@ -825,12 +826,15 @@ const MarkdownMessage = ({ message, className }: { message: string; className?: 
   const md = useMemo(() => {
     const instance = markdownit({ linkify: true }).use(alertsPlugin);
     markdownitConfig?.configure?.(instance);
+    // 仅自动识别带协议的链接。否则 `TASKS.md` 会被 linkify-it 当成 `.md` 域名而误转成链接。
+    instance.linkify.set({ fuzzyLink: false, fuzzyEmail: false });
     return instance;
   }, [markdownitConfig]);
 
   useEffect(() => {
     if (!ref.current) return;
 
+    unmountReferMentionsInContainer(ref.current);
     ref.current.innerHTML = md.render(message);
 
     Array.from(ref.current.querySelectorAll<HTMLAnchorElement>("a[href]")).forEach((anchor) => {
@@ -838,6 +842,9 @@ const MarkdownMessage = ({ message, className }: { message: string; className?: 
       anchor.target = "_blank";
       anchor.rel = "noopener noreferrer";
     });
+
+    // 识别已注册 scheme（如 task://）的引用链接，原地替换为可 hover 的引用卡片
+    mountReferMentionsInContainer(ref.current);
 
     // 渲染 mermaid 流程图（异步，不阻塞内容展示）
     renderMermaidInContainer(ref.current).catch(() => {});
@@ -854,6 +861,10 @@ const MarkdownMessage = ({ message, className }: { message: string; className?: 
     });
   }, [message, md]);
 
+  useEffect(() => () => {
+    if (ref.current) unmountReferMentionsInContainer(ref.current);
+  }, []);
+
   const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement | null;
     const anchor = target?.closest?.("a[href]") as HTMLAnchorElement | null;
@@ -865,6 +876,12 @@ const MarkdownMessage = ({ message, className }: { message: string; className?: 
         window.open(href, "_blank", "noopener,noreferrer");
         return;
       }
+
+      // Markdown 的原生锚点会自行处理 file: 等非白名单协议；这里必须显式
+      // 拦截，避免消息内容借由普通链接打开本地文件或其他未知协议。
+      event.preventDefault();
+      event.stopPropagation();
+      return;
     }
 
     const image = target?.closest?.("img") as HTMLImageElement | null;

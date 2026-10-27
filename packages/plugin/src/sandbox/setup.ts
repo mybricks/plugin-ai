@@ -18,6 +18,9 @@ import { ensureAIPanelOpen, ensureFocusComId } from "../utils/ensure-ai-panel-op
 import { createDomChip } from "../utils/dom-info";
 import { getSyncableInitialFiles } from "./initial-files";
 import { chipRegistry } from "./chip-registry";
+import { referRegistry, type ReferResolver } from "./refer-registry";
+export { referRegistry } from "./refer-registry";
+export type { ReferResolver, ReferData } from "./refer-registry";
 import { connectToAIFromV1 } from "./connect-v1";
 import { connectToAIFromSandbox } from "./connect-sandbox";
 import type {
@@ -185,6 +188,13 @@ export interface SandboxAPI {
    */
   connectToAI: (comId: string, config: RegistSandBoxConfig) => ConnectToAIResult;
   /**
+   * 注册一个全局引用解析器（`refer://<scheme>/<id>`），供消息中的引用渲染 hover 卡片。
+   * 与 comId / agent 无关，按 scheme 全局唯一，后注册覆盖先注册。
+   */
+  registerRefer: (resolver: ReferResolver) => void;
+  /** 注销指定 scheme 的引用解析器。 */
+  unregisterRefer: (scheme: string) => void;
+  /**
    * Plugin 提供给 sandbox 读取的运行时工具和方法。
    */
   helpers: SandboxHelpers;
@@ -202,6 +212,7 @@ declare global {
      * Sandbox 与 Plugin 的统一交互 API。
      *
      * - `_sandbox_.connectToAI(comId, config)`：sandbox 注册自身能力给 Plugin
+     * - `_sandbox_.registerRefer(resolver)`：注册全局引用解析器（refer://scheme/id）
      * - `_sandbox_.helpers`：Plugin 提供给 sandbox 的工具方法（sendToAgent、renders）
      * - `_sandbox_.config`：Plugin 提供给 sandbox 的初始化配置（availableLibraries、themes）
      */
@@ -300,6 +311,13 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
         throw new Error("connectToAI requires either designer or agentSandbox");
       }
       return connectToAIFromV1(comId, { designer: config.designer, hooks: config.hooks, chips: config.chips, mentions: config.mentions }, pluginParams);
+    },
+
+    registerRefer(resolver: ReferResolver) {
+      referRegistry.register(resolver);
+    },
+    unregisterRefer(scheme: string) {
+      referRegistry.unregister(scheme);
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
