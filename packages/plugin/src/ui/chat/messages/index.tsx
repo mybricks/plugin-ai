@@ -20,6 +20,7 @@ import { MULTI_WRITE_TOOL_NAME } from "../../../../../agent/src/code-agent/tools
 import { MULTI_EDIT_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/multi-edit";
 import { createToolRendererContext, getToolRenderer } from "./tool-renders/index";
 import type { ToolRenderer } from "./tool-renders/index";
+import { ToolCallsGroup } from "./tool-renders/shared";
 import { DefaultToolRenderer } from "./tool-renders/renders";
 import { DefaultUserMessage } from "../chat-panel/user-message";
 import { useChatPanel } from "../chat-panel/context";
@@ -528,16 +529,20 @@ const MessageIteration = React.memo(function MessageIteration({
           </>
         ) : null}
       </div>
-
-      {iter.toolCalls.map((tool) => (
-        <ToolBubble
-          key={tool.callId}
-          tool={tool}
-          toolRendererMap={toolRendererMap}
-          agent={agent}
-          toolUI={toolUI}
+      {iter.toolCalls.length > 0 && (
+        <ToolCallsGroup
+          isFinish={!(isLastItem && isPending)}
+          toolCalls={iter.toolCalls}
+          renderTool={(tool) => (
+            <ToolBubble
+              tool={tool}
+              toolRendererMap={toolRendererMap}
+              agent={agent}
+              toolUI={toolUI}
+            />
+          )}
         />
-      ))}
+      )}
     </>
   );
 });

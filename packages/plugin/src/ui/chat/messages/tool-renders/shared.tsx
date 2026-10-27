@@ -8,6 +8,7 @@ import { TextShimmer } from "../../../components/text-shimmer";
 import { ElapsedTime } from "../../../components/elapsed-time";
 import type { ToolRecord } from "./index";
 import { useChatPanel } from "../../chat-panel/context";
+export { ToolCallsGroup } from "./tool-calls-group";
 import css from "./render.less";
 
 const ChevronRightIcon = () => (
