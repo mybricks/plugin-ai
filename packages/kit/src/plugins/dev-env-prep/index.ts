@@ -84,8 +84,8 @@ function createDevEnvPrepTools(implementation?: ProjectRunnerImplementation): To
 function createDevEnvPrepSubAgent(implementation?: ProjectRunnerImplementation): SubAgentConfig {
   return {
     name: "dev-env-prep",
-    title: "开发环境处理",
-    description: "专门用于处理项目启动的各类问题，帮助初始化环境等。任何情况下项目启动不了、启动报错，都应该优先使用 dev-env-prep 而不是自己看项目文件和尝试启动脚本。",
+    title: "项目环境专家",
+    description: "专门用于处理项目进程的各类问题，包含启动、初始化环境、进程检查等。任何情况下项目启动不了、启动报错、进程检查，都应该优先使用 dev-env-prep 而不是自己看项目文件和尝试启动脚本。",
     system: devEnvPrepSystem,
     // 装依赖、补配置、查基础环境问题属于轻量确定性任务，用 flash 省成本。
     aiRole: "flash",
