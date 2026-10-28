@@ -1,5 +1,5 @@
 import { CodeAgent, DEFAULT_CONFIG_DIR_NAME, IDBHistory, isFileExcluded } from "../../../agent/src";
-import type { AgentSandbox, AgentSandboxFileEntry, AgentSandboxListOptions, Tool, CodeAgentPlugin, History, TurnSender, SkillFile, UnifiedFile, AgentOptions } from "../../../agent/src";
+import type { AgentSandbox, AgentSandboxFileEntry, AgentSandboxListOptions, Tool, CodeAgentPlugin, History, TurnSender, SkillFile, UnifiedFile, AgentOptions, AttachmentContextItem } from "../../../agent/src";
 import type { AuditPowerImplementation, PromptSections } from "../../../kit/src";
 import { buildDirectoryInfoSection, buildProjectInfoSection, promptSectionsAdaptToPromptOption, readGitBranchInfoFromSandbox } from "../../../kit/src";
 import type { RequestAsStreamFn } from "../../../request/src";
@@ -224,7 +224,7 @@ export function connectToAIFromSandbox(
     disabledModes,
     ...(localAgent ? { mask: { maxTurns: 20 } } : {}),
     getAttachmentContextMessages: async () => {
-      const sections: string[] = [];
+      const items: AttachmentContextItem[] = [];
       const { files, directEntries } = await getProjectContextFiles();
       const projectInfo = projectContext?.type === "directory"
         ? buildDirectoryInfoSection({
@@ -233,10 +233,10 @@ export function connectToAIFromSandbox(
           entries: directEntries.map((entry) => `${entry.path}${entry.type === "directory" ? "/" : ""}`),
         })
         : buildProjectInfoSection(files, { ignoredDirectories: [resolvedConfigDirName] });
-      if (projectInfo) sections.push(projectInfo);
+      if (projectInfo) items.push({ key: "project", content: projectInfo, dedupThreshold: 0.5 });
       const custom = await getUserContextMessage?.();
-      if (custom) sections.push(custom);
-      return sections;
+      if (custom) items.push({ key: "custom", content: custom });
+      return items;
     },
     formatUserMessage: async (params) => {
       const sandboxFormattedParams = {

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import { CodeAgent, IDBHistory, AgentModeEnum } from "../../agent/src";
-import type { AgentOptions, History, Sandbox, SkillFile, Tool, TurnSender } from "../../agent/src";
+import type { AgentOptions, AttachmentContextItem, History, Sandbox, SkillFile, Tool, TurnSender } from "../../agent/src";
 import { createRequestAsStream, createOnUpload } from "../../request/src";
 import type { ProviderConfig, RequestAsStreamFn } from "../../request/src";
 import { ChatPanel } from "../../plugin/src/ui/chat";
@@ -244,8 +244,13 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
       promptOptions: lowCodePromptOptions,
       system,
       getAttachmentContextMessages: async () => {
-        const canvasInfo = runtime.api ? "<canvas-info>\n当前在设计器画布中，只能通过 lowcode_generate_page、lowcode_clear_page 修改设计器画布中的内容。\n </canvas-info>" : null;
-        return [canvasInfo, await getUserContextMessage?.()].filter(Boolean) as string[];
+        const items: AttachmentContextItem[] = [];
+        if (runtime.api) {
+          items.push({ key: "canvas", content: "<canvas-info>\n当前在设计器画布中，只能通过 lowcode_generate_page、lowcode_clear_page 修改设计器画布中的内容。\n </canvas-info>" });
+        }
+        const custom = await getUserContextMessage?.();
+        if (custom) items.push({ key: "custom", content: custom });
+        return items;
       },
       tools: [...createLowCodeTools({ runtime, onOperatorActions, enableRenderingOptimization }), ...(tools ?? [])],
       ...(skills?.length ? { skills } : {}),

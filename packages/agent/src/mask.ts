@@ -79,52 +79,22 @@ const DEFAULT_MIN_CONTENT_LENGTH = 200;
 const DEFAULT_TOOL_PLACEHOLDER = "[Old tool result content cleared]";
 const DEFAULT_ATTACHMENT_PLACEHOLDER = "[Old attachment cleared]";
 
-/**
- * 对 buildMessages 产出的 Message[] 进行遮蔽处理。
- *
- * 遮蔽策略：
- *   1. 根据 turns 和 maskOptions 计算出哪些 turn 需要遮蔽。
- *   2. 收集需要遮蔽的 tool_call_id 集合（tool 消息）和 user 消息 turn 索引集合。
- *   3. 遍历 messages：
- *      - role==='tool' 且 tool_call_id 在遮蔽集合中，且 content 长度超过阈值 → 替换 content
- *      - role==='user' 且处于遮蔽 turn 中，且 content 是数组（含附件）→ 替换 image_url 为文字占位符
- *
- * @param messages              buildMessages 产出的完整消息列表
- * @param turns                 当前已有的 TurnRecord[]（不含本轮，用于判断遮蔽条件）
- * @param options               遮蔽配置
- * @returns                     遮蔽后的消息列表（浅拷贝，不修改原数组元素）
- */
-export function maskMessages(
-  messages: Message[],
+export function computeMaskedTurnIds(
   turns: TurnRecord[],
-  options: MaskOptions,
-): Message[] {
-  const {
-    maxTurns = 4,
-    maxAgeMinutes = DEFAULT_MAX_AGE_MINUTES,
-    minContentLength = DEFAULT_MIN_CONTENT_LENGTH,
-    toolPlaceholder = DEFAULT_TOOL_PLACEHOLDER,
-    attachmentPlaceholder = DEFAULT_ATTACHMENT_PLACEHOLDER,
-  } = options;
+  options: MaskOptions = {},
+): Set<string> {
+  const result = new Set<string>();
+  if (turns.length === 0) return result;
 
-  if (turns.length === 0) return messages;
-
+  const { maxTurns = 4, maxAgeMinutes = DEFAULT_MAX_AGE_MINUTES } = options;
   const now = Date.now();
   const maxAgeMs = maxAgeMinutes * 60 * 1000;
 
   // ── 过滤有效轮次（跳过 iterations 为空的轮）────────────────────────────
   // 没有任何 LLM 响应的空轮次不参与遮蔽计算
-  const validTurns = turns.filter(t => (t.iterations?.length ?? 0) >= 1);
+  const validTurns = turns.filter(t => !t.retried && !t.deleted && (t.iterations?.length ?? 0) >= 1);
   const totalTurns = validTurns.length;
-
-  if (totalTurns === 0) return messages;
-
-  // ── 计算遮蔽集合 ─────────────────────────────────────────────────────────
-
-  /** 需要遮蔽的 tool_call_id 集合 */
-  const maskedCallIds = new Set<string>();
-  /** 需要遮蔽附件的 turn 索引（对应原始 turns 数组的索引）*/
-  const maskedTurnIndices = new Set<number>();
+  if (totalTurns === 0) return result;
 
   for (let i = 0; i < totalTurns; i++) {
     const turn = validTurns[i];
@@ -143,80 +113,72 @@ export function maskMessages(
     // Ask / Plan 是工作记忆，直到 compact 生成摘要前均不参与 mask。
     if (getTurnMode(turn) === "ask" || getTurnMode(turn) === "plan") continue;
 
-    // 找到该 turn 在原始 turns 数组中的索引
-    const originalIndex = turns.indexOf(turn);
+    result.add(turn.id);
+  }
 
-    maskedTurnIndices.add(originalIndex);
+  return result;
+}
 
-    // 收集该 turn 所有迭代中的 toolCall id
-    for (const iter of turn.iterations ?? []) {
+/**
+ * 对 buildMessages 产出的 Message[] 进行遮蔽处理。
+ *
+ * 遮蔽策略：
+ *   1. 使用本次 turn 执行开始时计算的 turn ID 集合。
+ *   2. 收集需要遮蔽的 tool_call_id 集合（tool 消息）和 user 消息 turn 索引集合。
+ *   3. 遍历 messages：
+ *      - role==='tool' 且 tool_call_id 在遮蔽集合中，且 content 长度超过阈值 → 替换 content
+ *      - role==='user' && isAttachmentContext 且处于遮蔽 turn 中 → 不再携带
+ *      - role==='user' 且处于遮蔽 turn 中，且 content 是数组（含附件）→ 替换 image_url 为文字占位符
+ *
+ * @param messages              buildMessages 产出的完整消息列表
+ * @param turns                 当前已有的 TurnRecord[]（不含本轮，用于判断遮蔽条件）
+ * @param options               遮蔽配置
+ * @param maskedTurnIdSet       本次 turn 执行开始时计算的遮蔽集合
+ * @returns                     遮蔽后的消息列表（浅拷贝，不修改原数组元素）
+ */
+export function maskMessages(
+  messages: Message[],
+  turns: TurnRecord[],
+  options: MaskOptions,
+  maskedTurnIdSet: ReadonlySet<string>,
+): Message[] {
+  const {
+    minContentLength = DEFAULT_MIN_CONTENT_LENGTH,
+    toolPlaceholder = DEFAULT_TOOL_PLACEHOLDER,
+    attachmentPlaceholder = DEFAULT_ATTACHMENT_PLACEHOLDER,
+  } = options;
+
+  if (turns.length === 0) return messages;
+
+  if (maskedTurnIdSet.size === 0) return messages;
+
+  // ── 计算遮蔽集合 ─────────────────────────────────────────────────────────
+
+  /** 需要遮蔽的 tool_call_id 集合 */
+  const maskedCallIds = new Set<string>();
+  /** 需要遮蔽附件/attachmentContext 的 turn 索引（对应原始 turns 数组的索引）*/
+  const maskedTurnIndices = new Set<number>();
+
+  for (let i = 0; i < turns.length; i++) {
+    if (!maskedTurnIdSet.has(turns[i].id)) continue;
+    maskedTurnIndices.add(i);
+    for (const iter of turns[i].iterations ?? []) {
       for (const tc of iter.toolCalls ?? []) {
         maskedCallIds.add(tc.callId);
       }
     }
   }
 
-  if (maskedCallIds.size === 0 && maskedTurnIndices.size === 0) {
-    return messages;
-  }
-
-  // ── 需要遮蔽附件时，建立 "该 user 消息在第几个 turn" 的映射 ─────────────
-  // turnsToMessages 按 turn 顺序展开，每个 success turn 产出 1 条 user 消息（最前）
-  // 我们需要知道 messages 中每条 user 消息对应哪个 turn index，才能判断附件是否遮蔽
-  //
-  // 策略：遍历 messages，遇到 role==='user' 时用游标匹配 turns（跳过 agentsMd 注入的 user 消息）
-  // agentsMd 注入的 user 消息特征：它不对应任何 turn，位于 historyMessages 之前；
-  // 而 history user 消息是按 turns 顺序输出的，我们只需跟 turns 里 success 的轮次对齐即可。
-
-  const successTurnIndices: number[] = turns
-    .map((t, i) => (!t.retried ? i : -1))
-    .filter((i) => i !== -1);
-
-  // 标记 messages 中每条 user 消息对应的 turn index（-1 表示非 history user 消息）
-  const userMsgTurnIndex: Map<number, number> = new Map();
-
-  // 找到 history messages 的起始位置：跳过 system + agentsMd user message
-  // 方法：先数出 history 中有多少条 user 消息，然后倒推
-  // 更简单的方法：正向遍历，前 N 条 user 消息（N = successTurnIndices.length）
-  // 对应 history turns，其余 user 消息（agentsMd / contextMessages / currentUser）不对应 turn
-
-  // 收集所有 user 消息在 messages 中的位置
-  const userMsgPositions: number[] = [];
-  for (let j = 0; j < messages.length; j++) {
-    if (messages[j].role === "user") {
-      userMsgPositions.push(j);
-    }
-  }
-
-  // history user 消息数量 = successTurnIndices.length
-  // messages 中最后一条 user 消息是当前轮用户输入，倒数 successTurnIndices.length 条之前的是 agentsMd
-  // 实际上：messages 布局为：
-  //   [system?] [agentsMd user?] [history...] [contextMessages...] [currentUser]
-  // history 产生的 user 消息数量恰好等于 successTurnIndices.length
-  // 最后一条 user 消息是 currentUser（本轮，不在 turns 中）
-  // 中间的 agentsMd user 消息（如果存在）是第一条 user 消息，不对应任何 turn
-
-  // 因此 history user 消息 = userMsgPositions 中，
-  //   从 (total - 1 - successTurnIndices.length) 到 (total - 2) 这一段
-  // 即：去掉最后 1 条（currentUser），再去掉开头的 agentsMd 条（若有）
-
-  const historyUserCount = successTurnIndices.length;
-  // history user 消息在 userMsgPositions 中的起始下标
-  // = userMsgPositions.length - 1（去掉currentUser） - historyUserCount
-  const historyUserStart = userMsgPositions.length - 1 - historyUserCount;
-  // historyUserStart 可能为负（无 agentsMd 时 = -1，意味着从 0 开始）
-  // 实际上第一条 user 消息：若 agentsMd 存在则 historyUserStart=0 指向 agentsMd，
-  //   history 从 index 1 开始；若无 agentsMd 则从 index 0 开始
-  // 最简单：history user 消息就是 userMsgPositions 的第
-  //   [userMsgPositions.length - 1 - historyUserCount ... userMsgPositions.length - 2] 段
-
-  for (let k = 0; k < historyUserCount; k++) {
-    const posInUserMsgPositions = userMsgPositions.length - 1 - historyUserCount + k;
-    if (posInUserMsgPositions >= 0) {
-      const msgIdx = userMsgPositions[posInUserMsgPositions];
-      userMsgTurnIndex.set(msgIdx, successTurnIndices[k]);
-    }
-  }
+  // 按 turn ID 精确定位历史用户消息和 attachmentContext。
+  const userMsgTurnIndex = new Map<number, number>();
+  const attachmentContextMsgTurnIndex = new Map<number, number>();
+  const turnIndices = new Map(turns.map((turn, index) => [turn.id, index]));
+  messages.forEach((message, index) => {
+    if (message.role !== "user" || !message.contextTurnId) return;
+    const turnIndex = turnIndices.get(message.contextTurnId);
+    if (turnIndex === undefined) return;
+    (message.isAttachmentContext ? attachmentContextMsgTurnIndex : userMsgTurnIndex).set(index, turnIndex);
+  });
 
   // ── 遍历 messages 执行遮蔽 ───────────────────────────────────────────────
 
@@ -249,5 +211,9 @@ export function maskMessages(
     }
 
     return msg;
+  }).filter((msg, idx) => {
+    if (msg.role !== "user" || !msg.isAttachmentContext) return true;
+    const turnIdx = attachmentContextMsgTurnIndex.get(idx);
+    return turnIdx === undefined || !maskedTurnIndices.has(turnIdx);
   });
 }

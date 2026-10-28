@@ -153,6 +153,10 @@ export interface Message {
    * 不会作为原始工具消息字段发送到 API。
    */
   attachments?: Attachment[];
+  isAttachmentContext?: boolean;
+  /** 内部消息来源；发送到 request 前移除。 */
+  contextTurnId?: string;
+  contextEntries?: AttachmentContext;
 }
 
 // ─── WarmupIter（warmup 阶段特殊 iter） ──────────────────────────────────────
@@ -209,6 +213,20 @@ export interface TurnSender {
   name?: string;
   avatar?: string;
   [key: string]: any;
+}
+
+export interface AttachmentContextEntry {
+  content: string;
+  generatedAt: number;
+  dedupThreshold?: number | "always";
+}
+
+export type AttachmentContext = Record<string, AttachmentContextEntry>;
+
+export interface AttachmentContextItem {
+  key: string;
+  content?: string;
+  dedupThreshold?: number | "always";
 }
 
 // ─── TurnRecord（SSE 事件粒度的完整调用记录） ─────────────────────────────────
@@ -289,6 +307,9 @@ export interface TurnRecord {
    */
   sender?: TurnSender;
 
+  /** 本轮至少一次成功的模型请求携带过的上下文，每个 key 保存一份。 */
+  attachmentContext?: AttachmentContext;
+
   /**
    * ReAct 迭代记录：每次 LLM 响应对应一个 iteration，warmup 阶段插入特殊 WarmupIter。
    * WarmupIter 由 type: "warmup" 区分，不参与 LLM context 构建。
@@ -321,6 +342,8 @@ export interface TurnRecord {
         mode?: AgentMode;
         /** 本次 LLM 请求的 token 用量 */
         usage?: TokenUsage;
+        /** 本次请求实际追加的 attachmentContext key，内容存于所属 turn。 */
+        attachmentContextKeys?: string[];
         /** 本次 LLM 请求构建时记录的上下文追踪信息 */
         trace?: IterationTrace;
         /**
@@ -717,6 +740,26 @@ export function hasNoToolCalls(iterations: TurnRecord["iterations"]): boolean {
 
 // ─── 从 TurnRecord[] 重建 LLM messages ───────────────────────────────────────
 
+export function attachmentContextToText(attachmentContext?: AttachmentContext): string {
+  if (!attachmentContext) return "";
+  return Object.keys(attachmentContext)
+    .sort((a, b) => Number(attachmentContext[a]?.dedupThreshold === "always") - Number(attachmentContext[b]?.dedupThreshold === "always") || a.localeCompare(b))
+    .map((key) => attachmentContext[key]?.content)
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** 获取最后一次成功 iter 实际携带的上下文；旧记录无选择信息时保留原内容。 */
+export function getTurnAttachmentContext(turn: TurnRecord): AttachmentContext | undefined {
+  if (!turn.attachmentContext) return undefined;
+  const iters = getLLMIterations(turn.iterations);
+  const last = iters[iters.length - 1];
+  const keys = last?.attachmentContextKeys;
+  if (!Array.isArray(keys)) return turn.attachmentContext;
+  return Object.fromEntries(keys.filter(key => typeof key === "string" && turn.attachmentContext?.[key])
+    .map(key => [key, turn.attachmentContext![key]]));
+}
+
 /**
  * 将历史 TurnRecord[] 展开为 LLM 可直接使用的 messages 列表。
  * 包含所有状态的轮次（success / error / abort）——由调用方决定是否过滤。
@@ -760,19 +803,25 @@ export function turnsToMessages(
 
     // ── Handoff 模式：整个 turn 替换为 user + assistant(handoff summary) ──────
     if (handoffTurnIds?.has(turn.id)) {
-      messages.push({ role: "user", content: userText });
+      messages.push({ role: "user", content: userText, contextTurnId: turn.id });
       messages.push({ role: "assistant", content: formatHandoffMessageContent(turn.handoff ?? "") });
       continue;
     }
 
     // ── 普通模式 ──────────────────────────────────────────────────────────────
-    const userContent: Message["content"] = turn.userAttachments.length
+    const userContent: Message["content"] = turn.userAttachments?.length
       ? [
           { type: "text", text: userText },
           ...turn.userAttachments.map(attachmentToMessagePart),
         ]
       : userText;
-    messages.push({ role: "user", content: userContent });
+    // 以最后一次成功 iter 的选择重建该轮上下文，兼容旧记录。
+    const visibleContext = getTurnAttachmentContext(turn);
+    const attachmentContextText = attachmentContextToText(visibleContext);
+    if (attachmentContextText) {
+      messages.push({ role: "user", content: attachmentContextText, isAttachmentContext: true, contextTurnId: turn.id, contextEntries: visibleContext });
+    }
+    messages.push({ role: "user", content: userContent, contextTurnId: turn.id });
 
     // ── abort 且无工具调用：插入中断提示，让 LLM 知道该轮被用户取消 ──
     if (turn.status === "abort" && hasNoToolCalls(turn.iterations)) {
@@ -783,7 +832,7 @@ export function turnsToMessages(
     // 用 iterations 重建 ReAct 序列（向后兼容：无 iterations 时降级到简单 assistant 消息）
     if (turn.iterations?.length) {
       for (const iter of getLLMIterations(turn.iterations)) {
-        const completedToolCalls = iter.toolCalls.filter((tc) => tc.status !== "pending");
+        const completedToolCalls = (iter.toolCalls ?? []).filter((tc) => tc.status !== "pending");
         if (completedToolCalls.length > 0) {
           // assistant 消息带 tool_calls
           const assistantMsg: Message = {

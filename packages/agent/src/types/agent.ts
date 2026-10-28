@@ -6,10 +6,12 @@ import type { RetryOptions } from "../retry";
 import type { AgentHooks } from "../hooks";
 import type {
   AgentMode,
+  AttachmentContextItem,
   BoundHistory,
   CompactRecord,
   History,
   Message,
+  AttachmentContext,
   SubAgentTurnRecord,
   TokenUsage,
   Tool,
@@ -121,16 +123,18 @@ export interface AgentOptions {
    */
   getStableContextMessages?: (options?: { includeSandboxContext?: boolean }) => Promise<Message[]>;
   /**
-   * 随消息携带的动态上下文注入（异步，带模式上下文）。
-   * 每个 turn 开始时获取一次，返回的字符串数组会拼接为一条 user 消息插在用户消息正前方，
-   * 适合注入每轮可能变化的上下文（如当前项目文件快照、模式提示词、skills 列表等）。
-   *
-   * ctx 提供当前模式信息，调用方可在此自行组装模式提示词、skill 列表等所有环境内容。
+   * 每个 turn 开始时获取随消息携带的最新动态上下文。
+   * 每轮生成一次候选快照，正常续跑时即使 compact 也不重新读取，保持与用户消息的时间关系。
+   * 每次请求在 compact、handoff、mask 后按 key 和 dedupThreshold
+   * 筛选本轮内容，保留可见历史；仅持久化实际发送的内容及每次 iter 的 key。
+   * 兼容旧的 string[] 回调：合并后每轮始终携带，不参与去重。
    */
   getAttachmentContextMessages?: (ctx: {
     mode: AgentMode;
     previousMode: AgentMode | null;
-  }) => MessageSection[] | Promise<MessageSection[]>;
+    turnStartTime: number;
+    previousAttachmentContext: AttachmentContext | null;
+  }) => (AttachmentContextItem | string)[] | Promise<(AttachmentContextItem | string)[]>;
   /** 工具列表（plugin 初始化时注册额外工具） */
   tools?: Tool[];
   /** 在 validate 后、工具原始 execute 前运行的执行中间件。 */
@@ -364,10 +368,12 @@ export interface TurnMessageSnapshot {
   historyTurns: TurnRecord[];
   /** 静态背景上下文：每轮开始时获取一次，后续 iter 复用（位于历史对话之前的静态前缀层） */
   stableContextMessages: Message[];
-  /** 随消息携带的动态上下文：每轮开始时获取一次，拼接为一条 user 消息插在当前用户消息之前 */
-  attachmentContextMessages: MessageSection[];
+  /** 当前执行开始时计算的 mask 集合，仅在内存中复用，retry 时重新计算。 */
+  maskedTurnIds: ReadonlySet<string>;
   /** 当前 turn 开始时的运行模式 */
   mode: AgentMode;
+  /** 本轮附件上下文拼接为一条 user 消息，位于当前用户消息之前；无内容时为 null。 */
+  attachmentContextMessage: Message | null;
 }
 
 // ─── 单次 LLM 请求结果 ─────────────────────────────────────────────────────────

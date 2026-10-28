@@ -54,7 +54,7 @@ description: Delete a task and revert its related code
       } catch (error) {
         console.warn(`[task-first] 读取 ${taskPath} 失败:`, error);
       }
-      return [`<system-reminder>\n当前任务文档：${taskPath}\n状态：${status}\n</system-reminder>`];
+      return [{ key: "task-document", content: `<system-reminder>\n当前任务文档：${taskPath}\n状态：${status}\n</system-reminder>` }];
     },
     hooks: {
       beforeTurn: verification?.beforeTurn,

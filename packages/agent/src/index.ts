@@ -9,14 +9,13 @@ export type {
 } from "./hooks";
 export type { AgentMode, AgentOptions, AgentHooks, RequestAIOptions, RequestAICommonOptions, MessageRequestAIOptions, DisplayModelRequestAIOptions, FormatUserMessageParams, MaskOptions, HandoffOptions, ForkOptions, ForkAgentOptions, CompactRecord, FormatUserMessageResult, ToolExecutionParams, ToolExecutor } from "./agent";
 export type { RequestAsStreamFn, RequestAsStreamParams, RequestAsStreamEmits, ToolDescriptor, ToolCallSpec, ToolCallStreamDelta } from "./types/request";
-export { maskMessages } from "./mask";
 export { computeHandoffTurnIds } from "./handoff";
 
 export { ChipRegistry, fileChipDef, FILE_CHIP_TYPE } from "./chip";
 export type { ChatChipDef, ChatChipFormatContext, ChatChipInstance, FileChipData } from "./chip";
 
 export type { AgentEventMap } from "./events";
-export type { Message, History, HistoryPersistMode, Tool, TurnErrorCode, TurnRecord, TurnSender, ToolCallRecord, ToolResult, VersionFile, VersionRecord, BoundHistory, Attachment, IterationTrace } from "./types";
+export type { Message, History, HistoryPersistMode, Tool, TurnErrorCode, TurnRecord, TurnSender, ToolCallRecord, ToolResult, VersionFile, VersionRecord, BoundHistory, Attachment, IterationTrace, AttachmentContextItem, AttachmentContext, AttachmentContextEntry } from "./types";
 export { ToolValidationError, bindHistory } from "./types";
 
 export { AGENT_INTERNAL_FILE_EXCLUDE, getAgentInternalFileExclude, CodeAgent, isFileExcluded, DEFAULT_CONFIG_DIR_NAME, getConfigDirPath, getPlanDir, getSkillsDir, getSkillDir, getAgentMdPath, getConfigDirNameFromAgent, getConfigDirPattern, normalizeConfigDirName, parseMbsTemplateRecord } from "./code-agent";

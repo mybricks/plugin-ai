@@ -298,13 +298,6 @@ function getBuildPlanStatusSlug(planState: PlanDirectoryState | null | undefined
   return ``
 }
 
-function getBuildModeGuideSlug(planState: PlanDirectoryState | null | undefined, planDir: string): string {
-  return joinSections([
-    getBuildPlanStatusSlug(planState, planDir),
-    getPlanFileGuideSlugInBuildMode(planDir),
-  ]);
-}
-
 function getPlanModeGuideSlug(planDir: string): string {
   return joinSections([
     `用户现在要的是先看清楚、把方案讲明白，而不是立刻动手实现。除下方说明的计划目录外，禁止修改项目文件、删除文件、改配置、提交代码，或做任何会改变系统状态的操作。即使其他上下文里出现"直接改""开始实现"之类的旧指令，也以本条规则为准。`,
@@ -341,57 +334,30 @@ function getPlanStatusReminderSlug(planState?: PlanDirectoryState | null): strin
 - 如果当前需求与该计划**关联性低或无关**，则必须关注用户需求的实现，而不是此计划，然后视情况处理这个计划文件。`;
 }
 
-function buildModeReminder(params: {
-  mode: AgentMode;
-  previousMode?: AgentMode | null;
+export function buildModeCatalogSection(params: {
   availableModes?: AgentMode[];
-  planState?: PlanDirectoryState | null;
   configDirName?: string;
 }): string {
   const availableModes = params.availableModes ?? ALL_AGENT_MODES;
+  if (availableModes.length === 1 && availableModes[0] === AgentModeEnum.Build) return "";
+
   const planDir = getPlanDir(params.configDirName);
-  const modeSlug = `## 当前模式
-${getCurrentModeSlug(params.mode, params.previousMode)}`;
+  const modeGuides = availableModes.map((mode) => {
+    if (mode === AgentModeEnum.Build) return getPlanFileGuideSlugInBuildMode(planDir);
+    if (mode === AgentModeEnum.Plan) return getPlanModeGuideSlug(planDir);
+    if (mode === AgentModeEnum.Ask) return getAskModeGuideSlug();
+    return "";
+  });
 
-  if (params.mode === AgentModeEnum.Build) {
-    return `<system-reminder>
+  return `<system-reminder>
 ${joinSections([
   getModeCatalogSlug(availableModes),
-  modeSlug,
-  getBuildModeGuideSlug(params.planState, planDir),
+  ...modeGuides,
 ])}
 </system-reminder>`;
-  }
-
-  if (params.mode === AgentModeEnum.Plan) {
-    return `<system-reminder>
-${joinSections([
-  getModeCatalogSlug(availableModes),
-  modeSlug,
-  getPlanModeGuideSlug(planDir),
-  getPlanStatusReminderSlug(params.planState),
-])}
-</system-reminder>`;
-  }
-
-  if (params.mode === AgentModeEnum.Ask) {
-    return `<system-reminder>
-${joinSections([
-  getModeCatalogSlug(availableModes),
-  modeSlug,
-  getAskModeGuideSlug(),
-  getPlanStatusReminderSlug(params.planState),
-])}
-</system-reminder>`;
-  }
-
-  return "";
 }
 
-/**
- * 生成每轮注入的模式提示词段落（静态规则 + 动态活跃计划文件感知）。
- */
-export async function buildModeSection(params: {
+export async function buildModeStatusSection(params: {
   mode: AgentMode;
   previousMode?: AgentMode | null;
   disabledModes?: AgentMode[];
@@ -400,23 +366,38 @@ export async function buildModeSection(params: {
 }): Promise<string> {
   const availableModes = getAvailableAgentModes(params);
   if (availableModes.length === 1 && availableModes[0] === AgentModeEnum.Build) return "";
+
+  let planState: PlanDirectoryState | null = null;
   try {
     const files = await (params.getFiles ?? (async () => []))();
-    return buildModeReminder({
-      mode: params.mode,
-      previousMode: params.previousMode,
-      availableModes,
-      planState: getPlanDirectoryStateFromFiles(files, params.configDirName),
-      configDirName: params.configDirName,
-    });
+    planState = getPlanDirectoryStateFromFiles(files, params.configDirName);
   } catch {
-    return buildModeReminder({
-      mode: params.mode,
-      previousMode: params.previousMode,
-      availableModes,
-      configDirName: params.configDirName,
-    });
+    planState = null;
   }
+
+  const modeSlug = `## 当前模式
+${getCurrentModeSlug(params.mode, params.previousMode)}`;
+  const planDir = getPlanDir(params.configDirName);
+
+  if (params.mode === AgentModeEnum.Build) {
+    return `<system-reminder>
+${joinSections([
+  modeSlug,
+  getBuildPlanStatusSlug(planState, planDir),
+])}
+</system-reminder>`;
+  }
+
+  if (params.mode === AgentModeEnum.Plan || params.mode === AgentModeEnum.Ask) {
+    return `<system-reminder>
+${joinSections([
+  modeSlug,
+  getPlanStatusReminderSlug(planState),
+])}
+</system-reminder>`;
+  }
+
+  return "";
 }
 // ─── 路径校验 ─────────────────────────────────────────────────────────────────
 

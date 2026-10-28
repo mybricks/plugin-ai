@@ -1,5 +1,5 @@
 import { CodeAgent, DEFAULT_CONFIG_DIR_NAME, IDBHistory, isFileExcluded } from "../../../agent/src";
-import type { AgentOptions, Tool, CodeAgentPlugin, CodeAgentPluginInput, History, TurnSender, SkillFile, UnifiedFile } from "../../../agent/src";
+import type { AgentOptions, AttachmentContextItem, Tool, CodeAgentPlugin, CodeAgentPluginInput, History, TurnSender, SkillFile, UnifiedFile } from "../../../agent/src";
 import { createInitProjectTool } from "../../../agent/src/code-agent/tools";
 import type { Sandbox } from "../../../agent/src";
 import type { PromptSections } from "../../../kit/src";
@@ -233,7 +233,7 @@ export function connectToAIFromV1(
     disabledModes,
     ...(localAgent ? { mask: { maxTurns: 20 } } : {}),
     getAttachmentContextMessages: async () => {
-      const sections: string[] = [];
+      const items: AttachmentContextItem[] = [];
       const { files, directories } = await getProjectContextSnapshot();
       const projectInfo = projectContext?.type === "directory"
         ? buildDirectoryInfoSection({
@@ -241,10 +241,10 @@ export function connectToAIFromV1(
           entries: [...directories.map((directory) => `${directory}/`), ...files.map((file) => file.path)].sort(),
         })
         : buildProjectInfoSection(files, { ignoredDirectories: [resolvedConfigDirName] });
-      if (projectInfo) sections.push(projectInfo);
+      if (projectInfo) items.push({ key: "project", content: projectInfo, dedupThreshold: 0.5 });
       const custom = await getUserContextMessage?.();
-      if (custom) sections.push(custom);
-      return sections;
+      if (custom) items.push({ key: "custom", content: custom });
+      return items;
     },
     formatUserMessage: async (params) => {
       const sandboxFormattedParams = {

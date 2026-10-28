@@ -14,8 +14,8 @@ import type {
   HistoryPersistMode,
   LLMCallResult,
   Message,
-  MessageSection,
   RequestAIOptions,
+  AttachmentContext,
   SubAgentTurnRecord,
   TokenUsage,
   Tool,
@@ -27,9 +27,9 @@ import type {
   WarmupIter,
 } from "./types";
 import { createToolUIChannel, type ToolUIChannel } from "./tool-ui";
-import { turnsToMessages, getLLMIterations, hasNoToolCalls, serializeToolCallArgumentsFromIter, serializeToolCallArgumentsFromLLMResult, attachmentToMessagePart } from "./types";
-import { computeHandoffTurnIds } from "./handoff";
-import { maskMessages, type MaskOptions } from "./mask";
+import { attachmentContextToText, getTurnAttachmentContext, getLLMIterations, hasNoToolCalls, serializeToolCallArgumentsFromIter, serializeToolCallArgumentsFromLLMResult } from "./types";
+import { buildRequestMessages } from "./message-pipeline";
+import { computeMaskedTurnIds, type MaskOptions } from "./mask";
 import { wrapRequestWithRetry, type RetryOptions } from "./retry";
 import { CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
 import { getTurnMode } from "./utils/core";
@@ -140,177 +140,37 @@ export function normalizeAgentLocale(locale: unknown): string {
 /**
  * 构建 turn 级消息快照（在 turn 开始时调用一次）：
  *   [snapshot.historyTurns]              历史 turns 快照
- *   [snapshot.stableContextMessages]     静态背景上下文（getStableContextMessages，仅获取一次）
- *   [snapshot.attachmentContextMessages] 随消息携带的动态上下文（getAttachmentContextMessages，仅获取一次）
+ *   [snapshot.stableContextMessages]     静态背景上下文
+ *   [snapshot.attachmentContextMessage]  本轮 attachmentContext 候选拼接出的 user 消息
  *
- * 注意：compact 摘要和历史 messages 不在此处固化。
- * 它们依赖 compactRecord，必须在每个 iter 请求前用最新 compactRecord 重新构建。
+ * 消息分层：system → stableContext/compact → 历史对话 → attachmentContext
+ *   → 当前用户消息 → 本轮 tail（assistant/tool）。
+ * attachmentContext 候选在本轮内存中复用，每次请求在历史机制处理后筛选本轮内容。
+ * compact 摘要和历史 messages 在每个 iter 请求前用最新 compactRecord 重新构建。
  */
 async function buildTurnMessageSnapshot(
   options: AgentOptions,
   historyTurns: TurnRecord[],
   mode: AgentMode,
-  previousMode?: AgentMode | null
+  attachmentContext: AttachmentContext | undefined,
+  maskedTurnIds: ReadonlySet<string>,
 ): Promise<TurnMessageSnapshot> {
   const stableContextMessages: Message[] = options.getStableContextMessages
     ? await options.getStableContextMessages()
     : [];
 
-  const attachmentContextMessages: MessageSection[] = options.getAttachmentContextMessages
-    ? await options.getAttachmentContextMessages({ mode, previousMode: previousMode ?? null })
-    : [];
+  const attachmentContextText = attachmentContextToText(attachmentContext);
+  const attachmentContextMessage: Message | null = attachmentContextText
+    ? { role: "user", content: attachmentContextText, isAttachmentContext: true, contextEntries: attachmentContext }
+    : null;
 
   return {
     historyTurns,
     stableContextMessages,
-    attachmentContextMessages,
     mode,
+    maskedTurnIds,
+    attachmentContextMessage,
   };
-}
-
-/**
- * 构建单次 iter 请求的基础 messages（每个 iter 请求前调用一次）：
- *   [0]       system message（仅包含内置系统提示词）
- *   [1..A]    turn 级动态上下文（snapshot.contextMessages）
- *   [A..B]    compact 摘要消息（仅当当前 compactRecord 非空时存在）
- *   [B..N]    历史对话（从 snapshot.historyTurns 重建，compact 游标后的部分）
- *
- * 每个 iter 会在这些基础上追加：
- *   [N+1..C]  用户自定义上下文（snapshot.userContextMessages）
- *   [C+1]     当前用户消息
- *   [C+2..D]  本轮已积累的 tail（assistant/tool）
- */
-function buildIterationBaseMessages(
-  options: AgentOptions,
-  snapshot: TurnMessageSnapshot,
-  compactRecord?: CompactRecord | null
-): { baseMessages: Message[]; historyStartIndex: number } {
-  const { system } = options;
-  const { historyTurns, stableContextMessages } = snapshot;
-
-  const systemMessage: Message | null = system
-    ? { role: "system", content: system }
-    : null;
-
-  // compact 摘要消息对（放在历史对话之前，游标后的 turns 正常展开）
-  const compactMessages: Message[] = compactRecord
-    ? [
-        {
-          role: "user",
-          content: `<system-reminder>\nThe following is a summary of the conversation history that has been compacted:\n${compactRecord.content}\n</system-reminder>`,
-        },
-      ]
-    : [];
-
-  // 计算命中 handoff 条件的 turn id 集合（未启用或 turn 无 handoff 内容时不加入）
-  const handoffTurnIds = computeHandoffTurnIds(historyTurns, options.handoff);
-
-  const historyMessages = turnsToMessages(historyTurns, compactRecord, handoffTurnIds);
-
-  // ── prompt cache 断点 ────────────────────────────────────────────────────
-  // 断点 1：system message 单独打 cache（几乎不变，命中率最高）
-  const cachedSystemMessage: Message | null = systemMessage
-    ? { ...systemMessage, cache: true }
-    : null;
-
-  // 断点 2：stableContext + compact 最后一条打 cache
-  const staticRest: Message[] = [
-    ...stableContextMessages,
-    ...compactMessages,
-  ];
-  if (staticRest.length > 0) {
-    staticRest[staticRest.length - 1] = {
-      ...staticRest[staticRest.length - 1],
-      cache: true,
-    };
-  }
-
-  const staticPrefix: Message[] = [
-    ...(cachedSystemMessage ? [cachedSystemMessage] : []),
-    ...staticRest,
-  ];
-
-  const baseMessages = [
-    ...staticPrefix,
-    ...historyMessages,
-  ];
-
-  // historyStartIndex：assembled 数组中，静态前缀（system/stableContext/compact）之后的起始索引
-  // mask 时只对 index >= historyStartIndex 的消息做遮蔽，前缀不受影响
-  const historyStartIndex = (systemMessage ? 1 : 0) + stableContextMessages.length + compactMessages.length;
-
-  return { baseMessages, historyStartIndex };
-}
-
-/**
- * 每次 LLM 请求前组装完整 messages 列表：
- *   baseMessages（静态前缀 + 静态背景上下文 + 历史）
- *   + 前置上下文消息（attachmentContextMessages 合并为一条 user 消息，可选）
- *   + 用户消息
- *   + 本轮已积累的对话尾部
- *
- * @param baseMessages                buildIterationBaseMessages 返回的基础部分
- * @param historyStartIndex           assembled 数组中历史消息的起始索引（mask 时跳过静态前缀）
- * @param options                     AgentOptions
- * @param turns                       当前 turns 快照（用于 mask）
- * @param params                      本轮用户请求参数
- * @param tail                        本轮已积累的 assistant + tool 消息（step > 1 时非空）
- * @param attachmentContextMessages   随消息携带的动态上下文段落（MessageSection[]，join 后插在用户消息正前方）
- */
-function assembleMessages(
-  baseMessages: Message[],
-  historyStartIndex: number,
-  options: AgentOptions,
-  turns: TurnRecord[],
-  params: FormatUserMessageParams,
-  tail: Message[],
-  attachmentContextMessages: MessageSection[]
-): Message[] {
-  const { message, attachments } = params;
-
-  let userContent: Message["content"] = message;
-  if (attachments?.length) {
-    userContent = [
-      { type: "text", text: message },
-      ...attachments.map(attachmentToMessagePart),
-    ];
-  }
-  const userMessage: Message = { role: "user", content: userContent };
-
-  // attachmentContextMessages（string[]）拼接为一条前置 user 消息（为空则不插入）
-  const prefixText = attachmentContextMessages.filter(Boolean).join("\n\n");
-  const prefixMessage: Message | null = prefixText
-    ? { role: "user", content: prefixText }
-    : null;
-
-  const assembled = [
-    ...baseMessages,
-    ...(prefixMessage ? [prefixMessage] : []),
-    userMessage,
-    ...tail,
-  ];
-
-  // ── prompt cache 断点 3：当前请求尾部最后一条消息 ──────────────
-  // tail 非空时取 tail 的最后一条，空时为 userMessage (role: "user")
-  // role: "assistant" 不加 cache（工具调用响应消息不是断点）
-  const cacheTargetIndex = baseMessages.length + (prefixMessage ? 1 : 0) + tail.length;
-  // 等价于 userMessage 在 assembled 中的索引 + tail.length（tail 为空则指向 userMessage 自身）
-  const cacheTarget = assembled[cacheTargetIndex];
-  if (cacheTarget && (cacheTarget.role === "user" || cacheTarget.role === "tool")) {
-    assembled[cacheTargetIndex] = { ...cacheTarget, cache: true };
-  }
-
-  // 应用遮蔽（默认开启，可通过 mask: false 显式关闭）
-  // 遮蔽时跳过前缀（system/agentsMd/context/compact，不在 turns 中，不应被遮蔽）
-  if (options.mask !== false) {
-    const maskOpts: MaskOptions = options.mask && typeof options.mask === "object" ? options.mask : {};
-    const prefix = assembled.slice(0, historyStartIndex);
-    const rest = assembled.slice(historyStartIndex);
-    const maskedRest = maskMessages(rest, turns, maskOpts);
-    return [...prefix, ...maskedRest];
-  }
-
-  return assembled;
 }
 
 // ─── 构建工具描述列表 ──────────────────────────────────────────────────────────
@@ -472,6 +332,48 @@ function getLastRecordedMode(turns: TurnRecord[]): AgentMode | null {
     }
   }
   return null;
+}
+
+function getLastTurnAttachmentContext(turns: TurnRecord[]): AttachmentContext | null {
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const t = turns[i];
+    if (t.retried || t.deleted) continue;
+    const context = getTurnAttachmentContext(t);
+    if (context) return context;
+  }
+  return null;
+}
+
+async function buildTurnAttachmentContext(
+  options: AgentOptions,
+  ctx: {
+    mode: AgentMode;
+    previousMode: AgentMode | null;
+    turnStartTime: number;
+    previousAttachmentContext: AttachmentContext | null;
+  },
+): Promise<AttachmentContext> {
+  if (!options.getAttachmentContextMessages) return {};
+  const items = await options.getAttachmentContextMessages(ctx);
+  if (!items?.length) return {};
+
+  const generatedAt = Date.now();
+  const attachmentContext: AttachmentContext = {};
+  const legacySections: string[] = [];
+  for (const item of items) {
+    if (typeof item === "string") { if (item) legacySections.push(item); continue; }
+    if (!item?.key || !item.content) continue;
+    attachmentContext[item.key] = {
+      content: item.content,
+      generatedAt,
+      ...(item.dedupThreshold !== undefined ? { dedupThreshold: item.dedupThreshold } : {}),
+    };
+  }
+
+  if (legacySections.length) {
+    attachmentContext["__legacy_attachment_context__"] = { content: legacySections.join("\n\n"), generatedAt, dedupThreshold: "always" };
+  }
+  return attachmentContext;
 }
 
 // ─── Agent ────────────────────────────────────────────────────────────────────
@@ -769,13 +671,35 @@ export class Agent {
     const historyTurns = this.turns.filter(t => t.id !== turn.id);
     const turnStartMode = this.getMode();
     const previousMode = getLastRecordedMode(historyTurns);
+    // 本次执行内固定 mask 判定；retry 会重新计算，不写入历史。
+    const maskOptions: MaskOptions = this.options.mask && typeof this.options.mask === "object" ? this.options.mask : {};
+    const maskedTurnIds = this.options.mask === false ? new Set<string>() : computeMaskedTurnIds(historyTurns, maskOptions);
+
+    // 候选在 turn 开始时生成并在本轮各 iter 中复用。即使中途 compact 后需要
+    // 补发，也保留用户发消息时的快照；后续工具造成的变化由工具消息按时间顺序体现。
+    // 候选仅保存在内存中；恢复时复用已发送内容，尚未发送的候选重新生成。
+    let attachmentContextCandidates: AttachmentContext | undefined;
+    try {
+      const generated = await buildTurnAttachmentContext(this.options, {
+        mode: turnStartMode,
+        previousMode: previousMode ?? null,
+        turnStartTime: turn.startTime,
+        previousAttachmentContext: getLastTurnAttachmentContext(historyTurns),
+      });
+      attachmentContextCandidates = { ...generated, ...turn.attachmentContext };
+    } catch (e) {
+      console.warn("[Agent] buildTurnAttachmentContext failed:", e);
+      attachmentContextCandidates = turn.attachmentContext;
+    }
+
     let messageSnapshot: TurnMessageSnapshot;
     try {
       messageSnapshot = await buildTurnMessageSnapshot(
         this.options,
         historyTurns,
         turnStartMode,
-        previousMode,
+        attachmentContextCandidates,
+        maskedTurnIds,
       );
     } catch (e) {
       turn.endTime = Date.now();
@@ -894,24 +818,14 @@ export class Agent {
           console.warn("[Agent] hooks.beforeRequest failed:", e);
         }
 
-        // 每个 iter 都使用最新 compactRecord 重新构建基础 messages。
-        // 若 warmup 刚完成 compact，这里会立即使用新的 compact 摘要和游标。
-        const { baseMessages, historyStartIndex } = buildIterationBaseMessages(
-          this.options,
-          messageSnapshot,
-          this.compactRecord
-        );
-
-        // 组装 messages
-        const messages = assembleMessages(
-          baseMessages,
-          historyStartIndex,
-          this.options,
-          messageSnapshot.historyTurns,
-          formattedParams,
+        // 依次执行拼接、历史机制、优化、缓存标记和内部字段清理。
+        const { messages, attachmentContext } = buildRequestMessages({
+          options: this.options,
+          snapshot: messageSnapshot,
+          compactRecord: this.compactRecord,
+          params: formattedParams,
           tail,
-          messageSnapshot.attachmentContextMessages
-        );
+        });
         const activeCompactRecord = this.compactRecord;
         const compactRecordTrace = activeCompactRecord
           ? {
@@ -960,6 +874,9 @@ export class Agent {
           return;
         }
 
+        // 只保存成功请求实际发送过的条目；iter 用 key 引用，避免重复保存内容。
+        turn.attachmentContext = { ...turn.attachmentContext, ...attachmentContext };
+
         // 记录本次迭代
         const iterToolCallRecords: ToolCallRecord[] = [];
         const iterEndTime = Date.now();
@@ -973,6 +890,7 @@ export class Agent {
           ...(effectiveAiRole ? { aiRole: effectiveAiRole } : {}),
           mode: stepMode,
           ...(llmResult.usage ? { usage: llmResult.usage } : {}),
+          attachmentContextKeys: Object.keys(attachmentContext),
           trace,
         };
         turn.iterations.push(currentIter);
@@ -1776,7 +1694,7 @@ IMPORTANT: 不要调用工具！
         this.events.emit("warmup:content", { retryCount: attempt });
       };
       const compactOk = await this._runAutoCompact(turn, signal, true, onRetry);
-      if (!compactOk) {
+      if (!compactOk && !signal.aborted) {
         // compact 重试全部失败，以 error 终止本轮 turn
         warmupIter.status = "error";
         warmupIter.errorCode = "CONTEXT_COMPACTION_FAILED";

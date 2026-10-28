@@ -1,5 +1,5 @@
 import { Agent, normalizeAgentLocale, type AgentHooks, type AgentOptions } from "../agent";
-import type { Message, Tool } from "../types";
+import type { AgentMode, AttachmentContextItem, Message, Tool } from "../types";
 import {
   createAfterToolCallParams,
   createBeforeToolCallParams,
@@ -35,7 +35,7 @@ import {
   type AgentSandboxFileEntry,
   type AgentSandboxFindResult,
 } from "../agent-sandbox";
-import { buildModeSection, getActivePlanFile, type ActivePlanFile } from "../mode-manager";
+import { buildModeCatalogSection, buildModeStatusSection, getActivePlanFile, getAvailableAgentModes, type ActivePlanFile } from "../mode-manager";
 import { splitFrontmatter } from "../utils/frontmatter";
 import { getCodeAgentSystemPrompt, type CodeAgentPromptOptions } from "./prompt";
 import { createAgentsMdContextMessage } from "./agents-md";
@@ -172,13 +172,13 @@ export interface CodeAgentPlugin {
   promptTemplates?: PromptTemplateFile[];
   /** 固定工作流程提示词，进入 system。 */
   promptSections?: Pick<CodeAgentPromptOptions, "workflowSection">;
-  /** 每轮附加的动态上下文，位于历史之后、当前用户消息之前。 */
   getAttachmentContextMessages?: (context: {
     sandbox: AgentSandbox;
     configDirName: string;
     mode: Parameters<NonNullable<AgentOptions["getAttachmentContextMessages"]>>[0]["mode"];
     previousMode: Parameters<NonNullable<AgentOptions["getAttachmentContextMessages"]>>[0]["previousMode"];
-  }) => string[] | Promise<string[]>;
+    turnStartTime: Parameters<NonNullable<AgentOptions["getAttachmentContextMessages"]>>[0]["turnStartTime"];
+  }) => (AttachmentContextItem | string)[] | Promise<(AttachmentContextItem | string)[]>;
   /**
    * 插件内置 SubAgents，合并到顶层 subAgents。
    * 每个 SubAgentConfig 直接定义描述、工具和可选 system prompt。
@@ -291,7 +291,7 @@ export interface Sandbox {
 
 // ─── CodeAgentOptions ────────────────────────────────────────────────────────
 
-export interface CodeAgentOptions extends Omit<AgentOptions, "system"> {
+export interface CodeAgentOptions extends Omit<AgentOptions, "system" | "getAttachmentContextMessages"> {
   /**
    * 推荐传入 AgentSandbox。为兼容既有宿主也接受 Sandbox V1，并在入口适配。
    * CodeAgent 内部只使用 AgentSandbox：文件工具走 files，grep 等结构化工具走 commands。
@@ -328,6 +328,11 @@ export interface CodeAgentOptions extends Omit<AgentOptions, "system"> {
    * 可用于注入项目特定规范、约束或上下文。
    */
   system?: string;
+  getAttachmentContextMessages?: (ctx: {
+    mode: AgentMode;
+    previousMode: AgentMode | null;
+    turnStartTime: number;
+  }) => (AttachmentContextItem | string)[] | Promise<(AttachmentContextItem | string)[]>;
   /**
    * 子 Agent 配置列表。
    * 配置后会自动注册一个 `call-sub-agent` 工具，LLM 可通过工具调用来发起子 Agent 任务。
@@ -521,28 +526,8 @@ export function composePluginHooks(
 
 // ─── 构建环境信息 ──────────────────────────────────────────────────────────────
 
-/**
- * 构建环境信息文本（每次 turn 开始时动态求值）。
- *
- * 包含 skills 目录信息和可用 sub-agents 类型信息，
- * 用 <system-reminder>环境信息</system-reminder> 包裹，返回字符串。
- * 如果无任何内容则返回空字符串。
- */
-function buildEnvironmentSection(locale: string, skills?: SkillFile[], subAgents?: SubAgentConfig[]): string {
+function buildCapabilityCatalogSection(skills?: SkillFile[], subAgents?: SubAgentConfig[]): string {
   const sections: string[] = [];
-
-  // ── 当前日期 ──────────────────────────────────────────────────────────────
-  const now = new Date();
-  const english = /^en(?:-|$)/i.test(locale);
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  const dateTime = new Intl.DateTimeFormat(english ? "en-US" : "zh-CN", {
-    timeZone: tz, year: "numeric", month: "long", day: "numeric", weekday: "long",
-    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
-    timeZoneName: "shortOffset",
-  }).format(now);
-  sections.push(english
-    ? `Current time: ${dateTime} (${tz}).\nAlways use English to communicate with the user and generate content.`
-    : `当前时间：${dateTime}（${tz}）。\n永远使用中文与用户交流并生成内容。`);
 
   // ── Skills 目录 ───────────────────────────────────────────────────────────
   if (skills?.length) {
@@ -580,6 +565,28 @@ function buildEnvironmentSection(locale: string, skills?: SkillFile[], subAgents
   if (sections.length === 0) return "";
 
   return `<system-reminder>\n${sections.join("\n\n")}\n</system-reminder>`;
+}
+
+function buildCurrentTimeSection(referenceTime: number, locale: string): string {
+  const now = new Date(referenceTime);
+  const english = /^en(?:-|$)/i.test(locale);
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const dateTime = new Intl.DateTimeFormat(english ? "en-US" : "zh-CN", {
+    timeZone: tz, year: "numeric", month: "long", day: "numeric", weekday: "long",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+    timeZoneName: "shortOffset",
+  }).format(now);
+  const content = english
+    ? `Current time: ${dateTime} (${tz}).`
+    : `当前时间：${dateTime}（${tz}）。`;
+  return `<system-reminder>\n${content}\n</system-reminder>`;
+}
+
+function buildLocaleSection(locale: string): string {
+  const content = /^en(?:-|$)/i.test(locale)
+    ? "Always use English to communicate with the user and generate content."
+    : "建议使用中文与用户交流并生成内容。";
+  return `<system-reminder>\n${content}\n</system-reminder>`;
 }
 
 async function buildAlwaysLoadedSkillsContent(skills: SkillFile[], configDirName: string): Promise<string> {
@@ -743,6 +750,17 @@ export class CodeAgent extends Agent {
         buildAlwaysLoadedSkillsContent(skills, configDirName),
         includeSandboxContext ? (toolSandbox.getContext?.() ?? null) : null,
       ]);
+
+      const { skills: allSkills, subAgents: allSubAgents } = this._getPluginResources();
+      const capabilityCatalog = buildCapabilityCatalogSection(
+        allSkills.length ? allSkills : undefined,
+        allSubAgents.length ? allSubAgents : undefined,
+      );
+      const modeCatalog = buildModeCatalogSection({
+        availableModes: getAvailableAgentModes({ disabledModes: agentOptions.disabledModes }),
+        configDirName,
+      });
+
       return [
         ...(agentsMdMessage ? [agentsMdMessage] : []),
         ...(alwaysLoadedSkillsContent ? [{
@@ -750,6 +768,8 @@ export class CodeAgent extends Agent {
           content: `<system-reminder>\n${alwaysLoadedSkillsContent}\n</system-reminder>`,
         }] : []),
         ...(ctx ? [{ role: "user" as const, content: ctx }] : []),
+        ...(capabilityCatalog ? [{ role: "user" as const, content: capabilityCatalog }] : []),
+        ...(modeCatalog ? [{ role: "user" as const, content: modeCatalog }] : []),
       ];
     };
 
@@ -768,44 +788,50 @@ export class CodeAgent extends Agent {
       system: finalSystem,
       getStableContextMessages,
       getAttachmentContextMessages: async (ctx) => {
-        const sections: string[] = [];
+        const items: AttachmentContextItem[] = [];
 
-        // 1. 环境信息：skills/subAgents/日期 + 模式提示词
-        const { skills, subAgents } = this._getPluginResources();
-        const baseSection = buildEnvironmentSection(
-          locale,
-          skills.length ? skills : undefined,
-          subAgents.length ? subAgents : undefined,
-        );
-        const modeSection = await buildModeSection({
+        const customSections: string[] = [];
+        const extra = await agentOptions.getAttachmentContextMessages?.(ctx);
+        for (const item of extra ?? []) {
+          if (typeof item === "string") { if (item) customSections.push(item); continue; }
+          if (!item?.content) continue;
+          if (item.key) items.push(item);
+          else customSections.push(item.content);
+        }
+
+        for (const plugin of plugins) {
+          if (!plugin.getAttachmentContextMessages) continue;
+          try {
+            const pluginItems = await plugin.getAttachmentContextMessages({
+              ...ctx,
+              sandbox: toolSandbox,
+              configDirName,
+            });
+            for (const item of pluginItems ?? []) {
+              if (typeof item === "string") { if (item) customSections.push(item); continue; }
+              if (!item?.content) continue;
+              if (item.key) items.push(item);
+              else customSections.push(item.content);
+            }
+          } catch (error) {
+            console.warn(`[CodeAgent] plugin "${plugin.name}" attachment context failed:`, error);
+          }
+        }
+        if (customSections.length) items.push({ key: "__legacy_attachment_context__", content: customSections.join("\n\n"), dedupThreshold: "always" });
+
+        const modeStatus = await buildModeStatusSection({
           mode: ctx.mode,
           previousMode: ctx.previousMode,
           disabledModes: agentOptions.disabledModes,
           getFiles: getPlanFiles,
           configDirName,
         });
-        const envText = [baseSection, modeSection].filter(Boolean).join("\n\n");
-        if (envText) sections.push(envText);
+        if (modeStatus) items.push({ key: "mode", content: modeStatus });
 
-        // 2. 外部传入的扩展内容（CodeAgentOptions.getAttachmentContextMessages）
-        const extra = await agentOptions.getAttachmentContextMessages?.(ctx);
-        if (extra?.length) sections.push(...extra);
+        items.push({ key: "locale", content: buildLocaleSection(locale) });
+        items.push({ key: "time", content: buildCurrentTimeSection(ctx.turnStartTime, locale), dedupThreshold: "always" });
 
-        for (const plugin of plugins) {
-          if (!plugin.getAttachmentContextMessages) continue;
-          try {
-            const pluginSections = await plugin.getAttachmentContextMessages({
-              ...ctx,
-              sandbox: toolSandbox,
-              configDirName,
-            });
-            if (pluginSections?.length) sections.push(...pluginSections);
-          } catch (error) {
-            console.warn(`[CodeAgent] plugin "${plugin.name}" attachment context failed:`, error);
-          }
-        }
-
-        return sections;
+        return items;
       },
       tools: base.tools,
     });

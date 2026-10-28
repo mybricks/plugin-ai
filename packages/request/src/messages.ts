@@ -23,6 +23,7 @@ export function sanitizeMessages(messages: any[]): any[] {
       errorType: _errorType,
       cache: _cache,
       attachments: _attachments,
+      isAttachmentContext: _isAttachmentContext,
       ...rest
     } = message;
     return rest;
