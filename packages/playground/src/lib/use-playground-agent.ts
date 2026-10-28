@@ -18,12 +18,14 @@ export function usePlaygroundAgent(
   const [memFS, setMemFS] = useState<MemFS | null>(null);
   const agentRef = useRef<CodeAgent | null>(null);
   const referSchemesRef = useRef<string[]>([]);
+  const disposeLifecycleRef = useRef<(() => void) | undefined>();
 
   const resetAgent = useCallback(async (
     testCase: TestCase,
     reqFn?: RequestAsStreamFn | null
   ) => {
     agentRef.current?.abort();
+    disposeLifecycleRef.current?.();
     context.agentMap.delete(AGENT_KEY);
     context.setPluginKey("playground");
 
@@ -37,6 +39,8 @@ export function usePlaygroundAgent(
     });
 
     const fs = testCase.memFSFactory?.(testCase.initialFiles) ?? new MemFS(testCase.initialFiles);
+    const lifecycle = testCase.lifecycleFactory?.(fs, AGENT_KEY);
+    disposeLifecycleRef.current = lifecycle?.dispose;
     const mockHistory = new MockHistory(testCase.initialTurns, (testCase as any)._mockCompact ?? null, testCase.historyOptions);
     // playground 复用 plugin 层的模型服务，但模型选择按 Agent 隔离。
     context.configureLLMProvider("playground", testCase.llm?.providers);
@@ -57,7 +61,8 @@ export function usePlaygroundAgent(
       sandbox,
       tools: typeof testCase.tools === "function" ? testCase.tools(fs) : (testCase.tools ?? []),
       skills: testCase.skills,
-      plugins: testCase.plugins,
+      plugins: [...(testCase.plugins ?? []), ...(lifecycle?.plugins ?? [])],
+      hooks: lifecycle?.hooks,
       summary: testCase.summaryOptions ?? { enabled: false },
       compact: testCase.compactOptions ?? { enabled: false },
       ...(testCase.maskOptions ? { mask: testCase.maskOptions } : {}),
@@ -82,6 +87,7 @@ export function usePlaygroundAgent(
   }, [activeCase, overrideRequest, resetAgent]);
 
   useEffect(() => () => {
+    disposeLifecycleRef.current?.();
     referSchemesRef.current.forEach((scheme) => referRegistry.unregister(scheme));
   }, []);
 

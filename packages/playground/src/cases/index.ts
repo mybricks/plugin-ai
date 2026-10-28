@@ -41,6 +41,7 @@ import { askQuestionsInputCase } from "./ask-questions-input";
 import { askQuestionsDelayedBrowserTaskCase } from "./ask-questions-delayed-browser-task";
 import { askQuestionsQueueCase } from "./ask-questions-queue";
 import { senderQueueCase } from "./sender-queue";
+import { taskVerifySenderBlockCase } from "./task-verify-sender-block";
 import {
   handoffDisabledCase,
   handoffWithMaskCase,
@@ -199,6 +200,7 @@ export const ALL_CASES: TestCase[] = [
   askQuestionsDelayedBrowserTaskCase,
   askQuestionsQueueCase,
   senderQueueCase,
+  taskVerifySenderBlockCase,
   historyCollapseRestoreCase,
   historyCollapseGrowingCase,
   historySlowLoadCase,

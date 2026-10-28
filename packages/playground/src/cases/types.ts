@@ -3,6 +3,7 @@ import type { RequestAsStreamFn } from "@request/types";
 import type { ProviderConfig } from "@request";
 import type { Tool, ToolUIChannel } from "@agent/index";
 import type { CodeAgent } from "@agent/code-agent";
+import type { AgentHooks } from "@agent/index";
 import type { CodeAgentPluginInput, SkillFile } from "@agent/code-agent";
 import type { AgentSandbox } from "@agent/agent-sandbox";
 import type { ChatPanelProps, ChatPanelRef } from "@plugin/ui/chat";
@@ -45,6 +46,8 @@ export interface TestCase {
   initialFiles?: FsFile[];
   /** 创建当前 case 使用的 MemFS；用于保留定制的读写行为，同时供 FS Viewer 观察。 */
   memFSFactory?: (initialFiles?: FsFile[]) => import("../lib/mem-fs").MemFS;
+  /** 为当前 case 实例创建生命周期钩子，清理外部注册。 */
+  lifecycleFactory?: (fs: import("../lib/mem-fs").MemFS, agentKey: string) => { hooks: AgentHooks; dispose: () => void; plugins?: CodeAgentPluginInput[] };
   /** 选择 CodeAgent 的 sandbox 路径；默认保持 V1。 */
   sandboxKind?: "v1" | "agent";
   /** 为 AgentSandbox 用例提供原生实现，用于覆盖命令 transport 等能力。 */
