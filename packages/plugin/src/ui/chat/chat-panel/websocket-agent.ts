@@ -123,8 +123,6 @@ interface ChatStreamState {
 interface PersistedSession {
   /** 服务端会话 ID */
   sessionId?: string;
-  /** 旧 history 是否已同步到该会话。 */
-  legacySynced: boolean;
 }
 
 const MAX_RECONNECT_ATTEMPTS = 6;
@@ -170,10 +168,6 @@ export class WebSocketAgent {
   private disposed = false;
   private mode: AgentMode = AgentModeEnum.Build;
   private conversationSessionId?: string;
-  /** 旧 history 是否已同步到远程会话（兼容旧数据）。 */
-  private legacySynced = false;
-  /** 兼容同步只跑一次的守卫，避免并发首轮重复注入。 */
-  private conversationInit?: Promise<void>;
   private activeTurnId?: string;
   private chatAbort?: AbortController;
   private state: AgentRuntimeState = { running: false };
@@ -220,7 +214,6 @@ export class WebSocketAgent {
     }
     kv.set<PersistedSession>(this.persistedSessionKey(), {
       sessionId: this.sessionId,
-      legacySynced: this.legacySynced,
     });
   }
 
@@ -232,7 +225,6 @@ export class WebSocketAgent {
     this.channelUrl = undefined;
     this.sessionExpiresAt = undefined;
     this.conversationSessionId = undefined;
-    this.legacySynced = false;
     kv.remove(this.persistedSessionKey());
     if (previousSessionId && this.onSessionReset) {
       try {
@@ -328,55 +320,11 @@ export class WebSocketAgent {
    * 经 variables.extra_prompt 传递（见 consumeChatStream）。
    * 全程只跑一次，通过 KV 持久化标记与 conversationInit 单飞防并发。
    */
-  private ensureConversationInitialized(historyTurns: TurnRecord[]): Promise<void> {
-    if (this.legacySynced) return Promise.resolve();
-    if (this.conversationInit) return this.conversationInit;
-
-    this.conversationInit = (async () => {
-      const sessionId = this.conversationSessionId ?? this.sessionId;
-      if (!sessionId) throw new Error("Cannot sync history without a sessionId");
-      // 兼容旧数据：本地 history 里已有轮次时，压成一条 user 背景注入（不含当前正要发送的消息）。
-      const legacy = summarizeHistoryForSeed(historyTurns);
-      this.legacySynced = true;
-      this.persistSession();
-      if (!legacy) return;
-      await this.appendConversationMessages(sessionId, [{ role: "user", content: legacy }]);
-    })();
-    void this.conversationInit.catch((error) => {
-      console.warn("[WebSocketAgent] ensureConversationInitialized failed:", error);
-    }).finally(() => {
-      this.conversationInit = undefined;
-    });
-    return this.conversationInit;
-  }
-
-  private async appendConversationMessages(
-    sessionId: string,
-    messages: Array<{ role: "user" | "tool"; content: string; callId?: string }>,
-  ): Promise<void> {
-    if (!messages.length) return;
-    try {
-      const response = await fetch(
-        `${this.options.baseUrl}/api/v1/sessions/${encodeURIComponent(sessionId)}/messages`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${this.options.apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ messages }),
-        },
-      );
-      if (!response.ok) {
-        const text = await response.text().catch(() => "");
-        throw new Error(`append messages failed: ${response.status} ${response.statusText} ${text}`);
-      }
-    } catch (error) {
-      // 同步失败回滚标记：下次刷新时 legacySynced 重置以便重试。
-      this.legacySynced = false;
-      this.persistSession();
-      throw error;
-    }
+  /**
+   * 旧数据同步已废弃：智能体会自动保存上下文，无需再向会话追加 seed 消息。
+   */
+  private ensureConversationInitialized(_historyTurns: TurnRecord[]): Promise<void> {
+    return Promise.resolve();
   }
 
   // ─── 对话入口 ──────────────────────────────────────────────────────────
@@ -397,8 +345,6 @@ export class WebSocketAgent {
       iterations: [],
       status: "success",
     };
-    // 快照 push 前的 turns，作为兼容旧数据的 seed 素材：既不含当前用户消息，也不含刚新建的空 turn。
-    const historyForSeed = this.turns.slice();
     this.turns.push(turn);
     this.activeTurnId = turnId;
     this.setMode(params.mode ?? AgentModeEnum.Build, "requestAI");
@@ -422,8 +368,6 @@ export class WebSocketAgent {
 
     try {
       await this.ensureToolChannel();
-      // 追加 seed 消息必须先于 /chat/stream，否则流式已开始，seed 无法保证在本轮对模型可见。
-      await this.ensureConversationInitialized(historyForSeed);
       this.setState({ running: true, turnId, stage: { key: WEBSOCKET_AGENT_SESSION_STAGE.AWAITING_MODEL } });
       await this.consumeChatStream(turn, { message: modelText, attachments: params.attachments, variables: params.variables }, abort.signal);
     } catch (error) {
@@ -824,8 +768,6 @@ export class WebSocketAgent {
         this.sessionExpiresAt = parseExpiresAt(session.expiresAt);
         this.conversationSessionId = this.conversationSessionId ?? session.sessionId;
         if (Number(session.heartbeatIntervalMs) > 0) this.heartbeatIntervalMs = Number(session.heartbeatIntervalMs);
-        // 新会话意味着旧 history 同步标记失效，需要重新同步。
-        this.legacySynced = false;
         this.persistSession();
       } else if (!this.channelUrl || isExpired(this.sessionExpiresAt)) {
         // 复用传入或缓存的 sessionId，通过 sessions 接口获取 wsUrl 等连接信息。
@@ -1092,34 +1034,6 @@ function parseSseEvent(raw: string): ChatEvent | null {
   const text = data.join("\n");
   try { return { name, data: JSON.parse(text) }; }
   catch { return { name, data: text }; }
-}
-
-/**
- * 把本地历史轮次拍平成一条可注入的 user 背景消息。
- * append 端点只接受 role=user/tool，因此 AI 回复以摘要形式并入同一条文本，
- * 让模型看到过往脉络，而非严格的多轮结构。返回空串表示无需同步。
- */
-function summarizeHistoryForSeed(turns: TurnRecord[]): string {
-  const valid = turns.filter((turn) => !(turn as any).deleted && (turn.userText?.trim() || turn.iterations?.length));
-  if (!valid.length) return "";
-  const blocks: string[] = [];
-  for (const turn of valid) {
-    const parts: string[] = [];
-    if (turn.userText?.trim()) parts.push(`用户：${turn.userText.trim()}`);
-    const answer = turn.iterations
-      .map((iter) => ("content" in iter ? (iter as any).content : ""))
-      .filter((text) => typeof text === "string" && text.trim())
-      .join("\n")
-      .trim();
-    if (answer) parts.push(`助手：${answer}`);
-    if (parts.length) blocks.push(parts.join("\n"));
-  }
-  if (!blocks.length) return "";
-  return [
-    "<history-context note=\"以下是本次会话迁移前的历史对话，供你了解上下文，无需重复回答\">",
-    blocks.join("\n\n"),
-    "</history-context>",
-  ].join("\n");
 }
 
 function parseArgs(value: any): any {
