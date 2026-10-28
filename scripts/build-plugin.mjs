@@ -30,10 +30,12 @@ const aliasPlugin = alias({
 const babelPlugin = babel({
   babelHelpers: 'bundled',
   extensions: ['.ts', '.tsx', '.js', '.jsx'],
+  // Strip TypeScript before preset-env transforms classes and super() arguments.
+  passPerPreset: true,
   presets: [
-    ['@babel/preset-env', { targets: { esmodules: true } }],
-    ['@babel/preset-react', { runtime: 'classic' }],
     '@babel/preset-typescript',
+    ['@babel/preset-react', { runtime: 'classic' }],
+    ['@babel/preset-env', { targets: { esmodules: true } }],
   ],
 });
 

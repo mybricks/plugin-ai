@@ -32,9 +32,11 @@ const createPlugins = (targets) => [
   babel({
     babelHelpers: "bundled",
     extensions: [".ts", ".js"],
+    // Strip TypeScript before preset-env transforms classes and super() arguments.
+    passPerPreset: true,
     presets: [
-      ["@babel/preset-env", { targets }],
       "@babel/preset-typescript",
+      ["@babel/preset-env", { targets }],
     ],
   }),
 ];
