@@ -9,6 +9,7 @@ import type { AgentMode } from "../../../../../agent/src";
 import type { ToolUIChannel } from "../../../../../agent/src";
 import type { AttachProcessor } from "../../../content-limits";
 import type { MentionProvider } from "../../components/types";
+import { TodoArea } from "../../components/todo-area";
 import { MessageList } from "../messages";
 import type { ActionBarItem, HistoryCollapseConfig } from "../messages";
 import { useHistoryCollapse } from "./use-history-collapse";
@@ -23,6 +24,15 @@ import css from "./index.less";
 interface User {
   name?: string;
   avatar?: string;
+}
+
+type InputArea = "toolBlock" | "todoArea" | "sender";
+
+/** 工具交互优先；待办区仅在 AI 空闲且输入区可用时展示。 */
+function resolveInputArea(toolActive: boolean, loading: boolean, disabled: boolean, hasTodo: boolean): InputArea {
+  if (toolActive) return "toolBlock";
+  if (!loading && !disabled && hasTodo) return "todoArea";
+  return "sender";
 }
 
 export type ChatPanelSize = "small" | "medium" | "large";
@@ -210,6 +220,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   const messageListRef = useRef<{ scrollToBottom: () => void }>(null);
   const [blockingToolTarget, setBlockingToolTarget] = React.useState<HTMLDivElement | null>(null);
   const [activeBlockingToolCallId, setActiveBlockingToolCallId] = React.useState<string | null>(null);
+  const [todoState, setTodoState] = React.useState<{ agent: unknown; component: unknown; active: boolean } | null>(null);
   const setBlockingToolActive = useCallback((callId: string, active: boolean) => {
     setActiveBlockingToolCallId((current) => active ? callId : current === callId ? null : current);
   }, []);
@@ -319,6 +330,13 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       ? <Header title={title} onClear={chatAgent.clear} onExport={chatAgent.exportHistory} disabled={isDisabled} renderExtra={() => headerExtraNode} />
       : null;
 
+  const todoComponent = chatAgent.todoArea;
+  const setTodoActive = useCallback((active: boolean) => {
+    setTodoState({ agent: chatAgent.agent, component: todoComponent, active });
+  }, [chatAgent.agent, todoComponent]);
+  const hasTodo = !!todoComponent && !!todoState && todoState.agent === chatAgent.agent
+    && todoState.component === todoComponent && todoState.active;
+  const inputArea = resolveInputArea(!!activeBlockingToolCallId, loading, isDisabled, hasTodo);
   const senderNode = (
     <Sender
       ref={senderRef}
@@ -337,7 +355,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       onStop={chatAgent.stop}
       pendingQueue={pendingQueue}
       onRemoveFromQueue={chatAgent.removeFromQueue}
-      blocking={!!activeBlockingToolCallId}
+      blocking={inputArea === "toolBlock"}
       renderFocus={renderFocus}
       renderAttachmentSuffix={renderAttachmentSuffix}
       modelSelector={modelSelector}
@@ -351,15 +369,19 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     />
   );
   const senderFooterNode = renderSenderFooter?.();
-  const senderBlockNode = (
+  const inputAreaNode = (
     <div className={css["sender-block"]}>
       <div
         ref={setBlockingToolTarget}
         className={css["blocking-tool-slot"]}
-        style={{ display: activeBlockingToolCallId ? undefined : "none" }}
+        style={{ display: inputArea === "toolBlock" ? undefined : "none" }}
       />
-      {senderNode}
-      {!activeBlockingToolCallId && senderFooterNode !== undefined && senderFooterNode !== null && senderFooterNode !== false
+      {/* 隐藏时保持挂载，保留待办区的暂存状态。 */}
+      <div style={{ display: inputArea === "todoArea" ? undefined : "none" }}>
+        {todoComponent && <TodoArea key={chatAgent.agent?.key} component={todoComponent} setActive={setTodoActive} />}
+      </div>
+      <div style={{ display: inputArea === "todoArea" ? "none" : undefined }}>{senderNode}</div>
+      {inputArea === "sender" && senderFooterNode !== undefined && senderFooterNode !== null && senderFooterNode !== false
         ? <div className={css["sender-footer"]}>{senderFooterNode}</div>
         : null}
     </div>
@@ -411,12 +433,12 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
               onExecutePlan={chatAgent.executePlan}
               canExecutePlan={canExecutePlan}
               renderEmpty={historyStatus === "ready" ? renderEmpty : undefined}
-              renderFooter={scrollWithSender ? () => senderBlockNode : undefined}
+              renderFooter={scrollWithSender ? () => inputAreaNode : undefined}
               collapseCursor={collapseCursor ? { ...collapseCursor, hasMore, isLoadingMore } : (hasMore ? { visibleStartIndex: 0, collapsedCount: 0, hasMore, isLoadingMore } : undefined)}
               onExpandHistory={onExpandHistory}
             />
           </div>
-          {scrollWithSender ? null : senderBlockNode}
+          {scrollWithSender ? null : inputAreaNode}
           {hasOverlayContent ? (
             <div className={css["overlay-panel"]}>{overlayNode}</div>
           ) : null}

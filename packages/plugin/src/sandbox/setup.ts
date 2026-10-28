@@ -305,6 +305,7 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
           hooks: config.hooks,
           chips: config.chips,
           mentions: config.mentions,
+          tasksManager: config.tasksManager,
         }, pluginParams);
       }
       if (!config.designer) {

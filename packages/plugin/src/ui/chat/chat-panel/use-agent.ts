@@ -3,7 +3,7 @@ import { context } from "../../../context";
 import { chipRegistry } from "../../../sandbox/setup";
 import type { QueueItem } from "../../../context/queue";
 import type { SenderProps } from "../../components/sender";
-import type { AgentMode, CodeAgent } from "../../../../../agent/src";
+import type { AgentMode, CodeAgent, CodeAgentPlugin } from "../../../../../agent/src";
 import { AgentModeEnum } from "../../../../../agent/src";
 import type { HistoryStatus } from "../../../../../agent/src";
 import type { ModelSelection } from "../../../../../request/src";
@@ -49,6 +49,7 @@ export interface ChatPanelAgentState {
   setChatMode: (mode: AgentMode | null) => void;
   retry: (turnId: string, selection?: ModelSelection) => void;
   slashCommands: SenderSlashCommand[];
+  todoArea?: NonNullable<CodeAgentPlugin["ui"]>["todoArea"];
 }
 
 export interface UseAgentOptions {
@@ -146,6 +147,11 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
       reference: template.reference,
       icon: createElement(Skill),
     }));
+  }, [agent, pluginRevision]);
+
+  const todoArea = useMemo(() => {
+    if (!agent || isHttpAgent(agent)) return undefined;
+    return agent.getPlugins().find((plugin) => plugin.ui?.todoArea)?.ui?.todoArea;
   }, [agent, pluginRevision]);
 
   const modeSlashCommands = useMemo<SenderActionSlashCommand[]>(() => {
@@ -291,5 +297,6 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
     retry,
     setChatMode,
     slashCommands,
+    todoArea,
   };
 }

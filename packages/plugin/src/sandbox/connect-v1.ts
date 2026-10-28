@@ -78,7 +78,13 @@ export function connectToAIFromV1(
     configDirName: resolvedConfigDirName,
     pageAnalysis: designer.pageAnalysis,
   }), ...(plugins ?? [])]
-    .map((plugin) => injectPluginRuntimeContext(plugin, runtimeContext));
+    .map((plugin) => {
+      // TODO：当前 UI 扩展通过 sandbox 临时透传，先满足现有需求，后续再考虑如何重构扩展机制。
+      const withSandbox = typeof plugin === "function" && designer.tasksManager
+        ? ((ctx: Parameters<typeof plugin>[0]) => plugin({ ...ctx, sandbox: Object.assign({}, ctx.sandbox, { tasksManager: designer.tasksManager }) }))
+        : plugin;
+      return injectPluginRuntimeContext(withSandbox, runtimeContext);
+    });
   const staticPlugins = getStaticPlugins(runtimePlugins);
   const requestGuard = { disabledHandler };
   const isRemoteAgent = Boolean(remoteAgent);

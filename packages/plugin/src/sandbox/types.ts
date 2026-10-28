@@ -44,6 +44,8 @@ export interface Designer {
   exportResourceCode(): string;
   /** 页面分析执行器；工具声明由 plugin-ai 的内置 AuditPower 插件提供。 */
   pageAnalysis?: AuditPowerImplementation;
+  /** 由宿主提供的任务管理 API。 */
+  tasksManager?: any;
 
 }
 
@@ -105,6 +107,8 @@ export interface RegistSandBoxConfig {
   agentSandbox?: AgentSandbox;
   /** AgentSandbox 场景的页面分析执行器（如 local-iframe HTTP 分析）。 */
   pageAnalysis?: AuditPowerImplementation;
+  /** AgentSandbox 场景的任务管理 API。 */
+  tasksManager?: any;
   hooks?: Hooks;
   /**
    * 注册 chip 相关能力，支持自定义 chip 定义和内置/自定义 chip 的 remove 回调。

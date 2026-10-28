@@ -77,7 +77,7 @@ function mergeVirtualFileEntries(
 
 export function connectToAIFromSandbox(
   comId: string,
-  { agentSandbox, pageAnalysis, hooks, chips, mentions }: { agentSandbox: AgentSandbox; pageAnalysis?: AuditPowerImplementation; hooks?: Hooks; chips?: SandboxChipsConfig; mentions?: MentionProvider[] },
+  { agentSandbox, pageAnalysis, hooks, chips, mentions, tasksManager }: { agentSandbox: AgentSandbox; pageAnalysis?: AuditPowerImplementation; hooks?: Hooks; chips?: SandboxChipsConfig; mentions?: MentionProvider[]; tasksManager?: any },
   {
     requestAsStream, llmPluginKey, virtualFiles, configDirName, skills, plugins, promptSections, tools,
     getUserContextMessage, projectContext, formatUserMessage, disabledModes,
@@ -106,7 +106,12 @@ export function connectToAIFromSandbox(
     configDirName: resolvedConfigDirName,
     pageAnalysis,
   }), ...(plugins ?? [])]
-    .map((plugin) => injectPluginRuntimeContext(plugin, runtimeContext));
+    .map((plugin) => {
+      const withSandbox = typeof plugin === "function" && tasksManager
+        ? ((ctx: Parameters<typeof plugin>[0]) => plugin({ ...ctx, sandbox: Object.assign({}, ctx.sandbox, { tasksManager }) }))
+        : plugin;
+      return injectPluginRuntimeContext(withSandbox, runtimeContext);
+    });
   const requestGuard = { disabledHandler };
 
   if (context.agentMap.has(agentKey)) {

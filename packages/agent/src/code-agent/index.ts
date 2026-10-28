@@ -191,6 +191,8 @@ export interface CodeAgentPlugin {
    * 多个插件按 plugins 数组顺序依次执行。
    */
   hooks?: AgentHooks;
+  /** 客户端可选渲染扩展；宿主决定是否展示。 */
+  ui?: { todoArea?: (props: { setActive: (active: boolean) => void }) => any };
 }
 
 /**
