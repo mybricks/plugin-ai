@@ -9,6 +9,7 @@ export const DEFAULT_BASH_ALLOWED_COMMANDS = [
   "touch",
   "sed",
   "head",
+  "ls",
 ] as const;
 export type FileSystemBashCommand = typeof DEFAULT_BASH_ALLOWED_COMMANDS[number];
 
@@ -547,6 +548,177 @@ export async function execHead(args: string[], fileSystem: FileSystem): Promise<
     stdout: isTruncated ? `${truncated}\n// [${lines.length - n} more lines not shown]` : truncated,
     exitCode: 0,
   };
+}
+
+function comparePath(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function normalizeLsPath(path: string): string {
+  const normalized = normalizePath(path).replace(/\/+$/, "");
+  return normalized === "." ? "" : normalized;
+}
+
+function listDirectoryFiles(dir: string, allPaths: string[]): string[] {
+  if (!dir) return allPaths;
+  const prefix = `${dir}/`;
+  return allPaths.filter((filePath) => filePath.startsWith(prefix));
+}
+
+function nearestExistingDirectory(target: string, allPaths: string[]): string {
+  let parent = target;
+  while (parent) {
+    const slash = parent.lastIndexOf("/");
+    parent = slash === -1 ? "" : parent.slice(0, slash);
+    if (parent === "" || allPaths.some((filePath) => filePath.startsWith(`${parent}/`))) return parent;
+  }
+  return "";
+}
+
+const LS_USAGE = "Usage: ls [-R] [-d] [-r] [-I pattern] [path...]";
+const SILENT_LS_FLAGS = "aAl1hFGp";
+
+function lsEntryName(entry: string): string {
+  const trimmed = entry.replace(/\/+$/, "");
+  return trimmed.split("/").pop() ?? trimmed;
+}
+
+function applyLsIgnore(lines: string[], patterns: string[]): string[] {
+  if (patterns.length === 0) return lines;
+  return lines.filter((line) => !patterns.some((pattern) => matchGlob(pattern, lsEntryName(line))));
+}
+
+/**
+ * ls [-R] [-d] [-r] [-I pattern] [path...]
+ * 虚拟文件系统没有空目录：目录由文件路径前缀推导。
+ * - 不传路径时列出项目内全部文件路径
+ * - 目录默认递归列出其下全部文件路径，效果与 -R 相同；-R 仍接受
+ * - 文件则打印该路径
+ * - -d 只列出目录本身；-r 反序；-I / --ignore 按文件名排除
+ * - -t、-S 没有修改时间或文件大小，不报错，在结果末尾说明
+ * - 路径不存在时仍返回错误，并递归列出最近一层已存在目录下的文件
+ */
+export async function execLs(args: string[], fileSystem: FileSystem): Promise<FileSystemCommandResult> {
+  let directoryOnly = false;
+  let reverse = false;
+  const ignorePatterns: string[] = [];
+  const unsupported: string[] = [];
+  const targets: string[] = [];
+  const noteUnsupported = (flag: string) => {
+    if (!unsupported.includes(flag)) unsupported.push(flag);
+  };
+
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === "--" || arg === "--all" || arg === "--almost-all") continue;
+    if (arg === "--recursive") continue;
+    if (arg === "--directory") {
+      directoryOnly = true;
+      continue;
+    }
+    if (arg === "--reverse") {
+      reverse = true;
+      continue;
+    }
+    if (arg === "-I" || arg === "--ignore") {
+      const pattern = args[++index];
+      if (pattern === undefined) {
+        return { stdout: `ls: option '${arg}' requires an argument\n${LS_USAGE}`, exitCode: 1 };
+      }
+      ignorePatterns.push(pattern);
+      continue;
+    }
+    if (arg.startsWith("--ignore=")) {
+      ignorePatterns.push(arg.slice("--ignore=".length));
+      continue;
+    }
+    if (arg.startsWith("--")) {
+      return { stdout: `ls: unrecognized option '${arg}'\n${LS_USAGE}`, exitCode: 1 };
+    }
+    if (arg.startsWith("-I") && arg.length > 2) {
+      ignorePatterns.push(arg.slice(2));
+      continue;
+    }
+    if (arg.startsWith("-") && arg.length > 1) {
+      const flags = arg.slice(1);
+      for (let flagIndex = 0; flagIndex < flags.length; flagIndex++) {
+        const flag = flags[flagIndex];
+        if (flag === "R") {
+          // 默认已经递归列出，-R 只为兼容保留。
+        } else if (flag === "d") directoryOnly = true;
+        else if (flag === "r") reverse = true;
+        else if (flag === "t") noteUnsupported("-t");
+        else if (flag === "S") noteUnsupported("-S");
+        else if (flag === "I") {
+          const attached = flags.slice(flagIndex + 1);
+          const pattern = attached || args[++index];
+          if (!pattern) {
+            return { stdout: `ls: option '-I' requires an argument\n${LS_USAGE}`, exitCode: 1 };
+          }
+          ignorePatterns.push(pattern);
+          break;
+        } else if (!SILENT_LS_FLAGS.includes(flag)) {
+          return { stdout: `ls: invalid option -- '${flag}'\n${LS_USAGE}`, exitCode: 1 };
+        }
+      }
+      continue;
+    }
+    targets.push(normalizeLsPath(arg));
+  }
+
+  const finishLines = (lines: string[]): string => {
+    const visible = applyLsIgnore(lines, ignorePatterns);
+    return (reverse ? [...visible].reverse() : visible).join("\n");
+  };
+  const allPaths = (await fileSystem.findEntries())
+    .map((file) => normalizePath(file.path))
+    .sort(comparePath);
+  const requested = targets.length > 0 ? targets : [""];
+  const blocks: string[] = [];
+  const errors: string[] = [];
+
+  for (const target of requested) {
+    if (isGlobPattern(target)) {
+      const matched = allPaths.filter((filePath) => matchGlob(target, filePath));
+      if (matched.length === 0) {
+        errors.push(`ls: no files match '${target}'`);
+        continue;
+      }
+      const lines = finishLines(matched);
+      blocks.push(requested.length > 1 ? `${target}:\n${lines}` : lines);
+      continue;
+    }
+
+    const isFile = target !== "" && allPaths.includes(target);
+    const isDir = target === "" || allPaths.some((filePath) => filePath.startsWith(`${target}/`));
+    if (!isFile && !isDir) {
+      const parent = nearestExistingDirectory(target, allPaths);
+      const listing = finishLines(listDirectoryFiles(parent, allPaths));
+      const label = parent ? `${parent}/` : ".";
+      errors.push(
+        listing
+          ? `ls: cannot access '${target}': No such file or directory\n${label}:\n${listing}`
+          : `ls: cannot access '${target}': No such file or directory`,
+      );
+      continue;
+    }
+
+    const lines = directoryOnly
+      ? [target === "" ? "." : isFile ? target : `${target}/`]
+      : isDir
+        ? listDirectoryFiles(target, allPaths)
+        : [target];
+    const body = finishLines(lines);
+    const header = requested.length > 1 ? `${target || "."}:\n` : "";
+    blocks.push(`${header}${body}`);
+  }
+
+  const notes = unsupported.map((flag) => `${flag} is not supported in the sandbox environment`);
+  if (errors.length > 0 && blocks.length === 0) {
+    return { stdout: [...errors, ...notes].join("\n"), exitCode: 1 };
+  }
+  const stdout = [...errors, ...blocks, ...notes].filter((block) => block !== "").join("\n");
+  return { stdout, exitCode: errors.length > 0 ? 1 : 0 };
 }
 
 function parseSedExpression(expr: string): RegExpMatchArray | null {

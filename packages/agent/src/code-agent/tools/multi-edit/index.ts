@@ -3,7 +3,7 @@ import type { ToolExecutionContext } from "../../../types";
 import { ToolValidationError } from "../../../types";
 import type { AgentSandbox } from "../../../agent-sandbox";
 import { checkMultiEditFilePermission } from "../../../mode-manager";
-import { READ_TOOL_NAME } from "../read";
+import { fileNotFoundMessage, READ_TOOL_NAME } from "../read";
 import { WRITE_TOOL_NAME } from "../write";
 import { EDIT_TOOL_NAME } from "../edit";
 import {
@@ -146,7 +146,7 @@ export function createMultiEditTool(sandbox: AgentSandbox): Tool {
         if (content === undefined) {
           results.push({
             path: edit.path,
-            error: `File not found: ${edit.path}. Use \`${READ_TOOL_NAME}\` to list available files.`,
+            error: fileNotFoundMessage(edit.path),
             errorCode: "FILE_NOT_FOUND",
           });
           continue;

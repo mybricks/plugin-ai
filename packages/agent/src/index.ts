@@ -33,6 +33,7 @@ export {
   createTouchCommandProxy,
   createSedCommandProxy,
   createHeadCommandProxy,
+  createLsCommandProxy,
   DEFAULT_BASH_ALLOWED_COMMANDS,
   isAgentSandbox,
 } from "./agent-sandbox";

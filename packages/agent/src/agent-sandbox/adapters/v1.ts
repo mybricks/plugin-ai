@@ -4,6 +4,7 @@ import {
   createFileSystemGlobCommandProxy,
   createFileSystemGrepCommandProxy,
   createHeadCommandProxy,
+  createLsCommandProxy,
   createMvCommandProxy,
   createRenameCommandProxy,
   createRmCommandProxy,
@@ -121,6 +122,7 @@ export function createAgentSandboxFromV1(
     ...(allowedCommands.has("touch") ? [createTouchCommandProxy(files)] : []),
     ...(allowedCommands.has("sed") ? [createSedCommandProxy(files)] : []),
     ...(allowedCommands.has("head") ? [createHeadCommandProxy(files)] : []),
+    ...(allowedCommands.has("ls") ? [createLsCommandProxy(files)] : []),
   ];
   const commands = {
       execute: options.commandTransport?.execute ?? (async (command) => {

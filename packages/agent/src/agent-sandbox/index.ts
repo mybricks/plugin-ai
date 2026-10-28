@@ -40,6 +40,7 @@ export {
   createTouchCommandProxy,
   createSedCommandProxy,
   createHeadCommandProxy,
+  createLsCommandProxy,
 } from "./commands";
 export {
   DEFAULT_BASH_ALLOWED_COMMANDS,

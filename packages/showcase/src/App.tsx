@@ -132,7 +132,7 @@ export default function App() {
       // },
       codingConfig: { availableLibraries: [] },
       plugins: [
-        createTaskFirstPlugin()
+        // createTaskFirstPlugin()
       ]
     });
   }, [id]);

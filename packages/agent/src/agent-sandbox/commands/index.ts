@@ -4,6 +4,7 @@ import { createFileSystemGrepCommandProxy, createNativeGrepCommandProxy } from "
 import { createFileSystemGlobCommandProxy, createNativeGlobCommandProxy } from "./glob";
 import { createCpCommandProxy } from "./cp";
 import { createHeadCommandProxy } from "./head";
+import { createLsCommandProxy } from "./ls";
 import { createMvCommandProxy } from "./mv";
 import { createRenameCommandProxy } from "./rename";
 import { createRmCommandProxy } from "./rm";
@@ -203,4 +204,5 @@ export {
   createTouchCommandProxy,
   createSedCommandProxy,
   createHeadCommandProxy,
+  createLsCommandProxy,
 };

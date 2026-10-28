@@ -60,10 +60,10 @@ function getUsingToolsSection(usingTools?: string): string {
   return `# 工具使用
  > 如果修改了用户的代码，在最后考虑是否需要更新副作用文件、查看各类LSP或者运行状态来做最后的检查确认。
 
- - 使用 \`${READ_TOOL_NAME}\` 读取项目文件，而非其他方式。
+ - 使用 \`${READ_TOOL_NAME}\` 读取文件内容。
  - 使用 \`${EDIT_TOOL_NAME}\` 或 \`${MULTI_EDIT_TOOL_NAME}\` 修改已有文件。这是修改文件的首选工具，因为它只发送差异部分。
  - 使用 \`${WRITE_TOOL_NAME}\` 或 \`${MULTI_WRITE_TOOL_NAME}\` 新建文件，或在需要完整重写文件时使用。对已有文件优先使用 \`${EDIT_TOOL_NAME}\`。
- - 使用 \`${BASH_TOOL_NAME}\` 中的 mv、cp、rm、rename 来快速进行重构等多文件操作。
+ - 使用 \`${BASH_TOOL_NAME}\` 中的 ls、mv、cp、rm、rename 列出文件或做重构等多文件操作。
  - 在一次响应中可以调用多个工具。如果多个工具之间没有依赖关系，并行调用它们以提高效率。如果某些工具调用依赖于前一个调用的结果，则按顺序调用。`;
 }
 

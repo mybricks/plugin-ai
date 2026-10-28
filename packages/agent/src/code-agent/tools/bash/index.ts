@@ -34,6 +34,8 @@ function getCommandDescription(command: string): string {
       return `批量替换文件内容中的文本，支持正则、g、i 标志和多个 \`-e\` 表达式；多文件替换场景使用，否则优先 ${MULTI_EDIT_TOOL_NAME}。`;
     case "head":
       return "读取文件开头内容。默认输出前 10 行；支持 `-n N` 和 `-c N`（k/m 后缀）。";
+    case "ls":
+      return "列出文件路径。直接使用 `ls` 列出项目内全部文件；指定目录时递归列出其下文件，指定文件时打印该路径。`-R` 也受支持。路径不存在时返回错误，并列出最近一层已存在目录下的文件。";
     default:
       return "由宿主 command transport 执行。";
   }

@@ -3,7 +3,7 @@ import type { ToolExecutionContext } from "../../../types";
 import { ToolValidationError } from "../../../types";
 import type { AgentSandbox } from "../../../agent-sandbox";
 import { checkEditFilePermission } from "../../../mode-manager";
-import { READ_TOOL_NAME } from "../read";
+import { fileNotFoundMessage, READ_TOOL_NAME } from "../read";
 import { WRITE_TOOL_NAME } from "../write";
 import {
   calculateLineChangeStats,
@@ -125,9 +125,7 @@ export function createEditTool(sandbox: AgentSandbox): Tool {
     ): Promise<ToolResult> {
       const file = await sandbox.files.read(params.path);
       if (!file) {
-        throw new ToolValidationError(
-          `File not found: ${params.path}. Use \`${READ_TOOL_NAME}\` to list available files.`
-        );
+        throw new ToolValidationError(fileNotFoundMessage(params.path));
       }
 
       const result = replaceInContent(file.content, params.old_str, params.new_str, params.replace_all ?? false);

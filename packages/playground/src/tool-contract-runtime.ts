@@ -7,6 +7,7 @@ import {
   createFileSystemGlobCommandProxy,
   createFileSystemGrepCommandProxy,
   createHeadCommandProxy,
+  createLsCommandProxy,
   createMvCommandProxy,
   createRenameCommandProxy,
   createRmCommandProxy,
@@ -61,11 +62,14 @@ export const TOOL_CONTRACT_INITIAL_FILES: FsFile[] = [
 
 export const TOOL_CONTRACTS: ToolContract[] = [
   { id: "read", label: "read_file", tool: "read_file", args: { path: "src/a.ts" }, assert: (_files, result) => result.output.includes("export const value = 1") },
+  { id: "read-wrong-param", label: "read_file ignores unknown params without path", tool: "read_file", args: { file_path: "src/a.ts" }, assert: () => false, assertError: (message) => message === "path is required and must be a non-empty string. Pass `path`." },
+  { id: "read-missing-path", label: "read_file requires path", tool: "read_file", args: {}, assert: () => false, assertError: (message) => message === "path is required and must be a non-empty string. Pass `path`." },
+  { id: "read-not-found", label: "read_file missing file", tool: "read_file", args: { path: "src/missing.ts" }, assert: () => false, assertError: (message) => message === "File not found: src/missing.ts. Use bash `ls` to list available files." },
   { id: "write", label: "write_file", tool: "write_file", args: { path: "src/new.ts", content: "export const created = true;\n" }, assert: (files) => files.some((file) => file.path === "src/new.ts" && file.content.includes("created")) },
   { id: "edit", label: "edit_file", tool: "edit_file", args: { path: "src/a.ts", old_str: "export const value = 1;\nexport const second = 2;\nexport const third = 3;", new_str: "export const value = 2;\nexport const second = 2;\nexport const third = 3;" }, assert: (files, result) => files.find((file) => file.path === "src/a.ts")?.content.includes("value = 2") === true && result.output === "Success. Updated file:\nM src/a.ts +1 -1" && result.metadata.strategy === "exact" && !("replacementCount" in result.metadata) && !("changeStats" in result.metadata) },
   { id: "edit-short-context", label: "edit_file short old_str warning", tool: "edit_file", args: { path: "src/a.ts", old_str: "export const second = 2;", new_str: "export const second = 20;" }, assert: (files, result) => files.find((file) => file.path === "src/a.ts")?.content.includes("second = 20") === true && result.output.includes("M src/a.ts +1 -1") && result.output.includes("Please read the affected file to verify changes.") },
   { id: "edit-replace-all", label: "edit_file replace_all count", tool: "edit_file", args: { path: "src/b.ts", old_str: "export const ", new_str: "export let ", replace_all: true }, assert: (files, result) => files.find((file) => file.path === "src/b.ts")?.content.includes("export let other") === true && result.output.includes("M src/b.ts +2 -2 (2 replacements)") && !("replacementCount" in result.metadata) && !("changeStats" in result.metadata) },
-  { id: "multi-edit-partial", label: "multi_edit partial summary", tool: "multi_edit", args: { edits: [{ path: "src/a.ts", old_str: "export const value = 1;\nexport const second = 2;\nexport const third = 3;", new_str: "export const value = 2;\nexport const second = 2;\nexport const third = 3;" }, { path: "src/missing.ts", old_str: "missing", new_str: "updated" }] }, assert: (files, result) => files.find((file) => file.path === "src/a.ts")?.content.includes("value = 2") === true && result.output === "Partial success. Updated:\nM src/a.ts +1 -1\nFailed:\nsrc/missing.ts: File not found: src/missing.ts. Use `read_file` to list available files." && !("changeStats" in result.metadata.edits[0]) && result.metadata.edits[1]?.errorCode === "FILE_NOT_FOUND" },
+  { id: "multi-edit-partial", label: "multi_edit partial summary", tool: "multi_edit", args: { edits: [{ path: "src/a.ts", old_str: "export const value = 1;\nexport const second = 2;\nexport const third = 3;", new_str: "export const value = 2;\nexport const second = 2;\nexport const third = 3;" }, { path: "src/missing.ts", old_str: "missing", new_str: "updated" }] }, assert: (files, result) => files.find((file) => file.path === "src/a.ts")?.content.includes("value = 2") === true && result.output === "Partial success. Updated:\nM src/a.ts +1 -1\nFailed:\nsrc/missing.ts: File not found: src/missing.ts. Use bash `ls` to list available files." && !("changeStats" in result.metadata.edits[0]) && result.metadata.edits[1]?.errorCode === "FILE_NOT_FOUND" },
   { id: "multi-write", label: "multi_write", tool: "multi_write", args: { files: [{ path: "src/one.ts", content: "one\n" }, { path: "src/two.ts", content: "two\n" }] }, assert: (files) => files.some((file) => file.path === "src/one.ts") && files.some((file) => file.path === "src/two.ts") },
   { id: "delete", label: "delete_file", tool: "delete_file", args: { paths: ["src/remove.ts"] }, assert: (files) => !files.some((file) => file.path === "src/remove.ts") },
   { id: "grep", label: "grep_search", tool: "grep_search", args: { pattern: "export" }, assert: (_files, result) => result.output.includes("src/a.ts") },
@@ -83,6 +87,18 @@ export const TOOL_CONTRACTS: ToolContract[] = [
   { id: "bash-rename", label: "bash rename", tool: "bash", args: { command: "rename remove archived *.ts" }, assert: (files) => !files.some((file) => file.path === "src/remove.ts") && files.some((file) => file.path === "src/archived.ts") },
   { id: "bash-sed", label: "bash sed", tool: "bash", args: { command: "sed -i 's/value/changed/' src/a.ts" }, assert: (files) => files.find((file) => file.path === "src/a.ts")?.content.includes("changed") ?? false },
   { id: "bash-head", label: "bash head", tool: "bash", args: { command: "head -n 2 src/a.ts" }, assert: (_files, result) => result.output.includes("export const value = 1;") && result.output.includes("export const second = 2;") },
+  { id: "bash-ls", label: "bash ls", tool: "bash", args: { command: "ls -la src" }, assert: (_files, result) => result.metadata.exitCode === 0 && result.output === "src/a.ts\nsrc/b.ts\nsrc/remove.ts" },
+  { id: "bash-ls-no-args", label: "bash ls without path", tool: "bash", args: { command: "ls" }, assert: (_files, result) => result.metadata.exitCode === 0 && result.output === "src/a.ts\nsrc/b.ts\nsrc/remove.ts" },
+  { id: "bash-ls-directory", label: "bash ls -d", tool: "bash", args: { command: "ls -d src" }, assert: (_files, result) => result.metadata.exitCode === 0 && result.output === "src/" },
+  { id: "bash-ls-reverse", label: "bash ls -r", tool: "bash", args: { command: "ls -r src" }, assert: (_files, result) => result.output === "src/remove.ts\nsrc/b.ts\nsrc/a.ts" },
+  { id: "bash-ls-ignore", label: "bash ls -I", tool: "bash", args: { command: "ls -I b.ts src" }, assert: (_files, result) => result.output === "src/a.ts\nsrc/remove.ts" },
+  { id: "bash-ls-ignore-long", label: "bash ls --ignore", tool: "bash", args: { command: "ls --ignore=b.ts src" }, assert: (_files, result) => result.output === "src/a.ts\nsrc/remove.ts" },
+  { id: "bash-ls-time", label: "bash ls -lt keeps listing", tool: "bash", args: { command: "ls -lt src" }, assert: (_files, result) => result.metadata.exitCode === 0 && result.output === "src/a.ts\nsrc/b.ts\nsrc/remove.ts\n-t is not supported in the sandbox environment" },
+  { id: "bash-ls-size", label: "bash ls -S keeps listing", tool: "bash", args: { command: "ls -S src" }, assert: (_files, result) => result.metadata.exitCode === 0 && result.output === "src/a.ts\nsrc/b.ts\nsrc/remove.ts\n-S is not supported in the sandbox environment" },
+  { id: "bash-ls-reverse-time", label: "bash ls -ltr reverses names", tool: "bash", args: { command: "ls -ltr src" }, assert: (_files, result) => result.metadata.exitCode === 0 && result.output === "src/remove.ts\nsrc/b.ts\nsrc/a.ts\n-t is not supported in the sandbox environment" },
+  { id: "bash-ls-recursive", label: "bash ls -R", tool: "bash", args: { command: "ls -R src" }, assert: (_files, result) => result.output === "src/a.ts\nsrc/b.ts\nsrc/remove.ts" },
+  { id: "bash-ls-file", label: "bash ls file", tool: "bash", args: { command: "ls src/a.ts" }, assert: (_files, result) => result.output === "src/a.ts" },
+  { id: "bash-ls-missing", label: "bash ls missing path", tool: "bash", args: { command: "ls src/missing" }, assert: (_files, result) => result.metadata.exitCode === 1 && result.output === "ls: cannot access 'src/missing': No such file or directory\nsrc/:\nsrc/a.ts\nsrc/b.ts\nsrc/remove.ts\nExit code: 1" },
   { id: "bash-unsupported-grep", label: "bash rejects grep", tool: "bash", args: { command: "grep export src/a.ts" }, assert: (_files, result) => result.metadata.exitCode === 1 && result.output.includes("command not supported") },
   { id: "bash-invalid-mv", label: "bash mv missing destination", tool: "bash", args: { command: "mv src/a.ts" }, assert: (_files, result) => result.metadata.exitCode === 1 && result.output.includes("missing operand") },
   { id: "bash-host-fallback", label: "bash host fallback", tool: "bash", args: { command: "host-echo hello" }, sandboxKinds: ["agent-host"], assert: (_files, result) => result.output === "hello" && result.metadata.commandMetadata?.transport === "host" },
@@ -137,10 +153,11 @@ function createFileSystemFallbackProxies(files: AgentSandbox["files"]) {
     createTouchCommandProxy(files),
     createSedCommandProxy(files),
     createHeadCommandProxy(files),
+    createLsCommandProxy(files),
   ];
 }
 
-function createFilesFallbackTransport(allowedCommands = ["mv", "cp", "rm", "rename", "touch", "sed", "head"]) {
+function createFilesFallbackTransport(allowedCommands = ["mv", "cp", "rm", "rename", "touch", "sed", "head", "ls"]) {
   return {
     async execute(command: string) {
       const [name] = command.trim().split(/\s+/, 1);
@@ -161,7 +178,7 @@ function createNativeSandbox(fs: MemFS): AgentSandbox {
     // V1 is expected and asserted below.
     commands: {
       ...createFilesFallbackTransport(),
-      allowedCommands: ["mv", "cp", "rm", "rename", "touch", "sed", "head"],
+      allowedCommands: ["mv", "cp", "rm", "rename", "touch", "sed", "head", "ls"],
       proxies: [
         ...createFileSystemFallbackProxies(files),
       ],
@@ -220,7 +237,7 @@ function createHostSandbox(fs: MemFS): AgentSandbox {
     ...native,
     commands: {
       ...hostTransport,
-      allowedCommands: ["mv", "cp", "rm", "rename", "touch", "sed", "head", "host-echo", "host-denied", "host-stream", "host-timeout", "host-abort", "proxy-next"],
+      allowedCommands: ["mv", "cp", "rm", "rename", "touch", "sed", "head", "ls", "host-echo", "host-denied", "host-stream", "host-timeout", "host-abort", "proxy-next"],
       proxies: [{
       // Native command declarations always come before filesystem fallback.
       command: "proxy-next",

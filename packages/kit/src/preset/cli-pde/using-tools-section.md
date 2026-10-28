@@ -11,7 +11,7 @@
   - 修改已有文件优先使用 `edit_file` 或 `multi_edit`；
   - 新建少量文件或需要完整重写文件时使用 `write_file`；
   - 删除文件时使用 `delete_file`。
-  - 使用 `bash` 中的 mv、cp、rm、rename 来快速进行重构、删除等多文件操作。
+  - 使用 `bash` 中的 ls、mv、cp、rm、rename 列出文件，或快速进行重构、删除等多文件操作。
 提问交互类：
   - 优先使用 `ask_questions` 工具进行提问决策
 </常用工具>
