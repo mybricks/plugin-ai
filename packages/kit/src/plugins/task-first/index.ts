@@ -3,7 +3,6 @@ import taskFirstWorkflow from "./task-first-workflow.md";
 import revokeTaskPrompt from "./revoke-task-git.md";
 import type { GitBranchInfo } from "../branch-info";
 import { readGitBranchInfoFromSandbox } from "../branch-info";
-import { createTaskFirstStopCheck } from "./stop-check";
 import { createTaskTransitionHook } from "./task-transition";
 
 export function getTaskDocumentPath(
@@ -22,14 +21,14 @@ export function getTaskDocumentPath(
 export function createTaskFirstPlugin(): CodeAgentPluginFactory {
   return async ({ sandbox, configDirName }) => {
     const branchInfo = await readGitBranchInfoFromSandbox(sandbox);
-    let currentTaskPath: string | undefined;
     const taskPath = getTaskDocumentPath(branchInfo, configDirName);
-    const stopCheck = createTaskFirstStopCheck({ sandbox, configDirName, taskPath });
     const transitionHook = createTaskTransitionHook({ sandbox, taskPath });
+    const verification = await (sandbox as any).tasksManager?.createVerification({ sandbox, taskPath });
 
     return {
     name: "task-first",
-    description: "按 TASKS.md 推进任务并在源码变更后检查回写。",
+    description: "按 TASKS.md 推进任务。",
+    ui: verification?.todoArea ? { todoArea: verification.todoArea } : undefined,
     tools: [Tools.createAskQuestions()],
     promptSections: { workflowSection: taskFirstWorkflow },
     promptTemplates: branchInfo ? [{
@@ -46,8 +45,6 @@ description: Delete a task and revert its related code
           ],
         }] : [],
     async getAttachmentContextMessages() {
-      currentTaskPath = taskPath;
-
       let status = "尚未创建";
       try {
         const file = await sandbox.files.read(taskPath);
@@ -60,19 +57,10 @@ description: Delete a task and revert its related code
       return [`<system-reminder>\n当前任务文档：${taskPath}\n状态：${status}\n</system-reminder>`];
     },
     hooks: {
-      async beforeTurn() {
-        currentTaskPath = undefined;
-        await stopCheck.beforeTurn();
-      },
+      beforeTurn: verification?.beforeTurn,
+      afterTurn: verification?.afterTurn,
       async afterToolCall({ toolCall }) {
         return transitionHook.afterToolCall(toolCall);
-      },
-      async beforeTurnStop({ turn }) {
-        return stopCheck.beforeTurnStop(turn, currentTaskPath);
-      },
-      afterTurn(turn) {
-        stopCheck.afterTurn(turn);
-        currentTaskPath = undefined;
       },
     },
   };
