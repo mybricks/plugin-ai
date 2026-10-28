@@ -1928,7 +1928,7 @@ IMPORTANT: 不要调用工具！
 
       // fork 继承 compactRecord（由 createFork 联动处理：游标在截取范围内则保留）；
       // compact 任务指令放在 system，覆盖父 Agent 的 system。
-      const fork = this.createFork({ tools: [], system: COMPACT_PROMPT, aiRole: FLASH_AI_ROLE, mask: false, handoff: { enabled: true }, retry: { maxRetries: 0 }, turnsSlice: { from: "start", count: sliceCount } });
+      const fork = this.createFork({ tools: [], system: COMPACT_PROMPT, aiRole: FLASH_AI_ROLE, mask: false, handoff: { enabled: true }, retry: { maxRetries: 0 }, turnsSlice: { from: "start", count: sliceCount }, includeSandboxContext: false });
       // compact 只压缩选定历史，不注入父 Agent 当前请求的动态上下文。
       (fork as any).options.getAttachmentContextMessages = undefined;
       (fork as any).options.formatUserMessage = undefined;

@@ -88,6 +88,10 @@ test('real compact between iterations reuses the turn candidate after the old co
     key: 'compact-between-iterations', history,
     summary: false, handoff: false, mask: false,
     compact: { enabled: true, contextWindow: 34000, maxTurns: 100 },
+    getStableContextMessages: ({ includeSandboxContext = true } = {}) => [
+      { role: 'user', content: 'STABLE RULES' },
+      ...(includeSandboxContext ? [{ role: 'user', content: 'DEVELOPMENT GUIDE' }] : []),
+    ],
     getAttachmentContextMessages: () => {
       candidateCalls++;
       return [{ key: 'project', content: 'PROJECT SNAPSHOT' }];
@@ -111,6 +115,9 @@ test('real compact between iterations reuses the turn candidate after the old co
   await agent.requestAI({ message: 'second' });
 
   assert.deepEqual(requests.map(request => request.type), ['main', 'main', 'compact', 'main']);
+  assert.equal(count(requests[0].messages, 'DEVELOPMENT GUIDE'), 1);
+  assert.equal(count(requests[2].messages, 'DEVELOPMENT GUIDE'), 0);
+  assert.equal(count(requests[2].messages, 'STABLE RULES'), 1);
   const before = requests[1].messages;
   const after = requests[3].messages;
   assert.equal(count(before, 'PROJECT SNAPSHOT'), 1);
