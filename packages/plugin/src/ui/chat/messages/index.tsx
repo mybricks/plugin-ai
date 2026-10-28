@@ -239,7 +239,8 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
   const { user, renderUserMessage } = useChatPanel();
   const userName = record.sender?.name ?? user?.name;
   const userAvatar = record.sender?.avatar ?? user?.avatar;
-  const shouldShowUserHeader = Boolean(record.sender || user);
+  // 名字与头像都为空时不渲染用户头栏（user 整体不传或 name/avatar 均未配置的场景）
+  const shouldShowUserHeader = Boolean(userName || userAvatar);
   // const { copilot } = useChatPanel();
   // const shouldShowCopilotHeader = Boolean(copilot);
   const isPlanRecord = isPlanModeRecord(record);
@@ -313,7 +314,9 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
       <div className={classNames(css["chat-bubble"], css["user-bubble"])}>
         {shouldShowUserHeader && (
           <header className={css["chat-bubble-header"]}>
-            <span className={css["chat-bubble-header-name"]}>{userName ?? "用户"}</span>
+            {userName && (
+              <span className={css["chat-bubble-header-name"]}>{userName}</span>
+            )}
             {userAvatar && (
               <div className={css["chat-bubble-header-avatar"]}>
                 <img className={css["user-avatar"]} src={userAvatar} />
