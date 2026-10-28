@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node scripts/build-request.mjs && node scripts/build-agent.mjs && node scripts/build-kit.mjs && node scripts/build-plugin.mjs",
     "build:agent": "node scripts/build-agent.mjs",
+    "test:agent": "node --test tests/agent/*.test.mjs",
     "build:kit": "node scripts/build-kit.mjs",
     "export:aicode": "node scripts/export-aicode-agent-packages.mjs",
     "build:request": "node scripts/build-request.mjs",

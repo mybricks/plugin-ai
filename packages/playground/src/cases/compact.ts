@@ -14,8 +14,7 @@ import { makeTextHistory, makeTextHistoryWithUsage, makeToolHistory, makeTurn } 
  * mock request 需要能响应这个 compact 摘要请求。
  * 使用 loop: true 确保多轮调用都能得到响应。
  *
- * compact 摘要请求的 user message 以 "请对上方完整的对话历史进行总结" 开头，
- * 我们直接在 mock 里返回合法的 <compact>...</compact> 内容。
+ * compact 指令位于 system 消息，mock 根据指令识别摘要请求并返回 <compact> 内容。
  */
 
 const COMPACT_RESPONSE_CONTENT = `<compact>
@@ -28,10 +27,13 @@ const COMPACT_RESPONSE_CONTENT = `<compact>
 
 const COMPACT_PROMPT_MARKER = "请对上方完整的对话历史进行总结";
 
+function isCompactRequest(messages: any[]): boolean {
+  return messages.some(message => message.role === "system" &&
+    typeof message.content === "string" && message.content.includes(COMPACT_PROMPT_MARKER));
+}
+
 function isCompactSnapshot(snapshot: { params: { messages?: any[] } }): boolean {
-  const msgs = snapshot.params.messages ?? [];
-  const lastUserMsg = [...msgs].reverse().find((m: any) => m.role === "user");
-  return typeof lastUserMsg?.content === "string" && lastUserMsg.content.includes(COMPACT_PROMPT_MARKER);
+  return isCompactRequest(snapshot.params.messages ?? []);
 }
 
 function getCompactSnapshots(snapshots: Array<{ params: { messages?: any[] } }>) {
@@ -147,18 +149,14 @@ const compactHandoffHistory = (() => {
 
 /**
  * mock request 逻辑：
- *  - 如果 messages 里最后一条 user content 包含"请对上方完整的对话历史进行总结"
- *    → 这是 compact fork 发出的请求，返回 compact 摘要
+ *  - 如果 system 消息包含 compact 指令 → 返回 compact 摘要
  *  - 否则正常返回 content 回复
  */
 function makeCompactAwareRequest(maxTurnsForTest: number): TestCase["request"] {
   // 每次请求 index（用于区分是主 Agent 请求还是 compact fork 请求）
   return async (params: any) => {
     const msgs = params.messages ?? [];
-    const lastUserMsg = [...msgs].reverse().find(m => m.role === "user");
-    const isCompactFork =
-      typeof lastUserMsg?.content === "string" &&
-      lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
+    const isCompactFork = isCompactRequest(msgs);
 
     await new Promise(r => setTimeout(r, 400));
 
@@ -209,7 +207,7 @@ export const compactWithToolsCase: TestCase = {
   id: "compact-with-tools",
   name: "compact 后置触发（工具调用超阈值）",
   group: "Compact",
-  description: "工具调用完成后 usage 超过阈值（170000 > 167000），触发后置 compact。",
+  description: "工具调用后最终回复的 usage 超过阈值（175000 > 167000），触发后置 compact。",
   expectedBehavior: "工具卡片正常，turn 结束后触发后置 compact fork（Inspector 可见），下次启动时控制台日志显示占比骤降。",
   initialTurns: makeTextHistory([
     { user: "初始化项目", assistant: "已完成初始化。" },
@@ -219,10 +217,7 @@ export const compactWithToolsCase: TestCase = {
     let callCount = 0;
     return async (params: any) => {
       const msgs = params.messages ?? [];
-      const lastUserMsg = [...msgs].reverse().find((m: any) => m.role === "user");
-      const isCompactFork =
-        typeof lastUserMsg?.content === "string" &&
-        lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
+      const isCompactFork = isCompactRequest(msgs);
 
       await new Promise(r => setTimeout(r, 300));
 
@@ -247,8 +242,8 @@ export const compactWithToolsCase: TestCase = {
         }
         params.emits.onToolCalls?.([{ id: `c_w_${callCount}`, name: "write_file", args: JSON.parse(args) }]);
         params.emits.onFinishReason?.("tool_calls");
-        // 工具调用后 usage 超过阈值，触发后置 compact
-        params.emits.onUsage?.({ promptTokens: 170000, completionTokens: 200, totalTokens: 170200 });
+        // 工具步骤保持低于阈值，最终回复超限后才触发后置 compact。
+        params.emits.onUsage?.({ promptTokens: 5000, completionTokens: 200, totalTokens: 5200 });
         params.emits.complete?.("");
       } else {
         const reply = "文件已更新。";
@@ -257,7 +252,7 @@ export const compactWithToolsCase: TestCase = {
           params.emits.write(chunk);
         }
         params.emits.onFinishReason?.("stop");
-        // 最后一轮回复后 usage 仍然超过阈值（compact 尚未完成，还不会降）
+        // 最后一轮回复后 usage 超过阈值，触发后置 compact。
         params.emits.onUsage?.({ promptTokens: 175000, completionTokens: 50, totalTokens: 175050 });
         params.emits.complete?.("");
       }
@@ -278,10 +273,7 @@ export const compactHandoffCase: TestCase = {
   initialTurns: compactHandoffHistory,
   request: async (params) => {
     const msgs = params.messages ?? [];
-    const lastUserMsg = [...msgs].reverse().find(m => m.role === "user");
-    const isCompactFork =
-      typeof lastUserMsg?.content === "string" &&
-      lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
+    const isCompactFork = isCompactRequest(msgs);
 
     await new Promise(r => setTimeout(r, 300));
 
@@ -469,10 +461,7 @@ export const compactNoContentCase: TestCase = {
 function makeCompactWarmupRequest(): TestCase["request"] {
   return async (params: any) => {
     const msgs = params.messages ?? [];
-    const lastUserMsg = [...msgs].reverse().find(m => m.role === "user");
-    const isCompactFork =
-      typeof lastUserMsg?.content === "string" &&
-      lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
+    const isCompactFork = isCompactRequest(msgs);
 
     if (isCompactFork) {
       // 模拟 compact 响应延迟 2 秒
@@ -505,10 +494,7 @@ function makeCompactFirstTurnUsageNoCompactRequest(): TestCase["request"] {
 
   return async (params: any) => {
     const msgs = params.messages ?? [];
-    const lastUserMsg = [...msgs].reverse().find(m => m.role === "user");
-    const isCompactFork =
-      typeof lastUserMsg?.content === "string" &&
-      lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
+    const isCompactFork = isCompactRequest(msgs);
 
     if (isCompactFork) {
       const reply = "错误：首轮没有可压缩历史，不应该触发 compact fork。";
@@ -547,7 +533,7 @@ function makeCompactFirstTurnUsageNoCompactRequest(): TestCase["request"] {
       params.emits.write(chunk);
     }
     params.emits.onFinishReason?.("stop");
-    params.emits.onUsage?.({ promptTokens: 170500, completionTokens: 50, totalTokens: 170550 });
+    params.emits.onUsage?.({ promptTokens: 5000, completionTokens: 50, totalTokens: 5050 });
     params.emits.complete?.("");
   };
 }
@@ -568,10 +554,7 @@ function makeCompactMidTurnErrorRetryRequest(): TestCase["request"] {
 
   return async (params: any) => {
     const msgs = params.messages ?? [];
-    const lastUserMsg = [...msgs].reverse().find((m: any) => m.role === "user");
-    const isCompactFork =
-      typeof lastUserMsg?.content === "string" &&
-      lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
+    const isCompactFork = isCompactRequest(msgs);
 
     // ── compact fork 请求 ──
     if (isCompactFork) {
@@ -651,10 +634,7 @@ function makeCompactMidTurnErrorRetryRequest(): TestCase["request"] {
 function makeCompactErrorRequest(): TestCase["request"] {
   return async (params) => {
     const msgs = params.messages ?? [];
-    const lastUserMsg = [...msgs].reverse().find(m => m.role === "user");
-    const isCompactFork =
-      typeof lastUserMsg?.content === "string" &&
-      lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
+    const isCompactFork = isCompactRequest(msgs);
 
     if (isCompactFork) {
       // 每次尝试延迟 1.5 秒，让重试进度可见
@@ -678,10 +658,7 @@ function makeCompactErrorRequest(): TestCase["request"] {
 function makeCompactEmptyResponseRequest(): TestCase["request"] {
   return async (params) => {
     const msgs = params.messages ?? [];
-    const lastUserMsg = [...msgs].reverse().find(m => m.role === "user");
-    const isCompactFork =
-      typeof lastUserMsg?.content === "string" &&
-      lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
+    const isCompactFork = isCompactRequest(msgs);
 
     if (isCompactFork) {
       // 每次尝试延迟 1.5 秒，让重试进度可见
@@ -711,10 +688,7 @@ function makeCompactEmptyResponseRequest(): TestCase["request"] {
 function makeCompactNoContentRequest(): TestCase["request"] {
   return async (params) => {
     const msgs = params.messages ?? [];
-    const lastUserMsg = [...msgs].reverse().find(m => m.role === "user");
-    const isCompactFork =
-      typeof lastUserMsg?.content === "string" &&
-      lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
+    const isCompactFork = isCompactRequest(msgs);
 
     if (isCompactFork) {
       // 每次尝试延迟 1.5 秒，让重试进度可见
@@ -769,6 +743,7 @@ export const compactRetrySuccessErrorCase: TestCase = {
   description: "compact fork 前 2 次请求报错，第 3 次缩小上下文后成功返回摘要。WarmupIter content 会更新重试进度。",
   expectedBehavior: "WarmupIter 显示'启动中...'后两次更新为'正在尝试其他策略进行压缩，第 N 次重试…'，第 3 次成功后变为 success，主 Agent 正常回复。",
   initialTurns: makeTextHistoryWithUsage([
+    { user: "开始分析项目", assistant: "好的。", usage: { promptTokens: 10000, completionTokens: 200 } },
     { user: "你好", assistant: "你好！有什么可以帮你的？", usage: { promptTokens: 50000, completionTokens: 1000 } },
     { user: "帮我读一下文件", assistant: "好的，文件内容如下...", usage: { promptTokens: 100000, completionTokens: 2000 } },
     { user: "继续分析", assistant: "分析结果如下...", usage: { promptTokens: 170000, completionTokens: 3000 } },
@@ -850,11 +825,9 @@ export const compactBinaryExpandSuccessCase: TestCase = {
  *   1. 第 1 步 LLM 返回 write_file 工具调用，工具执行成功
  *      → usage.promptTokens = 170000（超过阈值 167000）
  *   2. 第 2 步 llm:start 之前触发 warmup/compact → compact 成功
- *   3. 第 2 步 LLM 请求报错，自动重试也失败（maxRetries=2）
- *      → turn:error，底部显示重试按钮
- *   4. 用户点击重试，从 step=2 续跑
- *      → compact 已完成不再触发
- *      → LLM 正常返回内容，turn 成功结束
+ *   3. 第 2 步 LLM 再调用一次 write_file，执行成功
+ *   4. 第 3 步请求及自动重试失败（maxRetries=2），进入 turn:error
+ *   5. 用户点击重试，从 step=3 续跑，compact 不再触发并正常返回内容
  */
 export const compactMidTurnErrorRetryCase: TestCase = {
   id: "compact-mid-turn-error-retry",
@@ -899,10 +872,7 @@ function makeCompactRetrySuccessErrorRequest(): TestCase["request"] {
   let compactAttempt = 0;
   return async (params: any) => {
     const msgs = params.messages ?? [];
-    const lastUserMsg = [...msgs].reverse().find((m: any) => m.role === "user");
-    const isCompactFork =
-      typeof lastUserMsg?.content === "string" &&
-      lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
+    const isCompactFork = isCompactRequest(msgs);
 
     if (isCompactFork) {
       compactAttempt++;
@@ -940,10 +910,7 @@ function makeCompactRetrySuccessTagRequest(): TestCase["request"] {
   let compactAttempt = 0;
   return async (params: any) => {
     const msgs = params.messages ?? [];
-    const lastUserMsg = [...msgs].reverse().find((m: any) => m.role === "user");
-    const isCompactFork =
-      typeof lastUserMsg?.content === "string" &&
-      lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
+    const isCompactFork = isCompactRequest(msgs);
 
     if (isCompactFork) {
       compactAttempt++;
@@ -987,10 +954,7 @@ function makeCompactBinaryExpandSuccessRequest(): TestCase["request"] {
   let compactAttempt = 0;
   return async (params: any) => {
     const msgs = params.messages ?? [];
-    const lastUserMsg = [...msgs].reverse().find((m: any) => m.role === "user");
-    const isCompactFork =
-      typeof lastUserMsg?.content === "string" &&
-      lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
+    const isCompactFork = isCompactRequest(msgs);
 
     if (isCompactFork) {
       compactAttempt++;
@@ -1035,13 +999,12 @@ compact 第 ${compactAttempt} 次成功。
 function makeCompactInfiniteRequest(): TestCase["request"] {
   return async (params) => {
     const msgs = params.messages ?? [];
-    const lastUserMsg = [...msgs].reverse().find(m => m.role === "user");
-    const isCompactFork =
-      typeof lastUserMsg?.content === "string" &&
-      lastUserMsg.content.includes("请对上方完整的对话历史进行总结");
+    const isCompactFork = isCompactRequest(msgs);
 
     if (isCompactFork) {
-      // 模拟 compact 开始处理，但永不结束
+      // 模拟持续输出，收到取消时结束 mock，避免后台无限循环。
+      let cancelled = false;
+      params.emits.cancel(() => { cancelled = true; });
       // 先发送一点内容让它看起来在处理中
       const prefix = "<compact>\n正在总结对话历史...";
       for (const chunk of prefix.match(/.{1,10}/g) ?? []) {
@@ -1050,12 +1013,11 @@ function makeCompactInfiniteRequest(): TestCase["request"] {
       }
       // 永远不调用 onFinishReason 或 complete，让请求挂着
       // 使用一个很长的循环来模拟无限等待
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
+      while (!cancelled) {
         await new Promise(r => setTimeout(r, 1000));
-        // 每秒发送一个空格，保持连接活跃但不结束
-        params.emits.write(" ");
+        if (!cancelled) params.emits.write(" ");
       }
+      return;
     }
 
     // 正常回复
