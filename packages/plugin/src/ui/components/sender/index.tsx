@@ -1008,6 +1008,39 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     return () => document.removeEventListener("keydown", onDocumentKeyDown, true);
   }, [handleMentionMenuKeyDown, mentionMenuOpen]);
 
+  // ── 撤销/重做保护 ──────────────────────────────────────────────────────────
+  // 宿主设计器在 document 上监听 Ctrl+Z（画布撤销）：start-view 渲染在宿主页面的
+  // editor 自身的 onKeyDown 晚于宿主监听，拦不住，
+  // 只有 window capture（先于 document capture 执行）能抢在前面：
+  // 焦点在编辑器内时 stopPropagation 阻断宿主监听，同时不 preventDefault，
+  // 让浏览器执行 contentEditable 的原生撤销/重做。
+  // 若宿主在 window capture 注册且早于本组件（defaultPrevented 已为 true），
+  // 降级用 execCommand 手动补偿执行。
+  useEffect(() => {
+    const onUndoRedoKeyDownCapture = (event: KeyboardEvent) => {
+      if (disabled || !(event.ctrlKey || event.metaKey) || event.altKey) return;
+      const key = event.key.toLowerCase();
+      const isUndo = key === "z" && !event.shiftKey;
+      const isRedo = (key === "z" && event.shiftKey) || key === "y";
+      if (!isUndo && !isRedo) return;
+
+      const editor = inputEditorRef.current;
+      if (!editor) return;
+      // 焦点可能位于 ShadowRoot 内，document.activeElement 只能看到 shadow host，
+      // 需取编辑器所在 root 的 activeElement 才能判断焦点是否真的在编辑器里
+      const root = editor.getRootNode();
+      const active = root instanceof ShadowRoot ? root.activeElement : document.activeElement;
+      if (!active || !editor.contains(active)) return;
+
+      event.stopPropagation();
+      if (event.defaultPrevented) {
+        document.execCommand(isUndo ? "undo" : "redo");
+      }
+    };
+    window.addEventListener("keydown", onUndoRedoKeyDownCapture, true);
+    return () => window.removeEventListener("keydown", onUndoRedoKeyDownCapture, true);
+  }, [disabled]);
+
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (handleMentionMenuKeyDown(event)) {
       return;

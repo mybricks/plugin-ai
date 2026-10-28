@@ -767,3 +767,70 @@
   word-break: break-word;
   background: rgba(255, 68, 68, 0.06);
 }
+
+// ── 工具调用整组折叠（ToolCallsGroup，由消息层包在工具块外）──────────────────
+.tool-calls-group {
+  margin: var(--chat-block-gap, 8px) 0 0;
+
+  // card 组头一条 bar，展开时下方平铺原生工具卡片（不套大卡，避免"卡中卡"）
+  .tool-calls-card-group {
+    margin: 3px 0;
+    font-size: var(--chat-font-size, 12px);
+    color: var(--mybricks-text-color-main, #333);
+  }
+
+  .tool-calls-card-group-header {
+    display: flex;
+    align-items: center;
+    gap: var(--chat-block-gap, 6px);
+    padding: var(--chat-card-option-padding, 5px 10px);
+    min-height: var(--chat-card-min-height, 28px);
+    border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+    border-radius: 6px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .tool-calls-card-group-icon {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+
+    svg { width: var(--chat-icon-size, 12px); height: var(--chat-icon-size, 12px); }
+  }
+
+  .tool-calls-card-group-title {
+    font-size: var(--chat-font-size-sm, 12px);
+    color: var(--mybricks-text-color-main, #333);
+    opacity: 0.62;
+  }
+
+  .tool-calls-group-toggle {
+    display: inline-flex;
+    transition: transform 0.2s;
+    svg {
+      width: 1em;
+      height: 1em;
+    }
+  }
+
+  .tool-calls-card-group-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: auto;
+    font-size: 9px;
+    color: var(--mybricks-text-color-main, #333);
+    opacity: 0.45;
+    flex-shrink: 0;
+    line-height: 1;
+    
+    svg { width: var(--chat-icon-size, 12px); height: var(--chat-icon-size, 12px); }
+  }
+
+  .tool-calls-card-group-body {
+    margin-top: var(--chat-block-gap, 6px);
+    display: flex;
+    flex-direction: column;
+  }
+}
