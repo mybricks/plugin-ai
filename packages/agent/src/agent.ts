@@ -16,6 +16,7 @@ import type {
   Message,
   RequestAIOptions,
   AttachmentContext,
+  AgentEffect,
   SubAgentTurnRecord,
   TokenUsage,
   Tool,
@@ -40,7 +41,7 @@ import { executeToolCall, prepareToolCall, type PreparedToolCall } from "./tool-
 import { toolCallRecordToMessage } from "./message-utils";
 
 export { AgentEvents };
-export type { AgentMode, Message, History, HistoryPersistMode, Tool, TurnErrorCode, TurnRecord, ToolCallRecord, WarmupIter };
+export type { AgentMode, Message, History, HistoryPersistMode, Tool, TurnErrorCode, TurnRecord, ToolCallRecord, WarmupIter, AgentEffect };
 export type {
   AgentOptions,
   AgentHooks,
@@ -1417,19 +1418,57 @@ export class Agent {
 
     if (compact != null && compact.enabled !== false) {
       if (this._shouldAutoCompact()) {
-        tasks.push(this._runAutoCompact(turn).catch((e) => {
+        tasks.push(this._runPostTurnCompact(turn).catch((e) => {
           console.warn("[Agent] autoCompact failed:", e);
         }));
       }
     }
 
     await Promise.all(tasks);
+
+    // post_compact / post_summary 只改内存里的 turn.effects，统一在这里一次性落盘
+    if (turn.effects?.length) {
+      try {
+        await this.historyManager.update(turn.id, { effects: turn.effects });
+      } catch (e) {
+        console.warn("[Agent] post-turn effects history update failed:", e);
+      }
+    }
+
     try {
       await this.options.hooks?.afterTurnSettled?.(turn);
     } catch (e) {
       console.warn("[Agent] hooks.afterTurnSettled failed:", e);
     }
     this.events.emit("turn:settled", { turnId: turn.id });
+  }
+
+  /**
+   * 后置（fire-and-forget）compact：turn 落盘结束后才触发，不阻塞主流程。
+   * 产出一个 AgentEffect（operation: "post_compact"）追加到 turn.effects；
+   * 不在这里落盘，由 _runPostTurnTasks 统一写一次。
+   */
+  private async _runPostTurnCompact(turn: TurnRecord): Promise<boolean> {
+    const effect: AgentEffect = {
+      operation: "post_compact",
+      iterId: randomUUID(),
+      status: "loading",
+      startTime: Date.now(),
+    };
+    turn.effects = turn.effects ? [...turn.effects, effect] : [effect];
+
+    const onAttempt = (subTurn: TurnRecord) => {
+      effect.turns = effect.turns ? [...effect.turns, subTurn] : [subTurn];
+    };
+
+    let ok = false;
+    try {
+      ok = await this._runAutoCompact(turn, undefined, false, undefined, onAttempt);
+      return ok;
+    } finally {
+      effect.status = ok ? "success" : "error";
+      effect.endTime = Date.now();
+    }
   }
 
   // ─── autoSummary ─────────────────────────────────────────────────────────
@@ -1560,6 +1599,14 @@ ${TASK_HANDOFF}
 IMPORTANT: 不要调用工具！
 `;
 
+    const effect: AgentEffect = {
+      operation: "post_summary",
+      iterId: randomUUID(),
+      status: "loading",
+      startTime: Date.now(),
+    };
+    turn.effects = turn.effects ? [...turn.effects, effect] : [effect];
+
     const fork = this.createFork({ tools: [], aiRole: FLASH_AI_ROLE, turnsSlice: { from: "end", count: 1 }, retry: { maxRetries: 0 }, includeSandboxContext: false });
     // summary 只总结这一轮历史，不注入父 Agent 当前请求的动态上下文。
     (fork as any).options.getAttachmentContextMessages = undefined;
@@ -1613,12 +1660,32 @@ IMPORTANT: 不要调用工具！
       if (suggestions) emitSuggestionsOnce(suggestions);
     });
 
+    let requestError: unknown;
+    // 用长度判断是否真的新增了一条 turn，避免 requestAI 失败时误取快照里的旧 turn
+    const forkTurnCountBefore = fork.turns.length;
     try {
       await fork.requestAI({ message: SUMMARY_PROMPT });
+      effect.status = "success";
+    } catch (e) {
+      effect.status = "error";
+      requestError = e;
     } finally {
+      // 把本次 fork 产生的完整 TurnRecord 挂到 effect 上
+      const forkTurn = fork.turns.length > forkTurnCountBefore
+        ? fork.turns[fork.turns.length - 1]
+        : undefined;
+      if (forkTurn) {
+        effect.turns = [forkTurn];
+      }
+      effect.endTime = Date.now();
       // 清除 fork 引用，释放 turns / events 等资源
       fork.turns = [];
       fork.events.removeAllListeners();
+    }
+
+    if (requestError) {
+      // effects 不落盘，交给 _runPostTurnTasks 统一写
+      throw requestError;
     }
 
     // 解析 <summary>...</summary>
@@ -1639,6 +1706,7 @@ IMPORTANT: 不要调用工具！
     if (handoffText) turn.handoff = handoffText;
     if (suggestionsResult) turn.suggestions = suggestionsResult;
 
+    // effects 不落盘，交给 _runPostTurnTasks 统一写
     if (summaryText || handoffText || suggestionsResult) {
       await this.historyManager.update(turn.id, {
         ...(summaryText ? { summary: summaryText } : {}),
@@ -1687,18 +1755,32 @@ IMPORTANT: 不要调用工具！
     turn.iterations.push(warmupIter);
     this.events.emit("warmup:start", { startTime: warmupStartTime, operation: warmupIter.operation, iterId: warmupIterId });
 
+    // 每次 attempt 的完整子 TurnRecord 放进 turn.effects，用 iterId 和 warmupIter 关联
+    const compactEffect: AgentEffect = {
+      operation: "context_compaction",
+      iterId: warmupIterId,
+      status: "loading",
+      startTime: warmupStartTime,
+    };
+    turn.effects = turn.effects ? [...turn.effects, compactEffect] : [compactEffect];
+
     // ── compact 步骤（错误内部消化）
     if (needCompact) {
       const onRetry = (attempt: number) => {
         warmupIter.retryCount = attempt;
         this.events.emit("warmup:content", { retryCount: attempt });
       };
-      const compactOk = await this._runAutoCompact(turn, signal, true, onRetry);
+      const onAttempt = (subTurn: TurnRecord) => {
+        compactEffect.turns = compactEffect.turns ? [...compactEffect.turns, subTurn] : [subTurn];
+      };
+      const compactOk = await this._runAutoCompact(turn, signal, true, onRetry, onAttempt);
       if (!compactOk && !signal.aborted) {
         // compact 重试全部失败，以 error 终止本轮 turn
         warmupIter.status = "error";
         warmupIter.errorCode = "CONTEXT_COMPACTION_FAILED";
         warmupIter.endTime = Date.now();
+        compactEffect.status = "error";
+        compactEffect.endTime = warmupIter.endTime;
         this.events.emit("warmup:complete", { status: "error", errorCode: warmupIter.errorCode, endTime: warmupIter.endTime, iterId: warmupIterId });
         turn.endTime = warmupIter.endTime;
         turn.status = "error";
@@ -1715,6 +1797,8 @@ IMPORTANT: 不要调用工具！
       const warmupEndTime = Date.now();
       warmupIter.status = "abort";
       warmupIter.endTime = warmupEndTime;
+      compactEffect.status = "abort";
+      compactEffect.endTime = warmupEndTime;
       this.events.emit("warmup:complete", { status: "abort", endTime: warmupEndTime, iterId: warmupIterId });
       turn.endTime = warmupEndTime;
       turn.status = "abort";
@@ -1730,6 +1814,8 @@ IMPORTANT: 不要调用工具！
     const warmupEndTime = Date.now();
     warmupIter.status = "success";
     warmupIter.endTime = warmupEndTime;
+    compactEffect.status = "success";
+    compactEffect.endTime = warmupEndTime;
     this.events.emit("warmup:complete", { status: "success", endTime: warmupIter.endTime, iterId: warmupIterId });
     return false;
   }
@@ -1838,6 +1924,7 @@ IMPORTANT: 不要调用工具！
     signal?: AbortSignal,
     enableRetry = false,
     onRetry?: (attempt: number) => void,
+    onAttempt?: (subTurn: TurnRecord) => void,
   ): Promise<boolean> {
     const COMPACT_PROMPT =
       "你的任务是创建一份详细的对话总结，重点关注用户的明确请求和你之前的操作。这份总结应全面涵盖技术细节、代码模式和架构决策，这些内容对于后续的开发工作至关重要，同时又不丢失上下文。\n" +
@@ -1943,6 +2030,9 @@ IMPORTANT: 不要调用工具！
       let lastContent = "";
       fork.events.on("llm:content", ({ content }) => { lastContent = content; });
 
+      // 用长度判断是否真的新增了一条 turn，避免 requestAI 失败时误取快照里的旧 turn
+      const forkTurnCountBefore = fork.turns.length;
+
       let apiOk = true;
       try {
         await fork.requestAI({ message: EXAMPLE_PROMPT });
@@ -1951,6 +2041,13 @@ IMPORTANT: 不要调用工具！
         console.warn(`[Agent] autoCompact requestAI failed (attempt ${attempt}):`, e);
       } finally {
         if (abortHandler && signal) signal.removeEventListener("abort", abortHandler);
+        // 本次 attempt 产生的子 TurnRecord（无论成功/失败都记录）
+        const forkTurn = fork.turns.length > forkTurnCountBefore
+          ? fork.turns[fork.turns.length - 1]
+          : undefined;
+        if (forkTurn) {
+          onAttempt?.(forkTurn);
+        }
         // 清除 fork 引用，释放 turns / events 等资源
         fork.turns = [];
         fork.events.removeAllListeners();

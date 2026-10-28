@@ -196,6 +196,31 @@ export interface WarmupIter {
   toolCalls: [];
 }
 
+// ─── AgentEffect（compact / summary 任务记录） ──────────────────────────────
+
+/**
+ * 存放在 TurnRecord.effects[]，用于记录 compact/summary 每次 fork 调用产生的完整 TurnRecord。
+ * 覆盖三种场景：前置/过程中（warmup 触发）的 compact attempt，以及 turn 结束后
+ * fire-and-forget 的后置 compact、summary。跟 ReAct 循环时间线无关，不混入 iterations。
+ */
+export interface AgentEffect {
+  /**
+   * 任务类型。"context_compaction" 是 warmup 触发的 compact，与对应 WarmupIter 用同一个
+   * iterId 关联；"post_compact" / "post_summary" 是 turn 结束后的后置任务。
+   */
+  operation: "context_compaction" | "post_compact" | "post_summary";
+  /** 本次任务的唯一 ID；"context_compaction" 场景下与对应 WarmupIter.iterId 相同。 */
+  iterId?: string;
+  /** 当前生命周期状态。 */
+  status: "loading" | "success" | "error" | "abort";
+  /** 开始时间（Unix ms） */
+  startTime: number;
+  /** 结束时间（Unix ms），进行中为 undefined */
+  endTime?: number;
+  /** 本次任务每次 fork 调用（含重试）产生的完整 TurnRecord。 */
+  turns?: TurnRecord[];
+}
+
 /** TurnRecord 上由 Agent 明确识别、可供调用方翻译或分支处理的错误码。 */
 export type TurnErrorCode =
   | "TURN_INCOMPLETE"
@@ -392,6 +417,9 @@ export interface TurnRecord {
   };
   /** 用户是否主动关闭了本轮建议展示。 */
   suggestionsDismissed?: boolean;
+
+  /** compact/summary 相关的任务记录。 */
+  effects?: AgentEffect[];
 
   /**
    * 是否已被用户删除（软删除）。

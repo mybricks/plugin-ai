@@ -130,6 +130,13 @@ test('real compact between iterations reuses the turn candidate after the old co
   assert.equal(records[1].attachmentContext.project.content, 'PROJECT SNAPSHOT');
   assert.equal(records[1].attachmentContextCandidates, undefined);
   assert.ok(records[1].iterations.some(iter => iter.type === 'warmup' && iter.status === 'success'));
+  const compactEffect = records[1].effects.find(effect => effect.operation === 'context_compaction');
+  assert.equal(compactEffect.iterId, records[1].iterations.find(iter => iter.type === 'warmup').iterId);
+  assert.equal(compactEffect.turns.length, 1);
+  assert.ok(compactEffect.turns[0].id);
+  assert.equal(compactEffect.turns[0].agentKey, undefined);
+  assert.equal(compactEffect.turns[0].callId, undefined);
+  assert.equal(compactEffect.turns[0].subAgentType, undefined);
   const llmIters = records[1].iterations.filter(iter => iter.type !== 'warmup');
   assert.deepEqual(llmIters.map(iter => iter.attachmentContextKeys), [[], ['project']]);
   assert.equal(llmIters[1].trace.compactRecord.upToTurnId, records[0].id);
