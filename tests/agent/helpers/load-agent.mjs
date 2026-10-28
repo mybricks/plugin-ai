@@ -16,7 +16,7 @@ export async function loadAgentFixtures() {
       plugins: [{
         name: 'typescript-for-tests',
         load(id) {
-          if (id === '\0agent-test-entry') return `export { Agent } from ${JSON.stringify(path.resolve('packages/agent/src/agent.ts'))}; export { compactMidTurnErrorRetryCase } from ${JSON.stringify(path.resolve('packages/playground/src/cases/compact.ts'))}; export { maskByTurnsCase, maskByAgeCase, maskToolHistoryCase, handoffDisabledCase, handoffWithMaskCase } from ${JSON.stringify(path.resolve('packages/playground/src/cases/mask.ts'))};`;
+          if (id === '\0agent-test-entry') return `export { Agent } from ${JSON.stringify(path.resolve('packages/agent/src/agent.ts'))}; export { HistoryManager } from ${JSON.stringify(path.resolve('packages/agent/src/history/manager.ts'))}; export { compactMidTurnErrorRetryCase } from ${JSON.stringify(path.resolve('packages/playground/src/cases/compact.ts'))}; export { maskByTurnsCase, maskByAgeCase, maskToolHistoryCase, handoffDisabledCase, handoffWithMaskCase } from ${JSON.stringify(path.resolve('packages/playground/src/cases/mask.ts'))};`;
           return null;
         },
         async transform(code, id) {
