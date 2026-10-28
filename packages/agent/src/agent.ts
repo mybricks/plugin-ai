@@ -1560,7 +1560,7 @@ ${TASK_HANDOFF}
 IMPORTANT: 不要调用工具！
 `;
 
-    const fork = this.createFork({ tools: [], aiRole: FLASH_AI_ROLE, turnsSlice: { from: "end", count: 1 }, retry: { maxRetries: 0 } });
+    const fork = this.createFork({ tools: [], aiRole: FLASH_AI_ROLE, turnsSlice: { from: "end", count: 1 }, retry: { maxRetries: 0 }, includeSandboxContext: false });
     // summary 只总结这一轮历史，不注入父 Agent 当前请求的动态上下文。
     (fork as any).options.getAttachmentContextMessages = undefined;
     (fork as any).options.formatUserMessage = undefined;
