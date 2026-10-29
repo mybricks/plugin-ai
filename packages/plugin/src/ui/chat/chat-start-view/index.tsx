@@ -138,6 +138,7 @@ const ChatStartView = ({
           onSend={onSend}
           variant="loose"
           chatMode={chatAgent.showChatMode ? chatAgent.chatMode : null}
+          availableChatModes={chatAgent.availableModes}
           onChatModeChange={(nextMode: AgentMode | null) => {
             chatAgent.setChatMode(nextMode);
           }}
