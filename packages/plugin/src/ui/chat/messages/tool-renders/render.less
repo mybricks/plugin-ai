@@ -152,6 +152,36 @@
 button.ask-question-option:hover:not(:disabled) { background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 5%, transparent); }
 .ask-question-option-selected { background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 8%, transparent); }
 .ask-question-option-selected::before { content: '●'; color: var(--mybricks-color-primary, #FA6400); opacity: 1; }
+.ask-question-option-multiple { padding-left: calc(var(--chat-icon-size, 12px) + 11px); }
+.ask-question-option-multiple::before {
+  content: '';
+  top: calc(5px + (1.55em - var(--chat-icon-size, 12px)) / 2);
+  width: var(--chat-icon-size, 12px);
+  height: var(--chat-icon-size, 12px);
+  box-sizing: border-box;
+  border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  border-radius: 3px;
+  background: var(--mybricks-bg-color-main, #fff);
+  opacity: 1;
+}
+.ask-question-option-multiple.ask-question-option-selected::before {
+  border-color: var(--mybricks-color-primary, #FA6400);
+  background: var(--mybricks-color-primary, #FA6400);
+}
+.ask-question-option-multiple.ask-question-option-selected::after {
+  content: '';
+  position: absolute;
+  left: calc(5px + var(--chat-icon-size, 12px) * .35);
+  top: calc(5px + (1.55em - var(--chat-icon-size, 12px)) / 2 + var(--chat-icon-size, 12px) * .15);
+  width: calc(var(--chat-icon-size, 12px) * .25);
+  height: calc(var(--chat-icon-size, 12px) * .5);
+  border: solid var(--mybricks-text-color-on-primary, var(--mybricks-text-color-active, #fff));
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+button.ask-question-option-selected:hover:not(:disabled) { background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 12%, transparent); }
+.ask-question-option:focus-visible { outline: 1px solid var(--mybricks-color-primary, #FA6400); outline-offset: -1px; }
+.ask-question-option:disabled { cursor: not-allowed; opacity: .45; }
 .ask-question-option-label { display: block; font-weight: 600; color: var(--mybricks-text-color-main, #333); }
 .ask-question-option-description { display: block; margin-top: 1px; color: var(--mybricks-text-color-main, #333); font-size: var(--chat-caption-font-size, 11px); opacity: .55; }
 .ask-question-other-input { width: calc(100% - 4px); box-sizing: border-box; margin: 3px 2px 0; padding: 5px 7px; border: 1px solid var(--mybricks-border-color-main, #E6E6E6); border-radius: 0; outline: none; background: var(--mybricks-bg-color-main, #fff); color: var(--mybricks-text-color-main, #333); font: inherit; }

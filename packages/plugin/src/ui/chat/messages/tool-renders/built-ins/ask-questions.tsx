@@ -19,7 +19,9 @@ function isOtherLikeOption(label: string): boolean {
 }
 
 function getRenderOptions(question: AskQuestionsQuestion): RenderOption[] {
-  const marked = question.options.map((option) => ({ ...option, isOther: isOtherLikeOption(option.label) }));
+  const marked = question.options
+    .map((option) => ({ ...option, isOther: isOtherLikeOption(option.label) }))
+    .sort((a, b) => Number(Boolean(a.input)) - Number(Boolean(b.input)));
   if (marked.some((option) => option.isOther)) return marked;
   // 多选题不追加自由输入；单选题已有补充说明入口时也不追加，避免出现两个自由文本入口。
   if (question.multiSelect || marked.some((option) => option.input)) return marked;
@@ -203,7 +205,8 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
                     <>
                       <button
                         type="button"
-                        className={`${css["ask-question-option"]} ${selected ? css["ask-question-option-selected"] : ""}`}
+                        className={`${css["ask-question-option"]} ${currentQuestion.multiSelect ? css["ask-question-option-multiple"] : ""} ${selected ? css["ask-question-option-selected"] : ""}`}
+                        aria-pressed={selected}
                         disabled={submitting}
                         onClick={() => toggleOption(currentQuestion, currentStep, option.label)}
                       >
