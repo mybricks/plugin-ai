@@ -1,5 +1,5 @@
 import React from "react";
-import { AGENT_INTERNAL_FILE_EXCLUDE, CodeAgent, IDBHistory, isFileExcluded, SessionHTTPHistory } from "../../../agent/src";
+import { AGENT_INTERNAL_FILE_EXCLUDE, CodeAgent, IDBHistory, isFileExcluded, SessionHTTPHistory, MergedHistory } from "../../../agent/src";
 import { DisabledHandler, type DisabledRequestHandler } from "../disabled-handler";
 import { ChipRegistry } from "../../../agent/src";
 import { splitFrontmatter, getFrontmatterString, getFrontmatterStringArray } from "../../../agent/src/utils/frontmatter";
@@ -784,7 +784,9 @@ function connectToAI(
         apiKey: remoteAgent.apiKey,
         getSessionId: () => agentRef.current?.sessionId,
       });
-      const wsHistory = history ?? sessionHistory;
+      const wsHistory = history
+        ? new MergedHistory(sessionHistory, history)
+        : sessionHistory;
       // seed 对应 prompt.js 中 system 之后、用户输入之前的两条动态 user 内容（系统提示词由平台侧固定配置，不重复注入）：
       //   user[1] = 前端开发指南（getContext），本地 CodeAgent 由 getStableContextMessages 注入；
       //   user[2] = 环境信息(skills/日期/模式) + 项目空间元信息，本地由 getAttachmentContextMessages 注入。
