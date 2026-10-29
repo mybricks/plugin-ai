@@ -1005,3 +1005,7 @@
   border: 1px solid #d6e4ff;
   font-size: 11px;
 }
+
+/* Suite selection uses the existing playground layout. */
+.pg-suite-select { display: flex; align-items: center; gap: 8px; padding: 8px 12px; color: var(--text-1); font-size: 12px; }
+.pg-suite-select select { min-width: 0; flex: 1; padding: 5px; color: var(--text-0); background: var(--bg-0); border: 1px solid var(--border); border-radius: 4px; }

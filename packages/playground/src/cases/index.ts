@@ -368,14 +368,3 @@ export const ALL_CASES: TestCase[] = [
   bashMvNotFoundCase,
   bashUnsupportedCommandCase,
 ];
-
-/** 按 group 分组 */
-export function groupCases(cases: TestCase[]): Record<string, TestCase[]> {
-  return cases.reduce(
-    (acc, c) => {
-      (acc[c.group] ??= []).push(c);
-      return acc;
-    },
-    {} as Record<string, TestCase[]>
-  );
-}

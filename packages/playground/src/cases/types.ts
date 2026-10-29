@@ -36,6 +36,8 @@ export interface TestCase {
   id: string;
   name: string;
   group: string;
+  /** HTTP suite uses the remote agent and its dedicated mock transport. */
+  httpScenario?: import("../http-agent-mock").HttpAgentScenario;
   /** 优先级，P0 最高，排序时 P0 排在最前 */
   priority?: Priority;
   description: string;

@@ -23,8 +23,8 @@ context.pluginParams = {
   },
 };
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+const suite = new URLSearchParams(window.location.search).get("suite") ?? "local";
+void (suite === "http" ? import("./http-agent-cases").then(m => m.HTTP_PLAYGROUND_CASES) : import("./cases").then(m => m.ALL_CASES))
+  .then(cases => ReactDOM.createRoot(document.getElementById("root")!).render(
+    <React.StrictMode><App cases={cases} suite={suite === "http" ? "http" : "local"} /></React.StrictMode>
+  ));

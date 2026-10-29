@@ -3,9 +3,11 @@ import JsonView from "@microlink/react-json-view";
 import { ChatPanel } from "@plugin/ui/chat/chat-panel";
 import type { ChatPanelRef } from "@plugin/ui/chat/chat-panel";
 import { openSetting } from "@plugin/ui/setting";
-import { ALL_CASES, groupCases } from "./cases";
-import type { TestCase } from "./cases";
+import type { TestCase } from "./cases/types";
 import { usePlaygroundAgent } from "./lib/use-playground-agent";
+import { useHttpAgent } from "./lib/use-http-agent";
+import { LOCAL_CATEGORIES, caseCategory } from "./case-categories";
+import type { HttpCall } from "./http-agent-mock";
 import { useRequestInspector, type RequestSnapshot } from "./lib/use-request-inspector";
 import type { MemFS } from "./lib/mem-fs";
 import { getWebFetchUrl, setWebFetchUrl, getDefaultUrlForCase } from "./lib/web-fetch-state";
@@ -168,10 +170,12 @@ function GroupToolCallsToggle({ enabled, onToggle }: { enabled: boolean; onToggl
   );
 }
 
-const P0_CASES = ALL_CASES.filter(c => c.priority === "P0");
-const P0_GROUPS = groupCases(P0_CASES);
-const OTHER_CASES = ALL_CASES.filter(c => c.priority !== "P0");
-const OTHER_GROUPS = groupCases(OTHER_CASES);
+function groupCases(cases: TestCase[]): Record<string, TestCase[]> {
+  return cases.reduce((groups, item) => {
+    (groups[item.group] ??= []).push(item);
+    return groups;
+  }, {} as Record<string, TestCase[]>);
+}
 const GROUP_ICONS: Record<string, string> = {};
 
 const CHAT_PANEL_SKIN_VARIABLES = [
@@ -254,39 +258,55 @@ function FSViewer({ memFS }: { memFS: MemFS | null }) {
 
 // ─── Inspector Panel ──────────────────────────────────────────────────────────
 
-function InspectorPanel({ snapshots }: { snapshots: RequestSnapshot[] }) {
+function InspectorPanel({ snapshots, httpCalls }: { snapshots: RequestSnapshot[]; httpCalls?: HttpCall[] }) {
   const [activeIdx, setActiveIdx] = useState<number | null>(null);
+  const entries = useMemo(() => httpCalls
+    ? httpCalls.filter(call => /\/(run|retry|abort)$/.test(call.path)).map((call, index) => ({
+        index: index + 1,
+        timestamp: call.timestamp,
+        label: `${call.method} ${call.path.replace(/^\/__http_agent_playground__/, "")}`,
+        detail: "HTTP",
+        data: { method: call.method, path: call.path.replace(/^\/__http_agent_playground__/, ""), body: call.body },
+      }))
+    : snapshots.map(snapshot => ({
+        index: snapshot.index,
+        timestamp: snapshot.timestamp,
+        label: `Step ${snapshot.index}`,
+        detail: `${snapshot.params.messages?.length ?? 0} msgs`,
+        data: snapshot.params,
+        tools: snapshot.params.tools?.length ?? 0,
+      })), [snapshots, httpCalls]);
 
   useEffect(() => {
-    if (snapshots.length > 0) setActiveIdx(snapshots.length - 1);
+    if (entries.length > 0) setActiveIdx(entries.length - 1);
     else setActiveIdx(null);
-  }, [snapshots.length]);
+  }, [entries.length]);
 
-  const active = activeIdx !== null ? snapshots[activeIdx] : null;
+  const active = activeIdx !== null ? entries[activeIdx] : null;
 
   return (
     <div className="pg-inspector">
       <div className="pg-inspector-header">
         <span className="pg-inspector-title">Request Inspector</span>
-        <span className="pg-case-count">{snapshots.length} calls</span>
+        <span className="pg-case-count">{entries.length} calls</span>
       </div>
 
-      {snapshots.length === 0 ? (
+      {entries.length === 0 ? (
         <div className="pg-inspector-empty">
-          发送消息后，每次 LLM 请求的<br />完整参数会显示在这里
+          {httpCalls ? <>发送消息后，HTTP 请求的<br />完整参数会显示在这里</> : <>发送消息后，每次 LLM 请求的<br />完整参数会显示在这里</>}
         </div>
       ) : (
         <>
           <div className="pg-inspector-tabs">
-            {snapshots.map((s, i) => (
+            {entries.map((s, i) => (
               <button
                 key={i}
                 className={`pg-inspector-tab${activeIdx === i ? " active" : ""}`}
                 onClick={() => setActiveIdx(i)}
               >
-                <span className="pg-tab-step">Step {s.index}</span>
+                <span className="pg-tab-step">{s.label}</span>
                 <span className="pg-tab-count">
-                  {s.params.messages?.length ?? 0} msgs
+                  {s.detail}
                 </span>
               </button>
             ))}
@@ -295,10 +315,10 @@ function InspectorPanel({ snapshots }: { snapshots: RequestSnapshot[] }) {
           {active && (
             <div className="pg-inspector-body">
               <div className="pg-inspector-meta">
-                <span>Step {active.index}</span>
-                <span>{active.params.messages?.length ?? 0} messages</span>
-                {active.params.tools && active.params.tools.length > 0 && (
-                  <span>{active.params.tools.length} tools</span>
+                <span>{active.label}</span>
+                <span>{active.detail}</span>
+                {'tools' in active && active.tools > 0 && (
+                  <span>{active.tools} tools</span>
                 )}
                 <span className="pg-meta-time">
                   {new Date(active.timestamp).toLocaleTimeString()}
@@ -307,7 +327,7 @@ function InspectorPanel({ snapshots }: { snapshots: RequestSnapshot[] }) {
 
               <div className="pg-json-wrap">
                 <JsonView
-                  src={active.params}
+                  src={active.data}
                   theme="rjv-default"
                   collapsed={false}
                   shouldCollapse={({ name, namespace }) => {
@@ -374,7 +394,7 @@ function AssertionPanel({
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 
-export default function App() {
+export default function App({ cases, suite }: { cases: TestCase[]; suite: "local" | "http" }) {
   const { mode, cycle: cycleTheme } = useTheme();
   const { disabled: chatDisabled, toggle: toggleDisabled } = useChatDisabled();
   const { width: panelWidth, toggle: togglePanelWidth } = usePanelWidth();
@@ -382,8 +402,18 @@ export default function App() {
   const chatPanelRef = useRef<ChatPanelRef | null>(null);
 
   // 从 URL 读取初始 case（?case=xxx）
-  const initialCaseId = new URLSearchParams(window.location.search).get("case");
-  const initialCase = ALL_CASES.find(c => c.id === initialCaseId) ?? ALL_CASES[0] ?? null;
+  const params = new URLSearchParams(window.location.search);
+  const selectedGroup = suite === "local" ? params.get("group") ?? "" : "";
+  const categoryParam = params.get("category") ?? "";
+  const selectedCategory = LOCAL_CATEGORIES.some(category => category.id === categoryParam) ? categoryParam : "";
+  const visibleCases = selectedGroup
+    ? cases.filter(c => c.group === selectedGroup)
+    : suite === "local" && selectedCategory
+      ? cases.filter(c => caseCategory(c) === selectedCategory)
+      : cases;
+  const initialCaseId = params.get("case");
+  const initialCase = visibleCases.find(c => c.id === initialCaseId) ?? visibleCases[0] ?? null;
+  const caseGroups = groupCases([...visibleCases].sort((a, b) => Number(b.priority === "P0") - Number(a.priority === "P0")));
 
   const [activeCase] = useState<TestCase | null>(initialCase);
   const [webFetchUrl, setWebFetchUrlState] = useState(() => getDefaultUrlForCase(initialCase?.id ?? ""));
@@ -392,13 +422,25 @@ export default function App() {
   const isDefaultChatPanelSkin = activeCase?.chatPanelSkin === "default";
 
   const { wrappedRequest, snapshots } = useRequestInspector(
-    isChatPanelSkinLayout || isToolContractLayout ? null : activeCase?.request ?? null
+    isChatPanelSkinLayout || isToolContractLayout || suite === "http" ? null : activeCase?.request ?? null
   );
 
-  const { agent, memFS } = usePlaygroundAgent(
-    isToolContractLayout ? null : activeCase,
+  const { agent: localAgent, memFS } = usePlaygroundAgent(
+    isToolContractLayout || suite === "http" ? null : activeCase,
     isChatPanelSkinLayout ? null : wrappedRequest
   );
+  const { agent: httpAgent, calls: httpCalls } = useHttpAgent(activeCase?.httpScenario);
+  const agent = suite === "http" ? httpAgent : localAgent;
+
+  const selectSuite = useCallback((value: string) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("suite", value === "http" ? "http" : "local");
+    url.searchParams.delete("case");
+    url.searchParams.delete("group");
+    url.searchParams.delete("category");
+    if (value.startsWith("category:")) url.searchParams.set("category", value.slice(9));
+    window.location.href = url.toString();
+  }, []);
 
   // 是否显示设置按钮（设置分组）
   const showSettingBtn = activeCase?.group === "设置";
@@ -462,8 +504,15 @@ export default function App() {
         <aside className="pg-sidebar">
           <div className="pg-sidebar-header">
             <span className="pg-sidebar-title">Test Cases</span>
-            <span className="pg-case-count">{ALL_CASES.length}</span>
+            <span className="pg-case-count">{visibleCases.length}</span>
           </div>
+          <label className="pg-suite-select">测试集
+            <select aria-label="测试集" value={suite === "http" ? "http" : selectedCategory ? `category:${selectedCategory}` : "local"} onChange={event => selectSuite(event.target.value)}>
+              <option value="local">全部本地用例</option>
+              {LOCAL_CATEGORIES.map(category => <option key={category.id} value={`category:${category.id}`}>{category.label}</option>)}
+              <option value="http">HTTP Agent</option>
+            </select>
+          </label>
           {/* WebFetch URL 输入框 */}
           {showWebFetchInput && (
             <div className="pg-webfetch-input-wrap">
@@ -478,10 +527,7 @@ export default function App() {
             </div>
           )}
           <div className="pg-sidebar-body">
-            {[
-              ...Object.entries(P0_GROUPS),
-              ...Object.entries(OTHER_GROUPS),
-            ].map(([group, cases]) => (
+            {Object.entries(caseGroups).map(([group, cases]) => (
               <div key={group} className="pg-group">
                 <div className="pg-group-label">
                   {GROUP_ICONS[group] ? GROUP_ICONS[group] + " " : ""}{group}
@@ -608,11 +654,11 @@ export default function App() {
             {/* 右侧：Inspector 上 + FS Viewer 下 */}
             <div className="pg-right-col">
               {activeCase?.renderRightPanelActions?.({
-                agent,
+                agent: localAgent,
                 appendInput: (input) => chatPanelRef.current?.appendInput(input),
               })}
-              <InspectorPanel snapshots={snapshots} />
-              <FSViewer memFS={memFS} />
+              <InspectorPanel snapshots={snapshots} httpCalls={suite === "http" ? httpCalls : undefined} />
+              {suite !== "http" && <FSViewer memFS={memFS} />}
             </div>
           </div>
         )}

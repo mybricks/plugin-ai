@@ -469,6 +469,7 @@ export class HttpAgent {
       // retry 的 SSE 只下发本次 attempt，不再回放旧事件：先用服务端快照校准
       // 本地该 turn，避免本地状态与服务端不一致。
       await this.calibrateLastTurn(turnId);
+      this.handleRemoteEvent({ event: "turn:resume", turnId, createdAt: Date.now(), data: { turnId } }, { updateSessionState: false });
       const turn = this.findTurn(turnId);
       // endTime 只表示上一轮 attempt 已经结束；error turn 仍必须把 retry
       // 请求交给服务端处理。否则模型异常会在客户端静默 return，根本不会
@@ -500,7 +501,7 @@ export class HttpAgent {
             ...(modelId ? { modelId } : {}),
           }),
         },
-        { signal: params.signal },
+        { signal: params.signal, skipTurnResumeId: turnId },
       );
     } catch (error) {
       if (!params.signal?.aborted) {
@@ -1479,6 +1480,7 @@ export class HttpAgent {
     options: {
       signal?: AbortSignal;
       skipTurnStartId?: string;
+      skipTurnResumeId?: string;
     } = {},
   ): Promise<void> {
     await new Promise<void>((resolve, reject) => {
@@ -1493,6 +1495,8 @@ export class HttpAgent {
           ) {
             return;
           }
+          if (options.skipTurnResumeId && event.event === "turn:resume" &&
+              (event.data?.turnId ?? event.turnId) === options.skipTurnResumeId) return;
           this.handleRemoteEvent(event, { allowBrowserTasks: true });
           if (!isTerminalRemoteEvent(event)) return;
           terminalSeen = true;
@@ -1504,7 +1508,7 @@ export class HttpAgent {
             if (!terminalSeen) resolve();
             return;
           }
-          reject(new SseDisconnectedError(INTERRUPTED_TURN_MESSAGE));
+          reject(new SseDisconnectedError(TURN_INCOMPLETE_ERROR_CODE));
         })
         .catch((error) => {
           if (options.signal?.aborted) { resolve(); return; }
@@ -1576,7 +1580,7 @@ export class HttpAgent {
       params.onClose?.();
     } catch (error) {
       if (watchdog?.didTimeout()) {
-        const disconnected = new SseDisconnectedError(INTERRUPTED_TURN_MESSAGE);
+        const disconnected = new SseDisconnectedError(TURN_INCOMPLETE_ERROR_CODE);
         params.onError?.(disconnected);
         throw disconnected;
       }
