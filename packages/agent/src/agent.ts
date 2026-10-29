@@ -404,13 +404,6 @@ export class Agent {
   /** Agent 自己持有的、仅运行期有效的工具卡片通信通道。 */
   private readonly toolUI: ToolUIChannel = createToolUIChannel();
   private _abortController: AbortController | null = null;
-  /** 确保 _abortController 存在且可用；如已失效或不存在则新建 */
-  private _ensureAbortController(): AbortController {
-    if (!this._abortController || this._abortController.signal.aborted) {
-      this._abortController = new AbortController();
-    }
-    return this._abortController;
-  }
 
   constructor(options: AgentOptions) {
     // 仅在调用方”未声明该字段”时注入默认值；
@@ -581,6 +574,7 @@ export class Agent {
    * - 传入 providerId/modelId 时，更新本 turn 的 llmOptions 后再发起请求
    */
   async retry(turnIdOrOptions: string | { turnId: string; providerId?: string; modelId?: string }): Promise<void> {
+    const signal = (this._abortController = new AbortController()).signal;
     const { turnId, providerId, modelId } = typeof turnIdOrOptions === "string"
       ? { turnId: turnIdOrOptions, providerId: undefined, modelId: undefined }
       : turnIdOrOptions;
@@ -626,6 +620,7 @@ export class Agent {
       userParams: { message: turn.userText, attachments: turn.userAttachments, meta: turn.meta, extra: turn.extra },
       llmRest: turn.llmOptions,
       persistMode: "update",
+      signal,
     });
   }
 
@@ -641,9 +636,10 @@ export class Agent {
       userParams: { message: string; attachments?: any[]; meta?: any; extra?: Record<string, any> };
       llmRest?: Record<string, any>;
       persistMode: TurnPersistMode;
+      signal: AbortSignal;
     }
   ): Promise<void> {
-    const { userParams, llmRest, persistMode } = opts;
+    const { userParams, llmRest, persistMode, signal } = opts;
     const isFromStart = getLLMIterations(turn.iterations).length === 0;
 
     // 重置 turn 状态
@@ -651,8 +647,18 @@ export class Agent {
     turn.error = undefined;
     turn.errorCode = undefined;
 
-    const signal = this._ensureAbortController().signal;
+    const finishAbortedTurn = async (): Promise<void> => {
+      turn.status = "abort";
+      turn.endTime = Date.now();
+      await this._saveTurnRecord(turn, persistMode);
+      this.events.emit("turn:abort", {});
+      this._onTurnEnd(turn);
+    };
 
+    if (signal.aborted) {
+      await finishAbortedTurn();
+      return;
+    }
     if (isFromStart) {
       // 执行 beforeTurn hook
       try {
@@ -666,6 +672,11 @@ export class Agent {
       } catch (e) {
         console.warn("[Agent] hooks.beforeTurn failed:", e);
       }
+    }
+
+    if (signal.aborted) {
+      await finishAbortedTurn();
+      return;
     }
 
     // 构建 turn 级消息快照：historyTurns 是当前 turn 可见的历史上下文
@@ -693,6 +704,11 @@ export class Agent {
       attachmentContextCandidates = turn.attachmentContext;
     }
 
+    if (signal.aborted) {
+      await finishAbortedTurn();
+      return;
+    }
+
     let messageSnapshot: TurnMessageSnapshot;
     try {
       messageSnapshot = await buildTurnMessageSnapshot(
@@ -703,6 +719,10 @@ export class Agent {
         maskedTurnIds,
       );
     } catch (e) {
+      if (signal.aborted) {
+        await finishAbortedTurn();
+        return;
+      }
       turn.endTime = Date.now();
       turn.status = "error";
       turn.error = String((e as any)?.message ?? e);
@@ -712,7 +732,11 @@ export class Agent {
       throw e;
     }
 
-    await this._runReActLoop({ messageSnapshot, turn, userParams, llmRest, persistMode });
+    if (signal.aborted) {
+      await finishAbortedTurn();
+      return;
+    }
+    await this._runReActLoop({ messageSnapshot, turn, userParams, llmRest, persistMode, signal });
   }
 
   /** ReAct 循环核心逻辑（requestAI 和 retry 共用） */
@@ -727,8 +751,9 @@ export class Agent {
     llmRest?: Record<string, any>;
     /** 本次执行对持久化层的写入语义；新 turn 与 retry 的写入动作不同 */
     persistMode: TurnPersistMode;
+    signal: AbortSignal;
   }): Promise<void> {
-    const { messageSnapshot, turn, userParams, llmRest = {}, persistMode } = opts;
+    const { messageSnapshot, turn, userParams, llmRest = {}, persistMode, signal } = opts;
 
     // 从 turn.iterations 自动推导 initialTail 和 startStep
     const llmItersOnEntry = getLLMIterations(turn.iterations);
@@ -750,8 +775,6 @@ export class Agent {
       }
     }
     const startStep = llmItersOnEntry.length + 1;
-    // 确保 AbortController 可用（retry 续跑时 _abortController 可能为 null 或已 abort）
-    const signal = this._ensureAbortController().signal;
     // 优先使用本次请求的 aiRole；retry 可从 turn 的请求参数恢复。
     const baseLlmRest: Record<string, any> = { ...llmRest };
     const initialAiRole = baseLlmRest.aiRole as string | undefined;
@@ -1142,6 +1165,7 @@ export class Agent {
    *     如需继承当前模式，请显式传 `mode: agent.getMode()`。
    */
   async requestAI(params: RequestAIOptions): Promise<void> {
+    const signal = (this._abortController = new AbortController()).signal;
     await this.ensureHistoryReady();
     const { turnId: requestedTurnId, message, displayMessage, modelMessage, attachments, mode = AgentModeEnum.Build, ...rest } = params;
     const userMessage = displayMessage ?? message!;
@@ -1177,7 +1201,7 @@ export class Agent {
     // 注意：turn.userText 保留展示消息，LLM 收到的是 formattedParams.message。
     const baseParams: FormatUserMessageParams = { ...rest, message: initialModelMessage, attachments, mode: effectiveRequestMode };
     let formattedParams: FormatUserMessageParams & Partial<FormatUserMessageResult> = baseParams;
-    if (this.options.formatUserMessage) {
+    if (!signal.aborted && this.options.formatUserMessage) {
       try {
         const result = await this.options.formatUserMessage(baseParams);
         formattedParams = {
@@ -1246,6 +1270,7 @@ export class Agent {
       userParams: { message: userMessage, attachments: formattedParams.attachments ?? attachments, meta: formattedMeta, extra: formattedExtra },
       llmRest: rest,
       persistMode: isIterPersistence ? "update" : "append",
+      signal,
     });
   }
 
