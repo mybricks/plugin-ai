@@ -262,7 +262,6 @@ function getPlanFileGuideSlugInPlanMode(planDir: string): string {
 
 function getPlanFileGuideSlugInBuildMode(planDir: string): string {
   return `## 计划文件说明
-注意：由于你现在处于智能体模式下，不允许创建计划文件，如有必要，你可以对计划文件进行阅读以及修改内容，但是一定不允许创建计划文件。
 - 目录：\`${planDir}\`。
 - frontmatter 规范
   每个计划文件必须包含以下 frontmatter：
@@ -285,9 +284,9 @@ function getBuildPlanStatusSlug(planState: PlanDirectoryState | null | undefined
     return `## 计划状态
 检测到活跃计划文件 \`${planState.activePlan.path}\`。
 
-请先读取该文件内容，对照用户当前的需求判断：
-- 如果当前需求与该计划**高度相关**，按用户需求处理计划，处理后视情况进行将其归档；；
-- 如果当前需求与该计划**关联性低或无关**，则必须关注用户需求的实现，而不是此计划，然后视情况处理这个计划文件。`;
+请了解该文件内容，对照用户当前的需求判断：
+- 如果当前需求与该计划**高度相关**，按计划文件的内容完成需求，完成后视情况进行将其归档；；
+- 如果当前需求与该计划**关联性低或无关**，则必须按用户需求的内容完成需求，而不是此计划。`;
   }
 
   if (planState?.hasPlanDirContent) {
@@ -341,19 +340,8 @@ export function buildModeCatalogSection(params: {
   const availableModes = params.availableModes ?? ALL_AGENT_MODES;
   if (availableModes.length === 1 && availableModes[0] === AgentModeEnum.Build) return "";
 
-  const planDir = getPlanDir(params.configDirName);
-  const modeGuides = availableModes.map((mode) => {
-    if (mode === AgentModeEnum.Build) return getPlanFileGuideSlugInBuildMode(planDir);
-    if (mode === AgentModeEnum.Plan) return getPlanModeGuideSlug(planDir);
-    if (mode === AgentModeEnum.Ask) return getAskModeGuideSlug();
-    return "";
-  });
-
   return `<system-reminder>
-${joinSections([
-  getModeCatalogSlug(availableModes),
-  ...modeGuides,
-])}
+${getModeCatalogSlug(availableModes)}
 </system-reminder>`;
 }
 
@@ -382,8 +370,9 @@ ${getCurrentModeSlug(params.mode, params.previousMode)}`;
   if (params.mode === AgentModeEnum.Build) {
     return `<system-reminder>
 ${joinSections([
-  modeSlug,
+  `${modeSlug}\n由于你现在处于智能体模式下，你的目标是帮助用户完成需求，而不是创建和维护计划文件。如有必要，你可以对计划文件进行阅读以及归档。但是一定不允许创建、修改计划，那是计划模式的事。`,
   getBuildPlanStatusSlug(planState, planDir),
+  getPlanFileGuideSlugInBuildMode(planDir),
 ])}
 </system-reminder>`;
   }
@@ -392,6 +381,7 @@ ${joinSections([
     return `<system-reminder>
 ${joinSections([
   modeSlug,
+  params.mode === AgentModeEnum.Plan ? getPlanModeGuideSlug(planDir) : getAskModeGuideSlug(),
   getPlanStatusReminderSlug(planState),
 ])}
 </system-reminder>`;
