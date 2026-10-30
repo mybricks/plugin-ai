@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { HttpAgent } from '@plugin/ui/chat/chat-panel/http-agent';
 import { createHttpAgentMock, type HttpAgentScenario, type HttpCall } from '../http-agent-mock';
+import { context } from '@plugin/context';
 
 export function useHttpAgent(scenario?: HttpAgentScenario) {
   const [agent, setAgent] = useState<HttpAgent | null>(null);
@@ -16,9 +17,18 @@ export function useHttpAgent(scenario?: HttpAgentScenario) {
     };
     window.fetch = wrappedFetch;
     const unsubscribe = fixture.subscribe(() => setCalls([...fixture.calls]));
-    setAgent(new HttpAgent({ baseUrl: base, workspaceId: 'demo' }));
+    const agent = new HttpAgent({ baseUrl: base, workspaceId: 'demo' });
+    // 仅用于展示模型选择控件；HTTP 场景不会使用该 request 发网络请求。
+    context.configureLLMProvider('http-playground', [{
+      providerId: 'mock',
+      models: [{ id: 'model-a', name: '测试模型 A' }, { id: 'model-b', name: '测试模型 B' }],
+      request: async () => { throw new Error('HTTP playground uses mock transport'); },
+    }]);
+    context.createLLMRequest('http-playground', agent.key);
+    setAgent(agent);
     return () => {
       unsubscribe();
+      context.configureLLMProvider('http-playground');
       if (window.fetch === wrappedFetch) window.fetch = originalFetch;
     };
   }, [scenario]);
