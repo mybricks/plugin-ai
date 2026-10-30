@@ -8,7 +8,7 @@ import { AgentModeEnum } from "../../../../../agent/src";
 import type { HistoryStatus } from "../../../../../agent/src";
 import type { ModelSelection } from "../../../../../request/src";
 import { useSession } from "../use-session";
-import { isHttpAgent, type HttpAgent } from "./http-agent";
+import { isHttpAgent, type HttpAgent } from "./remote/http-agent";
 import { HTTP_AGENT_SESSION_STAGE } from "./session-status";
 import {
   useSessionState,

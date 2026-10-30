@@ -460,7 +460,7 @@ export {
 export { useAgent } from "./use-agent";
 export { useSessionState } from "./use-session-state";
 export type { SessionState, UseSessionStateOptions } from "./use-session-state";
-export { HttpAgent, isHttpAgent } from "./http-agent";
+export { HttpAgent, isHttpAgent } from "./remote/http-agent";
 export type { ChatAgent, ChatPanelAgentState } from "./use-agent";
 export type {
   BrowserToolRequest,
@@ -470,4 +470,4 @@ export type {
   HttpAgentRequestAIParams,
   MessageHttpAgentRequestAIParams,
   RemoteAgentEvent,
-} from "./http-agent";
+} from "./remote/http-agent";

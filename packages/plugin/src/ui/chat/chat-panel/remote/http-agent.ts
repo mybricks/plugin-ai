@@ -16,33 +16,33 @@ import {
   type TurnSender,
   type VersionFile,
   type VersionRecord,
-} from "../../../../../agent/src";
-import { composePluginHooks, type Sandbox } from "../../../../../agent/src/code-agent";
+} from "../../../../../../agent/src";
+import { composePluginHooks, type Sandbox } from "../../../../../../agent/src/code-agent";
 import {
   createAfterToolCallParams,
   createBeforeToolCallParams,
-} from "../../../../../agent/src/hooks";
+} from "../../../../../../agent/src/hooks";
 import type {
   ActivePlanFile,
   PlanFileInfo,
-} from "../../../../../agent/src/mode-manager";
-import type { AgentRuntimeState } from "../../../context/agent-runtime";
-import { context } from "../../../context";
-import { lang } from "../../../i18n";
-import { jsonStringifySafe } from "../../../utils/json";
-import type { BrowserToolRequest } from "./workspace-bridge";
-import { WorkspaceBridge } from "./workspace-bridge";
-import { HTTP_AGENT_SESSION_STAGE } from "./session-status";
-import type { DisabledHandler } from "../../../disabled-handler";
+} from "../../../../../../agent/src/mode-manager";
+import type { AgentRuntimeState } from "../../../../context/agent-runtime";
+import { context } from "../../../../context";
+import { lang } from "../../../../i18n";
+import { jsonStringifySafe } from "../../../../utils/json";
+import type { BrowserToolRequest } from "../workspace-bridge";
+import { WorkspaceBridge } from "../workspace-bridge";
+import { HTTP_AGENT_SESSION_STAGE } from "../session-status";
+import type { DisabledHandler } from "../../../../disabled-handler";
 import type {
   RemoteFileSystem,
   RemoteFsOperationsResult,
-} from "../../../sandbox/connect-shared";
+} from "../../../../sandbox/connect-shared";
 
 export type {
   BrowserToolRequest,
   BrowserToolResult,
-} from "./workspace-bridge";
+} from "../workspace-bridge";
 
 type ApiResponse<T> = T | { code: number; message?: string; data: T };
 type VersionsPageResponse =

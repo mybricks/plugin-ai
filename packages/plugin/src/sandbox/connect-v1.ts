@@ -9,7 +9,7 @@ import type { Hooks, SandboxChipsConfig, MentionProvider } from "./types";
 import { attachFiles, hasInitialFiles } from "./initial-files";
 import { createCheckStatusTool } from "./tools/check-status";
 import { createBuiltInSandboxPlugins } from "./plugins";
-import { HttpAgent } from "../ui/chat/chat-panel/http-agent";
+import { HttpAgent } from "../ui/chat/chat-panel/remote/http-agent";
 import { context } from "../context";
 import { getPluginLocale } from "../i18n";
 import type { Designer } from "./types";

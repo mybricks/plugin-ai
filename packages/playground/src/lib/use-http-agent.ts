@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { HttpAgent } from '@plugin/ui/chat/chat-panel/http-agent';
+import { HttpAgent } from '@plugin/ui/chat/chat-panel/remote/http-agent';
 import { createHttpAgentMock, type HttpAgentScenario, type HttpCall } from '../http-agent-mock';
 import { context } from '@plugin/context';
 
