@@ -883,8 +883,9 @@ export class Agent {
           turn.endTime = Date.now();
           turn.status = "error";
           turn.error = String((e as any)?.message ?? e);
+          turn.errorCode = "MODEL_ERROR";
           await this._saveTurnRecord(turn, persistMode);
-          this.events.emit("turn:error", { error: e });
+          this.events.emit("turn:error", { error: e, errorCode: turn.errorCode });
           this._onTurnEnd(turn);
           throw e;
         }
@@ -1245,6 +1246,7 @@ export class Agent {
       ...(formattedMeta ? { meta: formattedMeta } : {}),
       ...(formattedExtra ? { extra: formattedExtra } : {}),
       ...(formattedParams.sender ? { sender: formattedParams.sender } : {}),
+      mode: effectiveRequestMode,
       iterations: [],
       status: "success",
     };

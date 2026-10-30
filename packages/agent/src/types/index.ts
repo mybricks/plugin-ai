@@ -225,7 +225,11 @@ export interface AgentEffect {
 export type TurnErrorCode =
   | "TURN_INCOMPLETE"
   | "TURN_LOOP_DETECTED"
-  | "CONTEXT_COMPACTION_FAILED";
+  | "CONTEXT_COMPACTION_FAILED"
+  | "NETWORK_ERROR"
+  | "MODEL_ERROR"
+  | "SESSION_CONFLICT"
+  | "SERVER_ERROR";
 
 // ─── TurnSender ───────────────────────────────────────────────────────────────
 
@@ -302,6 +306,12 @@ export interface TurnRecord {
   startTime: number;
   /** 本轮结束时间（Unix ms），abort/error 时也记录 */
   endTime?: number;
+
+  /**
+   * 本轮运行模式。空轮次（尚未产生 LLM iter）时由它决定 retry 使用的模式。
+   * 已有 LLM iter 时，iter 上的 mode 优先。
+   */
+  mode?: AgentMode;
 
   /** 本轮 LLM 请求路由参数。retry 和普通 fork 默认沿用；summary fork 仅使用 aiRole=flash。不代表最终选中的模型。 */
   llmOptions?: {
