@@ -74,11 +74,10 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5200,
       fs: { allow: [fileURLToPath(new URL("..", import.meta.url)), showcaseRoot] },
-      proxy: proxy
-        ? {
-            "/api/ai-chat/stream": proxy
-          }
-        : undefined
+      proxy: {
+        ...(proxy ? { "/api/ai-chat/stream": proxy } : {}),
+        "/__llm_fault": { target: env.LLM_FAULT_PROXY_CONTROL_URL || "http://127.0.0.1:4318" }
+      }
     }
   };
 });
