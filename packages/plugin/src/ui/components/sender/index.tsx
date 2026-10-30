@@ -1014,8 +1014,6 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   // 只有 window capture（先于 document capture 执行）能抢在前面：
   // 焦点在编辑器内时 stopPropagation 阻断宿主监听，同时不 preventDefault，
   // 让浏览器执行 contentEditable 的原生撤销/重做。
-  // 若宿主在 window capture 注册且早于本组件（defaultPrevented 已为 true），
-  // 降级用 execCommand 手动补偿执行。
   useEffect(() => {
     const onUndoRedoKeyDownCapture = (event: KeyboardEvent) => {
       if (disabled || !(event.ctrlKey || event.metaKey) || event.altKey) return;
@@ -1033,9 +1031,6 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       if (!active || !editor.contains(active)) return;
 
       event.stopPropagation();
-      if (event.defaultPrevented) {
-        document.execCommand(isUndo ? "undo" : "redo");
-      }
     };
     window.addEventListener("keydown", onUndoRedoKeyDownCapture, true);
     return () => window.removeEventListener("keydown", onUndoRedoKeyDownCapture, true);
@@ -1462,6 +1457,21 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       const selection = window.getSelection();
 
       if (!selection?.rangeCount) {
+        return;
+      }
+
+      // 优先用 execCommand 插入：会进入浏览器原生撤销栈（Ctrl+Z 可撤销本次粘贴），
+      // 且自动替换当前选区内容；editor 为 white-space:pre-wrap，
+      // 换行会以字面 \n 文本插入，与 serializeEditorContent 的模型一致。
+      // execCommand 不可用（返回 false / 抛错）时退回手动 DOM 插入（该路径不可撤销）。
+      let inserted = false;
+      try {
+        inserted = document.execCommand("insertText", false, content);
+      } catch (_) {
+        inserted = false;
+      }
+      if (inserted) {
+        syncInputContent();
         return;
       }
 
