@@ -159,19 +159,30 @@ export function serializeEditorContent(
   chipMap: Map<string, ChatChipInstance>
 ): { message: string; chips: ChatChipInstance[] } {
   const instances: ChatChipInstance[] = [];
-  let msg = "";
-  editor.childNodes.forEach((child) => {
-    if (child.nodeType === Node.TEXT_NODE) {
-      msg += child.textContent ?? "";
-    } else if (child instanceof HTMLElement && child.dataset.chipId) {
-      const id = child.dataset.chipId;
-      const inst = chipMap.get(id);
-      if (inst) {
-        instances.push(inst);
-        msg += `[[chip:${id}]]`;
+  const recursionChild = (el: HTMLDivElement | HTMLElement) => {
+    let msg = "";
+    el.childNodes.forEach((child) => {
+      if (child.nodeType === Node.TEXT_NODE) {
+        msg += child.textContent ?? "";
+      } else if (child instanceof HTMLElement && child.dataset.chipId) {
+        const id = child.dataset.chipId;
+        const inst = chipMap.get(id);
+        if (inst) {
+          instances.push(inst);
+          msg += `[[chip:${id}]]`;
+        }
+      } else if (child instanceof HTMLElement) {
+        if (child.childNodes.length > 1) {
+          msg += recursionChild(child);
+        } else {
+          msg += `\n${child.textContent}`;
+        }
       }
-    }
-  });
+    });
+    return msg;
+  }
+
+  const msg = recursionChild(editor);
   return { message: msg, chips: instances };
 }
 

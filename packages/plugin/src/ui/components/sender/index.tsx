@@ -1461,8 +1461,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       }
 
       // 优先用 execCommand 插入：会进入浏览器原生撤销栈（Ctrl+Z 可撤销本次粘贴），
-      // 且自动替换当前选区内容；editor 为 white-space:pre-wrap，
-      // 换行会以字面 \n 文本插入，与 serializeEditorContent 的模型一致。
+      // 且自动替换当前选区内容；insertText 不解析 HTML，无需转义。
+      // 注意：会把文本中的 \n 当作段落分隔符拆成一串 <div>，
+      // 由 serializeEditorContent 统一归一化为 \n。
       // execCommand 不可用（返回 false / 抛错）时退回手动 DOM 插入（该路径不可撤销）。
       let inserted = false;
       try {
