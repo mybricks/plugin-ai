@@ -142,6 +142,24 @@ export const connectorRuntime = {
 };
 ```
 
+### 4. 生成产物中的使用示例
+
+生成的页面代码或 DSL 配置中，使用 `connectorRuntime.call` 发起调用：
+
+```ts
+import { connectorRuntime } from "@mybricks/plugin-ai/connectors";
+
+const data = await connectorRuntime.call("oa-connector", "todo-list", { pageSize: 10 });
+```
+
+在 MVP 阶段，如果生成的产物无法直接导入该模块，可以在页面 JS 代码中使用等价实现：
+
+```ts
+const data = await fetch("https://oa.example.com/api/todo/list?pageSize=10").then(r => r.json());
+```
+
+`connectorRuntime` 的作用是统一调用入口，后续迁移到网关时只需替换该实现，生成产物无需改动。
+
 ## 数据流
 
 1. 用户在 ChatPanel 输入需求：「帮我做一个请假审批看板」。
