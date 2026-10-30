@@ -81,7 +81,7 @@ function summarizePageRequestResult(
 }
 
 export function createLowCodeGeneratePageTool(options: LowCodeToolOptions): Tool {
-  const { runtime, onOperatorActions, enableRenderingOptimization = false } = options;
+  const { runtime, onOperatorActions, enableRenderingOptimization = false, connectorPrompt } = options;
   return {
     name: LOWCODE_GENERATE_PAGE_TOOL_NAME,
     title: "操作页面",
@@ -147,7 +147,7 @@ export function createLowCodeGeneratePageTool(options: LowCodeToolOptions): Tool
           const generated = await runUpdatePageTask(runtime, { ...task, targetId }, toolContext, session!, (nextProgress) => {
             Object.assign(taskProgress, nextProgress);
             emitProgress();
-          }, enableRenderingOptimization);
+          }, enableRenderingOptimization, connectorPrompt);
           onOperatorActions?.({ kind: "updatePage", targetId, actions: generated.actions });
           const result = summarizePageRequestResult(taskIndex, task, await session.complete(), generated.generatedActionLines, generated.report, createResult);
           Object.assign(taskProgress, { status: "complete", targetId: result.targetId, actionCount: result.actionCount, succeeded: result.succeeded, failed: result.failed });

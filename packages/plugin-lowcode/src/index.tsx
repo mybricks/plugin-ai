@@ -20,6 +20,7 @@ import type {
 import { buildLowCodeStableContext } from "./project";
 import { lowCodePromptOptions } from "./prompt-options";
 import { createLowCodeTools } from "./tools";
+import { buildConnectorPrompt } from "./connectors";
 import { registerLowCodeMockActions } from "./designer/mock-actions";
 import { createLowCodeFocusChip, lowCodeFocusChipDef } from "./focus-chip";
 
@@ -222,6 +223,8 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
     onDownload: download,
   };
 
+  const connectorPrompt = buildConnectorPrompt();
+
   const ensureAgent = () => {
     if (agentRef) return agentRef;
 
@@ -248,7 +251,7 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
         const sections = [await getUserContextMessage?.()].filter(Boolean) as string[];
         return sections;
       },
-      tools: [...createLowCodeTools({ runtime, onOperatorActions, enableRenderingOptimization }), ...(tools ?? [])],
+      tools: [...createLowCodeTools({ runtime, onOperatorActions, enableRenderingOptimization, connectorPrompt }), ...(tools ?? [])],
       ...(skills?.length ? { skills } : {}),
       disabledModes,
       ...(sender ? { sender } : {}),

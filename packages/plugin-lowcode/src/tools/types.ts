@@ -5,6 +5,8 @@ export interface LowCodeToolOptions {
   onOperatorActions?: (params: LowCodeOperatorParams) => void;
   /** Whether addChild actions may pass ignore/enhance to the designer. Disabled by default. */
   enableRenderingOptimization?: boolean;
+  /** Connector prompt section injected into page-generation subAgent. */
+  connectorPrompt?: string;
 }
 
 export interface LowCodeOperatorSummary {

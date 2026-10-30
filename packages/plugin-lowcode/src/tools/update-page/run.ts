@@ -46,6 +46,7 @@ export async function runUpdatePageTask(
   executor?: UpdatePageActionExecutor,
   onProgress?: (progress: PageRequestProgress) => void,
   enableRenderingOptimization = false,
+  connectorPrompt?: string,
 ) {
   const dsl = activeDSL;
   const parentAgent = toolContext.getAgent();
@@ -61,7 +62,7 @@ export async function runUpdatePageTask(
   let actionQueue = Promise.resolve();
   const emit = () => onProgress?.({ content: lastContent, thinkingContent: lastThinkingContent, actionCount: run?.sourceActions.length ?? 0, succeeded: run?.executedActions.length ?? 0, failed: run?.failures.length ?? 0, attempts: requestRound });
   const subAgent = parentAgent.createFork({
-    tools: [], system: buildPageActionSystemPrompt(dsl), aiRole: hasImage ? "image" : undefined, retry: false,
+    tools: [], system: buildPageActionSystemPrompt(dsl, connectorPrompt), aiRole: hasImage ? "image" : undefined, retry: false,
     hooks: { beforeRequest: () => {
       requestRound += 1;
       const failures = run?.failures ?? [];

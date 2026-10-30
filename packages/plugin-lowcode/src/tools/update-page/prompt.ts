@@ -81,9 +81,13 @@ export function buildExecutionStatePrompt(failures: LowCodeActionFailure[]): str
   ].join("\n");
 }
 
-export function buildPageActionSystemPrompt(dsl: ActionDSL): string {
+export function buildPageActionSystemPrompt(dsl: ActionDSL, connectorPrompt?: string): string {
   const { fileTag } = dsl;
   const ex = (actions: CanonicalAction[]) => dsl.exampleBlock(actions);
+
+  const connectorSection = connectorPrompt
+    ? `\n<连接器使用规范>\n${connectorPrompt}\n</连接器使用规范>\n`
+    : "";
 
   return `你是 MyBricks 低代码页面搭建专家。你的唯一任务是根据用户需求和低代码上下文，一次性生成完整的页面更新 actions。
 
@@ -427,7 +431,7 @@ ${ex(EXAMPLES.outputFormat)}
 - 返回 actions 时必须注意操作顺序：先创建父容器，再向父容器插槽添加子组件，再配置依赖父组件存在的内容。
 - UI 搭建优先使用 flex 布局，组件通过 width、height、margin 与父插槽关系定位；避免重叠和溢出。
 - 界面要完整、美观、层级清晰，文本、图片、图标、按钮等基础组件优先使用。
-</生成要求>`;
+${connectorSection}</生成要求>`;
 }
 
 export async function generateActionsWithSubAgent(
