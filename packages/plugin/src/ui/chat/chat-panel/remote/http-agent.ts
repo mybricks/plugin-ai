@@ -32,6 +32,7 @@ import { lang } from "../../../../i18n";
 import { jsonStringifySafe } from "../../../../utils/json";
 import type { BrowserToolRequest } from "../workspace-bridge";
 import { WorkspaceBridge } from "../workspace-bridge";
+import { createRemoteSessionRecovery } from "./session-recovery";
 import { HTTP_AGENT_SESSION_STAGE } from "../session-status";
 import type { DisabledHandler } from "../../../../disabled-handler";
 import type {
@@ -219,8 +220,7 @@ export class HttpAgent {
   >();
   private readonly remoteHistory: BoundHistory;
   private readonly historyInitialization: Promise<void>;
-  /** 仅保留服务端明确拒绝的请求，用于重发。 */
-  private readonly rejectedRunBodies = new Map<string, Record<string, unknown>>();
+  private readonly sessionRecovery: ReturnType<typeof createRemoteSessionRecovery>;
   /** 已进入浏览器侧 hook 生命周期的 turn，避免 /run 与 /connect 回放重复启动。 */
   private readonly startedHookTurns = new Set<string>();
   /** /connect 启动 hook 可能是异步的；终态必须在其完成后再触发 afterTurn。 */
@@ -260,10 +260,33 @@ export class HttpAgent {
     });
     this.remoteHistory = this.createRemoteHistory();
     this.historyManager = new HistoryManager({});
+    this.sessionRecovery = createRemoteSessionRecovery({
+      finalizeRejectedTurn: async (turnId) => {
+        const pending = this.pendingTurnFinalizations.get(turnId);
+        pending?.release();
+        await pending?.task;
+      },
+      loadHistory: () => this.initializeHistory(),
+      resetState: () => this.resetReplayState(),
+      waitInitialized: () => this.workspaceBridge.waitInitialized(),
+      subscribe: (callbacks) => this.session.subscribe(callbacks),
+      onEvent: (event) => this.handleReplayEvent(event),
+      onError: (error) => {
+        this.setSessionState({ running: false, error });
+        console.error("[plugin-ai] remote agent replay failed", error);
+      },
+      onClose: (terminalSeen, turnId) => {
+        if (turnId) this.pendingTurnFinalizations.get(turnId)?.release();
+        if (!terminalSeen && !this.sessionState.running) this.markLastUnfinishedTurnInterrupted();
+      },
+      onIdle: () => {
+        if (!this.sessionState.running) this.markLastUnfinishedTurnInterrupted();
+      },
+    });
     this.historyInitialization = this.initializeHistory();
     void this.historyInitialization
       .then(() => this.workspaceBridge.waitInitialized())
-      .then(() => this.connectEventReplay())
+      .then(() => this.sessionRecovery.startReplay())
       .catch((error) => {
         console.error("[plugin-ai] remote init failed", error);
       });
@@ -368,7 +391,7 @@ export class HttpAgent {
     const modelMessage = params.modelMessage ?? params.message!;
     const turnId = params.turnId ?? createTurnId();
     const sender = params.sender ?? this.sender;
-    let submittedBody: Record<string, unknown> | undefined;
+    let recoveringConflict = false;
     this.setSessionState({
       running: true,
       turnId,
@@ -421,7 +444,7 @@ export class HttpAgent {
         // 本地合成 turn:start 只为立即渲染用户消息，不能跳过服务端的准备阶段。
         { updateSessionState: false },
       );
-      submittedBody = {
+      const submittedBody = {
         turnId,
         ...(params.message !== undefined
           ? { message: params.message }
@@ -444,22 +467,14 @@ export class HttpAgent {
         { signal: params.signal, skipTurnStartId: turnId },
       );
     } catch (error) {
-      if (submittedBody && error instanceof HttpResponseError && error.status === 409) {
-        this.rejectedRunBodies.set(turnId, submittedBody);
-      }
-      if (turnId && !params.signal?.aborted) {
-        this.handleRemoteEvent({
-          event: "turn:error",
-          turnId,
-          createdAt: Date.now(),
-          data: { error: serializeError(error), errorCode: classifyHttpError(error) },
-        });
-      }
+      recoveringConflict = error instanceof HttpResponseError && error.status === 409 && !params.signal?.aborted;
+      await this.handleRequestFailure(error, turnId, params.signal, recoveringConflict);
+      if (recoveringConflict) return;
       params.onError?.(error as Error);
       throw error;
     } finally {
       await this.pendingTurnFinalizations.get(turnId)?.task;
-      if (!this.sessionState.running || this.sessionState.turnId === turnId) this.setSessionState({ running: false });
+      if (!recoveringConflict && (!this.sessionState.running || this.sessionState.turnId === turnId)) this.setSessionState({ running: false });
       if (turnId) params.onClose?.();
     }
   }
@@ -472,8 +487,7 @@ export class HttpAgent {
       : turnIdOrOptions;
     if (this.blockIfDisabled()) return;
     const { turnId } = params;
-    const rejectedBody = this.rejectedRunBodies.get(turnId);
-    let resendDispatched = false;
+    let recoveringConflict = false;
     this.setSessionState({
       running: true,
       turnId,
@@ -481,7 +495,7 @@ export class HttpAgent {
     });
     try {
       await this.historyInitialization;
-      if (!rejectedBody) await this.calibrateLastTurn(turnId);
+      await this.calibrateLastTurn(turnId);
       this.handleRemoteEvent({ event: "turn:resume", turnId, createdAt: Date.now(), data: { turnId } }, { updateSessionState: false });
       const turn = this.findTurn(turnId);
       await this.hooks?.beforeTurn?.({
@@ -498,37 +512,25 @@ export class HttpAgent {
       });
       this.startedHookTurns.add(turnId);
       const selection = this.resolveModelSelection(params.providerId, params.modelId);
-      const body = rejectedBody
-        ? { ...rejectedBody, ...(params.modelId ? selection : {}) }
-        : { turnId, ...selection };
-      resendDispatched = Boolean(rejectedBody);
+      const body = { turnId, ...selection };
       await this.consumeRunStream(
-        this.sessionPath(rejectedBody ? "run" : "retry"),
+        this.sessionPath("retry"),
         { method: "POST", body: jsonStringifySafe(body) },
         {
           signal: params.signal,
           skipTurnStartId: turnId,
           skipTurnResumeId: turnId,
-          onOpen: rejectedBody ? () => this.rejectedRunBodies.delete(turnId) : undefined,
         },
       );
     } catch (error) {
-      if (resendDispatched && !(error instanceof HttpResponseError && error.status === 409)) {
-        this.rejectedRunBodies.delete(turnId);
-      }
-      if (!params.signal?.aborted) {
-        this.handleRemoteEvent({
-          event: "turn:error",
-          turnId,
-          createdAt: Date.now(),
-          data: { error: serializeError(error), errorCode: classifyHttpError(error) },
-        });
-      }
+      recoveringConflict = error instanceof HttpResponseError && error.status === 409 && !params.signal?.aborted;
+      await this.handleRequestFailure(error, turnId, params.signal, recoveringConflict);
+      if (recoveringConflict) return;
       params.onError?.(error as Error);
       throw error;
     } finally {
       await this.pendingTurnFinalizations.get(turnId)?.task;
-      if (!this.sessionState.running || this.sessionState.turnId === turnId) this.setSessionState({ running: false });
+      if (!recoveringConflict && (!this.sessionState.running || this.sessionState.turnId === turnId)) this.setSessionState({ running: false });
       params.onClose?.();
     }
   }
@@ -548,7 +550,6 @@ export class HttpAgent {
       method: "POST",
     });
     this.turns = [];
-    this.rejectedRunBodies.clear();
     this.compactRecord = null;
     this.turnsPage = {
       hasMore: false,
@@ -737,44 +738,34 @@ export class HttpAgent {
     return this.session.getTurns({ limit });
   }
 
-  private connectEventReplay(): void {
-    let terminalSeen = false;
-    let terminalTurnId: string | null = null;
-    this.session.subscribe({
-      onEvent: (event) => {
-        if (event.event === "session:error") {
-          this.setSessionState({
-            running: false,
-            error: event.data?.message ?? event.data,
-          });
-          console.error(
-            "[plugin-ai] remote agent replay failed",
-            event.data?.message ?? event.data,
-          );
-          return;
-        }
-        if (event.event === "session:locked") {
-          this.startReplayHookLifecycle(event);
-        }
-        if (isTerminalRemoteEvent(event)) { terminalSeen = true; terminalTurnId = this.eventTurnId(event); }
-        if (event.event === "turn:resume" || event.event === "turn:start") {
-          terminalSeen = false;
-          terminalTurnId = null;
-        }
-        this.handleRemoteEvent(event, { waitForRelease: true });
-      },
-      onError: (error) => {
-        this.setSessionState({ running: false, error });
-        console.error("[plugin-ai] remote agent replay failed", error);
-      },
-      onClose: () => {
-        if (terminalTurnId) this.pendingTurnFinalizations.get(terminalTurnId)?.release();
-        if (!terminalSeen && !this.sessionState.running) this.markLastUnfinishedTurnInterrupted();
-      },
-      onIdle: () => {
-        if (!this.sessionState.running) this.markLastUnfinishedTurnInterrupted();
-      },
+  /** 409 后和重新打开页面一样，以远端历史和 connect 回放恢复会话。 */
+  private async handleRequestFailure(error: unknown, turnId: string, signal: AbortSignal | undefined, recover: boolean): Promise<void> {
+    if (signal?.aborted) return;
+    this.handleRemoteEvent({
+      event: "turn:error", turnId, createdAt: Date.now(),
+      data: { error: serializeError(error), errorCode: classifyHttpError(error) },
     });
+    if (recover) await this.sessionRecovery.recover(turnId);
+  }
+
+  private resetReplayState(): void {
+    this.startedHookTurns.clear();
+    this.completedHookTurns.clear();
+    this.completedSummaryHookTurns.clear();
+    this.completedSettledHookTurns.clear();
+    this.dispatchedBeforeToolCalls.clear();
+    this.dispatchedAfterToolCalls.clear();
+    this.setSessionState({ running: false });
+  }
+
+  private handleReplayEvent(event: RemoteAgentEvent): void {
+    if (event.event === "session:error") {
+      this.setSessionState({ running: false, error: event.data?.message ?? event.data });
+      console.error("[plugin-ai] remote agent replay failed", event.data?.message ?? event.data);
+      return;
+    }
+    if (event.event === "session:locked") this.startReplayHookLifecycle(event);
+    this.handleRemoteEvent(event, { waitForRelease: true });
   }
 
   /**
@@ -1390,13 +1381,13 @@ export class HttpAgent {
       if (this.sessionState.turnId === turnId) {
         this.setSessionState({ running: false, ...(event.event === "turn:error" ? { error: event.data?.error } : {}) });
       }
-      this.triggerAfterTurn(event);
+      await this.triggerAfterTurn(event);
     })().finally(() => { this.pendingTurnFinalizations.delete(turnId); });
     this.pendingTurnFinalizations.set(turnId, { task, release });
   }
 
   /** 同一 turn 可能经 SSE 重放，afterTurn 必须只执行一次。 */
-  private triggerAfterTurn(event: RemoteAgentEvent): void {
+  private async triggerAfterTurn(event: RemoteAgentEvent): Promise<void> {
     const turnId = event.data?.turnId ?? event.turnId;
     if (typeof turnId !== "string" || !turnId || this.completedHookTurns.has(turnId)) {
       return;
@@ -1411,7 +1402,7 @@ export class HttpAgent {
     const replayStartTask = this.replayStartHookTasks.get(turnId);
     const turn = this.findTurn(turnId) ?? ({ id: turnId, status } as TurnRecord);
     const runHook = async () => { await this.hooks?.afterTurn?.(turn); };
-    void (replayStartTask
+    await (replayStartTask
       // 启动 hook 的错误已单独记录；仍要运行 afterTurn，以清理已部分建立的 UI 状态。
       ? replayStartTask.catch(() => undefined).then(runHook)
       : runHook())
