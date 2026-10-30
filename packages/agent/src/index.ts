@@ -22,6 +22,7 @@ export { kv } from "./kv";
 export { IDBHistory } from "./history/idb-history";
 export { HTTPHistory } from "./history/http-history";
 export { SessionHTTPHistory } from "./history/session-http-history";
+export { MergedHistory } from "./history/merged-history";
 export { HistoryManager } from "./history/manager";
 export type { HistoryManagerSnapshot, HistoryStatus } from "./history/manager";
 
