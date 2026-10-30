@@ -11,7 +11,7 @@ export const HTTP_PLAYGROUND_CASES: TestCase[] = [
   {
     id: 'conflict-retry', httpScenario: 'conflict-retry', group: '请求与重试', name: '请求被拒后重试',
     priority: 'P0', description: '首次请求在服务端创建 turn 前被拒绝。',
-    expectedBehavior: '1. 发送消息，观察 409 错误及重试按钮。\n2. 点击重试，预期使用同一 turnId 重新发送 /run，最终成功。',
+    expectedBehavior: '发送消息后服务端返回 409，页面重新同步服务端消息和运行状态；未被服务端接受的消息不再显示。随后可重新发送消息。',
     initialTurns: [], request: async () => {},
   },
   {

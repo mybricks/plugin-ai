@@ -4,7 +4,7 @@ import { createServer } from 'vite';
 const server = await createServer({ configFile: 'vite.config.ts', server: { middlewareMode: true, hmr: false, ws: false, host: '127.0.0.1', open: false } });
 const originalFetch = globalThis.fetch;
 try {
-  const { HttpAgent } = await server.ssrLoadModule('/../plugin/src/ui/chat/chat-panel/http-agent.ts');
+  const { HttpAgent } = await server.ssrLoadModule('/../plugin/src/ui/chat/chat-panel/remote/http-agent.ts');
   const { createHttpAgentMock } = await server.ssrLoadModule('/src/http-agent-mock.ts');
   const fixture = createHttpAgentMock('retry-error');
   globalThis.fetch = fixture.fetchMock;
@@ -62,19 +62,74 @@ try {
   const rejectedFixture = createHttpAgentMock('conflict-retry');
   globalThis.fetch = rejectedFixture.fetchMock;
   const rejectedAgent = new HttpAgent({ baseUrl: 'http://localhost/mock', workspaceId: 'rejected-demo' });
-  await assert.rejects(rejectedAgent.requestAI({ turnId: 'rejected-turn', message: '测试', extra: { trace: 'keep' }, mode: 'plan' }), /409/);
-  assert.equal(rejectedAgent.getTurns()[0].errorCode, 'SESSION_CONFLICT');
-  assert.equal(rejectedAgent.getTurns()[0].mode, 'plan');
-  await rejectedAgent.retry('rejected-turn');
+  await rejectedAgent.requestAI({ turnId: 'rejected-turn', message: '测试', extra: { trace: 'keep' }, mode: 'plan' });
+  assert.equal(rejectedAgent.getTurns().length, 0, '409 discards the locally rejected turn');
+  await rejectedAgent.requestAI({ turnId: 'new-turn', message: '重新发送' });
   assert.equal(rejectedAgent.getTurns()[0].status, 'success');
   assert.equal(rejectedFixture.calls.filter(call => call.path.endsWith('/run')).length, 2);
   assert.equal(rejectedFixture.calls.filter(call => call.path.endsWith('/retry')).length, 0);
   const retried = rejectedFixture.calls.filter(call => call.path.endsWith('/run'))[1].body;
-  assert.equal(retried.turnId, 'rejected-turn');
-  assert.equal(retried.message, '测试');
-  assert.equal(retried.mode, 'plan');
-  assert.equal(retried.extra.trace, 'keep');
+  assert.equal(retried.turnId, 'new-turn');
+  assert.equal(retried.message, '重新发送');
   assert.equal(rejectedAgent.getTurns()[0].errorCode, undefined);
+
+  const recoverFixture = createHttpAgentMock('retry-error');
+  let connects = 0;
+  let conflictSent = false;
+  let finishReplay;
+  let replayStarted;
+  const replayReady = new Promise(resolve => { replayStarted = resolve; });
+  globalThis.fetch = async (input, init) => {
+    const path = new URL(String(input)).pathname;
+    if (path.endsWith('/retry')) {
+      conflictSent = true;
+      return Response.json({ message: 'Agent is already running' }, { status: 409 });
+    }
+    if (path.endsWith('/turns') && conflictSent) {
+      const page = await (await recoverFixture.fetchMock(input, init)).json();
+      page.turns[0].status = 'success';
+      delete page.turns[0].error;
+      delete page.turns[0].endTime;
+      return Response.json(page);
+    }
+    if (path.endsWith('/connect')) {
+      if (++connects === 1) return new Response(null, { status: 204 });
+      const encoder = new TextEncoder();
+      return new Response(new ReadableStream({
+        start(controller) {
+          const send = (event, data = {}) => controller.enqueue(encoder.encode(`data: ${JSON.stringify({ event, turnId: 'recover-turn', data: { turnId: 'recover-turn', ...data }, createdAt: Date.now() })}\n\n`));
+          send('session:locked');
+          send('turn:resume');
+          send('llm:start', { iterId: 'live-iter' });
+          send('llm:content', { iterId: 'live-iter', content: '正在执行' });
+          finishReplay = () => { send('turn:complete'); send('session:released'); controller.close(); };
+          replayStarted();
+        },
+      }), { headers: { 'content-type': 'text/event-stream' } });
+    }
+    return recoverFixture.fetchMock(input, init);
+  };
+  const recoverAgent = new HttpAgent({ baseUrl: 'http://localhost/mock', workspaceId: 'recover-demo' });
+  await recoverAgent.requestAI({ turnId: 'recover-turn', message: '恢复测试' });
+  await recoverAgent.retry('recover-turn');
+  await replayReady;
+  await new Promise(resolve => setTimeout(resolve, 50));
+  assert.equal(recoverAgent.getSessionState().running, true, '409 replay restores loading');
+  assert.equal(recoverAgent.getTurns()[0].iterations.at(-1).content, '正在执行');
+  finishReplay();
+  await new Promise(resolve => setTimeout(resolve, 50));
+  assert.equal(recoverAgent.getSessionState().running, false, 'replayed release ends loading');
+
+  const idleFixture = createHttpAgentMock('retry-error');
+  globalThis.fetch = (input, init) => String(input).endsWith('/retry')
+    ? Promise.resolve(Response.json({ message: 'Agent is already running' }, { status: 409 }))
+    : idleFixture.fetchMock(input, init);
+  const idleAgent = new HttpAgent({ baseUrl: 'http://localhost/mock', workspaceId: 'idle-demo' });
+  await idleAgent.requestAI({ turnId: 'idle-turn', message: '恢复历史' });
+  await idleAgent.retry('idle-turn');
+  assert.equal(idleAgent.getTurns().length, 1);
+  assert.equal(idleAgent.getTurns()[0].status, 'error', '409 restores the persisted turn');
+  assert.equal(idleAgent.getSessionState().running, false, 'idle recovery clears loading');
 
   for (const [scenario, expectedCode, rejects] of [
     ['network-error', 'NETWORK_ERROR', true],
