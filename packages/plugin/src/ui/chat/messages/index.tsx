@@ -52,6 +52,8 @@ function toUserFriendlyError(msg?: string, errorCode?: TurnErrorCode): string {
   if (code === "TURN_INCOMPLETE") return lang.chat.turnInterrupted();
   if (code === "TURN_LOOP_DETECTED") return lang.chat.modelAutoInterrupted();
   if (code === "CONTEXT_COMPACTION_FAILED") return lang.chat.contextCompactionFailed();
+  if (errorCode === "NETWORK_ERROR") return lang.chat.networkInterrupted();
+  if (errorCode === "MODEL_ERROR") return lang.chat.serviceFailed();
   if (!msg) return lang.chat.serviceFailed();
   if (msg === 'Failed to fetch' || msg === 'Load failed') {
     return lang.chat.connectionFailed();
@@ -100,6 +102,7 @@ export interface MessageListProps {
   activeStageText?: string;
   /** 当前运行阶段所属的 turn。 */
   activeTurnId?: string;
+  finalizing?: boolean;
   /**
    * ActionBar 白名单配置。
    * - 不传：默认只展示复制
@@ -164,7 +167,7 @@ const CollapseBar = ({
 const DEFAULT_ACTION_BAR: ActionBarItem[] = [];
 
 const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
-  function MessageListInner({ messages, agent, toolUI, activeStageText, activeTurnId, actionBar, onRetry, onDelete, onExecutePlan, canExecutePlan = true, renderEmpty, renderFooter, collapseCursor, onExpandHistory }, ref) {
+  function MessageListInner({ messages, agent, toolUI, activeStageText, activeTurnId, finalizing, actionBar, onRetry, onDelete, onExecutePlan, canExecutePlan = true, renderEmpty, renderFooter, collapseCursor, onExpandHistory }, ref) {
   const resolvedActionBar = actionBar ?? DEFAULT_ACTION_BAR;
   const mainRef = useRef<HTMLElement>(null);
   const scrollerRef = useRef<AutoScroller | null>(null);
@@ -245,12 +248,13 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
                   toolRendererMap={toolRendererMap}
                   toolSummaryRendererMap={toolSummaryRendererMap}
                   actionBar={resolvedActionBar}
-                  onRetry={isLast && record.status !== "pending" ? onRetry : undefined}
+                  onRetry={isLast && record.status !== "pending" && !(finalizing && record.id === activeTurnId) ? onRetry : undefined}
                   onDelete={onDelete}
                   isLast={isLast}
                   agent={agent}
                   toolUI={toolUI}
                   stageText={stageText}
+                  finalizing={finalizing && record.id === activeTurnId}
                   onExecutePlan={onExecutePlan}
                   canExecutePlan={canExecutePlan}
                   activePlan={activePlan}
@@ -269,7 +273,7 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
 
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
-const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMap, toolSummaryRendererMap, actionBar, onRetry, onDelete, isLast, agent, toolUI, stageText, onExecutePlan, canExecutePlan = true, activePlan }: {
+const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMap, toolSummaryRendererMap, actionBar, onRetry, onDelete, isLast, agent, toolUI, stageText, finalizing, onExecutePlan, canExecutePlan = true, activePlan }: {
   record: MessageRecord;
   toolRendererMap: Map<string, ToolRenderer>;
   toolSummaryRendererMap: Map<string, ToolSummaryRenderer>;
@@ -281,6 +285,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
   agent?: ChatAgent;
   toolUI?: ToolUIChannel;
   stageText?: string;
+  finalizing?: boolean;
   onExecutePlan?: (title: string) => void;
   canExecutePlan?: boolean;
   activePlan: ActivePlanFile | null;
@@ -427,7 +432,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
         <section className={classNames(css["chat-message-container"], css["ai-message"])}>
           <div className={css["message-flow"]}>
             {/* 无任何 iteration 且 pending → 规划占位 */}
-            {record.status === "pending" && record.iterations.length === 0 && (
+            {record.status === "pending" && record.iterations.length === 0 && !finalizing && (
               <div className={css["iter-header"]}>
                 <div className={css["iter-header-content"]}>
                   {retryState && (
@@ -478,7 +483,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
                 <div className={css["ai-chat-error-content"]}>{toUserFriendlyError(record.error, record.errorCode)}</div>
                 {onRetry && (
                   <div className={css["ai-chat-error-actions"]}>
-                    {modelSelector && modelSelector.models.length > 1 && (
+                    {(!record.errorCode || record.errorCode === "MODEL_ERROR") && modelSelector && modelSelector.models.length > 1 && (
                       <ModelSelector
                         modelSelector={{
                           models: modelSelector.models,

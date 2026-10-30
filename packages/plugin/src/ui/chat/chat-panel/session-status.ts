@@ -10,6 +10,7 @@ export const HTTP_AGENT_SESSION_STAGE = {
   SYNCING_FILES: "http:syncing-files",
   CONFIGURING: "http:configuring",
   AWAITING_MODEL: "http:awaiting-model",
+  FINALIZING: "http:finalizing",
 } as const;
 
 /**
@@ -33,6 +34,8 @@ export function getDefaultSessionStageText(
       return lang.chat.syncingFiles();
     case HTTP_AGENT_SESSION_STAGE.CONFIGURING:
       return lang.chat.configuring();
+    case HTTP_AGENT_SESSION_STAGE.FINALIZING:
+      return "";
     default:
       return lang.chat.waitingForModel();
   }

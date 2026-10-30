@@ -264,6 +264,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     loading,
     loadingTip,
     loadingTurnId,
+    finalizing,
     pendingQueue,
     showChatMode,
     chatMode,
@@ -428,6 +429,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
               toolUI={toolUI ?? chatAgent.agent?.getToolUI()}
               activeStageText={loadingTip}
               activeTurnId={loadingTurnId}
+              finalizing={finalizing}
               actionBar={actionBar}
               onRetry={chatAgent.retry}
               onExecutePlan={chatAgent.executePlan}

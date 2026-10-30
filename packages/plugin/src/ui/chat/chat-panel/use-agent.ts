@@ -9,6 +9,7 @@ import type { HistoryStatus } from "../../../../../agent/src";
 import type { ModelSelection } from "../../../../../request/src";
 import { useSession } from "../use-session";
 import { isHttpAgent, type HttpAgent } from "./http-agent";
+import { HTTP_AGENT_SESSION_STAGE } from "./session-status";
 import {
   useSessionState,
   type UseSessionStateOptions,
@@ -33,6 +34,7 @@ export interface ChatPanelAgentState {
   loading: boolean;
   loadingTip: string;
   loadingTurnId?: string;
+  finalizing: boolean;
   pendingQueue: QueueItem[];
   availableModes: AgentMode[];
   showChatMode: boolean;
@@ -281,6 +283,7 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
     loading,
     loadingTip,
     loadingTurnId,
+    finalizing: sessionState.stage?.key === HTTP_AGENT_SESSION_STAGE.FINALIZING,
     pendingQueue,
     availableModes,
     showChatMode,

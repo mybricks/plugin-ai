@@ -65,6 +65,7 @@ export interface RemoteAgentEvent {
     | "session:files-synced"
     | "session:agent-configured"
     | "session:start"
+    | "session:released"
     | "workspace:file-change"
     | "browser:task";
   data: any;
@@ -172,7 +173,11 @@ function normalizeTurnErrorCode(value: unknown): TurnRecord["errorCode"] | undef
     case "MODEL_AUTO_INTERRUPTED":
       return "TURN_LOOP_DETECTED";
     case "CONTEXT_COMPACTION_FAILED":
-      return "CONTEXT_COMPACTION_FAILED";
+    case "NETWORK_ERROR":
+    case "MODEL_ERROR":
+    case "SESSION_CONFLICT":
+    case "SERVER_ERROR":
+      return value;
     default:
       return undefined;
   }
@@ -214,11 +219,14 @@ export class HttpAgent {
   >();
   private readonly remoteHistory: BoundHistory;
   private readonly historyInitialization: Promise<void>;
+  /** 仅保留服务端明确拒绝的请求，用于重发。 */
+  private readonly rejectedRunBodies = new Map<string, Record<string, unknown>>();
   /** 已进入浏览器侧 hook 生命周期的 turn，避免 /run 与 /connect 回放重复启动。 */
   private readonly startedHookTurns = new Set<string>();
   /** /connect 启动 hook 可能是异步的；终态必须在其完成后再触发 afterTurn。 */
   private readonly replayStartHookTasks = new Map<string, Promise<void>>();
   private readonly completedHookTurns = new Set<string>();
+  private readonly pendingTurnFinalizations = new Map<string, { task: Promise<void>; release: () => void }>();
   /** 已消费的异步摘要，避免 run/connect 重放或重复摘要订阅触发两次。 */
   private readonly completedSummaryHookTurns = new Set<string>();
   /** 已消费的后台收口，避免 run/connect 重放触发两次。 */
@@ -360,6 +368,7 @@ export class HttpAgent {
     const modelMessage = params.modelMessage ?? params.message!;
     const turnId = params.turnId ?? createTurnId();
     const sender = params.sender ?? this.sender;
+    let submittedBody: Record<string, unknown> | undefined;
     this.setSessionState({
       running: true,
       turnId,
@@ -387,6 +396,11 @@ export class HttpAgent {
       // 正常 /run 已执行过启动 hooks。初始化时若 /connect 恰好重放同一 turn，
       // 需要跳过它，避免重复上锁和重复触发 onStart。
       this.startedHookTurns.add(turnId);
+      const { providerId, modelId } = this.resolveModelSelection(
+        params.providerId,
+        params.modelId,
+      );
+      const mode = params.mode ?? this.mode;
       this.handleRemoteEvent(
         {
           event: "turn:start",
@@ -398,6 +412,7 @@ export class HttpAgent {
             attachments: params.attachments ?? [],
             ...(params.meta ? { meta: params.meta } : {}),
             ...(sender ? { sender } : {}),
+            mode,
             ...(modelMessage !== displayMessage
               ? { userFormattedText: modelMessage }
               : {}),
@@ -406,47 +421,45 @@ export class HttpAgent {
         // 本地合成 turn:start 只为立即渲染用户消息，不能跳过服务端的准备阶段。
         { updateSessionState: false },
       );
-      const { providerId, modelId } = this.resolveModelSelection(
-        params.providerId,
-        params.modelId,
-      );
+      submittedBody = {
+        turnId,
+        ...(params.message !== undefined
+          ? { message: params.message }
+          : {
+              displayMessage: params.displayMessage,
+              modelMessage: params.modelMessage,
+            }),
+        attachments: params.attachments,
+        mode,
+        ...(params.meta ? { meta: params.meta } : {}),
+        ...(params.extra ? { extra: params.extra } : {}),
+        ...(params.aiRole ? { aiRole: params.aiRole } : {}),
+        ...(providerId ? { providerId } : {}),
+        ...(modelId ? { modelId } : {}),
+        ...(sender ? { sender } : {}),
+      };
       await this.consumeRunStream(
         this.sessionPath("run"),
-        {
-          method: "POST",
-          body: jsonStringifySafe({
-            turnId,
-            ...(params.message !== undefined
-              ? { message: params.message }
-              : {
-                  displayMessage: params.displayMessage,
-                  modelMessage: params.modelMessage,
-                }),
-            attachments: params.attachments,
-            ...(params.mode ? { mode: params.mode } : {}),
-            ...(params.meta ? { meta: params.meta } : {}),
-            ...(params.extra ? { extra: params.extra } : {}),
-            ...(params.aiRole ? { aiRole: params.aiRole } : {}),
-            ...(providerId ? { providerId } : {}),
-            ...(modelId ? { modelId } : {}),
-            ...(sender ? { sender } : {}),
-          }),
-        },
+        { method: "POST", body: jsonStringifySafe(submittedBody) },
         { signal: params.signal, skipTurnStartId: turnId },
       );
     } catch (error) {
+      if (submittedBody && error instanceof HttpResponseError && error.status === 409) {
+        this.rejectedRunBodies.set(turnId, submittedBody);
+      }
       if (turnId && !params.signal?.aborted) {
         this.handleRemoteEvent({
           event: "turn:error",
           turnId,
           createdAt: Date.now(),
-          data: { error: serializeError(error) },
+          data: { error: serializeError(error), errorCode: classifyHttpError(error) },
         });
       }
       params.onError?.(error as Error);
       throw error;
     } finally {
-      this.setSessionState({ running: false });
+      await this.pendingTurnFinalizations.get(turnId)?.task;
+      if (!this.sessionState.running || this.sessionState.turnId === turnId) this.setSessionState({ running: false });
       if (turnId) params.onClose?.();
     }
   }
@@ -459,6 +472,8 @@ export class HttpAgent {
       : turnIdOrOptions;
     if (this.blockIfDisabled()) return;
     const { turnId } = params;
+    const rejectedBody = this.rejectedRunBodies.get(turnId);
+    let resendDispatched = false;
     this.setSessionState({
       running: true,
       turnId,
@@ -466,14 +481,9 @@ export class HttpAgent {
     });
     try {
       await this.historyInitialization;
-      // retry 的 SSE 只下发本次 attempt，不再回放旧事件：先用服务端快照校准
-      // 本地该 turn，避免本地状态与服务端不一致。
-      await this.calibrateLastTurn(turnId);
+      if (!rejectedBody) await this.calibrateLastTurn(turnId);
       this.handleRemoteEvent({ event: "turn:resume", turnId, createdAt: Date.now(), data: { turnId } }, { updateSessionState: false });
       const turn = this.findTurn(turnId);
-      // endTime 只表示上一轮 attempt 已经结束；error turn 仍必须把 retry
-      // 请求交给服务端处理。否则模型异常会在客户端静默 return，根本不会
-      // 发起 /retry 请求。
       await this.hooks?.beforeTurn?.({
         message: turn?.userText ?? "",
         formattedMessage: turn?.userFormattedText ?? turn?.userText ?? "",
@@ -487,35 +497,38 @@ export class HttpAgent {
         console.warn("[plugin-ai] browser tool connection failed", error);
       });
       this.startedHookTurns.add(turnId);
-      const { providerId, modelId } = this.resolveModelSelection(
-        params.providerId,
-        params.modelId,
-      );
+      const selection = this.resolveModelSelection(params.providerId, params.modelId);
+      const body = rejectedBody
+        ? { ...rejectedBody, ...(params.modelId ? selection : {}) }
+        : { turnId, ...selection };
+      resendDispatched = Boolean(rejectedBody);
       await this.consumeRunStream(
-        this.sessionPath("retry"),
+        this.sessionPath(rejectedBody ? "run" : "retry"),
+        { method: "POST", body: jsonStringifySafe(body) },
         {
-          method: "POST",
-          body: jsonStringifySafe({
-            turnId,
-            ...(providerId ? { providerId } : {}),
-            ...(modelId ? { modelId } : {}),
-          }),
+          signal: params.signal,
+          skipTurnStartId: turnId,
+          skipTurnResumeId: turnId,
+          onOpen: rejectedBody ? () => this.rejectedRunBodies.delete(turnId) : undefined,
         },
-        { signal: params.signal, skipTurnResumeId: turnId },
       );
     } catch (error) {
+      if (resendDispatched && !(error instanceof HttpResponseError && error.status === 409)) {
+        this.rejectedRunBodies.delete(turnId);
+      }
       if (!params.signal?.aborted) {
         this.handleRemoteEvent({
           event: "turn:error",
           turnId,
           createdAt: Date.now(),
-          data: { error: serializeError(error) },
+          data: { error: serializeError(error), errorCode: classifyHttpError(error) },
         });
       }
       params.onError?.(error as Error);
       throw error;
     } finally {
-      this.setSessionState({ running: false });
+      await this.pendingTurnFinalizations.get(turnId)?.task;
+      if (!this.sessionState.running || this.sessionState.turnId === turnId) this.setSessionState({ running: false });
       params.onClose?.();
     }
   }
@@ -535,6 +548,7 @@ export class HttpAgent {
       method: "POST",
     });
     this.turns = [];
+    this.rejectedRunBodies.clear();
     this.compactRecord = null;
     this.turnsPage = {
       hasMore: false,
@@ -725,6 +739,7 @@ export class HttpAgent {
 
   private connectEventReplay(): void {
     let terminalSeen = false;
+    let terminalTurnId: string | null = null;
     this.session.subscribe({
       onEvent: (event) => {
         if (event.event === "session:error") {
@@ -741,21 +756,23 @@ export class HttpAgent {
         if (event.event === "session:locked") {
           this.startReplayHookLifecycle(event);
         }
-        if (isTerminalRemoteEvent(event)) terminalSeen = true;
+        if (isTerminalRemoteEvent(event)) { terminalSeen = true; terminalTurnId = this.eventTurnId(event); }
         if (event.event === "turn:resume" || event.event === "turn:start") {
           terminalSeen = false;
+          terminalTurnId = null;
         }
-        this.handleRemoteEvent(event);
+        this.handleRemoteEvent(event, { waitForRelease: true });
       },
       onError: (error) => {
         this.setSessionState({ running: false, error });
         console.error("[plugin-ai] remote agent replay failed", error);
       },
       onClose: () => {
-        if (!terminalSeen) this.markLastUnfinishedTurnInterrupted();
+        if (terminalTurnId) this.pendingTurnFinalizations.get(terminalTurnId)?.release();
+        if (!terminalSeen && !this.sessionState.running) this.markLastUnfinishedTurnInterrupted();
       },
       onIdle: () => {
-        this.markLastUnfinishedTurnInterrupted();
+        if (!this.sessionState.running) this.markLastUnfinishedTurnInterrupted();
       },
     });
   }
@@ -785,10 +802,16 @@ export class HttpAgent {
     event: RemoteAgentEvent,
     options: {
       allowBrowserTasks?: boolean;
+      waitForRelease?: boolean;
       /** 本地合成事件仅用于同步消息记录，不应覆盖服务端阶段状态。 */
       updateSessionState?: boolean;
     } = {},
   ): void {
+    if (event.event === "session:released") {
+      const turnId = this.eventTurnId(event);
+      if (turnId) this.pendingTurnFinalizations.get(turnId)?.release();
+      return;
+    }
     if (event.event === "workspace:file-change") {
       void this.workspaceBridge
         .syncFileChanges(Number(event.data?.version) || undefined)
@@ -890,23 +913,14 @@ export class HttpAgent {
         stage: { key: HTTP_AGENT_SESSION_STAGE.AWAITING_MODEL },
       });
     } else if (
-      shouldUpdateSessionState &&
-      (event.event === "turn:complete" || event.event === "turn:abort")
-    ) {
-      this.setSessionState({ running: false });
-      this.triggerAfterTurn(event);
-    } else if (shouldUpdateSessionState && event.event === "turn:error") {
-      this.setSessionState({
-        running: false,
-        error: event.data?.error,
-      });
-      this.triggerAfterTurn(event);
-    } else if (
       event.event === "turn:complete" ||
       event.event === "turn:abort" ||
       event.event === "turn:error"
     ) {
-      this.triggerAfterTurn(event);
+      if (shouldUpdateSessionState && options.waitForRelease && eventTurnId) {
+        this.setSessionState({ running: true, turnId: eventTurnId, stage: { key: HTTP_AGENT_SESSION_STAGE.FINALIZING } });
+      }
+      this.finalizeAfterLock(event, options.waitForRelease);
     } else if (shouldUpdateSessionState && event.event === "llm:start") {
       this.setSessionState({
         running: true,
@@ -946,6 +960,10 @@ export class HttpAgent {
       }
       if (data.meta) turn.meta = data.meta;
       if (data.sender) turn.sender = data.sender;
+      if (data.mode === "build" || data.mode === "plan" || data.mode === "ask") {
+        turn.mode = data.mode;
+      }
+
 
       if (Array.isArray(data.attachments)) {
         for (const attachment of data.attachments) {
@@ -1360,6 +1378,24 @@ export class HttpAgent {
   }
 
   /** 同一 turn 可能经 SSE 重放，afterTurn 必须只执行一次。 */
+  private finalizeAfterLock(event: RemoteAgentEvent, waitForRelease = false): void {
+    const turnId = this.eventTurnId(event);
+    if (!turnId || this.pendingTurnFinalizations.has(turnId) || this.completedHookTurns.has(turnId)) return;
+    let release = () => {};
+    const released = waitForRelease ? new Promise<void>((resolve) => {
+      release = resolve;
+    }) : Promise.resolve();
+    const task = (async () => {
+      await released;
+      if (this.sessionState.turnId === turnId) {
+        this.setSessionState({ running: false, ...(event.event === "turn:error" ? { error: event.data?.error } : {}) });
+      }
+      this.triggerAfterTurn(event);
+    })().finally(() => { this.pendingTurnFinalizations.delete(turnId); });
+    this.pendingTurnFinalizations.set(turnId, { task, release });
+  }
+
+  /** 同一 turn 可能经 SSE 重放，afterTurn 必须只执行一次。 */
   private triggerAfterTurn(event: RemoteAgentEvent): void {
     const turnId = event.data?.turnId ?? event.turnId;
     if (typeof turnId !== "string" || !turnId || this.completedHookTurns.has(turnId)) {
@@ -1481,12 +1517,14 @@ export class HttpAgent {
       signal?: AbortSignal;
       skipTurnStartId?: string;
       skipTurnResumeId?: string;
+      onOpen?: () => void;
     } = {},
   ): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       let terminalSeen = false;
       void this.requestEventStream(path, init, {
         signal: options.signal,
+        onOpen: options.onOpen,
         onEvent: (event) => {
           if (
             options.skipTurnStartId &&
@@ -1497,14 +1535,18 @@ export class HttpAgent {
           }
           if (options.skipTurnResumeId && event.event === "turn:resume" &&
               (event.data?.turnId ?? event.turnId) === options.skipTurnResumeId) return;
-          this.handleRemoteEvent(event, { allowBrowserTasks: true });
+          this.handleRemoteEvent(event, { allowBrowserTasks: true, waitForRelease: true });
           if (!isTerminalRemoteEvent(event)) return;
           terminalSeen = true;
-          resolve();
+          const turnId = this.eventTurnId(event);
+          const pending = turnId ? this.pendingTurnFinalizations.get(turnId) : undefined;
+          if (pending) void pending.task.then(resolve);
+          else resolve();
         },
       })
         .then(() => {
           if (terminalSeen || options.signal?.aborted) {
+            if (terminalSeen && this.sessionState.turnId) this.pendingTurnFinalizations.get(this.sessionState.turnId)?.release();
             if (!terminalSeen) resolve();
             return;
           }
@@ -1513,7 +1555,8 @@ export class HttpAgent {
         .catch((error) => {
           if (options.signal?.aborted) { resolve(); return; }
           if (!terminalSeen) { reject(error); return; }
-          console.warn("[HttpAgent] post-turn SSE closed before summary:", error);
+          if (this.sessionState.turnId) this.pendingTurnFinalizations.get(this.sessionState.turnId)?.release();
+          console.warn("[HttpAgent] post-turn SSE closed before release:", error);
         });
     });
   }
@@ -1743,6 +1786,13 @@ class HttpResponseError extends Error {
   ) {
     super(`${status} ${message}`);
   }
+}
+
+function classifyHttpError(error: unknown): TurnRecord["errorCode"] {
+  if (error instanceof HttpResponseError) return error.status === 409 ? "SESSION_CONFLICT" : "SERVER_ERROR";
+  if (error instanceof SseDisconnectedError ||
+      (error instanceof TypeError && /fetch|network|load failed/i.test(error.message))) return "NETWORK_ERROR";
+  return undefined;
 }
 
 function serializeError(error: unknown): { message: string; name?: string } {

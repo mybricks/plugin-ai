@@ -65,6 +65,7 @@ export const lang = {
     }),
     selectModel: () => i18n({ zh: "选择模型", en: "Select model" }),
     connectionFailed: () => i18n({ zh: "模型服务连接失败，请检查网络或重试", en: "Model connection failed. Check network or retry." }),
+    networkInterrupted: () => i18n({ zh: "连接中断，请检查网络后重试", en: "Connection interrupted. Check your network and retry." }),
     serviceFailed: () => i18n({ zh: "模型服务异常，请重试或切换模型", en: "Model failed. Retry or switch." }),
     turnInterrupted: () => i18n({ zh: "任务异常中断，可点击重试继续", en: "Task interrupted. Retry to continue." }),
     modelAutoInterrupted: () => i18n({ zh: "模型异常，已自动中断，可以点击重试或发送新的消息", en: "Model stopped. Retry or send again." }),
