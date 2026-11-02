@@ -446,17 +446,6 @@ export class WebSocketAgent {
     if (this.options.projectId !== undefined) variables.projectId = this.options.projectId;
     if (this.options.userId !== undefined) variables.userId = this.options.userId;
     if (this.options.appType !== undefined) variables.appType = this.options.appType;
-    if (!variables.extra_prompt && this.getSeedMessages) {
-      try {
-        const seeds = (await this.getSeedMessages()) ?? [];
-        const extra = seeds
-          .filter((content): content is string => typeof content === "string" && !!content.trim())
-          .join("\n\n");
-        if (extra) variables.extra_prompt = extra;
-      } catch (error) {
-        console.warn("[WebSocketAgent] build extra_prompt failed:", error);
-      }
-    }
     const useVariables = Object.keys(variables).length > 0 && !!this.options.agentCode;
     const response = await this.openChatStream(
       {
