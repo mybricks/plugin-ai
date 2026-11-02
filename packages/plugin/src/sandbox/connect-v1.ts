@@ -80,8 +80,8 @@ export function connectToAIFromV1(
   }), ...(plugins ?? [])]
     .map((plugin) => {
       // TODO：当前 UI 扩展通过 sandbox 临时透传，先满足现有需求，后续再考虑如何重构扩展机制。
-      const withSandbox = typeof plugin === "function" && designer.tasksManager
-        ? ((ctx: Parameters<typeof plugin>[0]) => plugin({ ...ctx, sandbox: Object.assign({}, ctx.sandbox, { tasksManager: designer.tasksManager }) }))
+      const withSandbox = typeof plugin === "function" && (designer.tasksManager || designer.domainAudit)
+        ? ((ctx: Parameters<typeof plugin>[0]) => plugin({ ...ctx, sandbox: Object.assign({}, ctx.sandbox, { tasksManager: designer.tasksManager, domainAudit: designer.domainAudit }) }))
         : plugin;
       return injectPluginRuntimeContext(withSandbox, runtimeContext);
     });

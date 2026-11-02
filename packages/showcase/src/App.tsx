@@ -7,7 +7,7 @@ import { mybricksConfig } from "./config";
 import { createTestAIPluginParams } from "./test-ai";
 import { applyShowcaseLocale, getShowcaseLocale, type ShowcaseLocale } from "./locale";
 import "./styles.css";
-import { createTaskFirstPlugin } from "../../kit/src";
+import { createDomainAuditPlugin, createTaskFirstPlugin } from "../../kit/src";
 
 function getWorkspaceId() {
   const pathId = window.location.pathname.match(/^\/app\/([^/]+)/)?.[1];
@@ -15,10 +15,10 @@ function getWorkspaceId() {
   return pathId ? decodeURIComponent(pathId) : queryId ?? "";
 }
 
-type Scenario = "local" | "task" | "remote";
+type Scenario = "local" | "task" | "audit" | "remote";
 function getScenario(): Scenario {
   const value = new URLSearchParams(window.location.search).get("scene");
-  return value === "task" || value === "remote" ? value : "local";
+  return value === "task" || value === "audit" || value === "remote" ? value : "local";
 }
 
 function workspaceUrl(id: string, scenario: Scenario) {
@@ -48,13 +48,14 @@ function Landing() {
     <div className="scene-grid">{([
       ["local", "本地 Agent", "在浏览器中运行 Agent"],
       ["task", "任务视图", "本地 Agent 与任务视图"],
+      ["audit", "领域审计", "开启 audit-domain 插件，测试领域审计工具"],
       ["remote", "服务端 Agent", "连接本地 aicode-agents"],
     ] as const).map(([value, title, description]) => <button key={value} className={`scene-card ${scene === value ? "selected" : ""}`} onClick={() => setScene(value)} aria-pressed={scene === value}><strong>{title}</strong><span>{description}</span></button>)}</div>
     <form className="open-workspace" onSubmit={(event) => { event.preventDefault(); open(id); }}>
       <label htmlFor="workspace-id">{scene === "remote" ? "服务端 Workspace ID" : "工作区 ID"}</label>
       <div><input id="workspace-id" value={id} onChange={(event) => setId(event.target.value)} placeholder={scene === "remote" ? "输入已有的服务端 workspace ID" : "输入或新建工作区 ID"} /><button disabled={!id.trim()}>打开工作区 →</button></div>
     </form>
-    {scene !== "remote" && <section className="saved-workspaces"><h2>{scene === "task" ? "任务视图" : "本地 Agent"}的工作区 <span>{dumps.length}</span></h2><p>这些 ID 来自此浏览器保存的设计数据。</p>
+    {scene !== "remote" && <section className="saved-workspaces"><h2>{scene === "task" ? "任务视图" : scene === "audit" ? "领域审计" : "本地 Agent"}的工作区 <span>{dumps.length}</span></h2><p>这些 ID 来自此浏览器保存的设计数据。</p>
       {error ? <p className="landing-error">{error}</p> : dumps.length === 0 ? <p className="empty-workspaces">暂无已保存的工作区</p> : dumps.map((item) => <button className="workspace-row" key={item.id} onClick={() => open(item.id)}><strong>{item.id}</strong><time>{new Date(item.updatedAt).toLocaleString()}</time><span>打开 →</span></button>)}
     </section>}
   </div></main>;
@@ -187,12 +188,16 @@ export default function App() {
     // 沿用本地场景原有 key 和 history；任务场景使用独立命名空间。
     return pluginAI({
       ...createTestAIPluginParams(),
-      key: `@mybricks/plugin-ai/${scenario === "task" ? "showcase-task" : scenario === "remote" ? "showcase-remote" : "showcase"}/${id}`,
-      ...(scenario !== "remote" ? { history: new IDBHistory({ dbName: `@mybricks/plugin-ai/${scenario === "task" ? "showcase-task" : "showcase"}/history/${id}` }) } : {}),
+      key: `@mybricks/plugin-ai/${scenario === "task" ? "showcase-task" : scenario === "audit" ? "showcase-audit" : scenario === "remote" ? "showcase-remote" : "showcase"}/${id}`,
+      ...(scenario !== "remote" ? { history: new IDBHistory({ dbName: `@mybricks/plugin-ai/${scenario === "task" ? "showcase-task" : scenario === "audit" ? "showcase-audit" : "showcase"}/history/${id}` }) } : {}),
       ...(scenario === "remote" ? { remoteAgent: { baseUrl: "http://localhost:3001/agents/api", workspaceId: id } } : {}),
       ...(scenario === "remote" ? { tools: [Tools.createAskQuestions()] } : {}),
       codingConfig: { availableLibraries: [] },
-      plugins: scenario === "task" ? [createTaskFirstPlugin()] : []
+      plugins: scenario === "task"
+        ? [createTaskFirstPlugin()]
+        : scenario === "audit"
+          ? [createDomainAuditPlugin()]
+          : []
     });
   }, [id, scenario]);
 

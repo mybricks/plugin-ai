@@ -1,13 +1,13 @@
 const DB_NAME = "@mybricks/plugin-ai/showcase/designs";
 const STORE_NAME = "dumps";
-export type LocalScenario = "local" | "task";
+export type LocalScenario = "local" | "task" | "audit";
 
 type DumpRecord = { id: string; dump: unknown; updatedAt: number };
 export type DumpSummary = Pick<DumpRecord, "id" | "updatedAt">;
 
 function openDB(scenario: LocalScenario = "local"): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(scenario === "task" ? `${DB_NAME}/task` : DB_NAME, 1);
+    const request = indexedDB.open(scenario === "local" ? DB_NAME : `${DB_NAME}/${scenario}`, 1);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME, { keyPath: "id" });

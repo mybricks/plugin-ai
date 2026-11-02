@@ -1,6 +1,6 @@
 import type { AgentHooks, ChatChipDef, ChatChipInstance } from "../../../agent/src";
 import type { AgentSandbox } from "../../../agent/src";
-import type { AuditPowerImplementation } from "../../../kit/src";
+import type { AuditPowerImplementation, DomainAuditImplementation } from "../../../kit/src";
 import type { MentionProvider } from "../ui/components/types";
 
 export type { MentionProvider, MentionMenuItem } from "../ui/components/types";
@@ -46,6 +46,7 @@ export interface Designer {
   pageAnalysis?: AuditPowerImplementation;
   /** 由宿主提供的任务管理 API。 */
   tasksManager?: any;
+  domainAudit?: DomainAuditImplementation;
 
 }
 
