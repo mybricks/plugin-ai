@@ -133,7 +133,7 @@ const ChatFocusView = ({
   const renderActionPrefix: SenderProps["renderActionPrefix"] = ({ hasInput, disabled }) => (
     <button
       className={css["append-btn"]}
-      title={hasInput ? lang.chat.appendToChatTip() : lang.chat.appendToChatDisabledTip()}
+      data-mybricks-tip={hasInput ? lang.chat.appendToChatTip() : lang.chat.appendToChatDisabledTip()}
       disabled={disabled || !hasInput}
       onClick={onAppendToChat}
     >

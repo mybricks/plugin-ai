@@ -139,8 +139,6 @@ const ChatMode = (props: ChatModeProps) => {
     return null;
   }
 
-  const current = getChatModePresentation(chatMode);
-
   return (
     <Popup
       open={open}
@@ -153,7 +151,8 @@ const ChatMode = (props: ChatModeProps) => {
             [css.disabled]: disabled,
             [css.triggerBuild]: chatMode === AgentModeEnum.Build,
           })}
-          title={current.triggerTitle}
+          data-mybricks-tip={lang.sender.selectMode()}
+          aria-label={lang.sender.selectMode()}
         >
           <span className={classNames(css.iconSlot, { [css.agentIconSlot]: chatMode === AgentModeEnum.Build })}>
             <ChatModeIcon mode={chatMode} />

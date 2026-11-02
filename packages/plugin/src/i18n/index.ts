@@ -88,6 +88,9 @@ export const lang = {
   },
   sender: {
     placeholder: () => i18n({ zh: "请输入", en: "Type here" }),
+    add: () => i18n({ zh: "添加", en: "Add" }),
+    selectMode: () => i18n({ zh: "模式选择", en: "Select mode" }),
+    selectModel: () => i18n({ zh: "模型选择", en: "Select model" }),
     addContext: () => i18n({ zh: "添加上下文", en: "Add context" }),
     queuedMessages: (count: number) => i18n({ zh: `${count} 条消息排队中`, en: `${count} message${count === 1 ? "" : "s"} queued` }),
     message: (index: number) => i18n({ zh: `消息 ${index}`, en: `Message ${index}` }),
@@ -95,6 +98,7 @@ export const lang = {
     editQueued: () => i18n({ zh: "编辑并放回输入框", en: "Edit in input" }),
     remove: () => i18n({ zh: "移除", en: "Remove" }),
     uploading: () => i18n({ zh: "上传中...", en: "Uploading..." }),
+    send: () => i18n({ zh: "发送", en: "Send" }),
     stop: () => i18n({ zh: "停止", en: "Stop" }),
     uploadUnsupportedImage: (formats: string) => i18n({ zh: `当前仅支持上传${formats}格式的图片`, en: `Only ${formats} images supported` }),
     skippedUnsupportedFiles: (count: number, formats: string) => i18n({ zh: `${count} 个文件格式不支持（仅支持${formats}）已跳过`, en: `${count} unsupported file${count === 1 ? "" : "s"} skipped (${formats} only)` }),

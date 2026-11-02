@@ -194,7 +194,8 @@ export const PendingQueue = ({
                     e.stopPropagation();
                     onEdit(item);
                   }}
-                  title={lang.sender.editQueued()}
+                  data-mybricks-tip={lang.sender.editQueued()}
+                  aria-label={lang.sender.editQueued()}
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
                 </button>
@@ -205,7 +206,8 @@ export const PendingQueue = ({
                   e.stopPropagation();
                   onRemove?.(item.id);
                 }}
-                title={lang.sender.remove()}
+                data-mybricks-tip={lang.sender.remove()}
+                aria-label={lang.sender.remove()}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
@@ -1740,6 +1742,8 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
               trigger={(
                 <div
                   data-zone-type="ai-request"
+                  data-mybricks-tip={lang.sender.add()}
+                  aria-label={lang.sender.add()}
                   className={classNames(css.attachmentButton, css.plusButton, { [css.open]: mentionMenuOpen })}
                 >
                   <Plus />
@@ -1768,7 +1772,8 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
                 className={classNames(css.sendButton, {
                   [css.loadingButton]: loading || uploading || hasLoadingChips
                 })}
-                data-mybricks-tip={loading ? lang.sender.stop() : ""}
+                data-mybricks-tip={loading ? lang.sender.stop() : uploading || hasLoadingChips ? lang.tool.processing() : lang.sender.send()}
+                aria-label={loading ? lang.sender.stop() : uploading || hasLoadingChips ? lang.tool.processing() : lang.sender.send()}
                 onClick={(e) => {
                   if (loading) {
                     e.stopPropagation();
