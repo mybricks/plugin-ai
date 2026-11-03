@@ -66,7 +66,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
 
   const syncConnectorVariable = useCallback((options: Array<{ id: string; name: string; description?: string }>, selected: string[]) => {
     // 选中项元数据数组直接写入变量；无选中时写空数组（发送时会过滤掉）。
-    context.setVariable("mcpConnectors", options.filter((c) => selected.includes(c.id)));
+    // context.setVariable("mcpConnectors", options.filter((c) => selected.includes(c.id)));
   }, []);
 
   const connectorConfig = useMemo(() => {
