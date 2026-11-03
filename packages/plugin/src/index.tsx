@@ -142,6 +142,8 @@ interface BackendFileModules extends FileModules {
 }
 
 export interface PluginAIParams {
+  /** Optional connection to an explicitly configured Node MCP bridge. */
+  mcp?: import("./mcp/browser-bridge").McpBridgeOptions;
   name?: string;
   user?: { name?: string; avatar?: string };
   /** 插件命名空间，用于隔离多实例的 agent 存储和队列，必填 */
@@ -298,6 +300,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     renderAttachmentSuffix,
     renderHeaderExtra,
     mentions,
+    mcp,
   } = params;
 
   const resolvedConfigDirName = normalizeConfigDirName(configDirName);
@@ -384,6 +387,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
   // ── window._sandbox_：sandbox 与 Plugin 的统一交互 API ─────────────────────
 
   const agentRuntimeController = setupSandbox({
+    mcp,
     requestAsStream,
     llmPluginKey: pluginKey,
     configDirName: resolvedConfigDirName,

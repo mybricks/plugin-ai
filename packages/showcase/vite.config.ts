@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { createPluginAiMcp } from "../mcp/src/index.js";
 import path from "node:path";
 import { fileURLToPath, URL } from "node:url";
 import react from "@vitejs/plugin-react";
@@ -54,8 +55,20 @@ export default defineConfig(({ mode }) => {
       }
     : undefined;
 
+  const port = Number(env.SHOWCASE_PORT || 5200);
+  const mcp = createPluginAiMcp({ target: "codex", allowedOrigins: [`http://localhost:${port}`, `http://127.0.0.1:${port}`] });
+  // Showcase-only wiring of the generic Node handlers, not a reusable Vite adapter.
+  const showcaseMcp: Plugin = {
+    name: "showcase-mcp-test",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => { if (!mcp.handleRequest(req, res)) next(); });
+      server.httpServer?.on("upgrade", (req, socket, head) => { mcp.handleUpgrade(req, socket, head); });
+      server.httpServer?.once("listening", () => console.info(`\n[showcase MCP] URL: http://127.0.0.1:${port}/__plugin-ai/mcp\n`));
+      server.httpServer?.once("close", () => mcp.close());
+    },
+  };
   return {
-    plugins: [markdownAsText(), lessAsCssModules(), react()],
+    plugins: [showcaseMcp, markdownAsText(), lessAsCssModules(), react()],
     resolve: {
     alias: [
       { find: /^react$/, replacement: bridge("react") },
@@ -72,7 +85,9 @@ export default defineConfig(({ mode }) => {
     optimizeDeps: { include: ["react", "react-dom", "react-dom/client", "react/jsx-runtime", "antd"] },
     css: { modules: { localsConvention: "camelCase" }, preprocessorOptions: { less: { javascriptEnabled: true } } },
     server: {
-      port: 5200,
+      host: "127.0.0.1",
+      strictPort: true,
+      port,
       fs: { allow: [fileURLToPath(new URL("..", import.meta.url)), showcaseRoot] },
       proxy: {
         ...(proxy ? { "/api/ai-chat/stream": proxy } : {}),

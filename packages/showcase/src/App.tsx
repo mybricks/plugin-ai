@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import pluginAI from "@plugin/index";
+import type { PluginAIParams } from "@plugin/index";
 import { IDBHistory, Tools } from "@agent/index";
 import { loadDesigner, type DesignerComponent, type DesignerInstance } from "./designer-runtime";
 import { deleteDump, listDumps, loadDump, saveDump, type DumpSummary } from "./storage";
@@ -15,10 +16,10 @@ function getWorkspaceId() {
   return pathId ? decodeURIComponent(pathId) : queryId ?? "";
 }
 
-type Scenario = "local" | "task" | "audit" | "remote";
+type Scenario = "local" | "task" | "audit" | "remote" | "mcp";
 function getScenario(): Scenario {
   const value = new URLSearchParams(window.location.search).get("scene");
-  return value === "task" || value === "audit" || value === "remote" ? value : "local";
+  return value === "task" || value === "audit" || value === "remote" || value === "mcp" ? value : "local";
 }
 
 function workspaceUrl(id: string, scenario: Scenario) {
@@ -50,12 +51,13 @@ function Landing() {
       ["task", "任务视图", "本地 Agent 与任务视图"],
       ["audit", "领域审计", "开启 audit-domain 插件，测试领域审计工具"],
       ["remote", "服务端 Agent", "连接本地 aicode-agents"],
+      ["mcp", "MCP 测试", "通过本地 MCP 连接设计器和虚拟文件"],
     ] as const).map(([value, title, description]) => <button key={value} className={`scene-card ${scene === value ? "selected" : ""}`} onClick={() => setScene(value)} aria-pressed={scene === value}><strong>{title}</strong><span>{description}</span></button>)}</div>
     <form className="open-workspace" onSubmit={(event) => { event.preventDefault(); open(id); }}>
       <label htmlFor="workspace-id">{scene === "remote" ? "服务端 Workspace ID" : "工作区 ID"}</label>
       <div><input id="workspace-id" value={id} onChange={(event) => setId(event.target.value)} placeholder={scene === "remote" ? "输入已有的服务端 workspace ID" : "输入或新建工作区 ID"} /><button disabled={!id.trim()}>打开工作区 →</button></div>
     </form>
-    {scene !== "remote" && <section className="saved-workspaces"><h2>{scene === "task" ? "任务视图" : scene === "audit" ? "领域审计" : "本地 Agent"}的工作区 <span>{dumps.length}</span></h2><p>这些 ID 来自此浏览器保存的设计数据。</p>
+    {scene !== "remote" && <section className="saved-workspaces"><h2>{scene === "task" ? "任务视图" : scene === "audit" ? "领域审计" : scene === "mcp" ? "MCP 测试" : "本地 Agent"}的工作区 <span>{dumps.length}</span></h2><p>这些 ID 来自此浏览器保存的设计数据。</p>
       {error ? <p className="landing-error">{error}</p> : dumps.length === 0 ? <p className="empty-workspaces">暂无已保存的工作区</p> : dumps.map((item) => <button className="workspace-row" key={item.id} onClick={() => open(item.id)}><strong>{item.id}</strong><time>{new Date(item.updatedAt).toLocaleString()}</time><span>打开 →</span></button>)}
     </section>}
   </div></main>;
@@ -167,6 +169,9 @@ export default function App() {
   const [isImporting, setIsImporting] = useState(false);
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
   const [isLocaleOpen, setIsLocaleOpen] = useState(false);
+  const [mcpStatus, setMcpStatus] = useState<"connecting" | "connected" | "disconnected">("disconnected");
+  const [mcpEntered, setMcpEntered] = useState(false);
+  const [mcpActivity, setMcpActivity] = useState("");
   const [dumps, setDumps] = useState<DumpSummary[]>([]);
 
   useEffect(() => {
@@ -185,20 +190,52 @@ export default function App() {
 
   const aiPlugin = useMemo(() => {
     if (!id) return null;
-    // 沿用本地场景原有 key 和 history；任务场景使用独立命名空间。
-    return pluginAI({
+    let namespace = "showcase";
+    let localHistory = true;
+    let sceneParams: Partial<PluginAIParams> = {};
+
+    switch (true) {
+      case scenario === "task":
+        namespace = "showcase-task";
+        sceneParams = { plugins: [createTaskFirstPlugin()] };
+        break;
+      case scenario === "audit":
+        namespace = "showcase-audit";
+        sceneParams = { plugins: [createDomainAuditPlugin()] };
+        break;
+      case scenario === "remote":
+        namespace = "showcase-remote";
+        localHistory = false;
+        sceneParams = {
+          remoteAgent: { baseUrl: "http://localhost:3001/agents/api", workspaceId: id },
+          tools: [Tools.createAskQuestions()],
+        };
+        break;
+      case scenario === "mcp":
+        sceneParams = {
+          mcp: {
+            bridgeUrl: "/__plugin-ai/bridge",
+            workspaceId: id,
+            onStatus: setMcpStatus,
+            onWorkspaceChange: setMcpEntered,
+            onActivity: setMcpActivity,
+            tools: ["read_file", "write_file", "edit_file", "multi_edit", "delete_file", "grep_search", "check-status"],
+          },
+        };
+        break;
+    }
+
+    const params: PluginAIParams = {
       ...createTestAIPluginParams(),
-      key: `@mybricks/plugin-ai/${scenario === "task" ? "showcase-task" : scenario === "audit" ? "showcase-audit" : scenario === "remote" ? "showcase-remote" : "showcase"}/${id}`,
-      ...(scenario !== "remote" ? { history: new IDBHistory({ dbName: `@mybricks/plugin-ai/${scenario === "task" ? "showcase-task" : scenario === "audit" ? "showcase-audit" : "showcase"}/history/${id}` }) } : {}),
-      ...(scenario === "remote" ? { remoteAgent: { baseUrl: "http://localhost:3001/agents/api", workspaceId: id } } : {}),
-      ...(scenario === "remote" ? { tools: [Tools.createAskQuestions()] } : {}),
+      key: `@mybricks/plugin-ai/${namespace}/${id}`,
       codingConfig: { availableLibraries: [] },
-      plugins: scenario === "task"
-        ? [createTaskFirstPlugin()]
-        : scenario === "audit"
-          ? [createDomainAuditPlugin()]
-          : []
-    });
+      plugins: [],
+      ...sceneParams,
+    };
+    if (localHistory) {
+      params.history = new IDBHistory({ dbName: `@mybricks/plugin-ai/${namespace}/history/${id}` });
+    }
+    return pluginAI(params);
   }, [id, scenario]);
 
   const config = useMemo(
@@ -293,6 +330,7 @@ export default function App() {
   return (
     <main className="designer-page">
       {scenario === "remote" && <FaultControl />}
+      {scenario === "mcp" && <div className="fault-control"><strong>MCP 测试 · {mcpStatus === "connected" ? "已连接" : mcpStatus === "connecting" ? "连接中" : "未连接"}</strong><span>工作区 {id} · {mcpEntered ? "Codex 已进入" : "未进入"}{mcpActivity ? ` · 最近操作：${mcpActivity}` : ""}</span><details><summary>本地 Codex 连接信息</summary><p>MCP 地址：{window.location.origin}/__plugin-ai/mcp</p><p>无需令牌。完整配置步骤见 packages/mcp/README.md。</p></details></div>}
       <div className="designer-content">
       <div className="locale-switcher">
         <button

@@ -1,6 +1,6 @@
 const DB_NAME = "@mybricks/plugin-ai/showcase/designs";
 const STORE_NAME = "dumps";
-export type LocalScenario = "local" | "task" | "audit";
+export type LocalScenario = "local" | "task" | "audit" | "mcp";
 
 type DumpRecord = { id: string; dump: unknown; updatedAt: number };
 export type DumpSummary = Pick<DumpRecord, "id" | "updatedAt">;

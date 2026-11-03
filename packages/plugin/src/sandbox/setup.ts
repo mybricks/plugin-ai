@@ -1,4 +1,6 @@
 import React from "react";
+import { createMcpAttach } from "../mcp/attach";
+import type { McpBridgeOptions } from "../mcp/browser-bridge";
 import {
   createAgentSandboxFromV1,
   DEFAULT_CONFIG_DIR_NAME,
@@ -223,6 +225,7 @@ declare global {
 // ─── setupSandbox 入参 ────────────────────────────────────────────────────────
 
 export interface SetupSandboxParams {
+  mcp?: McpBridgeOptions;
   requestAsStream: RequestAsStreamFn;
   /** 该 plugin 实例的模型路由命名空间；模型选择按 agentKey 在其内部隔离。 */
   llmPluginKey?: string;
@@ -296,10 +299,13 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
     requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles: syncableInitialFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs, localAgent,
   };
 
+  let attachMcp: ReturnType<typeof createMcpAttach> | undefined;
+
   window._sandbox_ = {
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
+      let result: ConnectToAIResult;
       if (config.agentSandbox) {
-        return connectToAIFromSandbox(comId, {
+        result = connectToAIFromSandbox(comId, {
           agentSandbox: config.agentSandbox,
           pageAnalysis: config.pageAnalysis,
           hooks: config.hooks,
@@ -307,11 +313,16 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
           mentions: config.mentions,
           tasksManager: config.tasksManager,
         }, pluginParams);
-      }
-      if (!config.designer) {
+      } else if (config.designer) {
+        result = connectToAIFromV1(comId, { designer: config.designer, hooks: config.hooks, chips: config.chips, mentions: config.mentions }, pluginParams);
+      } else {
         throw new Error("connectToAI requires either designer or agentSandbox");
       }
-      return connectToAIFromV1(comId, { designer: config.designer, hooks: config.hooks, chips: config.chips, mentions: config.mentions }, pluginParams);
+      if (params.mcp) {
+        attachMcp ??= createMcpAttach(params.mcp, pluginParams);
+        attachMcp(comId, config, result);
+      }
+      return result;
     },
 
     registerRefer(resolver: ReferResolver) {
