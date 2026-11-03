@@ -6,6 +6,7 @@ import { Loading, Plus, Send } from "../icons";
 import { Popup } from "../popup";
 import { AttachmentsList } from "../attachments";
 import type { Attachment as AttachmentItem } from "../attachments";
+import { Connector, Check } from "../icons";
 import type { Attachments, MentionProvider } from "../types";
 import { ChatMode, type ChatModeType } from "../chat-mode";
 import { ModelSelector } from "../model-selector";
@@ -134,7 +135,7 @@ function flyToTarget(targetEl: HTMLElement, label: string, onLanded: () => void)
 
   const DURATION = 560;
   setTimeout(() => {
-    try { document.body.removeChild(wrapper); } catch (_) {}
+    try { document.body.removeChild(wrapper); } catch (_) { }
     onLanded();
   }, DURATION);
 }
@@ -147,7 +148,7 @@ const PendingQueue = ({ queue, onRemove, onSendNow }: { queue: QueueItem[]; onRe
   return (
     <div className={css.pendingQueue}>
       <div className={css.pendingQueueHeader} onClick={() => setExpanded(v => !v)}>
-        <span className={css.pendingQueueArrow}>{expanded ? <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="12" height="12" style={{ transform: 'rotate(0deg)', display: 'block' }}><path d="M512 714.666667c-8.533333 0-17.066667-2.133333-23.466667-8.533334l-341.333333-341.333333c-12.8-12.8-12.8-32 0-44.8 12.8-12.8 32-12.8 44.8 0l320 317.866667 317.866667-320c12.8-12.8 32-12.8 44.8 0 12.8 12.8 12.8 32 0 44.8L533.333333 704c-4.266667 8.533333-12.8 10.666667-21.333333 10.666667z" fill="currentColor"/></svg> : <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="12" height="12" style={{ transform: 'rotate(-90deg)', display: 'block' }}><path d="M512 714.666667c-8.533333 0-17.066667-2.133333-23.466667-8.533334l-341.333333-341.333333c-12.8-12.8-12.8-32 0-44.8 12.8-12.8 32-12.8 44.8 0l320 317.866667 317.866667-320c12.8-12.8 32-12.8 44.8 0 12.8 12.8 12.8 32 0 44.8L533.333333 704c-4.266667 8.533333-12.8 10.666667-21.333333 10.666667z" fill="currentColor"/></svg>}</span>
+        <span className={css.pendingQueueArrow}>{expanded ? <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="12" height="12" style={{ transform: 'rotate(0deg)', display: 'block' }}><path d="M512 714.666667c-8.533333 0-17.066667-2.133333-23.466667-8.533334l-341.333333-341.333333c-12.8-12.8-12.8-32 0-44.8 12.8-12.8 32-12.8 44.8 0l320 317.866667 317.866667-320c12.8-12.8 32-12.8 44.8 0 12.8 12.8 12.8 32 0 44.8L533.333333 704c-4.266667 8.533333-12.8 10.666667-21.333333 10.666667z" fill="currentColor" /></svg> : <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="12" height="12" style={{ transform: 'rotate(-90deg)', display: 'block' }}><path d="M512 714.666667c-8.533333 0-17.066667-2.133333-23.466667-8.533334l-341.333333-341.333333c-12.8-12.8-12.8-32 0-44.8 12.8-12.8 32-12.8 44.8 0l320 317.866667 317.866667-320c12.8-12.8 32-12.8 44.8 0 12.8 12.8 12.8 32 0 44.8L533.333333 704c-4.266667 8.533333-12.8 10.666667-21.333333 10.666667z" fill="currentColor" /></svg>}</span>
         <span>{queue.length} 个待发送问题</span>
       </div>
       {expanded && (
@@ -168,12 +169,12 @@ const PendingQueue = ({ queue, onRemove, onSendNow }: { queue: QueueItem[]; onRe
               )}
               <Tooltip title="立即发送（中止当前请求）" placement="topRight">
                 <button className={css.pendingQueueSend} onClick={() => onSendNow?.(item.id)}>
-                  <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M86 896L981 512 86 128l-1 299 640 85-640 85z"/></svg>
+                  <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M86 896L981 512 86 128l-1 299 640 85-640 85z" /></svg>
                 </button>
               </Tooltip>
               <Tooltip title="移除">
                 <button className={css.pendingQueueDel} onClick={() => onRemove?.(item.id)}>
-                  <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" fill="none"><path d="M874.666667 241.066667h-202.666667V170.666667c0-40.533333-34.133333-74.666667-74.666667-74.666667h-170.666666c-40.533333 0-74.666667 34.133333-74.666667 74.666667v70.4H149.333333c-17.066667 0-32 14.933333-32 32s14.933333 32 32 32h53.333334V853.333333c0 40.533333 34.133333 74.666667 74.666666 74.666667h469.333334c40.533333 0 74.666667-34.133333 74.666666-74.666667V305.066667H874.666667c17.066667 0 32-14.933333 32-32s-14.933333-32-32-32zM416 170.666667c0-6.4 4.266667-10.666667 10.666667-10.666667h170.666666c6.4 0 10.666667 4.266667 10.666667 10.666667v70.4h-192V170.666667z m341.333333 682.666666c0 6.4-4.266667 10.666667-10.666666 10.666667H277.333333c-6.4 0-10.666667-4.266667-10.666666-10.666667V309.333333h490.666666V853.333333z" fill="currentColor"/><path d="M426.666667 736c17.066667 0 32-14.933333 32-32V490.666667c0-17.066667-14.933333-32-32-32s-32 14.933333-32 32v213.333333c0 17.066667 14.933333 32 32 32zM597.333333 736c17.066667 0 32-14.933333 32-32V490.666667c0-17.066667-14.933333-32-32-32s-32 14.933333-32 32v213.333333c0 17.066667 14.933333 32 32 32z" fill="currentColor"/></svg>
+                  <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" fill="none"><path d="M874.666667 241.066667h-202.666667V170.666667c0-40.533333-34.133333-74.666667-74.666667-74.666667h-170.666666c-40.533333 0-74.666667 34.133333-74.666667 74.666667v70.4H149.333333c-17.066667 0-32 14.933333-32 32s14.933333 32 32 32h53.333334V853.333333c0 40.533333 34.133333 74.666667 74.666666 74.666667h469.333334c40.533333 0 74.666667-34.133333 74.666666-74.666667V305.066667H874.666667c17.066667 0 32-14.933333 32-32s-14.933333-32-32-32zM416 170.666667c0-6.4 4.266667-10.666667 10.666667-10.666667h170.666666c6.4 0 10.666667 4.266667 10.666667 10.666667v70.4h-192V170.666667z m341.333333 682.666666c0 6.4-4.266667 10.666667-10.666666 10.666667H277.333333c-6.4 0-10.666667-4.266667-10.666666-10.666667V309.333333h490.666666V853.333333z" fill="currentColor" /><path d="M426.666667 736c17.066667 0 32-14.933333 32-32V490.666667c0-17.066667-14.933333-32-32-32s-32 14.933333-32 32v213.333333c0 17.066667 14.933333 32 32 32zM597.333333 736c17.066667 0 32-14.933333 32-32V490.666667c0-17.066667-14.933333-32-32-32s-32 14.933333-32 32v213.333333c0 17.066667 14.933333 32 32 32z" fill="currentColor" /></svg>
                 </button>
               </Tooltip>
             </div>
@@ -224,6 +225,12 @@ interface SenderSerializedInput {
   message: string;
   /** 当前 chat chip 实例列表 */
   chips: ChatChipInstance[];
+}
+
+interface SenderConnectorOption {
+  id: string;
+  name: string;
+  description?: string;
 }
 
 interface SenderActionPrefixRenderContext {
@@ -293,6 +300,16 @@ interface SenderProps {
    * - 选中后插入 ChatChipInstance，发送前由对应 ChatChipDef.format 转为模型上下文
    */
   mentions?: MentionProvider[];
+  /**
+   * 连接器选择配置（受控对象）。
+   * - 在输入框左下角渲染一个连接器下拉按钮
+   * - 用户多选后，通过 onChange 通知外部；外部负责把选中连接器元数据写入 variables
+   */
+  mcpConnectors?: {
+    options: SenderConnectorOption[];
+    selected: string[];
+    onChange: (selected: string[]) => void;
+  };
   /**
    * 判断当前输入是否是默认 focus 内容串。
    * Sender 不理解具体 prefix/chip 结构，只根据返回值决定 placeholder 是否后移展示。
@@ -365,6 +382,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     attachProcessors,
     agent,
     mentions: mentionProviders = [],
+    mcpConnectors: connectorConfig,
   } = props;
 
   const isBubble = variant === 'bubble';
@@ -382,6 +400,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const [mentionMenuMode, setMentionMenuMode] = useState<"plus" | "trigger">("plus");
   const [mentionAnchorRect, setMentionAnchorRect] = useState<DOMRect | null>(null);
   const [mentionHighlightIndex, setMentionHighlightIndex] = useState(0);
+  const [connectorMenuOpen, setConnectorMenuOpen] = useState(false);
   /** 防止 dragLeave 在子元素之间移动时误触发，通过计数器追踪真正的进出 */
   const dragCounterRef = useRef(0);
   const processingSendRef = useRef(false);
@@ -396,8 +415,8 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const pendingFileMapRef = useRef<Map<string, File | FileContent>>(new Map());
   const mentionTriggerRangeRef = useRef<Range | null>(null);
   const mentionMenuRequestRef = useRef(0);
-  const selectMentionEntryRef = useRef<(entry: MentionMenuEntry) => void | Promise<void>>(() => {});
-  const uploadAttachmentRef = useRef<() => void>(() => {});
+  const selectMentionEntryRef = useRef<(entry: MentionMenuEntry) => void | Promise<void>>(() => { });
+  const uploadAttachmentRef = useRef<() => void>(() => { });
   const mentionFileInputRef = useRef<HTMLInputElement>(null);
 
   /** 默认 focus 内容串的整体尺寸，用于把 placeholder 推到内容串后面。 */
@@ -480,9 +499,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     const nextAttachments = typeof params === "string"
       ? undefined
       : (params as SendToAgentParams).attachments?.filter((attachment) => attachment.type === "image").map((attachment) => ({
-          type: "image" as const,
-          content: attachment.content,
-        }));
+        type: "image" as const,
+        content: attachment.content,
+      }));
     // chip 实例表：从 meta.chips 构建，供解析占位符时使用
     const incomingChips: Map<string, ChatChipInstance> = new Map(
       ((params as any)?.meta?.chips as ChatChipInstance[] | undefined)?.map((c) => [c.id, c]) ?? []
@@ -676,9 +695,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         const items = provider.search
           ? await provider.search(query)
           : (await flattenMentionItems(provider)).filter((item) => {
-              const text = [item.label, item.description, ...(item.keywords ?? [])].filter(Boolean).join(" ").toLowerCase();
-              return text.includes(normalizedQuery);
-            });
+            const text = [item.label, item.description, ...(item.keywords ?? [])].filter(Boolean).join(" ").toLowerCase();
+            return text.includes(normalizedQuery);
+          });
         entries.push(...toMentionEntries(provider, items));
       }
     }
@@ -1435,11 +1454,11 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     const chip = entry.toChip
       ? await entry.toChip(entry)
       : {
-          id: `${entry.provider.id}_${Math.random().toString(36).slice(2, 9)}`,
-          type: entry.type ?? entry.provider.chip.type,
-          label: entry.label,
-          data: { ...(entry.data ?? {}), label: entry.label },
-        };
+        id: `${entry.provider.id}_${Math.random().toString(36).slice(2, 9)}`,
+        type: entry.type ?? entry.provider.chip.type,
+        label: entry.label,
+        data: { ...(entry.data ?? {}), label: entry.label },
+      };
 
     insertMentionChip(chip, mentionMenuMode === "trigger" ? mentionTriggerRangeRef.current : null);
     closeMentionMenu();
@@ -1556,6 +1575,35 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     />
   ) : null;
 
+  const connectorMenuNode = connectorConfig && connectorConfig.options.length > 0 ? (
+    <div className={css.connectorMenu}>
+      <div className={css.connectorMenuTitle}>选择连接器</div>
+      {connectorConfig.options.map((option) => {
+        const checked = connectorConfig.selected.includes(option.id);
+        return (
+          <div
+            key={option.id}
+            className={classNames(css.connectorMenuItem, { [css.checked]: checked })}
+            onClick={() => {
+              const next = checked
+                ? connectorConfig.selected.filter((id) => id !== option.id)
+                : [...connectorConfig.selected, option.id];
+              connectorConfig.onChange(next);
+            }}
+          >
+            <span className={css.connectorMenuCheckbox}>{checked && <Check />}</span>
+            <div className={css.connectorMenuInfo}>
+              <span className={css.connectorMenuName}>{option.name}</span>
+              {option.description && (
+                <span className={css.connectorMenuDesc}>{option.description}</span>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  ) : null;
+
   return (
     <div className={classNames(css.container, { [css.loose]: variant === 'loose', [css.bubble]: variant === 'bubble' }, className)}>
       {abovePanels && abovePanels.length > 0 ? (
@@ -1581,7 +1629,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       >
         {attachments.length ? (
           <div className={css.topArea}>
-            <AttachmentsList attachments={attachments} onDelete={onAttachmentsDelete}/>
+            <AttachmentsList attachments={attachments} onDelete={onAttachmentsDelete} />
           </div>
         ) : null}
         {isDraggingOver && (
@@ -1673,8 +1721,39 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
             >
               {mentionMenuNode}
             </Popup>
+
             {renderAttachmentSuffix?.()}
-            {!selectorRenderInTop && chatMode ? <ChatMode disabled={disabled || loading} chatMode={chatMode} onChange={onChatModeChange} /> : null}
+            {/* {!selectorRenderInTop && chatMode ? <ChatMode disabled={disabled || loading} chatMode={chatMode} onChange={onChatModeChange} /> : null} */}
+            {connectorConfig && connectorConfig.options.length > 0 && (
+              <Popup
+                open={connectorMenuOpen}
+                onOpenChange={setConnectorMenuOpen}
+                placement="top-start"
+                offset={8}
+                disabled={disabled || uploading}
+                overlayClassName={css.connectorPopup}
+                trigger={(
+                  <div
+                    data-zone-type="ai-request"
+                    className={classNames(css.attachmentButton, css.connectorButton, {
+                      [css.active]: connectorConfig.selected.length > 0,
+                      [css.open]: connectorMenuOpen,
+                    })}
+                    style={{
+                      width: 'auto',
+                      padding: '4px 10px',
+                      borderRadius: '20px',
+                      gap: 4
+                    }}
+                  >
+                    <Connector />
+                    连接器
+                  </div>
+                )}
+              >
+                {connectorMenuNode}
+              </Popup>
+            )}
           </div>
           <div className={css.rightArea}>
             {renderActionPrefix?.({

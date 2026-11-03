@@ -141,10 +141,22 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
     const { message, attachments, chips, mode } = sendMessage;
     if (!agent) return;
     const meta = chips?.length ? { chips } : undefined;
+    // 模板变量随请求发送，由 WebSocketAgent 等远端通道在 consumeChatStream 中
+    // 透传给智能体平台。空字符串 / undefined / 空数组视为未设置，不发送。
+    const variables = Object.fromEntries(
+      Object.entries(context.getVariables()).filter(([, value]) => {
+        if (value === "" || value === undefined || value === null) return false;
+        if (Array.isArray(value) && value.length === 0) return false;
+        return true;
+      })
+    );
     context.aiQueue.send(
       agent,
       async () => {
-        await agent.requestAI(chipRegistry.formatRequestParams({ message, attachments, ...(mode ? { mode } : {}), ...(meta ? { meta } : {}) }));
+        await agent.requestAI(chipRegistry.formatRequestParams({
+          message, attachments, ...(mode ? { mode } : {}), ...(meta ? { meta } : {}),
+          ...(Object.keys(variables).length ? { variables } : {}),
+        }) as any);
       },
       { message, attachments }
     );

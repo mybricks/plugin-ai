@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import classNames from "classnames";
 import { context } from "../../../context";
 import { ChatPanel } from "../chat-panel";
@@ -28,6 +28,15 @@ export interface ChatPanelListProps {
   className?: string;
   /** 自定义根元素样式，可直接传入 CSS 变量做局部调节 */
   style?: React.CSSProperties;
+  /**
+   * 连接器选择配置。
+   * - 传对象：完全受控，透传给 Sender；
+   * - 传数组：内部管理选中状态。
+   * （暂不把选中项写入模板变量 variables.mcpConnectors，仅作 UI 选择。）
+   */
+  mcpConnectors?:
+    | ChatPanelProps["mcpConnectors"]
+    | Array<{ id: string; name: string; description?: string }>;
 }
 
 interface ComInstance {
@@ -49,8 +58,24 @@ function isLastSegmentSameDomChip(message: string, chips: ChatChipInstance[] | u
 // 监听 focus 事件，每个 comId 对应一个独立 ChatPanel 实例（display:none 切换）。
 // 各 ChatPanel 持有独立的 useSession，agent 事件 re-render 完全隔离。
 
-const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", className, style }: ChatPanelListProps) => {
+const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", className, style, mcpConnectors }: ChatPanelListProps) => {
   useAIPanelReady();
+
+  // 连接器选中态：数组形态内部维护；对象形态透传。
+  // 暂不把选中项同步到模板变量 variables.mcpConnectors。
+  const [internalSelectedIds, setInternalSelectedIds] = useState<string[]>([]);
+
+  const connectorConfig = useMemo(() => {
+    if (!mcpConnectors) return undefined;
+    if (Array.isArray(mcpConnectors)) {
+      return {
+        options: mcpConnectors,
+        selected: internalSelectedIds,
+        onChange: setInternalSelectedIds,
+      };
+    }
+    return mcpConnectors;
+  }, [mcpConnectors, internalSelectedIds]);
 
   const [currentComId, setCurrentComId] = useState<string | undefined>(undefined);
   const [instances, setInstances] = useState<ComInstance[]>([]);
@@ -236,6 +261,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
               defaultFocusPlaceholder="您可以描述对于此区域的需求"
               renderAttachmentSuffix={context.pluginParams.renderAttachmentSuffix}
               mentions={context.pluginParams.mentions}
+              mcpConnectors={connectorConfig}
             />
           </div>
         );

@@ -324,7 +324,6 @@ export class WebSocketAgent {
    * 若本地已有 history（旧数据），把它拍平为一条 user 消息补进会话，让模型看到过往脉络。
    *
    * 动态配置消息（开发指南/环境信息）不再走追加消息端点，改为每轮 /chat/stream
-   * 经 variables.extra_prompt 传递（见 consumeChatStream）。
    * 全程只跑一次，通过 KV 持久化标记与 conversationInit 单飞防并发。
    */
   /**
@@ -458,11 +457,11 @@ export class WebSocketAgent {
 
     // variables 需在智能体 businessVariables 声明集内，且携带时 agentCode 必填。
     // 配置的 projectId/userId 作为业务变量合并进 variables；
-    // 原 seed 消息（开发指南/环境信息）改为每轮经 extra_prompt 传递，调用方已传时不覆盖。
     const variables: Record<string, any> = { ...(params.variables ?? {}) };
     if (this.options.projectId !== undefined) variables.projectId = this.options.projectId;
     if (this.options.userId !== undefined) variables.userId = this.options.userId;
     if (this.options.appType !== undefined) variables.appType = this.options.appType;
+ 
     const useVariables = Object.keys(variables).length > 0 && !!this.options.agentCode;
     const response = await this.openChatStream(
       {
