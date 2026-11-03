@@ -121,4 +121,12 @@ const Skill = () => (
   </svg>
 )
 
-export { ArrowUp, Attachment, Loading, Close, Success, Send, Delete, Export, Chat, Code, Agent, Vibe, Check, Eye, Pencil, FileWrite, ErrorIcon, FileIcon, Plus, ChevronRight, ChevronLeft, AtSign, Skill }
+const Connector = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M12 4v16M4 12h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    <circle cx="12" cy="4" r="2.5" stroke="currentColor" strokeWidth="1.6" />
+    <circle cx="12" cy="20" r="2.5" stroke="currentColor" strokeWidth="1.6" />
+  </svg>
+)
+
+export { ArrowUp, Attachment, Loading, Close, Success, Send, Delete, Export, Chat, Code, Agent, Vibe, Check, Eye, Pencil, FileWrite, ErrorIcon, FileIcon, Plus, ChevronRight, ChevronLeft, AtSign, Skill, Connector }

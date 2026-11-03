@@ -120,6 +120,8 @@ export interface ChatPanelProps {
   attachProcessors?: AttachProcessor[];
   /** 自定义 mention 注册源，透传给 Sender */
   mentions?: MentionProvider[];
+  /** 连接器选择配置，透传给 Sender */
+  mcpConnectors?: SenderProps["mcpConnectors"];
   /** 覆盖当前 Agent 运行阶段的默认展示文案。 */
   resolveSessionStageText?: SessionStageTextResolver;
 }
@@ -167,6 +169,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   selectorRenderInTop = false,
   attachProcessors,
   mentions = (context.pluginParams.mentions ?? []) as MentionProvider[],
+  mcpConnectors,
   resolveSessionStageText,
 }, ref) => {
   const senderRef = useRef<SenderRef>(null);
@@ -288,6 +291,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       matchDefaultFocusContent={matchDefaultFocusContent}
       attachProcessors={attachProcessors}
       agent={chatAgent.source === "local" ? agent as any : undefined}
+      mcpConnectors={mcpConnectors}
     />
   );
   const senderFooterNode = renderSenderFooter?.();

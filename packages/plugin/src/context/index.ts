@@ -44,6 +44,24 @@ class Context {
   /** plugin 初始化参数 */
   pluginParams: any = {};
 
+  /**
+   * 提示词模板变量表。
+   * 由插件内部写入（如连接器选中项元数据数组），宿主/智能体侧读取后组装进提示词，
+   * 例如 system 模板中的 {{mcpConnectors}}。
+   */
+  variables: Record<string, any> = {};
+
+  /** 写入一个模板变量，并广播 variables 变更事件。 */
+  setVariable(key: string, value: any): void {
+    this.variables[key] = value;
+    this.events.emit("variables", { ...this.variables });
+  }
+
+  /** 读取全部模板变量快照。 */
+  getVariables(): Record<string, any> {
+    return { ...this.variables };
+  }
+
   /** 事件总线 */
   events = new (class {
     private listeners: Record<string, Function[]> = {};

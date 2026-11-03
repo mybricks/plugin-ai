@@ -95,6 +95,8 @@ export interface PluginAIController {
    * 不传 comId 时返回当前活跃面板的草稿；面板未挂载时返回 undefined。
    */
   getInput(comId?: string): ReturnType<import("./ui/components/sender").SenderRef["getInput"]> | undefined;
+  /** 读取提示词模板变量（含选中连接器元数据 mcpConnectors）。 */
+  getVariables(): Record<string, any>;
 }
 
 /** pluginAI() 返回值，顶层为 Mybricks 插件标准属性，controller 为扩展控制接口 */
@@ -220,6 +222,11 @@ export interface PluginAIParams {
    * 点击 Sender 的 + 号或输入 @ 时可选择，选中后插入 chip，发送前由 chip.format 转成模型上下文。
    */
   mentions?: MentionProvider[];
+  /**
+   * 连接器选择配置。
+   * 在 ChatPanelList 的 Sender 输入框左下角渲染连接器多选下拉。
+   */
+  mcpConnectors?: import("../../plugin-lowcode/src").PluginLowCodeAIParams["mcpConnectors"];
   /** LLM 配置（自定义渠道时使用） */
   llm?: {
     /**
@@ -269,6 +276,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     sender,
     renderAttachmentSuffix,
     mentions,
+    mcpConnectors,
   } = params;
 
   // 先设置 KV 命名空间，再恢复模型选择，避免读取到上一个 plugin 实例的状态。
@@ -294,7 +302,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
 
   context.name = name;
   (mentions ?? []).forEach((mention) => chipRegistry.register(mention.chip));
-  context.pluginParams = { name, user, onUpload: upload, onDownload: download, renderAttachmentSuffix, mentions };
+  context.pluginParams = { name, user, onUpload: upload, onDownload: download, renderAttachmentSuffix, mentions, mcpConnectors };
 
   // ── 调试工具：导入历史记录 ─────────────────────────────────────────────────
 
@@ -406,6 +414,9 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
       getInput(comId?: string) {
         return context.getInput(comId);
       },
+      getVariables() {
+        return context.getVariables();
+      },
     },
     contributes: {
       aiService: {
@@ -493,7 +504,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
 
       aiView: {
         render(_api: AiViewApi) {
-          return <ChatPanelList user={user} copilot={{ name }} />;
+          return <ChatPanelList user={user} copilot={{ name }} mcpConnectors={mcpConnectors} />;
         },
         display() {
           context.events.emit("aiViewDisplay", true);

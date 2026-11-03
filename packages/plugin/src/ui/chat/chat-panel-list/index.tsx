@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import classNames from "classnames";
 import { context } from "../../../context";
 import { ChatPanel } from "../chat-panel";
@@ -28,6 +28,14 @@ export interface ChatPanelListProps {
   className?: string;
   /** 自定义根元素样式，可直接传入 CSS 变量做局部调节 */
   style?: React.CSSProperties;
+  /**
+   * 连接器选择配置。
+   * - 传对象：完全受控，透传给 Sender；
+   * - 传数组：内部管理选中状态，并把选中项元数据 JSON 写入模板变量 variables.mcpConnectors。
+   */
+  mcpConnectors?:
+    | ChatPanelProps["mcpConnectors"]
+    | Array<{ id: string; name: string; description?: string }>;
 }
 
 interface ComInstance {
@@ -49,8 +57,46 @@ function isLastSegmentSameDomChip(message: string, chips: ChatChipInstance[] | u
 // 监听 focus 事件，每个 comId 对应一个独立 ChatPanel 实例（display:none 切换）。
 // 各 ChatPanel 持有独立的 useSession，agent 事件 re-render 完全隔离。
 
-const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", className, style }: ChatPanelListProps) => {
+const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", className, style, mcpConnectors }: ChatPanelListProps) => {
   useAIPanelReady();
+
+  // 连接器选中态：数组形态内部维护；对象形态透传。
+  // 两种形态都把选中项元数据 JSON 同步到模板变量 variables.mcpConnectors；默认无选中。
+  const [internalSelectedIds, setInternalSelectedIds] = useState<string[]>([]);
+
+  const syncConnectorVariable = useCallback((options: Array<{ id: string; name: string; description?: string }>, selected: string[]) => {
+    // 选中项元数据数组直接写入变量；无选中时写空数组（发送时会过滤掉）。
+    context.setVariable("mcpConnectors", options.filter((c) => selected.includes(c.id)));
+  }, []);
+
+  const connectorConfig = useMemo(() => {
+    if (!mcpConnectors) return undefined;
+    if (Array.isArray(mcpConnectors)) {
+      return {
+        options: mcpConnectors,
+        selected: internalSelectedIds,
+        onChange: setInternalSelectedIds,
+      };
+    }
+    // 对象形态：包装 onChange，宿主回调之外同步模板变量。
+    return {
+      options: mcpConnectors.options,
+      selected: mcpConnectors.selected,
+      onChange: (next: string[]) => {
+        mcpConnectors.onChange(next);
+        syncConnectorVariable(mcpConnectors.options, next);
+      },
+    };
+  }, [mcpConnectors, internalSelectedIds, syncConnectorVariable]);
+
+  // 挂载及选中态变化时同步变量（数组形态）；对象形态在挂载/配置变化时同步初始选中。
+  useEffect(() => {
+    if (Array.isArray(mcpConnectors)) {
+      syncConnectorVariable(mcpConnectors, internalSelectedIds);
+      return;
+    }
+    if (mcpConnectors) syncConnectorVariable(mcpConnectors.options, mcpConnectors.selected);
+  }, [mcpConnectors, internalSelectedIds, syncConnectorVariable]);
 
   const [currentComId, setCurrentComId] = useState<string | undefined>(undefined);
   const [instances, setInstances] = useState<ComInstance[]>([]);
@@ -236,6 +282,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
               defaultFocusPlaceholder="您可以描述对于此区域的需求"
               renderAttachmentSuffix={context.pluginParams.renderAttachmentSuffix}
               mentions={context.pluginParams.mentions}
+              mcpConnectors={connectorConfig}
             />
           </div>
         );

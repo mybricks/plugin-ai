@@ -6,6 +6,7 @@ import { Loading, Plus, Send } from "../icons";
 import { Popup } from "../popup";
 import { AttachmentsList } from "../attachments";
 import type { Attachment as AttachmentItem } from "../attachments";
+import { Connector, Check } from "../icons";
 import type { Attachments, MentionProvider } from "../types";
 import { ChatMode, type ChatModeType } from "../chat-mode";
 import { ModelSelector } from "../model-selector";
@@ -226,6 +227,12 @@ interface SenderSerializedInput {
   chips: ChatChipInstance[];
 }
 
+interface SenderConnectorOption {
+  id: string;
+  name: string;
+  description?: string;
+}
+
 interface SenderActionPrefixRenderContext {
   /** 当前输入框是否有文本/chip 内容 */
   hasInput: boolean;
@@ -293,6 +300,16 @@ interface SenderProps {
    * - 选中后插入 ChatChipInstance，发送前由对应 ChatChipDef.format 转为模型上下文
    */
   mentions?: MentionProvider[];
+  /**
+   * 连接器选择配置（受控对象）。
+   * - 在输入框左下角渲染一个连接器下拉按钮
+   * - 用户多选后，通过 onChange 通知外部；外部负责把选中连接器元数据写入 variables
+   */
+  mcpConnectors?: {
+    options: SenderConnectorOption[];
+    selected: string[];
+    onChange: (selected: string[]) => void;
+  };
   /**
    * 判断当前输入是否是默认 focus 内容串。
    * Sender 不理解具体 prefix/chip 结构，只根据返回值决定 placeholder 是否后移展示。
@@ -365,6 +382,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     attachProcessors,
     agent,
     mentions: mentionProviders = [],
+    mcpConnectors: connectorConfig,
   } = props;
 
   const isBubble = variant === 'bubble';
@@ -382,6 +400,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const [mentionMenuMode, setMentionMenuMode] = useState<"plus" | "trigger">("plus");
   const [mentionAnchorRect, setMentionAnchorRect] = useState<DOMRect | null>(null);
   const [mentionHighlightIndex, setMentionHighlightIndex] = useState(0);
+  const [connectorMenuOpen, setConnectorMenuOpen] = useState(false);
   /** 防止 dragLeave 在子元素之间移动时误触发，通过计数器追踪真正的进出 */
   const dragCounterRef = useRef(0);
   const processingSendRef = useRef(false);
@@ -1555,6 +1574,35 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     />
   ) : null;
 
+  const connectorMenuNode = connectorConfig && connectorConfig.options.length > 0 ? (
+    <div className={css.connectorMenu}>
+      <div className={css.connectorMenuTitle}>选择连接器</div>
+      {connectorConfig.options.map((option) => {
+        const checked = connectorConfig.selected.includes(option.id);
+        return (
+          <div
+            key={option.id}
+            className={classNames(css.connectorMenuItem, { [css.checked]: checked })}
+            onClick={() => {
+              const next = checked
+                ? connectorConfig.selected.filter((id) => id !== option.id)
+                : [...connectorConfig.selected, option.id];
+              connectorConfig.onChange(next);
+            }}
+          >
+            <span className={css.connectorMenuCheckbox}>{checked && <Check />}</span>
+            <div className={css.connectorMenuInfo}>
+              <span className={css.connectorMenuName}>{option.name}</span>
+              {option.description && (
+                <span className={css.connectorMenuDesc}>{option.description}</span>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  ) : null;
+
   return (
     <div className={classNames(css.container, { [css.loose]: variant === 'loose', [css.bubble]: variant === 'bubble' }, className)}>
       {abovePanels && abovePanels.length > 0 ? (
@@ -1638,6 +1686,29 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           <div className={classNames(css.leftArea, {
             [css.disabled]: disabled || uploading
           })}>
+            {connectorConfig && connectorConfig.options.length > 0 && (
+              <Popup
+                open={connectorMenuOpen}
+                onOpenChange={setConnectorMenuOpen}
+                placement="top-start"
+                offset={8}
+                disabled={disabled || uploading}
+                overlayClassName={css.connectorPopup}
+                trigger={(
+                  <div
+                    data-zone-type="ai-request"
+                    className={classNames(css.attachmentButton, css.connectorButton, {
+                      [css.active]: connectorConfig.selected.length > 0,
+                      [css.open]: connectorMenuOpen,
+                    })}
+                  >
+                    <Connector />
+                  </div>
+                )}
+              >
+                {connectorMenuNode}
+              </Popup>
+            )}
             <input
               ref={mentionFileInputRef}
               className={css.fileMenuInput}
