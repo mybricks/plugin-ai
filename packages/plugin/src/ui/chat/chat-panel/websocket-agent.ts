@@ -20,11 +20,18 @@ import { createToolUIChannel, type ToolUIChannel } from "../../../../../agent/sr
 import type { AgentRuntimeState } from "../../../context/agent-runtime";
 import { WEBSOCKET_AGENT_SESSION_STAGE } from "./session-status";
 
+/** 解析鉴权字段：支持字符串或按请求实时取值的函数。 */
+function resolveAuthValue(v?: string | (() => string | undefined | null)): string | undefined {
+  return typeof v === "function" ? (v() ?? undefined) : v;
+}
+
 export interface WebSocketAgentOptions {
   /** MCP Server 地址，例如 http://112.17.139.222:8106 */
   baseUrl: string;
-  /** 智能体平台鉴权 token（Bearer），用于 /chat/stream。 */
-  apiKey: string;
+  /** 平台网关鉴权 token，必填；以 "token" header 发送，WS 握手以 "authToken" 参数发送。支持传函数按请求实时取值。 */
+  token: string | (() => string | undefined | null);
+  /** 平台网关会话标识，必填；以 "session" header 发送，WS 握手以 "authSession" 参数发送。支持传函数按请求实时取值。 */
+  session: string | (() => string | undefined | null);
   /** 工作空间 ID，写入会话 meta 供审计。 */
   workspaceId: string;
   /** 服务端会话 ID；传入时复用该会话，否则新建。 */
@@ -468,6 +475,40 @@ export class WebSocketAgent {
     }
   }
 
+  /**
+   * 构建鉴权 headers：token 必传，以 "token" header 发送；
+   * 支持传函数按请求实时取值。session 可选，存在时一并发送。
+   */
+  private buildAuthHeaders(): Record<string, string> {
+    const token = resolveAuthValue(this.options.token);
+    const session = resolveAuthValue(this.options.session);
+    return { ...(token ? { token } : {}), ...(session ? { session } : {}) };
+  }
+
+  /**
+   * wsUrl 追加 authToken/authSession 鉴权参数（网关在 WebSocket 握手阶段校验）。
+   * 原有查询参数（服务端内嵌的 sessionId/token 等）保持不动；
+   * 支持函数实时取值；URL 解析失败时退化为手动拼接。
+   */
+  private buildChannelUrl(): string {
+    const base = this.channelUrl!;
+    const token = resolveAuthValue(this.options.token);
+    const session = resolveAuthValue(this.options.session);
+    if (!token && !session) return base;
+    try {
+      const url = new URL(base);
+      if (token) url.searchParams.set("authToken", token);
+      if (session) url.searchParams.set("authSession", session);
+      return url.toString();
+    } catch {
+      const params = [
+        token ? `authToken=${encodeURIComponent(token)}` : "",
+        session ? `authSession=${encodeURIComponent(session)}` : "",
+      ].filter(Boolean).join("&");
+      return base.includes("?") ? `${base}&${params}` : `${base}?${params}`;
+    }
+  }
+
   /** 发起一次 /chat/stream 请求，返回响应（body 交由调用方读取）。 */
   private async openChatStream(
     body: {
@@ -482,7 +523,7 @@ export class WebSocketAgent {
       method: "POST",
       signal,
       headers: {
-        Authorization: `Bearer ${this.options.apiKey}`,
+        ...this.buildAuthHeaders(),
         "Content-Type": "application/json",
         Accept: "text/event-stream",
       },
@@ -532,7 +573,7 @@ export class WebSocketAgent {
           {
             method: "POST",
             signal,
-            headers: { Authorization: `Bearer ${this.options.apiKey}` },
+            headers: this.buildAuthHeaders(),
             body: form,
           },
         );
@@ -739,7 +780,7 @@ export class WebSocketAgent {
       if (!this._sessionId) {
         const response = await fetch(`${this.options.baseUrl}/api/v1/sessions`, {
           method: "POST",
-          headers: { Authorization: `Bearer ${this.options.apiKey}`, "Content-Type": "application/json" },
+          headers: { ...this.buildAuthHeaders(), "Content-Type": "application/json" },
           body: JSON.stringify({
             clientType: this.options.clientType,
             meta: { workspaceId: this.options.workspaceId, ...(this.options.meta ?? {}) },
@@ -762,7 +803,7 @@ export class WebSocketAgent {
         // 复用传入或缓存的 sessionId，通过 sessions 接口获取 wsUrl 等连接信息。
         const response = await fetch(`${this.options.baseUrl}/api/v1/sessions`, {
           method: "POST",
-          headers: { Authorization: `Bearer ${this.options.apiKey}`, "Content-Type": "application/json" },
+          headers: { ...this.buildAuthHeaders(), "Content-Type": "application/json" },
           body: JSON.stringify({
             sessionId: this._sessionId,
             clientType: this.options.clientType ?? "mybricks-designer",
@@ -782,7 +823,7 @@ export class WebSocketAgent {
       }
       const url = this.channelUrl;
       if (!url) throw new Error("Missing channel url");
-      const socket = new WebSocket(url);
+      const socket = new WebSocket(this.buildChannelUrl());
       this.socket = socket;
       // 仅在收到 WELCOME 后才 resolve，避免与 socketReady 竞态导致重复建连被 4001 顶替。
       socket.onopen = () => { /* 等待 WELCOME */ };
@@ -952,7 +993,7 @@ export class WebSocketAgent {
     try {
       await fetch(`${this.options.baseUrl}/api/v1/chat/stop`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${this.options.apiKey}`, "Content-Type": "application/json" },
+        headers: { ...this.buildAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: this.conversationSessionId }),
       });
     } catch (error) {

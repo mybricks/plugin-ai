@@ -31,16 +31,19 @@ type SessionMessagesResponse = {
 export class SessionHTTPHistory implements History {
   readonly persistMode = "turn" as const;
   private baseUrl: string;
-  private apiKey: string;
+  private token: string | (() => string | undefined | null);
+  private session: string | (() => string | undefined | null);
   private getSessionId: () => string | undefined;
 
   constructor(options: {
     baseUrl: string;
-    apiKey: string;
+    token: string | (() => string | undefined | null);
+    session: string | (() => string | undefined | null);
     getSessionId?: () => string | undefined;
   }) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
-    this.apiKey = options.apiKey;
+    this.token = options.token;
+    this.session = options.session;
     this.getSessionId = options.getSessionId ?? (() => undefined);
   }
 
@@ -50,8 +53,13 @@ export class SessionHTTPHistory implements History {
   }
 
   private defaultHeaders(): Record<string, string> {
+    const resolve = (v?: string | (() => string | undefined | null)) =>
+      typeof v === "function" ? (v() ?? undefined) : v;
+    const token = resolve(this.token);
+    const session = resolve(this.session);
     return {
-      Authorization: `Bearer ${this.apiKey}`,
+      ...(token ? { token } : {}),
+      ...(session ? { session } : {}),
       "Content-Type": "application/json",
     };
   }

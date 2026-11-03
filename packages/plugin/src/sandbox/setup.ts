@@ -184,8 +184,10 @@ export interface RemoteAgentConfig {
   workspaceId: string;
   /** 服务端 agentId。未传时使用 workspace 的 default agent（仅 http 类型）。 */
   agentId?: string;
-  /** API Key，用于鉴权（仅 websocket 类型）。 */
-  apiKey?: string;
+  /** 平台网关鉴权 token，必填；以 "token" header 发送，WS 握手以 "authToken" 参数发送。支持传函数按请求实时取值（仅 websocket 类型）。 */
+  token: string | (() => string | undefined | null);
+  /** 平台网关会话标识，必填；以 "session" header 发送，WS 握手以 "authSession" 参数发送。支持传函数按请求实时取值（仅 websocket 类型）。 */
+  session: string | (() => string | undefined | null);
   /** 智能体代码（仅 websocket 类型）。 */
   agentCode?: string;
   /** 项目 ID（仅 websocket 类型），随 /chat/stream 的 variables 发送。 */
@@ -753,8 +755,8 @@ function connectToAI(
 
     if (agentType === 'websocket') {
       // 创建 WebSocket Agent（新的 MCP 方式）
-      if (!remoteAgent.apiKey) {
-        throw new Error('[plugin-ai] WebSocket agent requires apiKey');
+      if (!remoteAgent.token) {
+        throw new Error('[plugin-ai] WebSocket agent requires token');
       }
 
       // 远程智能体通过 WS 通道调用的工具由本插件在本地 sandbox 上执行。
@@ -781,7 +783,8 @@ function connectToAI(
       const agentRef: { current?: WebSocketAgent } = {};
       const sessionHistory = new SessionHTTPHistory({
         baseUrl: remoteAgent.baseUrl ?? 'http://112.17.139.222:8106',
-        apiKey: remoteAgent.apiKey,
+        token: remoteAgent.token,
+        session: remoteAgent.session,
         getSessionId: () => agentRef.current?.sessionId,
       });
       const wsHistory = history
@@ -827,7 +830,8 @@ function connectToAI(
       };
       const agent = new WebSocketAgent({
         baseUrl: remoteAgent.baseUrl ?? 'http://112.17.139.222:8106',
-        apiKey: remoteAgent.apiKey,
+        token: remoteAgent.token,
+        session: remoteAgent.session,
         workspaceId: remoteAgent.workspaceId,
         agentCode: remoteAgent.agentCode,
         projectId: remoteAgent.projectId,
