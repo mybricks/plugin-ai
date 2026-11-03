@@ -346,6 +346,8 @@ export class WebSocketAgent {
       id: turnId,
       startTime: Date.now(),
       userText: displayText,
+      // 记录发给模型的组装文本,供 retry 重发时使用(display 与 model 分离)
+      ...(modelText !== displayText ? { userFormattedText: modelText } : {}),
       userAttachments: params.attachments ?? [],
       ...(params.meta ? { meta: params.meta } : {}),
       ...(params.extra ? { extra: params.extra } : {}),
@@ -396,7 +398,15 @@ export class WebSocketAgent {
     const index = this.turns.findIndex((item) => item.id === turnId);
     if (index === -1) return;
     const [turn] = this.turns.splice(index, 1);
-    await this.requestAI({ message: turn.userText, attachments: turn.userAttachments, mode: this.mode });
+    // 历史还原的 turn 携带 userFormattedText(原始组装文本):展示用 userText,
+    // 模型消息用组装文本,避免重发 [[chip:]] 占位符或把组装文本当展示文本。
+    await this.requestAI({
+      ...(turn.userFormattedText && turn.userFormattedText !== turn.userText
+        ? { displayMessage: turn.userText, modelMessage: turn.userFormattedText }
+        : { message: turn.userText }),
+      attachments: turn.userAttachments,
+      mode: this.mode,
+    });
   }
 
   async abort(): Promise<void> {

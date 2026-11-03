@@ -1,4 +1,5 @@
 import type { CompactRecord, History, TurnRecord, VersionFile, VersionRecord } from "../types";
+import { restoreDisplayUserMessage } from "./restore-display-message";
 
 type SessionMessage = {
   id: number;
@@ -113,10 +114,16 @@ export class SessionHTTPHistory implements History {
     for (const message of messages) {
       if (message.role === "user") {
         if (current) turns.push(current);
+        // 服务端只存发给模型的组装文本(<user_query> + 引用块),需还原为展示格式,
+        // 刷新后 UI 才能按 chip 样式渲染(与实时消息一致)。
+        const restored = restoreDisplayUserMessage(message.text ?? "");
         current = {
           id: `session-msg-${message.id}`,
           startTime: Date.now(),
-          userText: message.text ?? "",
+          userText: restored.userText,
+          // 原始组装文本保留在 userFormattedText,供 retry 重发模型消息时使用
+          ...(restored.userText !== message.text ? { userFormattedText: message.text } : {}),
+          ...(restored.chips ? { meta: { chips: restored.chips } } : {}),
           userAttachments: message.attachments ?? [],
           iterations: [{
             content: "",
