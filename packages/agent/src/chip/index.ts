@@ -193,17 +193,18 @@ export class ChipRegistry {
    *
    * 不修改原对象。
    */
-  formatRequestParams<T extends { message: string; meta?: Record<string, any> }>(params: T): Omit<T, "message"> & { displayMessage: string; modelMessage: string } {
-    const { message: displayMessage, ...rest } = params;
+  formatRequestParams<T extends { message: string; modelReminder?: string; meta?: Record<string, any> }>(params: T): Omit<T, "message" | "modelReminder"> & { displayMessage: string; modelMessage: string } {
+    const { message: displayMessage, modelReminder, ...rest } = params;
     const chips = params.meta?.chips as ChatChipInstance[] | undefined;
-    if (!this._hasFormattableChips(chips)) {
+    if (!this._hasFormattableChips(chips) && !modelReminder) {
       return { ...rest, displayMessage, modelMessage: displayMessage };
     }
 
-    const wrappedMessage = `<user_query>\n${displayMessage}\n</user_query>`;
+    const reminder = modelReminder ? `\n\n<reminder>\n${modelReminder}\n</reminder>` : "";
+    const wrappedMessage = `<user_query>\n${displayMessage}${reminder}\n</user_query>`;
 
     const typeGroups = new Map<string, ChatChipInstance[]>();
-    for (const chip of chips!) {
+    for (const chip of chips ?? []) {
       if (!typeGroups.has(chip.type)) typeGroups.set(chip.type, []);
       typeGroups.get(chip.type)!.push(chip);
     }

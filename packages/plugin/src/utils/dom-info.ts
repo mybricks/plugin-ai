@@ -469,24 +469,26 @@ function getDomCodeLocation(el: Element): string {
 function buildDomChipInfo(label: string, params: { ele?: Element, info?: string }): string {
   const { ele, info } = params
   if (info) {
-    return [`- @${label}`, info].join("\n");
+    // 兼容旧版只包含子条目的 info，以及首行包含当前节点描述的新格式。
+    return /^\s*-\s/.test(info) ? `- @${label}：\n${info}` : `- @${label}：${info}`;
   }
 
   if (!ele) {
     return [
-      `- @${label}：`,
-      " - 代码位置：未知",
-      " - 该区域到叶子节点的Dom结构摘要：未知",
+      `- @${label}：未知`,
+      "  - 该节点到叶子节点的结构摘要：未知",
+      "  - 相关的渲染 JSX 代码：未知",
     ].join("\n");
   }
 
   const repeatContextLines = formatRepeatContexts(collectRepeatAncestorContexts(ele));
+  const summary = extractDomSummary(ele);
   return [
-    `- @${label}：`,
-    ` - 相关代码：${getDomCodeLocation(ele)}`,
-    ...repeatContextLines,
-    " - 该区域到叶子节点的Dom结构摘要：",
-    indentText(extractDomSummary(ele), "   "),
+    `- @${label}：${summary.split("\n")[0]}`,
+    "  - 该节点到叶子节点的结构摘要：",
+    indentText(summary, "    "),
+    `  - 相关的渲染 JSX 代码：${getDomCodeLocation(ele)}`,
+    ...repeatContextLines.map((line) => ` ${line}`),
   ].join("\n");
 }
 
