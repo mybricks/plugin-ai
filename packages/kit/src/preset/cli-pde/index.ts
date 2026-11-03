@@ -6,6 +6,7 @@ import GIT_PUSH_PROMPT from "./git-push.md";
 import { createTaskFirstPlugin } from "../../plugins/task-first";
 import { createImpactDocumentPlugin } from "../../plugins/impact-document";
 import { createDevEnvPrepPlugin, type ProjectRunnerImplementation } from "../../plugins/dev-env-prep";
+import { createCanvasInfoPlugin } from "./canvas-info";
 
 /** CLI PDE owns its task, review, and audit documents under this directory. */
 const CLI_PDE_CONFIG_DIR_NAME = ".lingchuang";
@@ -85,6 +86,7 @@ export function cliPdeAgentOptionBuilder<T extends CliPdeAgentOptionBuilderOptio
     },
     plugins: [
       cliPdePlugin,
+      // createCanvasInfoPlugin(),
       createDevEnvPrepPlugin({ projectRunnerImplementation }),
       createTaskFirstPlugin(),
       createImpactDocumentPlugin({ configDirName: resolvedConfigDirName }),
