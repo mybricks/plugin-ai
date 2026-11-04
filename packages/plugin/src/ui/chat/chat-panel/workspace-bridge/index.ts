@@ -62,6 +62,10 @@ export class WorkspaceBridge<TAgent> {
     return this.browserTools.handleRequest(request);
   }
 
+  clearPendingBrowserTools(toolName?: string, callId?: string): void {
+    this.browserTools.clearPending(toolName, callId);
+  }
+
   connectBrowserTools(agentId?: string, signal?: AbortSignal): Promise<void> {
     return this.browserTools.connect(agentId, signal);
   }

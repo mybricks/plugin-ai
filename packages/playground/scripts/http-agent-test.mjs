@@ -6,6 +6,40 @@ const originalFetch = globalThis.fetch;
 try {
   const { HttpAgent } = await server.ssrLoadModule('/../plugin/src/ui/chat/chat-panel/remote/http-agent.ts');
   const { createHttpAgentMock } = await server.ssrLoadModule('/src/http-agent-mock.ts');
+  const { BrowserToolBridge } = await server.ssrLoadModule('/../plugin/src/ui/chat/chat-panel/workspace-bridge/browser-tool-bridge.ts');
+  const browserResults = [];
+  const browserBridge = new BrowserToolBridge({
+    workspaceId: 'legacy',
+    requestJson: async (path, init) => { browserResults.push({ path, body: JSON.parse(init.body) }); },
+    agent: { abort: () => assert.fail('expired tool must not abort the agent') },
+    tools: [{ name: 'interactive_tool', execute: async (_input, ctx) => ({ output: await ctx.waitUIRender() }) }],
+    getSandbox: () => undefined,
+    getMode: () => 'build',
+    setMode: () => {},
+  });
+  const eventAgent = Object.create(HttpAgent.prototype);
+  eventAgent.workspaceId = 'legacy';
+  eventAgent.isDisabled = () => false;
+  eventAgent.workspaceBridge = {
+    handleBrowserTask: request => browserBridge.handleRequest(request),
+    clearPendingBrowserTools: (name, callId) => browserBridge.clearPending(name, callId),
+  };
+  eventAgent.applyTurnEvent = () => {};
+  eventAgent.triggerBeforeToolCall = () => {};
+  eventAgent.triggerAfterToolCall = () => {};
+  eventAgent.shouldUpdateSessionState = () => false;
+  eventAgent.events = { emit: () => {} };
+  const stale = browserBridge.handleRequest({ requestId: 'stale', name: 'interactive_tool', input: {} });
+  eventAgent.handleRemoteEvent({ event: 'browser:task', data: { requestId: 'failed', name: 'interactive_tool', input: {} }, createdAt: Date.now() }, { allowBrowserTasks: true });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.match(browserResults[0].body.error, /already waiting/);
+  eventAgent.handleRemoteEvent({ event: 'tool:call', data: { callId: 'failed-call', name: 'interactive_tool' }, createdAt: Date.now() }, { allowBrowserTasks: true });
+  eventAgent.handleRemoteEvent({ event: 'tool:result', data: { callId: 'failed-call', name: 'interactive_tool' }, createdAt: Date.now() }, { allowBrowserTasks: true });
+  await stale;
+  eventAgent.handleRemoteEvent({ event: 'browser:task', data: { requestId: 'next', name: 'interactive_tool', input: {} }, createdAt: Date.now() }, { allowBrowserTasks: true });
+  assert.equal(await browserBridge.getToolUI().respond('next-call', 'answer'), true);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(browserResults[1].body.output, 'answer');
   const fixture = createHttpAgentMock('retry-error');
   globalThis.fetch = fixture.fetchMock;
   const agent = new HttpAgent({ baseUrl: 'http://localhost/mock', workspaceId: 'demo' });

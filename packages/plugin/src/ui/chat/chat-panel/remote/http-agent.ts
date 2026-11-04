@@ -831,6 +831,7 @@ export class HttpAgent {
       return;
     }
     if (event.event === "session:error") {
+      if (options.allowBrowserTasks) this.workspaceBridge.clearPendingBrowserTools();
       this.setSessionState({
         running: false,
         error: event.data?.message ?? event.data,
@@ -844,6 +845,8 @@ export class HttpAgent {
       this.triggerBeforeToolCall(event);
     }
     if (event.event === "tool:result" || event.event === "tool:error") {
+      // 浏览器工具串行执行；工具终态清理同名的浏览器等待。
+      if (options.allowBrowserTasks) this.workspaceBridge.clearPendingBrowserTools(event.data?.name, event.data?.callId);
       this.triggerAfterToolCall(event);
     }
     if (
@@ -908,6 +911,7 @@ export class HttpAgent {
       event.event === "turn:abort" ||
       event.event === "turn:error"
     ) {
+      if (options.allowBrowserTasks) this.workspaceBridge.clearPendingBrowserTools();
       if (shouldUpdateSessionState && options.waitForRelease && eventTurnId) {
         this.setSessionState({ running: true, turnId: eventTurnId, stage: { key: HTTP_AGENT_SESSION_STAGE.FINALIZING } });
       }
@@ -1536,6 +1540,7 @@ export class HttpAgent {
         },
       })
         .then(() => {
+          if (!terminalSeen) this.workspaceBridge.clearPendingBrowserTools();
           if (terminalSeen || options.signal?.aborted) {
             if (terminalSeen && this.sessionState.turnId) this.pendingTurnFinalizations.get(this.sessionState.turnId)?.release();
             if (!terminalSeen) resolve();
@@ -1544,6 +1549,7 @@ export class HttpAgent {
           reject(new SseDisconnectedError(TURN_INCOMPLETE_ERROR_CODE));
         })
         .catch((error) => {
+          if (!terminalSeen) this.workspaceBridge.clearPendingBrowserTools();
           if (options.signal?.aborted) { resolve(); return; }
           if (!terminalSeen) { reject(error); return; }
           if (this.sessionState.turnId) this.pendingTurnFinalizations.get(this.sessionState.turnId)?.release();
