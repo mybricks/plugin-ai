@@ -10,6 +10,7 @@ import { MessageList } from "../messages";
 import type { ActionBarItem, HistoryCollapseConfig } from "../messages";
 import { useHistoryCollapse } from "./use-history-collapse";
 import { Header } from "./header";
+import { RunningBar } from "../../components/running-bar";
 import { ChatPanelProvider } from "./context";
 import type { ChatMarkdownItConfig, MarkdownSkinConfig, MessagesRenderVariant } from "./context";
 import type { MessageRecord } from "../use-session";
@@ -124,6 +125,11 @@ export interface ChatPanelProps {
   mcpConnectors?: SenderProps["mcpConnectors"];
   /** 覆盖当前 Agent 运行阶段的默认展示文案。 */
   resolveSessionStageText?: SessionStageTextResolver;
+  /**
+   * Agent 运行状态条：spinner + 标题 + 阶段文案 + 计时，固定在输入框上方。
+   * 默认 true 展示；false 关闭；传对象可自定义标题。
+   */
+  runningBar?: boolean | { title?: string };
 }
 
 export interface ChatPanelRef {
@@ -171,6 +177,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   mentions = (context.pluginParams.mentions ?? []) as MentionProvider[],
   mcpConnectors,
   resolveSessionStageText,
+  runningBar = true,
 }, ref) => {
   const senderRef = useRef<SenderRef>(null);
 
@@ -302,6 +309,21 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     </div>
   ) : senderNode;
 
+  // 运行状态条：计时取当前 pending turn 的 startTime（记录层持久，跨 remount 准确）。
+  const runningBarEnabled = runningBar !== false;
+  const runningBarTitle = typeof runningBar === "object" ? runningBar.title : undefined;
+  const runningStartTime = loadingTurnId
+    ? messages.find((record) => record.id === loadingTurnId)?.startTime
+    : undefined;
+  const runningBarNode = runningBarEnabled ? (
+    <RunningBar
+      loading={loading}
+      stageText={loadingTip}
+      startTime={runningStartTime}
+      title={runningBarTitle}
+    />
+  ) : null;
+
   return (
     <ChatPanelProvider value={{ user, copilot, disabled: isDisabled, renderUserMessage, markdownSkin, markdownit, messagesRenderVariant }}>
       <div
@@ -331,12 +353,12 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
             onExecutePlan={chatAgent.executePlan}
             canExecutePlan={canExecutePlan}
             renderEmpty={historyStatus === "ready" ? renderEmpty : undefined}
-            renderFooter={scrollWithSender ? () => senderBlockNode : undefined}
+            renderFooter={scrollWithSender ? () => <>{runningBarNode}{senderBlockNode}</> : undefined}
             collapseCursor={collapseCursor ? { ...collapseCursor, hasMore, isLoadingMore } : (hasMore ? { visibleStartIndex: 0, collapsedCount: 0, hasMore, isLoadingMore } : undefined)}
             onExpandHistory={onExpandHistory}
           />
         </div>
-        {scrollWithSender ? null : senderBlockNode}
+        {scrollWithSender ? null : <>{runningBarNode}{senderBlockNode}</>}
       </div>
     </ChatPanelProvider>
   );

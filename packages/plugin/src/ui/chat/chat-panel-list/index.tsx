@@ -37,6 +37,8 @@ export interface ChatPanelListProps {
   mcpConnectors?:
     | ChatPanelProps["mcpConnectors"]
     | Array<{ id: string; name: string; description?: string }>;
+  /** Agent 运行状态条配置，透传给内部 ChatPanel；默认展示 */
+  runningBar?: ChatPanelProps["runningBar"];
 }
 
 interface ComInstance {
@@ -58,7 +60,7 @@ function isLastSegmentSameDomChip(message: string, chips: ChatChipInstance[] | u
 // 监听 focus 事件，每个 comId 对应一个独立 ChatPanel 实例（display:none 切换）。
 // 各 ChatPanel 持有独立的 useSession，agent 事件 re-render 完全隔离。
 
-const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", className, style, mcpConnectors }: ChatPanelListProps) => {
+const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", className, style, mcpConnectors, runningBar }: ChatPanelListProps) => {
   useAIPanelReady();
 
   // 连接器选中态：数组形态内部维护；对象形态透传。
@@ -262,6 +264,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
               renderAttachmentSuffix={context.pluginParams.renderAttachmentSuffix}
               mentions={context.pluginParams.mentions}
               mcpConnectors={connectorConfig}
+              runningBar={runningBar}
             />
           </div>
         );

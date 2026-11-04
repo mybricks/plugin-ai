@@ -1,0 +1,44 @@
+/*! plugin-ai-comp-view-anchor */
+
+.running-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin: var(--chat-running-bar-margin, 6px var(--chat-sender-padding, 10px) 0);
+  padding: var(--chat-running-bar-padding, 5px 12px);
+  border-radius: var(--chat-running-bar-radius, 8px);
+  font-size: var(--chat-font-size-sm, 12px);
+  color: var(--mybricks-color-primary, #FA6400);
+  background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 8%, transparent);
+}
+
+.running-bar-spinner {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+
+  svg {
+    width: var(--chat-icon-size, 14px);
+    height: var(--chat-icon-size, 14px);
+  }
+}
+
+.running-bar-title {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.running-bar-stage {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.running-bar-elapsed {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  opacity: 0.85;
+}
