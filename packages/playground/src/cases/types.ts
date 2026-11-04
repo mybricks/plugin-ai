@@ -3,7 +3,7 @@ import type { RequestAsStreamFn } from "@request/types";
 import type { ProviderConfig } from "@request";
 import type { Tool, ToolUIChannel } from "@agent/index";
 import type { CodeAgent } from "@agent/code-agent";
-import type { AgentHooks } from "@agent/index";
+import type { AgentHooks, RetryOptions } from "@agent/index";
 import type { CodeAgentPluginInput, SkillFile } from "@agent/code-agent";
 import type { AgentSandbox } from "@agent/agent-sandbox";
 import type { ChatPanelProps, ChatPanelRef } from "@plugin/ui/chat";
@@ -86,11 +86,7 @@ export interface TestCase {
   agentOptions?: {
     maxSteps?: number;
     doomLoopThreshold?: number;
-    retry?: {
-      maxRetries?: number;
-      baseDelayMs?: number;
-      maxDelayMs?: number;
-    };
+    retry?: RetryOptions;
   };
   /** 禁用的 Agent 运行模式；传入后模式切换器隐藏 */
   disabledModes?: AgentMode[];

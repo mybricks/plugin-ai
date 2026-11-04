@@ -15,7 +15,7 @@ function createAgent(options = {}) {
   const agent = new Agent({
     summary: false, compact: { enabled: false }, handoff: false, mask: false,
     ...options,
-    request: async ({ emits }) => { requests++; emits.complete(); },
+    request: async ({ emits }) => { requests++; emits.write("ok"); emits.complete(); },
   });
   return { agent, requests: () => requests };
 }

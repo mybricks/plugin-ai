@@ -72,7 +72,7 @@ const COMPACT_RESERVE_OUTPUT = 20_000;
 /** 缓冲区大小（防止精确边界触发） */
 const COMPACT_BUFFER = 13_000;
 /** 默认重试配置 */
-const DEFAULT_RETRY: Required<RetryOptions> = {
+const DEFAULT_RETRY: RetryOptions = {
   maxRetries: 3,
   baseDelayMs: 1000,
   maxDelayMs: 10000,
