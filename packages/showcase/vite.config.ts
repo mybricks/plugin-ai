@@ -11,6 +11,23 @@ const agentSrc = fileURLToPath(new URL("../agent/src", import.meta.url));
 const lowcodeSrc = fileURLToPath(new URL("../plugin-lowcode/src", import.meta.url));
 const bridge = (name: string) => fileURLToPath(new URL(`./src/runtime/${name}.cjs`, import.meta.url));
 
+// Cookie values may contain `$`, which Vite's dotenv expansion would alter.
+// Read this server-only value literally, preserving Vite's env file precedence.
+function readProxyCookie(mode: string): string | undefined {
+  let value: string | undefined;
+  for (const name of [".env", ".env.local", `.env.${mode}`, `.env.${mode}.local`]) {
+    const file = path.join(showcaseRoot, name);
+    if (!fs.existsSync(file)) continue;
+    const match = fs.readFileSync(file, "utf8").match(/^\s*(?:export\s+)?TEST_AI_PROXY_COOKIE\s*=\s*([^\r\n]*)/m);
+    if (!match) continue;
+    const raw = match[1].trim();
+    value = ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'")))
+      ? raw.slice(1, -1)
+      : raw;
+  }
+  return process.env.TEST_AI_PROXY_COOKIE ?? value;
+}
+
 function markdownAsText(): Plugin {
   return {
     name: "markdown-as-text",
@@ -46,7 +63,7 @@ export default defineConfig(({ mode }) => {
   // 不使用 VITE_ 前缀加载 Cookie，避免它进入客户端 bundle。
   const env = { ...loadEnv(mode, showcaseRoot, ""), ...process.env };
   const apiTarget = env.TEST_AI_PROXY_TARGET;
-  const cookie = env.TEST_AI_PROXY_COOKIE;
+  const cookie = readProxyCookie(mode);
   const proxy = apiTarget
     ? {
         target: apiTarget,
