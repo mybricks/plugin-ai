@@ -467,10 +467,11 @@ function getDomCodeLocation(el: Element): string {
   return `${jsxText}${lessText}`;
 }
 
-function buildDomChipInfo(label: string, ele?: Element): string {
+function buildDomChipInfo(label: string, ele?: Element, displayName?: string): string {
   if (!ele) {
     return [
       `- @${label}：`,
+      ...(displayName ? [` - 节点展示名： ${displayName}`] : []),
       " - 代码位置：未知",
       " - 该区域到叶子节点的Dom结构摘要：未知",
     ].join("\n");
@@ -479,6 +480,7 @@ function buildDomChipInfo(label: string, ele?: Element): string {
   const repeatContextLines = formatRepeatContexts(collectRepeatAncestorContexts(ele));
   return [
     `- @${label}：`,
+    ...(displayName ? [` - 节点展示名： ${displayName}`] : []),
     ` - 相关代码：${getDomCodeLocation(ele)}`,
     ...repeatContextLines,
     " - 该区域到叶子节点的Dom结构摘要：",
@@ -529,12 +531,16 @@ ${domSummary}
 }
 
 /**
- * 格式化 dom chip：把占位符替换成 Dom节点N，并追加节点说明。
- * 同一个 HTMLElement 引用会合并为同一个 Dom节点N。
+ * 格式化 dom chip：把占位符替换成 @Dom节点N（zone 元素用 zone label），并追加节点说明。
+ * 同一个 HTMLElement 引用会合并为同一个标签。
+ *
+ * 输入框 chip.label 不参与行内替换，只写入条目内的「节点展示名」行：
+ * 服务端会话只保存组装文本，刷新后 restoreDisplayUserMessage 从该行
+ * 还原 chip 展示文案，模型侧文案保持不变。
  */
 export function formatDomChipMessage({ message, chips }: ChatChipFormatContext): string {
   const eleToLabel = new Map<Element | undefined, string>();
-  const labelToInfo = new Map<string, { ele?: Element }>();
+  const labelToInfo = new Map<string, { ele?: Element; displayName?: string }>();
   let counter = 1;
   const zoneChipMap = new Map()
 
@@ -551,18 +557,18 @@ export function formatDomChipMessage({ message, chips }: ChatChipFormatContext):
       } catch {}
 
       if (zoneChip) {
-        const { type, label } = zoneChip
+        const { type } = zoneChip
         if (!zoneChipMap.has(type)) {
           zoneChipMap.set(type, new Set([zoneChip]))
         } else {
           zoneChipMap.get(type).add(zoneChip)
         }
-        eleToLabel.set(ele, label);
-      } else {
-        const label = `Dom节点${counter++}`;
-        eleToLabel.set(ele, label);
-        labelToInfo.set(label, { ele });
       }
+
+      const label = (zoneChip?.label || "").trim() || `Dom节点${counter++}`
+      const displayName = chip.label?.trim()
+      eleToLabel.set(ele, label);
+      labelToInfo.set(label, displayName ? { ele, displayName } : { ele });
     }
   }
 
@@ -577,8 +583,8 @@ export function formatDomChipMessage({ message, chips }: ChatChipFormatContext):
 
   // Dom 节点说明用语义标签包裹，与正文显式分层，避免被当成待排查的任务。
   const domInfo = labelToInfo.size === 0 ? '' : `\n\n<referenced-dom-nodes note="上方 @Dom 节点的详情，供参考。">\n${
-    Array.from(labelToInfo).map(([label, { ele }]) => {
-      return buildDomChipInfo(label, ele)
+    Array.from(labelToInfo).map(([label, { ele, displayName }]) => {
+      return buildDomChipInfo(label, ele, displayName)
     }).join("\n")
   }\n</referenced-dom-nodes>`
 

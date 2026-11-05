@@ -2,15 +2,16 @@
  * 把服务端会话里存储的"组装后用户消息"还原为展示格式。
  *
  * 背景:发送侧 ChipRegistry.formatRequestParams 会把带 chip 的消息组装为
- * `<user_query>正文(@label 引用)</user_query>` + 引用块(`<referenced-dom-nodes>` /
+ * `<user_query>正文(@Dom节点N 引用)</user_query>` + 引用块(`<referenced-dom-nodes>` /
  * `<referenced-nodes>` / 文件内容尾巴)后再发给模型,服务端会话只保存组装结果。
  * 刷新页面从会话消息接口重建历史时,需反向还原出 `[[chip:id]]` 占位符与
  * meta.chips(仅 id/label,供 UI 渲染),才能与实时消息的 chip 展示保持一致。
  *
  * 还原策略:
  * 1. 提取 `<user_query>` 内部正文;无该标签视为普通消息,原样返回。
- * 2. 从 `<referenced-dom-nodes>` 块的 `- @label：` 条目精确收集 dom chip label
- *    (长 label 优先替换,避免前缀误伤)。
+ * 2. 从 `<referenced-dom-nodes>` 块的 `- @label：` 条目精确收集 dom chip 引用
+ *    (长 label 优先替换,避免前缀误伤);chip 展示文案取条目内的
+ *    「节点展示名」行(发送侧写入的输入框文案),缺失时回退条目标签。
  * 3. 剩余 `@token`(zone chip 引用,其引用块不携带 label)按 ASCII 标识符形态
  *    启发式还原;仅影响展示样式,不影响语义。
  */
@@ -30,9 +31,38 @@ export interface RestoredDisplayMessage {
 const USER_QUERY_PATTERN = /<user_query>\r?\n?([\s\S]*?)\r?\n?<\/user_query>/;
 const REFERENCED_DOM_NODES_PATTERN = /<referenced-dom-nodes[^>]*>([\s\S]*?)<\/referenced-dom-nodes>/g;
 /** `<referenced-dom-nodes>` 块内条目行:`- @label：`(全角冒号结尾) */
-const DOM_CHIP_LABEL_PATTERN = /^- @(.+?)[：:]\s*$/gm;
+const DOM_CHIP_LABEL_PATTERN = /^- @(.+?)[：:]\s*$/;
+/** 条目内的展示名行:` - 节点展示名： brand` */
+const DOM_CHIP_DISPLAY_NAME_PATTERN = /^\s*-\s*节点展示名[：:]\s*(.+?)\s*$/;
 /** 行内 zone chip 引用:@ 前须为空白/行首,避免误伤 someone@example.com 等内联文本 */
 const INLINE_CHIP_TOKEN_PATTERN = /(^|\s)@([A-Za-z_][A-Za-z0-9_.-]{0,63})/g;
+
+/** `<referenced-dom-nodes>` 块内单个条目:行内 @引用标签 + 可选展示名。 */
+interface DomChipEntry {
+  label: string;
+  displayName?: string;
+}
+
+function collectDomEntries(text: string): DomChipEntry[] {
+  const entries: DomChipEntry[] = [];
+  for (const block of text.matchAll(REFERENCED_DOM_NODES_PATTERN)) {
+    let current: DomChipEntry | undefined;
+    for (const line of block[1].split(/\r?\n/)) {
+      const entryMatch = line.match(DOM_CHIP_LABEL_PATTERN);
+      if (entryMatch) {
+        current = { label: entryMatch[1] };
+        entries.push(current);
+        continue;
+      }
+      const nameMatch = line.match(DOM_CHIP_DISPLAY_NAME_PATTERN);
+      // 仅归属其上方最近的条目;首行生效,后续重复行忽略。
+      if (nameMatch && current && current.displayName === undefined) {
+        current.displayName = nameMatch[1];
+      }
+    }
+  }
+  return entries;
+}
 
 export function restoreDisplayUserMessage(text: string): RestoredDisplayMessage {
   const queryMatch = text.match(USER_QUERY_PATTERN);
@@ -46,24 +76,20 @@ export function restoreDisplayUserMessage(text: string): RestoredDisplayMessage 
   }
 
   const chips: RestoredDisplayChip[] = [];
-  const replaceToken = (label: string) => {
+  const replaceToken = (label: string, displayName?: string) => {
     const token = `@${label}`;
     if (!body.includes(token)) return;
-    const chip: RestoredDisplayChip = { id: `h${chips.length + 1}`, type: "restored", label };
+    const chip: RestoredDisplayChip = { id: `h${chips.length + 1}`, type: "restored", label: displayName ?? label };
     chips.push(chip);
     body = body.split(token).join(`[[chip:${chip.id}]]`);
   };
 
-  // 1. 精确 label:来自 <referenced-dom-nodes> 块条目,长 label 优先替换
-  const labels = new Set<string>();
-  for (const block of text.matchAll(REFERENCED_DOM_NODES_PATTERN)) {
-    for (const entry of block[1].matchAll(DOM_CHIP_LABEL_PATTERN)) {
-      labels.add(entry[1]);
-    }
-  }
-  Array.from(labels)
-    .sort((a, b) => b.length - a.length)
-    .forEach(replaceToken);
+  // 1. 精确 label:来自 <referenced-dom-nodes> 块条目,长 label 优先替换;
+  //    展示文案取条目「节点展示名」行。
+  collectDomEntries(text)
+    .slice()
+    .sort((a, b) => b.label.length - a.label.length)
+    .forEach((entry) => replaceToken(entry.label, entry.displayName));
 
   // 2. 启发式 label:zone chip 引用(引用块不携带 label),按标识符形态识别
   body = body.replace(INLINE_CHIP_TOKEN_PATTERN, (_match, lead: string, label: string) => {
