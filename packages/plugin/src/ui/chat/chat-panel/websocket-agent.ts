@@ -40,8 +40,6 @@ export interface WebSocketAgentOptions {
   agentCode?: string;
   /** 业务变量：项目 ID，随 /chat/stream 的 variables 发送。 */
   projectId?: string | number;
-  /** 业务变量：用户 ID，随 /chat/stream 的 variables 发送。 */
-  userId?: string | number;
   /** 业务变量：应用类型，随 /chat/stream 的 variables 发送。 */
   appType?: string | number;
   /** 客户端类型标识，仅作记录。 */
@@ -456,10 +454,9 @@ export class WebSocketAgent {
     await this.uploadAttachments(params.attachments ?? [], signal);
 
     // variables 需在智能体 businessVariables 声明集内，且携带时 agentCode 必填。
-    // 配置的 projectId/userId 作为业务变量合并进 variables；
+    // 配置的 projectId/appType 作为业务变量合并进 variables；
     const variables: Record<string, any> = { ...(params.variables ?? {}) };
     if (this.options.projectId !== undefined) variables.projectId = this.options.projectId;
-    if (this.options.userId !== undefined) variables.userId = this.options.userId;
     if (this.options.appType !== undefined) variables.appType = this.options.appType;
  
     const useVariables = Object.keys(variables).length > 0 && !!this.options.agentCode;
