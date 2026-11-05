@@ -7,3 +7,5 @@ export { readGitBranchInfoFromSandbox } from "./branch-info";
 export type { GitBranchInfo } from "./branch-info";
 
 export * from "./audit-domain";
+
+export { createUnderstandAnyCorePlugin } from "./understand-any";
