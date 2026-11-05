@@ -18,6 +18,7 @@ import {
   type VersionRecord,
 } from "../../../../../../agent/src";
 import { composePluginHooks, type Sandbox } from "../../../../../../agent/src/code-agent";
+import { collectPluginPromptTemplates, createMbsTemplates } from "../../../../../../agent/src/code-agent/mbs";
 import {
   createAfterToolCallParams,
   createBeforeToolCallParams,
@@ -237,6 +238,11 @@ export class HttpAgent {
   private readonly dispatchedAfterToolCalls = new Set<string>();
   /** 服务端工具定义不会随 SSE 下发；为 hook 提供稳定的最小 Tool 描述。 */
   private readonly remoteHookTools = new Map<string, Tool>();
+
+  /** Browser-side template labels for rendering stored messages. */
+  getMbsTemplates() {
+    return createMbsTemplates(collectPluginPromptTemplates(this.plugins)).map((item) => item.descriptor);
+  }
 
   constructor(options: HttpAgentOptions, runtime: HttpAgentRuntimeOptions = {}) {
     this.baseUrl = trimRight(options.baseUrl ?? DEFAULT_BASE_URL, "/");

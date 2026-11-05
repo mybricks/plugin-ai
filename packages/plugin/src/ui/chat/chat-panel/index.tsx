@@ -397,7 +397,10 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       disabled: isDisabled,
       renderUserMessage,
       mbsTemplateDisplayNames: Object.fromEntries(
-        chatAgent.slashCommands.map((command) => [command.name, command.displayName ?? command.name]),
+        [
+          ...(isHttpAgent(chatAgent.agent) ? chatAgent.agent.getMbsTemplates() : []),
+          ...chatAgent.slashCommands,
+        ].map((command) => [command.name, command.displayName ?? command.name]),
       ),
       markdownSkin,
       markdownit,
@@ -460,6 +463,7 @@ export {
 export { useAgent } from "./use-agent";
 export { useSessionState } from "./use-session-state";
 export type { SessionState, UseSessionStateOptions } from "./use-session-state";
+import { isHttpAgent } from "./remote/http-agent";
 export { HttpAgent, isHttpAgent } from "./remote/http-agent";
 export type { ChatAgent, ChatPanelAgentState } from "./use-agent";
 export type {
