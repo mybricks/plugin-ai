@@ -84,7 +84,7 @@ function FaultControl() {
 function createConfig(dump: unknown, aiPlugin: unknown) {
   console.log('mybricksConfig.aiComLib.url', mybricksConfig.aiComLib.url)
   return {
-    vibeCoding: { for: "pd", useIframe: false },
+    vibeCoding: { useIframe: false },
     comLibLoader: async () => mybricksConfig.aiComLib.url ? [mybricksConfig.aiComLib.url] : [],
     pageContentLoader: () => dump || "{}",
     toplView: {},
@@ -95,13 +95,6 @@ function createConfig(dump: unknown, aiPlugin: unknown) {
       }
     },
     geoView: {
-      nav: {
-        float: true,
-        comShortcuts: [{
-          namespace: "mybricks.basic-comlib.ai-mix",
-          title: "AI 页面"
-        }]
-      },
       scenes: {
         adder: [{
           type: "normal",
@@ -130,12 +123,7 @@ function createConfig(dump: unknown, aiPlugin: unknown) {
 }
 
 function readProjectFile(text: string): Record<string, unknown> {
-  let project: unknown;
-  try {
-    project = JSON.parse(text);
-  } catch {
-    throw new Error("文件内容不是合法的 JSON，请检查后重试。");
-  }
+  const project: unknown = JSON.parse(text);
 
   if (
     !project
@@ -163,7 +151,6 @@ export default function App() {
   const [Designer, setDesigner] = useState<DesignerComponent | null>(null);
   const [initialDump, setInitialDump] = useState<unknown | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -183,7 +170,6 @@ export default function App() {
         setDesigner(() => designer);
         setInitialDump(dump);
       })
-      .catch((reason) => active && setError(reason instanceof Error ? reason.message : "设计器初始化失败。"))
       .finally(() => active && setIsLoading(false));
     return () => { active = false; };
   }, [id, scenario]);
@@ -248,8 +234,6 @@ export default function App() {
     setIsSaving(true);
     try {
       if (scenario !== "remote") await saveDump(id, designerRef.current.dump(), scenario);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "保存 dump 失败。");
     } finally {
       setIsSaving(false);
     }
@@ -261,8 +245,7 @@ export default function App() {
     try {
       if (scenario !== "remote") await deleteDump(id, scenario);
       window.location.reload();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "清空 dump 失败。");
+    } finally {
       setIsClearing(false);
     }
   };
@@ -274,15 +257,12 @@ export default function App() {
     input.value = "";
     if (!file) return;
 
-    setError("");
     setIsImporting(true);
     try {
       const project = readProjectFile(await file.text());
       if (!window.confirm("导入会覆盖当前工作区中已保存的设计器数据，是否继续？")) return;
       if (scenario !== "remote") await saveDump(id, project, scenario);
       window.location.reload();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "导入文件失败。");
     } finally {
       setIsImporting(false);
     }
@@ -297,11 +277,7 @@ export default function App() {
 
   const openSwitcher = async () => {
     setIsSwitcherOpen(true);
-    try {
-      if (scenario !== "remote") setDumps(await listDumps(scenario));
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "读取已保存文件失败。");
-    }
+    if (scenario !== "remote") setDumps(await listDumps(scenario));
   };
 
   const switchWorkspace = (nextId: string) => {
@@ -324,7 +300,6 @@ export default function App() {
 
   if (!id) return <Landing />;
   if (isLoading) return <main className="status">正在载入设计器…</main>;
-  if (error && !config) return <main className="status error">{error}</main>;
   if (!Designer || !config) return <main className="status error">设计器配置不可用。</main>;
 
   return (
@@ -381,7 +356,6 @@ export default function App() {
         )}
       /></div>
       <input ref={importInputRef} className="file-input" type="file" accept=".ui,.json,application/json" onChange={(event) => void importProject(event)} />
-      {error && <p className="toast">{error}</p>}
     </main>
   );
 }
