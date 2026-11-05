@@ -10,6 +10,8 @@ import type { RequestAsStreamFn, ProviderConfig } from "../../request/src";
 export type { ProviderConfig, RemoteProviderConfig, CustomProviderConfig, ModelConfig, ModelSelection } from "../../request/src";
 import { type PromptSections } from "../../kit/src";
 import { DEFAULT_PLUGIN_SKILLS } from "./skills/default";
+import { createUnderstandAnyContribute } from "./contributes/understand";
+import { createUnderstandAnyCorePlugin } from "../../kit/src/plugins/understand-any";
 
 import { context } from "./context";
 import { setupSandbox } from "./sandbox";
@@ -394,7 +396,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     virtualFiles,
     initialFiles,
     skills: mergedSkills,
-    plugins,
+    plugins: [...(plugins ?? []), createUnderstandAnyCorePlugin(resolvedConfigDirName)],
     promptSections,
     tools,
     getUserContextMessage,
@@ -449,6 +451,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
       },
     },
     contributes: {
+      secondaryToolbarNormal: createUnderstandAnyContribute(),
       aiService: {
         init(_api: any) {
           // 兼容旧版：给组件 runtime 提供项目配置读取入口

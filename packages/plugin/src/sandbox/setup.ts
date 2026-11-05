@@ -306,6 +306,10 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
   window._sandbox_ = {
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
       let result: ConnectToAIResult;
+      if (config.understandAnyUI) {
+        context.understandAnyUI.set(context.getAgentKey(comId), config.understandAnyUI);
+        context.events.emit("understandAnyUI", comId);
+      }
       if (config.agentSandbox) {
         result = connectToAIFromSandbox(comId, {
           agentSandbox: config.agentSandbox,

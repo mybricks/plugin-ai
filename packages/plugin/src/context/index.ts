@@ -1,3 +1,4 @@
+import type React from "react";
 import type { SendToAgentParams } from "../sandbox";
 import { AgentQueue } from "./queue";
 import { LLMProvider } from "../../../request/src";
@@ -74,6 +75,7 @@ class Context {
   agentMap = new Map<string, any>();
   /** Host-owned V1 sandbox façades used by plugin UI integrations. */
   sandboxMap = new Map<string, any>();
+  understandAnyUI = new Map<string, React.ComponentType<{ bindingTo?: string; disabled?: boolean; Sender?: React.ComponentType<any>; Modal?: React.ComponentType<any> }>>();
 
   /** 已注册过 Agent 的 comId，用于无画布 focus 时兜底打开对话面板。 */
   private _agentComIds: string[] = [];
