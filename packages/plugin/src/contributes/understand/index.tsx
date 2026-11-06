@@ -17,6 +17,11 @@ function UnderstandSender({ variant, ...props }: { placeholder: string; disabled
   return <Sender {...props} variant={variant === "inline" ? "compact" : "bubble"} showAttachments={variant !== "inline"} onUpload={context.pluginParams.onUpload} />;
 }
 
+function getUnderstandAnyUI() {
+  const id = context.currentFocus?.comId ?? context.currentFocus?.pageId ?? context.getFallbackAgentComId();
+  return id ? context.understandAnyUI.get(context.getAgentKey(id)) : undefined;
+}
+
 function HostArea({ bindingTo, setTitle }: { bindingTo?: string; setTitle?: (title: string) => void }) {
   const [, refresh] = useState(0);
   useEffect(() => {
@@ -24,8 +29,7 @@ function HostArea({ bindingTo, setTitle }: { bindingTo?: string; setTitle?: (tit
     const offs = [context.events.on("focus", update), context.events.on("agentComId", update), context.events.on("understandAnyUI", update), context.events.on("disabled", update)];
     return () => offs.forEach(off => off());
   }, []);
-  const id = context.currentFocus?.comId ?? context.currentFocus?.pageId ?? context.getFallbackAgentComId();
-  const UI = id ? context.understandAnyUI.get(context.getAgentKey(id)) : undefined;
+  const UI = getUnderstandAnyUI();
   return UI ? <UI bindingTo={bindingTo} disabled={context.disabled} Sender={UnderstandSender} Modal={Modal} setTitle={setTitle} /> : null;
 }
 
@@ -34,5 +38,6 @@ export function createUnderstandAnyContribute() {
     title: i18n({ zh: "业务图", en: "Business diagrams" }),
     icon: AIDraw,
     render: (params?: { id?: string; setTitle?: (title: string) => void }) => <HostArea bindingTo={params?.id} setTitle={params?.setTitle} />,
+    getInfo: (params: { id?: string }) => getUnderstandAnyUI()?.getInfo?.(params),
   };
 }
