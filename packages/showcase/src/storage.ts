@@ -1,3 +1,5 @@
+import { sanitizeForIndexedDB } from "./sanitize-for-indexeddb";
+
 const DB_NAME = "@mybricks/plugin-ai/showcase/designs";
 const STORE_NAME = "dumps";
 export type LocalScenario = "local" | "task" | "audit" | "mcp";
@@ -27,11 +29,12 @@ export async function loadDump(id: string, scenario: LocalScenario = "local"): P
 }
 
 export async function saveDump(id: string, dump: unknown, scenario: LocalScenario = "local"): Promise<void> {
+  const filteredDump = sanitizeForIndexedDB(dump);
   const db = await openDB(scenario);
   return new Promise((resolve, reject) => {
     const request = db.transaction(STORE_NAME, "readwrite").objectStore(STORE_NAME).put({
       id,
-      dump,
+      dump: filteredDump,
       updatedAt: Date.now()
     } satisfies DumpRecord);
     request.onsuccess = () => resolve();
