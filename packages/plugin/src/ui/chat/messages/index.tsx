@@ -387,9 +387,11 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
 
       {/* 用户消息 —— 靠右 */}
       <div className={classNames(css["chat-bubble"], css["user-bubble"])}>
-        {shouldShowUserHeader && (
+        {shouldShowUserHeader && (userName || userAvatar) && (
           <header className={css["chat-bubble-header"]}>
-            <span className={css["chat-bubble-header-name"]}>{userName ?? lang.common.user()}</span>
+            {userName && (
+              <span className={css["chat-bubble-header-name"]}>{userName}</span>
+            )}
             {userAvatar && (
               <div className={css["chat-bubble-header-avatar"]}>
                 <img className={css["user-avatar"]} src={userAvatar} />

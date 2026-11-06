@@ -1,6 +1,9 @@
 /*! plugin-ai-comp-view-anchor */
 
 .chat-panel {
+  /* 蓝狐标注：标题/正文/输入统一 14px、行高 24 */
+  --chat-font-size: 14px;
+  --chat-line-height: 24px;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -213,4 +216,12 @@
   text-overflow: ellipsis !important;
   white-space: nowrap !important;
   word-break: keep-all !important;
+}
+
+/* 蓝狐标注：不论面板 size 档位，正文/标题统一 14px、行高 24 */
+.size-small,
+.size-medium,
+.size-large {
+  --chat-font-size: 14px;
+  --chat-line-height: 24px;
 }

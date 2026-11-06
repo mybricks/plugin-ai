@@ -66,12 +66,31 @@ const external = [
   '@ant-design/icons',
 ];
 
+// 图片资源内联：png/jpg/gif/webp 转为 base64 data URI，
+// 保证 UMD 单文件自包含（无需额外资产服务或 public 目录）
+const imageInline = () => ({
+  name: 'image-inline',
+  load(id) {
+    if (!/\.(png|jpe?g|gif|webp)$/i.test(id)) return null;
+    const lower = id.toLowerCase();
+    const mime = lower.endsWith('.png')
+      ? 'image/png'
+      : lower.endsWith('.gif')
+        ? 'image/gif'
+        : lower.endsWith('.webp')
+          ? 'image/webp'
+          : 'image/jpeg';
+    return `export default "data:${mime};base64,${readFileSync(id).toString('base64')}";`;
+  },
+});
+
 const sharedPlugins = [
   replace({ preventAssignment: true, values: { APP_ENV: JSON.stringify(APP_ENV) } }),
   json(),
   aliasPlugin,
   resolve({ extensions: ['.ts', '.tsx', '.js', '.jsx', '.json', '.md'] }),
   markdown(),
+  imageInline(),
   commonjs(),
   babelPlugin,
   postcssPlugin,

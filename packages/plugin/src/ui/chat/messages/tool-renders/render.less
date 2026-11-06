@@ -77,42 +77,6 @@
 .ask-question-card-in-sender {
   position: relative;
   margin: 0;
-  // 与 Sender 的 .editor 一样，让外沿的伪元素不被卡片裁掉。
-  overflow: visible;
-}
-
-.ask-question-card-in-sender::after {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  z-index: 20;
-  pointer-events: none;
-  background: conic-gradient(
-    from var(--ask-question-glow-angle),
-    transparent 0deg 270deg,
-    color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 35%, transparent) 292deg,
-    color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 90%, transparent) 332deg,
-    color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 35%, transparent) 350deg,
-    transparent 360deg
-  );
-  padding: 1.5px;
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-          mask-composite: exclude;
-  animation: askQuestionReceiveGlow 4s linear infinite;
-}
-
-@property --ask-question-glow-angle {
-  syntax: '<angle>';
-  inherits: false;
-  initial-value: 0deg;
-}
-
-@keyframes askQuestionReceiveGlow {
-  to { --ask-question-glow-angle: 360deg; }
 }
 
 .ask-question-toolbar {
@@ -122,10 +86,11 @@
   padding: var(--chat-card-option-padding, 5px 10px);
   border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
   color: var(--mybricks-text-color-main, #333);
+  font-size: var(--chat-font-size, 14px);
 }
 
 .ask-question-command { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ask-question-state { flex: none; opacity: .45; font-size: var(--chat-caption-font-size, 11px); }
+.ask-question-state { flex: none; opacity: .45; font-size: var(--chat-font-size, 14px); }
 .ask-question-loading { padding: var(--chat-card-body-padding, 10px 12px 6px); color: var(--mybricks-text-color-main, #333); font-size: var(--chat-font-size-sm, 12px); }
 .ask-question-progress { display: flex; align-items: center; min-width: 0; gap: 5px; padding: 6px 10px 5px; border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6); overflow-x: auto; }
 .ask-question-progress-item { min-width: 0; overflow: hidden; padding: 1px 0; text-overflow: ellipsis; white-space: nowrap; color: var(--mybricks-text-color-secondary, #999); font-size: var(--chat-caption-font-size, 11px); }
@@ -134,7 +99,7 @@
 .ask-question-progress-separator { flex: none; color: var(--mybricks-text-color-secondary, #999); font-size: var(--chat-caption-font-size, 11px); opacity: .55; }
 .ask-question-item { padding: var(--chat-card-padding, 8px 10px); }
 .ask-question-header { color: var(--mybricks-text-color-main, #333); }
-.ask-question-question { font-size: var(--chat-font-size-sm, 12px); font-weight: 600; line-height: 1.55; }
+.ask-question-question { font-size: var(--chat-font-size, 14px); font-weight: 600; line-height: 1.55; }
 .ask-question-options { display: grid; gap: 1px; margin: 7px -4px -3px; }
 .ask-question-option {
   display: block;
@@ -197,11 +162,11 @@ button.ask-question-option-selected:hover:not(:disabled) { background: color-mix
 .ask-question-submit { border: 1px solid var(--mybricks-color-primary, #FA6400); background: var(--mybricks-color-primary, #FA6400); color: var(--mybricks-text-color-on-primary, #fff); }
 .ask-question-submit:disabled { cursor: not-allowed; opacity: .45; background: var(--mybricks-bg-color-disabled, #F5F5F5); border-color: var(--mybricks-border-color-main, #E6E6E6); color: var(--mybricks-text-color-disabled, rgba(0, 0, 0, .25)); }
 .ask-question-submitting { font-size: var(--chat-caption-font-size, 11px); color: var(--mybricks-text-color-secondary, #999); padding: 0 2px; }
-.ask-question-result { display: grid; gap: 3px; padding: var(--chat-card-option-padding, 5px 10px); color: var(--mybricks-text-color-main, #333); }
+.ask-question-result { display: grid; gap: 3px; padding: var(--chat-card-option-padding, 5px 10px); color: var(--mybricks-text-color-main, #333); font-size: var(--chat-font-size, 14px); }
 .ask-question-result strong { color: var(--mybricks-color-primary, #FA6400); font-weight: 400; }
 .ask-question-result em { font-style: normal; opacity: .45; }
 .ask-question-result + .ask-question-result { border-top: 1px solid var(--mybricks-border-color-main, #E6E6E6); }
-.ask-question-cancelled-note { padding: var(--chat-card-footer-padding, 6px 10px 8px); border-top: 1px solid var(--mybricks-border-color-main, #E6E6E6); color: var(--mybricks-text-color-main, #333); font-size: var(--chat-caption-font-size, 11px); opacity: .5; }
+.ask-question-cancelled-note { padding: var(--chat-card-footer-padding, 6px 10px 8px); border-top: 1px solid var(--mybricks-border-color-main, #E6E6E6); color: var(--mybricks-text-color-main, #333); font-size: var(--chat-font-size, 14px); opacity: .5; }
 .ask-question-error { display: block; padding: var(--chat-card-option-padding, 5px 10px); color: var(--mybricks-text-color-main, #333); opacity: .58; }
 
 // ── 行式工具展示 ─────────────────────────────────────────────────────────────
