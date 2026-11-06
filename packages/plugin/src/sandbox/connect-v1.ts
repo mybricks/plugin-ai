@@ -191,6 +191,7 @@ export function connectToAIFromV1(
         disabledHandler,
         ...(disabledModes ? { disabledModes } : {}),
         browserTools,
+        onVersionSaved: remoteAgent.onVersionSaved,
         hooks,
         plugins: staticPlugins,
         ...(sender ? { sender } : {}),

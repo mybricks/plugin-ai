@@ -78,6 +78,10 @@ export class WorkspaceBridge<TAgent> {
     return this.fileHmr.syncChanges(targetVersion);
   }
 
+  runAtVersion(targetVersion: number, action: () => void): Promise<void> {
+    return this.fileHmr.runAtVersion(targetVersion, action);
+  }
+
   bindSandbox(sandbox: Sandbox): Promise<void> {
     this.fileHmrSandbox = sandbox;
     return this.fileHmr.bindSandbox(sandbox);

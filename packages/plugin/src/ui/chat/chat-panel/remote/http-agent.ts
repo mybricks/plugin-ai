@@ -101,6 +101,7 @@ interface HttpAgentRuntimeOptions {
   disabledModes?: AgentMode[];
   /** 注册到浏览器端执行的工具。服务端可通过 SSE browser:task 按 name 调用。 */
   browserTools?: Tool[];
+  onVersionSaved?: (version: { turnId: string; versionId: string }) => Promise<void>;
   /**
    * 浏览器侧生命周期 hooks。远程 Agent 的实际推理在服务端执行，但 sandbox
    * 仍需要这些 hooks 来维护 loading、锁和 undo/redo 等本地 UI 状态。
@@ -202,6 +203,8 @@ export class HttpAgent {
   readonly key: string;
   readonly historyManager: HistoryManager;
   private readonly disabledHandler?: DisabledHandler;
+  private readonly onVersionSaved?: HttpAgentRuntimeOptions["onVersionSaved"];
+  private readonly handledSavedVersions = new Set<string>();
   private readonly disabledModes: AgentMode[];
   private readonly hooks?: AgentHooks;
   private readonly plugins: CodeAgentPlugin[];
@@ -250,6 +253,7 @@ export class HttpAgent {
     this.agentId = options.agentId ?? DEFAULT_AGENT_ID;
     this.key = `http:${this.baseUrl}:${this.workspaceId}:${this.agentId}`;
     this.disabledHandler = runtime.disabledHandler;
+    this.onVersionSaved = runtime.onVersionSaved;
     this.disabledModes = runtime.disabledModes ?? [];
     this.plugins = runtime.plugins ?? [];
     this.sender = runtime.sender;
@@ -806,6 +810,16 @@ export class HttpAgent {
   ): void {
     if (event.event === "session:released") {
       const turnId = this.eventTurnId(event);
+      const version = event.data?.version;
+      if (options.allowBrowserTasks && turnId && this.onVersionSaved &&
+          typeof version?.id === "string" && Number.isSafeInteger(version.workspaceVersion) &&
+          !this.handledSavedVersions.has(version.id)) {
+        this.handledSavedVersions.add(version.id);
+        void this.workspaceBridge.runAtVersion(version.workspaceVersion, () => {
+          void Promise.resolve(this.onVersionSaved?.({ turnId, versionId: version.id }))
+            .catch((error) => console.error("[HttpAgent] version dump save failed", error));
+        }).catch((error) => console.error("[HttpAgent] version dump sync failed", error));
+      }
       if (turnId) this.pendingTurnFinalizations.get(turnId)?.release();
       return;
     }

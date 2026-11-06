@@ -37,6 +37,8 @@ export interface RemoteAgentConfig {
   workspaceId: string;
   /** 服务端 agentId。未传时使用 workspace 的 default agent。 */
   agentId?: string;
+  /** 可选的应用版本补写回调；调用时文件已同步到对应版本。 */
+  onVersionSaved?: (version: { turnId: string; versionId: string }) => Promise<void>;
 }
 
 export interface AgentRuntimeConfig {

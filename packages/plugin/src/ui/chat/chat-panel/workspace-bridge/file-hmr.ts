@@ -121,6 +121,16 @@ export class FileHmr {
     return this.syncPromise;
   }
 
+  /** 等待文件同步到目标版本后执行回调；允许已经同步到更新的版本。 */
+  async runAtVersion(targetVersion: number, action: () => void): Promise<void> {
+    if (!this.sandbox) return;
+    await this.waitInitialized();
+    if (!this.initialized || this.snapshotPromise) return;
+    await this.syncChanges(targetVersion);
+    if (this.version < targetVersion || this.snapshotPromise || this.syncPending) return;
+    action();
+  }
+
   async syncSnapshot(sandbox = this.sandbox): Promise<void> {
     if (this.snapshotPromise) return this.snapshotPromise;
     if (!sandbox) return;
