@@ -67,8 +67,6 @@ function withMentionFocus(params: SendToAgentParams): SendToAgentParams {
 
 export interface SendToAgentParams {
   message: string;
-  /** 仅加入模型输入的 user_query，不展示在聊天消息中。 */
-  modelReminder?: string;
   attachments?: { type: string; content: string; title?: string; size?: number }[];
   extra?: Record<string, any>;
   mode?: AgentMode;
@@ -371,7 +369,6 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
               const requestParams = withMentionFocus(params);
               await agent.requestAI(chipRegistry.formatRequestParams({
                 message: requestParams.message,
-                ...(requestParams.modelReminder ? { modelReminder: requestParams.modelReminder } : {}),
                 attachments: requestParams.attachments ?? [],
                 ...(requestParams.extra ? { extra: requestParams.extra } : {}),
                 ...(requestParams.mode ? { mode: requestParams.mode } : {}),

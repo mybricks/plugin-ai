@@ -54,6 +54,11 @@ export interface ChatChipDef {
 /** 内置文件 chip 的类型标识 */
 export const FILE_CHIP_TYPE = "file";
 
+const VISUAL_EDIT_REMINDER = [
+  'All DOM operations come from visual drag-and-drop actions. Prefer making the changes directly so the user can see the result. If there is a clear risk, you may consult the user or recommend how to proceed.',
+  'Do not refer to nodes as Dom1 or Dom2 when speaking to the user; use more intuitive descriptions such as “the Save button” instead.',
+].join('\n');
+
 /**
  * 文件 chip 的数据结构（存入 ChatChipInstance.data）。
  * 由 Sender 上传文件时填充，format 时展开为 <file> 代码块或引用文本。
@@ -193,15 +198,16 @@ export class ChipRegistry {
    *
    * 不修改原对象。
    */
-  formatRequestParams<T extends { message: string; modelReminder?: string; meta?: Record<string, any> }>(params: T): Omit<T, "message" | "modelReminder"> & { displayMessage: string; modelMessage: string } {
-    const { message: displayMessage, modelReminder, ...rest } = params;
+  formatRequestParams<T extends { message: string; extra?: Record<string, any>; meta?: Record<string, any> }>(params: T): Omit<T, "message"> & { displayMessage: string; modelMessage: string } {
+    const { message: displayMessage, ...rest } = params;
     const chips = params.meta?.chips as ChatChipInstance[] | undefined;
-    if (!this._hasFormattableChips(chips) && !modelReminder) {
+    const reminder = params.extra?.from === '@commitUserActions' ? VISUAL_EDIT_REMINDER : '';
+    if (!this._hasFormattableChips(chips) && !reminder) {
       return { ...rest, displayMessage, modelMessage: displayMessage };
     }
 
-    const reminder = modelReminder ? `\n\n<reminder>\n${modelReminder}\n</reminder>` : "";
-    const wrappedMessage = `<user_query>\n${displayMessage}${reminder}\n</user_query>`;
+    const reminderSection = reminder ? `\n\n<reminder>\n${reminder}\n</reminder>` : "";
+    const wrappedMessage = `<user_query>\n${displayMessage}${reminderSection}\n</user_query>`;
 
     const typeGroups = new Map<string, ChatChipInstance[]>();
     for (const chip of chips ?? []) {
