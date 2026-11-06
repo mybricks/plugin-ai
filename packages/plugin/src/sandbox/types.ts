@@ -106,7 +106,7 @@ export interface RegistSandBoxConfig {
    * virtual-file and additional-directory overlays.
    */
   agentSandbox?: AgentSandbox;
-  understandAnyUI?: import("react").ComponentType<{ bindingTo?: string; disabled?: boolean; Sender?: import("react").ComponentType<any>; Modal?: import("react").ComponentType<any> }>;
+  understandAnyUI?: import("react").ComponentType<{ bindingTo?: string; disabled?: boolean; Sender?: import("react").ComponentType<any>; Modal?: import("react").ComponentType<any>; setTitle?: (title: string) => void }>;
   /** AgentSandbox 场景的页面分析执行器（如 local-iframe HTTP 分析）。 */
   pageAnalysis?: AuditPowerImplementation;
   /** AgentSandbox 场景的任务管理 API。 */

@@ -17,7 +17,7 @@ function UnderstandSender({ variant, ...props }: { placeholder: string; disabled
   return <Sender {...props} variant={variant === "inline" ? "compact" : "bubble"} showAttachments={variant !== "inline"} onUpload={context.pluginParams.onUpload} />;
 }
 
-function HostArea({ bindingTo }: { bindingTo?: string }) {
+function HostArea({ bindingTo, setTitle }: { bindingTo?: string; setTitle?: (title: string) => void }) {
   const [, refresh] = useState(0);
   useEffect(() => {
     const update = () => refresh(value => value + 1);
@@ -26,13 +26,13 @@ function HostArea({ bindingTo }: { bindingTo?: string }) {
   }, []);
   const id = context.currentFocus?.comId ?? context.currentFocus?.pageId ?? context.getFallbackAgentComId();
   const UI = id ? context.understandAnyUI.get(context.getAgentKey(id)) : undefined;
-  return UI ? <UI bindingTo={bindingTo} disabled={context.disabled} Sender={UnderstandSender} Modal={Modal} /> : null;
+  return UI ? <UI bindingTo={bindingTo} disabled={context.disabled} Sender={UnderstandSender} Modal={Modal} setTitle={setTitle} /> : null;
 }
 
 export function createUnderstandAnyContribute() {
   return {
     title: i18n({ zh: "业务图", en: "Business diagrams" }),
     icon: AIDraw,
-    render: (params?: { id?: string }) => <HostArea bindingTo={params?.id} />,
+    render: (params?: { id?: string; setTitle?: (title: string) => void }) => <HostArea bindingTo={params?.id} setTitle={params?.setTitle} />,
   };
 }
