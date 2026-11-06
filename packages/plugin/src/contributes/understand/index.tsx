@@ -13,8 +13,8 @@ const AIDraw = (
   </svg>
 );
 
-function UnderstandSender(props: { placeholder: string; disabled?: boolean; onSend: React.ComponentProps<typeof Sender>["onSend"] }) {
-  return <Sender {...props} variant="bubble" onUpload={context.pluginParams.onUpload} />;
+function UnderstandSender({ variant, ...props }: { placeholder: string; disabled?: boolean; variant?: "inline" | "bubble"; onSend: React.ComponentProps<typeof Sender>["onSend"] }) {
+  return <Sender {...props} variant={variant === "inline" ? "compact" : "bubble"} showAttachments={variant !== "inline"} onUpload={context.pluginParams.onUpload} />;
 }
 
 function HostArea({ bindingTo }: { bindingTo?: string }) {

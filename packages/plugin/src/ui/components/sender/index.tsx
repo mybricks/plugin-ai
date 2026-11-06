@@ -279,6 +279,8 @@ interface SenderProps {
   onChatModeChange?: (chatMode: ChatModeType) => void;
   /** 输入框风格：compact（紧凑，默认）| loose（松散，padding 更大）| bubble（悬浮气泡，最紧凑，无附件按钮）*/
   variant?: 'compact' | 'loose' | 'bubble';
+  /** 是否展示附件上传入口（+ 号），默认 true */
+  showAttachments?: boolean;
   /** 自定义图片上传函数，返回 CDN URL；不传则使用 base64 */
   onUpload?: (file: File) => Promise<string>;
   onStop?: () => void;
@@ -391,6 +393,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     renderFocus, abovePanels, renderActionPrefix, renderAttachmentSuffix,
     modelSelector, className, chipTypes = [], matchDefaultFocusContent,
     selectorRenderInTop = false,
+    showAttachments = true,
     attachProcessors,
     agent,
     mentions: mentionProviders = [],
@@ -1716,15 +1719,17 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           <div className={classNames(css.leftArea, {
             [css.disabled]: disabled || uploading
           })}>
-            <input
-              ref={mentionFileInputRef}
-              className={css.fileMenuInput}
-              type="file"
-              accept={SUPPORTED_FILE_ACCEPT}
-              multiple
-              onChange={handleMentionFileInputChange}
-            />
-            <Popup
+            {showAttachments && (
+              <>
+                <input
+                  ref={mentionFileInputRef}
+                  className={css.fileMenuInput}
+                  type="file"
+                  accept={SUPPORTED_FILE_ACCEPT}
+                  multiple
+                  onChange={handleMentionFileInputChange}
+                />
+                <Popup
               open={mentionMenuOpen}
               onOpenChange={(nextOpen) => {
                 if (!nextOpen) {
@@ -1751,8 +1756,10 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
               )}
             >
               {mentionMenuNode}
-            </Popup>
-            {renderAttachmentSuffix?.()}
+                </Popup>
+                {renderAttachmentSuffix?.()}
+              </>
+            )}
             {!selectorRenderInTop && chatMode ? <ChatMode disabled={disabled || loading} chatMode={chatMode} availableModes={availableChatModes} onChange={onChatModeChange} /> : null}
           </div>
           <div className={css.rightArea}>
