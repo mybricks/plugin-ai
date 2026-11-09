@@ -12,6 +12,7 @@ type SessionMessage = {
   tag?: string;
   terminal?: boolean;
   attachments?: any[];
+  createdAt: string;
 };
 
 type SessionMessagesResponse = {
@@ -20,6 +21,12 @@ type SessionMessagesResponse = {
   oldestId: number;
   attachedNames?: string[];
 };
+
+/** 服务端消息时间（如 "2026/11/05 17:30:58"，按本地时区解析）转 Unix ms，解析失败兜底为当前时间。 */
+function messageTimeToMs(value: string | undefined): number {
+  const t = value ? new Date(value).getTime() : NaN;
+  return Number.isFinite(t) ? t : Date.now();
+}
 
 /**
  * 基于会话消息接口的历史记录读取实现。
@@ -119,7 +126,7 @@ export class SessionHTTPHistory implements History {
         const restored = restoreDisplayUserMessage(message.text ?? "");
         current = {
           id: `session-msg-${message.id}`,
-          startTime: Date.now(),
+          startTime: messageTimeToMs(message.createdAt),
           userText: restored.userText,
           // 原始组装文本保留在 userFormattedText,供 retry 重发模型消息时使用
           ...(restored.userText !== message.text ? { userFormattedText: message.text } : {}),
@@ -128,7 +135,7 @@ export class SessionHTTPHistory implements History {
           iterations: [{
             content: "",
             toolCalls: [],
-            startTime: Date.now(),
+            startTime: messageTimeToMs(message.createdAt),
           }],
           status: "success",
         };
@@ -137,7 +144,7 @@ export class SessionHTTPHistory implements History {
         const iter = current.iterations[current.iterations.length - 1];
         if (iter && !("type" in iter)) {
           iter.content = message.text ?? "";
-          iter.endTime = Date.now();
+          iter.endTime = messageTimeToMs(message.createdAt);
         }
       } else if (message.role === "tool_call") {
         if (!current) continue;
@@ -148,7 +155,7 @@ export class SessionHTTPHistory implements History {
             name: message.name ?? "",
             args: message.arguments ?? {},
             status: "pending",
-            execStartTime: Date.now(),
+            execStartTime: messageTimeToMs(message.createdAt),
             execEndTime: 0,
           });
         }
@@ -162,16 +169,16 @@ export class SessionHTTPHistory implements History {
             call.status = success ? "success" : "error";
             call.result = success ? { output: String(message.result) } : undefined;
             call.error = success ? undefined : String(message.result);
-            call.execEndTime = Date.now();
+            call.execEndTime = messageTimeToMs(message.createdAt);
           }
         }
       } else if (message.role === "stopped") {
         if (!current) continue;
         current.status = "abort";
-        current.endTime = Date.now();
+        current.endTime = messageTimeToMs(message.createdAt);
         const iter = current.iterations[current.iterations.length - 1];
         if (iter && !("type" in iter)) {
-          iter.endTime = Date.now();
+          iter.endTime = messageTimeToMs(message.createdAt);
         }
       }
     }
@@ -180,13 +187,14 @@ export class SessionHTTPHistory implements History {
 
     // 兜底：历史接口返回的都是已结束的回合，给每个没有 endTime 的 turn 补上结束时间，
     // 避免 UI 层 `!turn.endTime && turn.status === "success"` 将其误判为 pending。
+    // 用 startTime 兜底而非 Date.now()：startTime 已是真实时间，用 now 会把耗时撑成"从消息创建到现在"。
     for (const turn of turns) {
       if (!turn.endTime) {
-        turn.endTime = Date.now();
+        turn.endTime = turn.startTime;
       }
       const iter = turn.iterations[turn.iterations.length - 1];
       if (iter && !("type" in iter) && !iter.endTime) {
-        iter.endTime = Date.now();
+        iter.endTime = iter.startTime;
       }
     }
 
