@@ -35,11 +35,11 @@ function HostArea({ bindingTo, setTitle, registerSender }: { bindingTo?: string;
 export function createUnderstandAnyContribute() {
   const focus = createSenderFocus(async id => {
     const getInfo = getUnderstandAnyUI()?.getInfo;
-    if (!getInfo) throw new Error("Business diagram information is unavailable");
+    if (!getInfo) throw new Error("Visual interpretation information is unavailable");
     return !!(await getInfo({ id }));
   });
   return {
-    title: i18n({ zh: "业务图", en: "Business diagrams" }),
+    title: i18n({ zh: "可视化解读", en: "Visual explain" }),
     icon: AIDraw,
     render: (params?: { id?: string; setTitle?: (title: string) => void }) => <HostArea bindingTo={params?.id} setTitle={params?.setTitle} registerSender={focus.register} />,
     loaded: focus.loaded,
