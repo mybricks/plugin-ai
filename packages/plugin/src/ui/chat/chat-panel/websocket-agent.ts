@@ -397,11 +397,13 @@ export class WebSocketAgent {
     const [turn] = this.turns.splice(index, 1);
     // 历史还原的 turn 携带 userFormattedText(原始组装文本):展示用 userText,
     // 模型消息用组装文本,避免重发 [[chip:]] 占位符或把组装文本当展示文本。
+    // meta.chips 需一并透传,重试重建的 turn 才能继续渲染占位符对应的 chip。
     await this.requestAI({
       ...(turn.userFormattedText && turn.userFormattedText !== turn.userText
         ? { displayMessage: turn.userText, modelMessage: turn.userFormattedText }
         : { message: turn.userText }),
       attachments: turn.userAttachments,
+      ...(turn.meta ? { meta: turn.meta } : {}),
       mode: this.mode,
     });
   }

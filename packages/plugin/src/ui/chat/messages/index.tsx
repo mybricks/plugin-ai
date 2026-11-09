@@ -22,7 +22,7 @@ import { createToolRendererContext, getToolRenderer } from "./tool-renders/index
 import type { ToolRenderer } from "./tool-renders/index";
 import { ToolCallsGroup } from "./tool-renders/shared";
 import { DefaultToolRenderer } from "./tool-renders/renders";
-import { DefaultUserMessage } from "../chat-panel/user-message";
+import { DefaultUserMessage, getUserMessagePlainText } from "../chat-panel/user-message";
 import { useChatPanel } from "../chat-panel/context";
 import { isPlanFilePath, usePlanState } from "../../components/plan";
 import "./tool-renders/register";
@@ -336,7 +336,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
           )}
           {record.userText && (
             <ActionBar className={css["user-action-bar"]}>
-              <ActionBar.Copy key="copy" text={record.userText} />
+              <ActionBar.Copy key="copy" text={getUserMessagePlainText(record)} />
             </ActionBar>
           )}
         </section>

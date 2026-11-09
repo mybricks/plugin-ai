@@ -69,7 +69,8 @@ export function createDomChip(focus?: AiServiceFocusParams): ChatChipInstance {
   return {
     id: createChatChipId(),
     type: DOM_CHIP_TYPE,
-    label: focus?.focusArea?.title ?? focus?.title ?? "当前聚焦元素",
+    // 注意用 || 而非 ??：宿主可能传空字符串 title，?? 不会回退默认文案。
+    label: focus?.focusArea?.title || focus?.title || "当前聚焦元素",
     data: { ele: focus?.focusArea?.ele },
   };
 }
@@ -468,10 +469,12 @@ function getDomCodeLocation(el: Element): string {
 }
 
 function buildDomChipInfo(label: string, ele?: Element, displayName?: string): string {
+  // 展示名与条目标签相同时不重复写，保持模型文本精简（还原侧会回退到条目标签）。
+  const displayNameLine = displayName && displayName !== label ? [` - 节点展示名： ${displayName}`] : [];
   if (!ele) {
     return [
       `- @${label}：`,
-      ...(displayName ? [` - 节点展示名： ${displayName}`] : []),
+      ...displayNameLine,
       " - 代码位置：未知",
       " - 该区域到叶子节点的Dom结构摘要：未知",
     ].join("\n");
@@ -480,7 +483,7 @@ function buildDomChipInfo(label: string, ele?: Element, displayName?: string): s
   const repeatContextLines = formatRepeatContexts(collectRepeatAncestorContexts(ele));
   return [
     `- @${label}：`,
-    ...(displayName ? [` - 节点展示名： ${displayName}`] : []),
+    ...displayNameLine,
     ` - 相关代码：${getDomCodeLocation(ele)}`,
     ...repeatContextLines,
     " - 该区域到叶子节点的Dom结构摘要：",
@@ -566,7 +569,8 @@ export function formatDomChipMessage({ message, chips }: ChatChipFormatContext):
       }
 
       const label = (zoneChip?.label || "").trim() || `Dom节点${counter++}`
-      const displayName = chip.label?.trim()
+      // 展示名回退链：chip.label（输入框文案）→ zone label；都没有时不写展示名行。
+      const displayName = chip.label?.trim() || (zoneChip?.label || "").trim() || undefined;
       eleToLabel.set(ele, label);
       labelToInfo.set(label, displayName ? { ele, displayName } : { ele });
     }
