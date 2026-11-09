@@ -332,7 +332,7 @@ export default function App() {
     if (fileId === null) return;
     try {
       await saveFileDump(fileId, designerRef.current.dump(), scenario, false);
-      window.alert(`已转存到 packages/showcase/ui-files/${scenario}/${encodeURIComponent(fileId)}.ui`);
+      window.alert(`已转存 .ui 文件：${fileId}`);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "转存失败");
     }

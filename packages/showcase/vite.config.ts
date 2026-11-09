@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { createPluginAiMcp } from "../mcp/src/index.js";
 import path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath, URL } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type Plugin } from "vite";
@@ -59,6 +60,17 @@ function lessAsCssModules(): Plugin {
   };
 }
 
+// Keep readable Unicode names while escaping path separators and characters unsafe on Windows.
+function uiFileName(id: string): string {
+  const chars = Array.from(id);
+  return chars.map((char, index) => {
+    const unsafe = /[\x00-\x1f\x7f%\\/:*?"<>|]/.test(char)
+      || (char === "." && (id === "." || id === ".."))
+      || ((char === "." || char === " ") && index === chars.length - 1);
+    return unsafe ? Array.from(Buffer.from(char), (byte) => `%${byte.toString(16).toUpperCase().padStart(2, "0")}`).join("") : char;
+  }).join("") + ".ui";
+}
+
 // Local development storage. Files remain ordinary MyBricks JSON .ui files.
 function uiFileStorage(port: number): Plugin {
   const root = path.join(showcaseRoot, "ui-files");
@@ -88,25 +100,43 @@ function uiFileStorage(port: number): Plugin {
             return respond(200, items.filter(Boolean).sort((a, b) => b!.updatedAt - a!.updatedAt));
           }
           if (id === null) return respond(400, { error: "ID required" });
-          const file = path.join(dir, `${encodeURIComponent(id)}.ui`);
+          const file = path.join(dir, uiFileName(id));
+          const legacyFile = path.join(dir, `${encodeURIComponent(id)}.ui`);
+          // Older versions encoded the entire name. Continue to open and delete those files.
+          const existingFile = async () => {
+            try { await fs.promises.access(file); return file; }
+            catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+            return legacyFile;
+          };
           if (req.method === "GET") {
-            try { return respond(200, JSON.parse(await fs.promises.readFile(file, "utf8"))); }
+            try { return respond(200, JSON.parse(await fs.promises.readFile(await existingFile(), "utf8"))); }
             catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return respond(404, { error: "Not found" }); throw error; }
           }
           if (req.method === "DELETE") {
-            await fs.promises.rm(file, { force: true });
+            await fs.promises.rm(await existingFile(), { force: true });
             return respond(200, { ok: true });
           }
           if (req.method !== "PUT" || !req.headers["content-type"]?.startsWith("application/json")) return respond(405, { error: "Method not allowed" });
           let body = "";
+          let byteLength = 0;
+          const decoder = new StringDecoder("utf8");
           for await (const chunk of req) {
-            body += chunk;
-            if (body.length > 50 * 1024 * 1024) return respond(413, { error: "File too large" });
+            byteLength += chunk.length;
+            if (byteLength > 50 * 1024 * 1024) return respond(413, { error: "File too large" });
+            body += decoder.write(chunk);
           }
+          body += decoder.end();
           const project = JSON.parse(body);
           if (!project || typeof project !== "object" || Array.isArray(project) || !project.content) return respond(400, { error: "Invalid UI file" });
           await fs.promises.mkdir(dir, { recursive: true });
-          try { await fs.promises.writeFile(file, JSON.stringify(project, null, 2), { flag: req.headers["if-none-match"] === "*" ? "wx" : "w" }); }
+          // Avoid creating a second copy when an older encoded filename already exists.
+          const target = await existingFile();
+          if (target !== file && req.headers["if-none-match"] === "*") {
+            try { await fs.promises.access(target); return respond(409, { error: "Already exists" }); }
+            catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+          }
+          const writeTarget = target !== file && fs.existsSync(target) ? target : file;
+          try { await fs.promises.writeFile(writeTarget, JSON.stringify(project, null, 2), { encoding: "utf8", flag: req.headers["if-none-match"] === "*" ? "wx" : "w" }); }
           catch (error) { if ((error as NodeJS.ErrnoException).code === "EEXIST") return respond(409, { error: "Already exists" }); throw error; }
           return respond(200, { ok: true });
         })().catch((error) => { console.error("[showcase ui files]", error); if (!res.headersSent) respond(500, { error: "File operation failed" }); });
