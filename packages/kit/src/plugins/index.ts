@@ -1,4 +1,5 @@
-export * from "./task-first";
+export { createTaskFirstPlugin, getTaskDocumentPath, type TaskFirstPluginOptions } from "./task-first";
+export * from "./task-overview";
 export * from "./impact-document";
 export * from "./audit-power";
 export * from "./dev-env-prep";

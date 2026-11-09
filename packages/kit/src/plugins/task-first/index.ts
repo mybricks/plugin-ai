@@ -1,9 +1,15 @@
-import { Tools, type CodeAgentPluginFactory } from "../../../../agent/src";
+import { Tools, type CodeAgentPlugin, type CodeAgentPluginFactory } from "../../../../agent/src";
 import taskFirstWorkflow from "./task-first-workflow.md";
 import revokeTaskPrompt from "./revoke-task-git.md";
 import type { GitBranchInfo } from "../branch-info";
 import { readGitBranchInfoFromSandbox } from "../branch-info";
 import { createTaskTransitionHook } from "./task-transition";
+import { withTaskOverview } from "./overview";
+
+export interface TaskFirstPluginOptions {
+  /** Maintain an overview.yaml alongside the task document. Disabled by default. */
+  overview?: boolean;
+}
 
 export function getTaskDocumentPath(
   branchInfo: GitBranchInfo | undefined,
@@ -18,14 +24,22 @@ export function getTaskDocumentPath(
 /**
  * Git 状态只能在 sandbox 可用后读取，因此返回一次性 factory；解析后的插件是静态的。
  */
-export function createTaskFirstPlugin(): CodeAgentPluginFactory {
-  return async ({ sandbox, configDirName }) => {
-    const branchInfo = await readGitBranchInfoFromSandbox(sandbox);
-    const taskPath = getTaskDocumentPath(branchInfo, configDirName);
-    const transitionHook = createTaskTransitionHook({ sandbox, taskPath });
-    const verification = await (sandbox as any).tasksManager?.createVerification({ sandbox, taskPath });
+export function createTaskFirstPlugin(options: TaskFirstPluginOptions = {}): CodeAgentPluginFactory {
+  return async (context) => {
+    const { plugin, taskPath } = await resolveTaskFirstPlugin(context);
+    return options.overview ? withTaskOverview(plugin, context.sandbox, taskPath) : plugin;
+  };
+}
 
-    return {
+async function resolveTaskFirstPlugin(
+  { sandbox, configDirName }: Parameters<CodeAgentPluginFactory>[0],
+): Promise<{ plugin: CodeAgentPlugin; taskPath: string }> {
+  const branchInfo = await readGitBranchInfoFromSandbox(sandbox);
+  const taskPath = getTaskDocumentPath(branchInfo, configDirName);
+  const transitionHook = createTaskTransitionHook({ sandbox, taskPath });
+  const verification = await (sandbox as any).tasksManager?.createVerification({ sandbox, taskPath });
+
+  const plugin: CodeAgentPlugin = {
     name: "task-first",
     description: "按 TASKS.md 推进任务。",
     ui: verification?.todoArea ? { todoArea: verification.todoArea } : undefined,
@@ -64,5 +78,5 @@ description: Delete a task and revert its related code
       },
     },
   };
-  };
+  return { plugin, taskPath };
 }

@@ -3,7 +3,7 @@ import pluginAI from "@plugin/index";
 import type { PluginAIParams } from "@plugin/index";
 import { IDBHistory, Tools } from "@agent/index";
 import { loadDesigner, type DesignerComponent, type DesignerInstance } from "./designer-runtime";
-import { deleteDump, listDumps, loadDump, saveDump, type DumpSummary } from "./storage";
+import { deleteDump, listDumps, loadDump, saveDump, deleteFileDump, listFileDumps, loadFileDump, saveFileDump, type DumpSummary, type StorageSource } from "./storage";
 import { mybricksConfig } from "./config";
 import { createTestAIPluginParams } from "./test-ai";
 import { applyShowcaseLocale, getShowcaseLocale, type ShowcaseLocale } from "./locale";
@@ -16,32 +16,67 @@ function getWorkspaceId() {
   return pathId ? decodeURIComponent(pathId) : queryId ?? "";
 }
 
-type Scenario = "local" | "task" | "audit" | "remote" | "mcp";
+type Scenario = "local" | "task" | "task-overview" | "audit" | "remote" | "mcp";
 function getScenario(): Scenario {
   const value = new URLSearchParams(window.location.search).get("scene");
-  return value === "task" || value === "audit" || value === "remote" || value === "mcp" ? value : "local";
+  return value === "task" || value === "task-overview" || value === "audit" || value === "remote" || value === "mcp" ? value : "local";
 }
 
-function workspaceUrl(id: string, scenario: Scenario) {
-  return `/app/${encodeURIComponent(id)}?scene=${scenario}`;
+function workspaceUrl(id: string, scenario: Scenario, source: StorageSource = "indexeddb") {
+  return `/app/${encodeURIComponent(id)}?scene=${scenario}&source=${source}`;
+}
+
+function promptFileName(id: string, source: StorageSource): string | null {
+  const name = window.prompt("请输入本地 .ui 文件名", source === "file" ? `${id}-副本` : id);
+  if (name === null) return null;
+  const fileId = name.trim().replace(/\.ui$/i, "").trim();
+  if (!fileId) {
+    window.alert("文件名不能为空");
+    return null;
+  }
+  return fileId;
 }
 
 function Landing() {
   const [dumps, setDumps] = useState<DumpSummary[]>([]);
+  const [files, setFiles] = useState<DumpSummary[]>([]);
+  const [source, setSource] = useState<StorageSource>("indexeddb");
   const [id, setId] = useState("");
   const [scene, setScene] = useState<Scenario>("local");
   const [error, setError] = useState("");
   useEffect(() => {
     let active = true;
     setDumps([]);
+    setFiles([]);
     setError("");
     if (scene !== "remote") {
       listDumps(scene).then((items) => { if (active) setDumps(items); }).catch(() => { if (active) setError("读取本地工作区失败"); });
+      listFileDumps(scene).then((items) => { if (active) setFiles(items); }).catch(() => { if (active) setError("读取 .ui 文件失败，请使用 showcase 开发服务"); });
     }
     return () => { active = false; };
   }, [scene]);
-  const open = (workspaceId: string) => {
-    if (workspaceId.trim()) window.location.assign(workspaceUrl(workspaceId.trim(), scene));
+  const open = (workspaceId: string, selectedSource = source) => {
+    if (workspaceId.trim()) window.location.assign(workspaceUrl(workspaceId.trim(), scene, selectedSource));
+  };
+  const transfer = async (workspaceId: string, selectedSource: StorageSource) => {
+    if (scene === "remote") return;
+    const fileId = promptFileName(workspaceId, selectedSource);
+    if (fileId === null) return;
+    try {
+      const dump = selectedSource === "file" ? await loadFileDump(workspaceId, scene) : await loadDump(workspaceId, scene);
+      if (dump === null) throw new Error(selectedSource === "file" ? "本地文件不存在" : "IndexedDB 中找不到工作区");
+      await saveFileDump(fileId, dump, scene, false);
+      setFiles(await listFileDumps(scene));
+      setError("");
+    } catch (err) { setError(err instanceof Error ? err.message : "转存失败"); }
+  };
+  const removeFile = async (workspaceId: string) => {
+    if (scene === "remote" || !window.confirm(`确定删除本地文件“${workspaceId}.ui”？`)) return;
+    try {
+      await deleteFileDump(workspaceId, scene);
+      setFiles(await listFileDumps(scene));
+      setError("");
+    } catch (err) { setError(err instanceof Error ? err.message : "删除失败"); }
   };
   return <main className="landing"><div className="landing-content">
     <p className="eyebrow">PLUGIN AI / SHOWCASE</p>
@@ -49,16 +84,21 @@ function Landing() {
     <div className="scene-grid">{([
       ["local", "本地 Agent", "在浏览器中运行 Agent"],
       ["task", "任务视图", "本地 Agent 与任务视图"],
+      ["task-overview", "任务总览", "生成任务并维护模块、页面与组件的关联"],
       ["audit", "领域审计", "开启 audit-domain 插件，测试领域审计工具"],
       ["remote", "服务端 Agent", "连接本地 aicode-agents"],
       ["mcp", "MCP 测试", "通过本地 MCP 连接设计器和虚拟文件"],
     ] as const).map(([value, title, description]) => <button key={value} className={`scene-card ${scene === value ? "selected" : ""}`} onClick={() => setScene(value)} aria-pressed={scene === value}><strong>{title}</strong><span>{description}</span></button>)}</div>
     <form className="open-workspace" onSubmit={(event) => { event.preventDefault(); open(id); }}>
       <label htmlFor="workspace-id">{scene === "remote" ? "服务端 Workspace ID" : "工作区 ID"}</label>
+      {scene !== "remote" && <label className="source-picker">保存位置 <select value={source} onChange={(event) => setSource(event.target.value as StorageSource)}><option value="indexeddb">IndexedDB</option><option value="file">本地 .ui 文件</option></select></label>}
       <div><input id="workspace-id" value={id} onChange={(event) => setId(event.target.value)} placeholder={scene === "remote" ? "输入已有的服务端 workspace ID" : "输入或新建工作区 ID"} /><button disabled={!id.trim()}>打开工作区 →</button></div>
     </form>
-    {scene !== "remote" && <section className="saved-workspaces"><h2>{scene === "task" ? "任务视图" : scene === "audit" ? "领域审计" : scene === "mcp" ? "MCP 测试" : "本地 Agent"}的工作区 <span>{dumps.length}</span></h2><p>这些 ID 来自此浏览器保存的设计数据。</p>
-      {error ? <p className="landing-error">{error}</p> : dumps.length === 0 ? <p className="empty-workspaces">暂无已保存的工作区</p> : dumps.map((item) => <button className="workspace-row" key={item.id} onClick={() => open(item.id)}><strong>{item.id}</strong><time>{new Date(item.updatedAt).toLocaleString()}</time><span>打开 →</span></button>)}
+    {scene !== "remote" && <section className="saved-workspaces"><h2>IndexedDB 工作区 <span>{dumps.length}</span></h2><p>保存在当前浏览器中，可转存到本地文件。</p>
+      {error && <p className="landing-error">{error}</p>}
+      {dumps.length === 0 ? <p className="empty-workspaces">暂无已保存的工作区</p> : dumps.map((item) => <div className="workspace-row" key={item.id}><strong>{item.id}</strong><time>{new Date(item.updatedAt).toLocaleString()}</time><button type="button" onClick={() => void transfer(item.id, "indexeddb")}>转存 .ui</button><button type="button" onClick={() => open(item.id, "indexeddb")}>打开 →</button></div>)}
+      <h2>本地 .ui 文件 <span>{files.length}</span></h2><p>存放于 packages/showcase/ui-files/{scene}/。</p>
+      {files.length === 0 ? <p className="empty-workspaces">暂无本地文件</p> : files.map((item) => <div className="workspace-row" key={item.id}><strong>{item.id}</strong><time>{new Date(item.updatedAt).toLocaleString()}</time><button type="button" onClick={() => void transfer(item.id, "file")}>转存 .ui</button><button type="button" onClick={() => void removeFile(item.id)}>删除</button><button type="button" onClick={() => open(item.id, "file")}>打开 →</button></div>)}
     </section>}
   </div></main>;
 }
@@ -141,6 +181,7 @@ function readProjectFile(text: string): Record<string, unknown> {
 export default function App() {
   const id = useMemo(getWorkspaceId, []);
   const scenario = useMemo(getScenario, []);
+  const source: StorageSource = useMemo(() => new URLSearchParams(window.location.search).get("source") === "file" ? "file" : "indexeddb", []);
   const [locale] = useState(() => {
     const initialLocale = getShowcaseLocale();
     applyShowcaseLocale(initialLocale);
@@ -154,25 +195,25 @@ export default function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
   const [isLocaleOpen, setIsLocaleOpen] = useState(false);
   const [mcpStatus, setMcpStatus] = useState<"connecting" | "connected" | "disconnected">("disconnected");
   const [mcpEntered, setMcpEntered] = useState(false);
   const [mcpActivity, setMcpActivity] = useState("");
-  const [dumps, setDumps] = useState<DumpSummary[]>([]);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     if (!id) return;
     let active = true;
-    Promise.all([loadDesigner(), scenario === "remote" ? Promise.resolve(null) : loadDump(id, scenario)])
+    Promise.all([loadDesigner(), scenario === "remote" ? Promise.resolve(null) : source === "file" ? loadFileDump(id, scenario) : loadDump(id, scenario)])
       .then(([designer, dump]) => {
         if (!active) return;
         setDesigner(() => designer);
         setInitialDump(dump);
       })
+      .catch((error) => { if (active) setLoadError(error instanceof Error ? error.message : "加载工作区失败"); })
       .finally(() => active && setIsLoading(false));
     return () => { active = false; };
-  }, [id, scenario]);
+  }, [id, scenario, source]);
 
   const aiPlugin = useMemo(() => {
     if (!id) return null;
@@ -184,6 +225,10 @@ export default function App() {
       case scenario === "task":
         namespace = "showcase-task";
         sceneParams = { plugins: [createTaskFirstPlugin()] };
+        break;
+      case scenario === "task-overview":
+        namespace = "showcase-task-overview";
+        sceneParams = { plugins: [createTaskFirstPlugin({ overview: true })] };
         break;
       case scenario === "audit":
         namespace = "showcase-audit";
@@ -233,7 +278,9 @@ export default function App() {
     if (!designerRef.current) return;
     setIsSaving(true);
     try {
-      if (scenario !== "remote") await saveDump(id, designerRef.current.dump(), scenario);
+      if (scenario !== "remote") await (source === "file" ? saveFileDump(id, designerRef.current.dump(), scenario) : saveDump(id, designerRef.current.dump(), scenario));
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "保存失败");
     } finally {
       setIsSaving(false);
     }
@@ -243,8 +290,10 @@ export default function App() {
     if (!window.confirm("清空当前设计器文件？已保存的 dump 会被删除。")) return;
     setIsClearing(true);
     try {
-      if (scenario !== "remote") await deleteDump(id, scenario);
+      if (scenario !== "remote") await (source === "file" ? deleteFileDump(id, scenario) : deleteDump(id, scenario));
       window.location.reload();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "清空失败");
     } finally {
       setIsClearing(false);
     }
@@ -261,8 +310,10 @@ export default function App() {
     try {
       const project = readProjectFile(await file.text());
       if (!window.confirm("导入会覆盖当前工作区中已保存的设计器数据，是否继续？")) return;
-      if (scenario !== "remote") await saveDump(id, project, scenario);
+      if (scenario !== "remote") await (source === "file" ? saveFileDump(id, project, scenario) : saveDump(id, project, scenario));
       window.location.reload();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "导入失败");
     } finally {
       setIsImporting(false);
     }
@@ -275,16 +326,16 @@ export default function App() {
     if (await importHistory?.()) window.location.reload();
   };
 
-  const openSwitcher = async () => {
-    setIsSwitcherOpen(true);
-    if (scenario !== "remote") setDumps(await listDumps(scenario));
-  };
-
-  const switchWorkspace = (nextId: string) => {
-    const nextUrl = new URL(window.location.href);
-    nextUrl.pathname = `/app/${encodeURIComponent(nextId)}`;
-    nextUrl.search = `?scene=${scenario}`;
-    window.location.assign(nextUrl.toString());
+  const transferToFile = async () => {
+    if (scenario === "remote" || !designerRef.current) return;
+    const fileId = promptFileName(id, source);
+    if (fileId === null) return;
+    try {
+      await saveFileDump(fileId, designerRef.current.dump(), scenario, false);
+      window.alert(`已转存到 packages/showcase/ui-files/${scenario}/${encodeURIComponent(fileId)}.ui`);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "转存失败");
+    }
   };
 
   const changeLocale = (nextLocale: ShowcaseLocale) => {
@@ -300,6 +351,7 @@ export default function App() {
 
   if (!id) return <Landing />;
   if (isLoading) return <main className="status">正在载入设计器…</main>;
+  if (loadError) return <main className="status error">{loadError} <a href="/">返回场景入口</a></main>;
   if (!Designer || !config) return <main className="status error">设计器配置不可用。</main>;
 
   return (
@@ -329,29 +381,11 @@ export default function App() {
         toolbar={() => (
           <div className="toolbar">
             <a className="text-button" href="/">场景入口</a>
-            {scenario !== "remote" && <><button className="text-button" disabled={isSaving} onClick={() => void save()}>{isSaving ? "保存中…" : "保存"}</button>
+            {scenario !== "remote" && <><span>{source === "file" ? "本地 .ui" : "IndexedDB"}</span><button className="text-button" disabled={isSaving} onClick={() => void save()}>{isSaving ? "保存中…" : "保存"}</button>
+            <button className="text-button" onClick={() => void transferToFile()}>转存 .ui</button>
             <button className="text-button" disabled={isImporting} onClick={() => importInputRef.current?.click()}>{isImporting ? "导入中…" : "导入 .ui / JSON"}</button>
             <button className="text-button" onClick={() => void importRxAI()}>导入 .rxai</button>
-            <button className="text-button" disabled={isClearing} onClick={() => void clear()}>{isClearing ? "清空中…" : "清空"}</button>
-            <div className="switcher">
-              <button className="text-button" onClick={() => void openSwitcher()}>切换</button>
-              {isSwitcherOpen && (
-                <div className="switcher-menu">
-                  <div className="switcher-title">已保存的文件</div>
-                  {dumps.length === 0 ? <div className="switcher-empty">暂无已保存文件</div> : dumps.map((item) => (
-                    <button
-                      className="switcher-item"
-                      key={item.id}
-                      disabled={item.id === id}
-                      onClick={() => switchWorkspace(item.id)}
-                    >
-                      <span>{item.id}</span>
-                      <time>{new Date(item.updatedAt).toLocaleString()}</time>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div></>}
+            <button className="text-button" disabled={isClearing} onClick={() => void clear()}>{isClearing ? "清空中…" : "清空"}</button></>}
           </div>
         )}
       /></div>

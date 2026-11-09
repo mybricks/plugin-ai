@@ -59,6 +59,62 @@ function lessAsCssModules(): Plugin {
   };
 }
 
+// Local development storage. Files remain ordinary MyBricks JSON .ui files.
+function uiFileStorage(port: number): Plugin {
+  const root = path.join(showcaseRoot, "ui-files");
+  const scenes = new Set(["local", "task", "task-overview", "audit", "mcp"]);
+  return {
+    name: "showcase-ui-file-storage",
+    configureServer(server) {
+      server.middlewares.use("/__showcase/ui", (req, res) => {
+        const respond = (status: number, body: unknown) => {
+          res.statusCode = status;
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.end(JSON.stringify(body));
+        };
+        void (async () => {
+          const origin = req.headers.origin;
+          if (origin && ![`http://localhost:${port}`, `http://127.0.0.1:${port}`].includes(origin)) return respond(403, { error: "Forbidden" });
+          const query = new URL(req.url || "/", "http://localhost").searchParams;
+          const scene = query.get("scene") || "";
+          const id = query.get("id");
+          if (!scenes.has(scene) || (id !== null && (!id.trim() || id.length > 150))) return respond(400, { error: "Invalid scene or ID" });
+          const dir = path.join(root, scene);
+          if (req.method === "GET" && id === null) {
+            const entries = await fs.promises.readdir(dir, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return []; throw error; });
+            const items = await Promise.all(entries.filter((entry) => entry.isFile() && entry.name.endsWith(".ui")).map(async (entry) => {
+              try { return { id: decodeURIComponent(entry.name.slice(0, -3)), updatedAt: (await fs.promises.stat(path.join(dir, entry.name))).mtimeMs }; } catch { return null; }
+            }));
+            return respond(200, items.filter(Boolean).sort((a, b) => b!.updatedAt - a!.updatedAt));
+          }
+          if (id === null) return respond(400, { error: "ID required" });
+          const file = path.join(dir, `${encodeURIComponent(id)}.ui`);
+          if (req.method === "GET") {
+            try { return respond(200, JSON.parse(await fs.promises.readFile(file, "utf8"))); }
+            catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return respond(404, { error: "Not found" }); throw error; }
+          }
+          if (req.method === "DELETE") {
+            await fs.promises.rm(file, { force: true });
+            return respond(200, { ok: true });
+          }
+          if (req.method !== "PUT" || !req.headers["content-type"]?.startsWith("application/json")) return respond(405, { error: "Method not allowed" });
+          let body = "";
+          for await (const chunk of req) {
+            body += chunk;
+            if (body.length > 50 * 1024 * 1024) return respond(413, { error: "File too large" });
+          }
+          const project = JSON.parse(body);
+          if (!project || typeof project !== "object" || Array.isArray(project) || !project.content) return respond(400, { error: "Invalid UI file" });
+          await fs.promises.mkdir(dir, { recursive: true });
+          try { await fs.promises.writeFile(file, JSON.stringify(project, null, 2), { flag: req.headers["if-none-match"] === "*" ? "wx" : "w" }); }
+          catch (error) { if ((error as NodeJS.ErrnoException).code === "EEXIST") return respond(409, { error: "Already exists" }); throw error; }
+          return respond(200, { ok: true });
+        })().catch((error) => { console.error("[showcase ui files]", error); if (!res.headersSent) respond(500, { error: "File operation failed" }); });
+      });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   // 不使用 VITE_ 前缀加载 Cookie，避免它进入客户端 bundle。
   const env = { ...loadEnv(mode, showcaseRoot, ""), ...process.env };
@@ -85,7 +141,7 @@ export default defineConfig(({ mode }) => {
     },
   };
   return {
-    plugins: [showcaseMcp, markdownAsText(), lessAsCssModules(), react()],
+    plugins: [showcaseMcp, uiFileStorage(port), markdownAsText(), lessAsCssModules(), react()],
     resolve: {
     alias: [
       { find: /^react$/, replacement: bridge("react") },
