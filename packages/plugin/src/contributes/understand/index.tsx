@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { context } from "../../context";
 import { i18n } from "../../i18n";
-import { Sender } from "../../ui/components/sender";
+import type { SenderRef } from "../../ui/components/sender";
 import { Modal } from "../../ui/components/modal";
+import { createSenderFocus } from "./focus";
+import { createUnderstandSender } from "./sender";
 
 const AIDraw = (
   <svg viewBox="0 0 1024 1024" width="16" height="16">
@@ -13,31 +15,34 @@ const AIDraw = (
   </svg>
 );
 
-function UnderstandSender({ variant, ...props }: { placeholder: string; disabled?: boolean; variant?: "inline" | "bubble"; onSend: React.ComponentProps<typeof Sender>["onSend"] }) {
-  return <Sender {...props} variant={variant === "inline" ? "compact" : "bubble"} showAttachments={variant !== "inline"} onUpload={context.pluginParams.onUpload} />;
-}
-
 function getUnderstandAnyUI() {
   const id = context.currentFocus?.comId ?? context.currentFocus?.pageId ?? context.getFallbackAgentComId();
   return id ? context.understandAnyUI.get(context.getAgentKey(id)) : undefined;
 }
 
-function HostArea({ bindingTo, setTitle }: { bindingTo?: string; setTitle?: (title: string) => void }) {
+function HostArea({ bindingTo, setTitle, registerSender }: { bindingTo?: string; setTitle?: (title: string) => void; registerSender: (id: string, target: SenderRef) => () => void }) {
   const [, refresh] = useState(0);
   useEffect(() => {
     const update = () => refresh(value => value + 1);
     const offs = [context.events.on("focus", update), context.events.on("agentComId", update), context.events.on("understandAnyUI", update), context.events.on("disabled", update)];
     return () => offs.forEach(off => off());
   }, []);
+  const UnderstandSender = useMemo(() => createUnderstandSender(bindingTo, registerSender), [bindingTo, registerSender]);
   const UI = getUnderstandAnyUI();
   return UI ? <UI bindingTo={bindingTo} disabled={context.disabled} Sender={UnderstandSender} Modal={Modal} setTitle={setTitle} /> : null;
 }
 
 export function createUnderstandAnyContribute() {
+  const focus = createSenderFocus(async id => {
+    const getInfo = getUnderstandAnyUI()?.getInfo;
+    if (!getInfo) throw new Error("Business diagram information is unavailable");
+    return !!(await getInfo({ id }));
+  });
   return {
     title: i18n({ zh: "业务图", en: "Business diagrams" }),
     icon: AIDraw,
-    render: (params?: { id?: string; setTitle?: (title: string) => void }) => <HostArea bindingTo={params?.id} setTitle={params?.setTitle} />,
+    render: (params?: { id?: string; setTitle?: (title: string) => void }) => <HostArea bindingTo={params?.id} setTitle={params?.setTitle} registerSender={focus.register} />,
+    loaded: focus.loaded,
     getInfo: (params: { id?: string }) => getUnderstandAnyUI()?.getInfo?.(params),
   };
 }
