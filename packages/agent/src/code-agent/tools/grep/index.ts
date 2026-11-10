@@ -79,7 +79,7 @@ export function createGrepTool(sandbox: AgentSandbox): Tool {
       type: "object",
       properties: {
         pattern: { type: "string", description: "正则表达式搜索模式" },
-        glob: { type: "string", description: "按文件名过滤的 glob 模式，例如 \"*.ts\"、\"src/**/*.tsx\"" },
+        glob: { type: "string", description: "按文件名过滤的 glob 模式，例如 \"*.ts\"、\"src/**/*.{ts,tsx}\"" },
         output_mode: {
           type: "string",
           enum: ["files_with_matches", "content", "count"],

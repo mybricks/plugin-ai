@@ -6,7 +6,35 @@ import { normalizeConfigDirName } from "../../code-agent/config-dir";
 
 function matchGlob(glob: string, path: string): boolean {
   const value = glob.includes("/") ? path : path.split("/").pop() ?? path;
-  return new RegExp(`^${glob.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")}$`).test(value);
+  // Keep alternatives in one expression so pagination and counts apply to the union.
+  function toRegex(pattern: string): string {
+    let result = "";
+    for (let i = 0; i < pattern.length; i++) {
+      if (pattern[i] === "{") {
+        let depth = 0;
+        let start = i + 1;
+        const alternatives: string[] = [];
+        let end = -1;
+        for (let j = i + 1; j < pattern.length; j++) {
+          if (pattern[j] === "{") depth++;
+          else if (pattern[j] === "}" && depth > 0) depth--;
+          else if (pattern[j] === "}") { end = j; alternatives.push(pattern.slice(start, j)); break; }
+          else if (pattern[j] === "," && depth === 0) { alternatives.push(pattern.slice(start, j)); start = j + 1; }
+        }
+        if (end !== -1 && alternatives.length > 1) {
+          result += `(?:${alternatives.map(toRegex).join("|")})`;
+          i = end;
+          continue;
+        }
+      }
+      if (pattern.slice(i, i + 3) === "**/") { result += "(?:.*/)?"; i += 2; }
+      else if (pattern[i] === "*") result += ".*";
+      else if (pattern[i] === "?") result += ".";
+      else result += pattern[i].replace(/[.+^${}()|[\]\\]/g, "\\$&");
+    }
+    return result;
+  }
+  return new RegExp(`^${toRegex(glob)}$`).test(value);
 }
 
 function getGrepInput(request: CommandRequest): Partial<AgentSandboxGrepInput> | undefined {
