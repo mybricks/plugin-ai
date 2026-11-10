@@ -46,7 +46,7 @@ export type AgentMode = "build" | "plan";
  */
 export interface Attachment {
   type: string;
-  /** data URL（data:mime;base64,...）或普通 URL */
+  /** data URL（data:mime;base64,...）、blob URL 或普通 URL */
   content?: string;
   /** 普通 URL */
   url?: string;
@@ -54,6 +54,8 @@ export interface Attachment {
   title?: string;
   mime?: string;
   mediaType?: string;
+  /** 仅 UI 展示态：历史消息附件内容加载/上传中（渲染占位），不参与 LLM 消息构建 */
+  uploading?: boolean;
 }
 
 function getAttachmentMime(content?: string): string | undefined {
