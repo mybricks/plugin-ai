@@ -295,10 +295,6 @@ export interface Sandbox {
 
 export interface CodeAgentOptions extends Omit<AgentOptions, "system" | "getAttachmentContextMessages"> {
   /**
-   * 历史消息遮蔽配置。CodeAgent 默认保留最近 10 轮；传入具体配置可覆盖，传 false 可关闭。
-   */
-  mask?: AgentOptions["mask"];
-  /**
    * 推荐传入 AgentSandbox。为兼容既有宿主也接受 Sandbox V1，并在入口适配。
    * CodeAgent 内部只使用 AgentSandbox：文件工具走 files，grep 等结构化工具走 commands。
    * plugin 集成可通过 window._registSandBox_ 注入任一种契约。
@@ -788,7 +784,6 @@ export class CodeAgent extends Agent {
 
     super({
       ...agentOptions,
-      mask: agentOptions.mask ?? { maxTurns: 10 },
       locale,
       hooks,
       formatUserMessage,
