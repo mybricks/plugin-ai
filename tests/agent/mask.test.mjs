@@ -3,8 +3,36 @@ import assert from 'node:assert/strict';
 import { loadAgentFixtures } from './helpers/load-agent.mjs';
 
 const fixtures = await loadAgentFixtures();
-const { Agent } = fixtures;
+const { Agent, computeMaskedTurnIds } = fixtures;
 const count = (messages, text) => messages.filter(m => typeof m.content === 'string' && m.content.includes(text)).length;
+
+test('turn mask advances in groups of four while keeping at least four recent build turns', () => {
+  const turns = Array.from({ length: 10 }, (_, index) => ({
+    id: `build-${index + 1}`, status: 'success', mode: 'build',
+    startTime: Date.now(), endTime: Date.now(), iterations: [{}],
+  }));
+  const options = { maxTurns: 4, maxAgeMinutes: Infinity };
+  const masked = length => [...computeMaskedTurnIds(turns.slice(0, length), options)];
+  assert.deepEqual(masked(7), []);
+  assert.deepEqual(masked(8), turns.slice(0, 4).map(turn => turn.id));
+  assert.deepEqual(masked(9), turns.slice(0, 4).map(turn => turn.id));
+  assert.deepEqual(masked(10), turns.slice(0, 4).map(turn => turn.id));
+  const twelveTurns = [...turns, ...[11, 12].map(index => ({
+    id: `build-${index}`, status: 'success', mode: 'build',
+    startTime: Date.now(), endTime: Date.now(), iterations: [{}],
+  }))];
+  assert.deepEqual([...computeMaskedTurnIds(twelveTurns, options)], twelveTurns.slice(0, 8).map(turn => turn.id));
+});
+
+test('ask, plan and cancelled turns do not advance the turn mask boundary', () => {
+  const build = index => ({ id: `build-${index}`, status: 'success', mode: 'build', startTime: Date.now(), endTime: Date.now(), iterations: [{}] });
+  const other = (id, status, mode) => ({ id, status, mode, startTime: Date.now(), endTime: Date.now(), iterations: [{}] });
+  const turns = [build(1), other('ask', 'success', 'ask'), build(2), other('cancelled', 'abort', 'build'), build(3), other('plan', 'success', 'plan'), build(4), build(5), build(6)];
+  const options = { maxTurns: 2, maxAgeMinutes: Infinity };
+  assert.deepEqual([...computeMaskedTurnIds(turns.slice(0, -1), options)], []);
+  assert.deepEqual([...computeMaskedTurnIds(turns, options)], ['build-1', 'build-2', 'build-3', 'build-4']);
+  assert.deepEqual([...computeMaskedTurnIds(turns, { maxTurns: 0, maxAgeMinutes: Infinity })], turns.filter(turn => turn.status === 'success' && turn.mode === 'build').map(turn => turn.id));
+});
 
 test('mask age decision stays fixed across iterations and refreshes for the next turn', async () => {
   const realNow = Date.now;
@@ -94,8 +122,8 @@ for (const caseName of ['maskByTurnsCase', 'maskByAgeCase']) {
     });
     await agent.requestAI({ message: 'continue' });
     const toolMessages = snapshots[0].params.messages.filter(message => message.role === 'tool');
-    const expected = caseName === 'maskByTurnsCase' ? [true, true, true, false, false] : [true, true, true, true, true];
-    assert.equal(toolMessages.length, 5);
+    const expected = caseName === 'maskByTurnsCase' ? [true, true, true, true, false, false, false] : [true, true, true, true, true];
+    assert.equal(toolMessages.length, expected.length);
     assert.deepEqual(toolMessages.map(message => message.content === '[Old tool result content cleared]'), expected);
     for (const assertion of testCase.assertions ?? []) {
       const result = assertion.run({ snapshots, agent, memFS: null });

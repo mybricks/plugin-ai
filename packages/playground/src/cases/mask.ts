@@ -3,9 +3,9 @@ import { makeScriptedRequest } from "../lib/scripted-request";
 import { makeToolHistory } from "../lib/fixtures";
 
 // 每轮均有超过 mask 长度阈值的工具结果，便于观察被遮蔽的轮次。
-function makeMaskHistory(baseTime: number) {
+function makeMaskHistory(baseTime: number, count = 5) {
   return makeToolHistory(
-    Array.from({ length: 5 }, (_, index) => ({
+    Array.from({ length: count }, (_, index) => ({
       user: `读取第 ${index + 1} 个文件`,
       assistant: `已读取第 ${index + 1} 个文件。`,
       toolCalls: [{
@@ -18,17 +18,17 @@ function makeMaskHistory(baseTime: number) {
   );
 }
 
-const recentToolHistory = makeMaskHistory(Date.now() - 10 * 60 * 1000);
+const recentToolHistory = makeMaskHistory(Date.now() - 10 * 60 * 1000, 7);
 const oldToolHistory = makeMaskHistory(Date.now() - 70 * 60 * 1000);
 
 /** 根据历史工具调用 ID 检查实际请求，避免依赖消息在列表中的位置。 */
-function assertMaskedToolTurns(expectedMasked: number[]) {
+function assertMaskedToolTurns(expectedMasked: number[], totalTurns = 5) {
   return {
     name: "检查每轮工具结果是否按预期遮蔽",
     run: ({ snapshots, agent }: Parameters<NonNullable<TestCase["assertions"]>[number]["run"]>[0]) => {
       if (!snapshots.length || !agent) return null;
       const toolMessages = snapshots[0].params.messages?.filter((message: any) => message.role === "tool") ?? [];
-      const history = agent.getTurns().slice(0, 5);
+      const history = agent.getTurns().slice(0, totalTurns);
       const results = history.map((turn, index) => {
         const callId = turn.iterations.flatMap(iter => iter.toolCalls ?? [])[0]?.callId;
         const message = toolMessages.find((item: any) => item.tool_call_id === callId);
@@ -37,7 +37,7 @@ function assertMaskedToolTurns(expectedMasked: number[]) {
           ? message.content === "[Old tool result content cleared]"
           : typeof message.content === "string" && message.content.includes(`MASK_TURN_${index + 1}`));
       });
-      return { pass: results.length === 5 && results.every(Boolean), message: `各轮检查：${results.map((pass, i) => `${i + 1}:${pass ? "通过" : "失败"}`).join("、")}` };
+      return { pass: results.length === totalTurns && results.every(Boolean), message: `各轮检查：${results.map((pass, i) => `${i + 1}:${pass ? "通过" : "失败"}`).join("、")}` };
     },
   };
 }
@@ -188,15 +188,15 @@ export default function App({ title = 'My App' }: AppProps) {
 
 export const maskByTurnsCase: TestCase = {
   id: "mask-by-turns",
-  name: "按轮次触发 mask（maxTurns=2）",
+  name: "按轮次批量触发 mask（maxTurns=2，批量 4 轮）",
   group: "消息遮蔽",
   description:
-    "预设 5 轮历史，mask.maxTurns=2。发消息时前 3 轮工具结果会被遮蔽，只保留最近 2 轮完整内容。",
+    "预设 7 轮历史，mask.maxTurns=2。超过保留轮数的 5 轮里，最旧的 4 轮一起遮蔽，最近 3 轮保持完整。",
   expectedBehavior:
-    "查看发给 LLM 的 messages（console），第 3 轮及之前的 tool 消息 content 替换为占位符。",
+    "查看发给 LLM 的 messages（console），第 1～4 轮的 tool 消息 content 替换为占位符，第 5～7 轮保持原样。",
   initialTurns: recentToolHistory,
   maskOptions: { maxTurns: 2, maxAgeMinutes: Infinity },
-  assertions: [assertMaskedToolTurns([1, 2, 3])],
+  assertions: [assertMaskedToolTurns([1, 2, 3, 4], 7)],
   request: makeScriptedRequest([
     {
       type: "content",

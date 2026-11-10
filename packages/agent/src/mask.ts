@@ -7,7 +7,7 @@ import { getTurnMode } from "./utils/core";
  * 历史消息遮蔽配置。
  *
  * 遮蔽条件（OR 关系）：
- *   - 距离最新 turn 超过 `maxTurns` 轮
+ *   - 超过 `maxTurns` 的历史轮次每积累 4 轮，批量遮蔽最旧的一批
  *   - turn 结束时间距今超过 `maxAgeMinutes` 分钟
  *
  * 满足任一条件的 turn，其所有工具调用结果消息（role==='tool'）都会被替换为占位符，
@@ -18,9 +18,8 @@ import { getTurnMode } from "./utils/core";
  */
 export interface MaskOptions {
   /**
-   * 距离最新 turn 超过多少轮时触发遮蔽。
-   * 例如设为 5，则最近 5 轮不遮蔽，更早的轮次遮蔽。
-   * 默认：6
+   * 至少保留多少轮最近的历史不因轮数条件被遮蔽。
+   * 默认：4；设为 0 时立即遮蔽所有有效历史轮次。
    */
   maxTurns?: number;
   /**
@@ -75,6 +74,7 @@ export function buildProtectedAttachmentTurnIds(turns: TurnRecord[]): Set<string
 // ─── maskMessages ─────────────────────────────────────────────────────────────
 
 const DEFAULT_MAX_AGE_MINUTES = 60;
+const DEFAULT_TURN_BATCH_SIZE = 4;
 const DEFAULT_MIN_CONTENT_LENGTH = 200;
 const DEFAULT_TOOL_PLACEHOLDER = "[Old tool result content cleared]";
 const DEFAULT_ATTACHMENT_PLACEHOLDER = "[Old attachment cleared]";
@@ -90,28 +90,33 @@ export function computeMaskedTurnIds(
   const now = Date.now();
   const maxAgeMs = maxAgeMinutes * 60 * 1000;
 
-  // ── 过滤有效轮次（跳过 iterations 为空的轮）────────────────────────────
-  // 没有任何 LLM 响应的空轮次不参与遮蔽计算
-  const validTurns = turns.filter(t => !t.retried && !t.deleted && (t.iterations?.length ?? 0) >= 1);
+  // Ask / Plan 是工作记忆，直到 compact 生成摘要前均不参与 mask，也不推进轮数边界。
+  // 取消轮同样不参与；只统计可遮蔽的成功 Build 轮。
+  const validTurns = turns.filter(t =>
+    !t.retried && !t.deleted && t.status === "success" &&
+    (t.iterations?.length ?? 0) >= 1 &&
+    getTurnMode(t) !== "ask" && getTurnMode(t) !== "plan"
+  );
   const totalTurns = validTurns.length;
   if (totalTurns === 0) return result;
+  const retainedTurns = Math.max(0, Math.ceil(maxTurns));
+  const eligibleTurns = Math.max(0, totalTurns - retainedTurns);
+  const maskedByTurnsCount = maxTurns <= 0
+    ? totalTurns
+    : Number.isFinite(maxTurns)
+      ? Math.floor(eligibleTurns / DEFAULT_TURN_BATCH_SIZE) * DEFAULT_TURN_BATCH_SIZE
+      : 0;
 
   for (let i = 0; i < totalTurns; i++) {
     const turn = validTurns[i];
-    if (turn.status !== "success") continue;
 
-    // 距当前最新有效 turn 的轮数（0 = 最新，totalTurns-1 = 最旧）
-    const turnsAgo = totalTurns - 1 - i;
     const ageMs = now - (turn.endTime ?? turn.startTime);
 
     const shouldMask =
-      (isFinite(maxTurns) && turnsAgo >= maxTurns) ||
+      i < maskedByTurnsCount ||
       ageMs > maxAgeMs;
 
     if (!shouldMask) continue;
-
-    // Ask / Plan 是工作记忆，直到 compact 生成摘要前均不参与 mask。
-    if (getTurnMode(turn) === "ask" || getTurnMode(turn) === "plan") continue;
 
     result.add(turn.id);
   }

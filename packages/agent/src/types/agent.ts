@@ -161,7 +161,7 @@ export interface AgentOptions {
    * 历史消息遮蔽配置。
    * 满足轮次或时间条件的历史 turn，其工具调用结果消息会被替换为占位符，
    * 用户附件也会被替换为文字占位符，以减少发给 LLM 的 token 量。
-   * 不传则不遮蔽。
+   * 不传则使用默认遮蔽配置；传 false 才关闭遮蔽。
    */
   mask?: MaskOptions | false;
   /**
