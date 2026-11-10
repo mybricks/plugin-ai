@@ -72,5 +72,5 @@ export function createDomainAuditPlugin(options: DomainAuditOptions = {}): CodeA
       }],
     };
   };
-  return factory;
+  return Object.assign(factory, { pluginName: 'audit-domain' });
 }

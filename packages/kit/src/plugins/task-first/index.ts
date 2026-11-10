@@ -25,10 +25,11 @@ export function getTaskDocumentPath(
  * Git 状态只能在 sandbox 可用后读取，因此返回一次性 factory；解析后的插件是静态的。
  */
 export function createTaskFirstPlugin(options: TaskFirstPluginOptions = {}): CodeAgentPluginFactory {
-  return async (context) => {
+  const factory: CodeAgentPluginFactory = async (context) => {
     const { plugin, taskPath } = await resolveTaskFirstPlugin(context);
     return options.overview ? withTaskOverview(plugin, context.sandbox, taskPath) : plugin;
   };
+  return Object.assign(factory, { pluginName: "task-first" });
 }
 
 async function resolveTaskFirstPlugin(

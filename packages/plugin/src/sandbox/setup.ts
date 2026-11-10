@@ -130,6 +130,8 @@ export interface SandboxHelpers {
 export interface SandboxConfig {
   /** 任务、计划等文档所使用的配置目录。 */
   configDirName?: string;
+  /** 已配置插件的名称；延迟工厂须声明 pluginName 才能在初始化前识别。 */
+  pluginNames?: string[];
   /**
    * 系统提示词各节配置，由 Plugin 合并后下发给 sandbox。
    */
@@ -427,6 +429,9 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
     // ── Plugin → sandbox（静态配置）──────────────────────────────────────────
     config: {
       configDirName: resolvedConfigDirName,
+      pluginNames: [...new Set((plugins ?? [])
+        .map((plugin) => typeof plugin === "function" ? plugin.pluginName : plugin.name)
+        .filter((name): name is string => typeof name === "string" && name.length > 0))],
       availableLibraries: availableLibraries ?? [],
       themes: themes ?? [],
       componentRuntime,

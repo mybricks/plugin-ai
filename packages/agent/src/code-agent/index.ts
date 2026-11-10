@@ -199,12 +199,15 @@ export interface CodeAgentPlugin {
  * 延迟创建插件。适合依赖 sandbox 状态的能力（例如 Git 探测）：工厂只执行一次，
  * 返回的仍是普通静态插件，不会在每个 turn 中重复求值。
  */
-export type CodeAgentPluginFactory = (context: {
+export type CodeAgentPluginFactory = ((context: {
   sandbox: AgentSandbox;
   configDirName: string;
   /** 由远端代理的浏览器侧设置，插件可据此避免重复执行服务端逻辑。 */
   isInRemoteMode?: boolean;
-}) => CodeAgentPlugin | Promise<CodeAgentPlugin>;
+}) => CodeAgentPlugin | Promise<CodeAgentPlugin>) & {
+  /** 插件初始化前可供宿主读取的名称，应与工厂返回的插件名称一致。 */
+  pluginName?: string;
+};
 
 export type CodeAgentPluginInput = CodeAgentPlugin | CodeAgentPluginFactory;
 
