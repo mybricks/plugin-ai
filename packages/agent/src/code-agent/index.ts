@@ -202,6 +202,8 @@ export interface CodeAgentPlugin {
 export type CodeAgentPluginFactory = (context: {
   sandbox: AgentSandbox;
   configDirName: string;
+  /** 由远端代理的浏览器侧设置，插件可据此避免重复执行服务端逻辑。 */
+  isInRemoteMode?: boolean;
 }) => CodeAgentPlugin | Promise<CodeAgentPlugin>;
 
 export type CodeAgentPluginInput = CodeAgentPlugin | CodeAgentPluginFactory;

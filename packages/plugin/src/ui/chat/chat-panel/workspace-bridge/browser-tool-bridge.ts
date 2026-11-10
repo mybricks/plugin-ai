@@ -3,7 +3,6 @@ import type {
   Tool,
   ToolUIChannel,
 } from "../../../../../../agent/src";
-import type { Sandbox } from "../../../../../../agent/src/code-agent";
 
 export interface BrowserToolRequest {
   requestId: string;
@@ -69,7 +68,6 @@ export class BrowserToolBridge<TAgent> {
       tools?: Tool[];
       /** Browser task 是否仍可由当前客户端执行并回传。 */
       canHandleRequests?: () => boolean;
-      getSandbox: () => Sandbox | undefined;
       getMode: () => AgentMode;
       setMode: (mode: AgentMode, reason?: string) => void;
     },

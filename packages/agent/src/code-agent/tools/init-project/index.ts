@@ -5,6 +5,11 @@ import {
 } from "../../../child-agent";
 import type { Tool } from "../../../types";
 import type { Sandbox } from "../../index";
+import { isAgentSandbox, type AgentSandbox } from "../../../agent-sandbox";
+
+type ProjectSandbox = Sandbox | AgentSandbox;
+const writeProjectFile = (sandbox: ProjectSandbox, file: { path: string; content: string }) =>
+  isAgentSandbox(sandbox) ? sandbox.files.write(file) : sandbox.updateFiles([file]);
 
 /**
  * init-project 工具名称常量
@@ -123,7 +128,7 @@ async function executeSubAgent(
   parentAgent: Agent,
   prompt: string,
   ctx: ChildAgentBridgeContext,
-  sandbox: Sandbox,
+  sandbox: ProjectSandbox,
   expectedFiles: string[],
   shouldWarnLargeGeneration = false
 ) {
@@ -233,7 +238,7 @@ ${prompt}
           writtenFiles.add(file.path);
           try {
             // 立即写入文件
-            await sandbox.updateFiles([fileData]);
+            await writeProjectFile(sandbox, fileData);
             fileStatuses.set(file.path, "success");
             // 更新状态为 success
             const fileIndex = parsedFiles.findIndex((item) => item.path === file.path);
@@ -333,7 +338,7 @@ ${prompt}
   for (const file of files) {
     if (!successPaths.has(file.path) && !failedPaths.has(file.path)) {
       try {
-        await sandbox.updateFiles([file]);
+        await writeProjectFile(sandbox, file);
         successPaths.add(file.path);
       } catch {
         failedPaths.add(file.path);
@@ -402,7 +407,7 @@ ${prompt}
  *
  * 该工具作为独立工具直接被 LLM 调用，内部使用 SubAgent 实现逻辑。
  */
-export function createInitProjectTool(sandbox: Sandbox): Tool {
+export function createInitProjectTool(sandbox: ProjectSandbox): Tool {
   return {
     name: INIT_PROJECT_TOOL_NAME,
     title: "生成项目文件",

@@ -1,12 +1,16 @@
 import { CodeAgent, DEFAULT_CONFIG_DIR_NAME, IDBHistory, isFileExcluded } from "../../../agent/src";
-import type { AgentSandbox, AgentSandboxFileEntry, AgentSandboxListOptions, Tool, CodeAgentPlugin, History, TurnSender, SkillFile, UnifiedFile, AgentOptions, AttachmentContextItem } from "../../../agent/src";
-import type { AuditPowerImplementation, PromptSections } from "../../../kit/src";
-import { buildDirectoryInfoSection, buildProjectInfoSection, promptSectionsAdaptToPromptOption, readGitBranchInfoFromSandbox } from "../../../kit/src";
+import type { AgentSandbox, AgentSandboxFileEntry, AgentSandboxListOptions, Tool, History, TurnSender, SkillFile, UnifiedFile, AgentOptions, AttachmentContextItem } from "../../../agent/src";
+import type { AuditPowerImplementation, DomainAuditImplementation, PromptSections } from "../../../kit/src";
+import { buildDevelopmentGuideContext, buildDirectoryInfoSection, buildProjectInfoSection, promptSectionsAdaptToPromptOption, readGitBranchInfoFromSandbox } from "../../../kit/src";
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { Hooks, SandboxChipsConfig, MentionProvider } from "./types";
 import { context } from "../context";
 import { getPluginLocale } from "../i18n";
 import { createBuiltInSandboxPlugins } from "./plugins";
+import { createInitProjectTool } from "../../../agent/src/code-agent/tools";
+import { createCheckStatusTool } from "./tools/check-status";
+import { attachFiles } from "./initial-files";
+import type { Designer } from "./types";
 import {
   type ConnectToAIResult,
   type PluginParams,
@@ -15,6 +19,7 @@ import {
   injectSkillRuntimeContext,
   injectPluginRuntimeContext,
   getProjectContextExclude,
+  formatLibraryDocs,
   registerChips,
   registerMentions,
 } from "./connect-shared";
@@ -75,14 +80,15 @@ function mergeVirtualFileEntries(
   return Array.from(entries.values()).sort((a, b) => normalizePath(a.path).localeCompare(normalizePath(b.path)));
 }
 
-export function connectToAIFromSandbox(
+/** 本地 CodeAgent：宿主直接提供 AgentSandbox。 */
+export function connectToLocalSandbox(
   comId: string,
-  { agentSandbox, pageAnalysis, hooks, chips, mentions, tasksManager }: { agentSandbox: AgentSandbox; pageAnalysis?: AuditPowerImplementation; hooks?: Hooks; chips?: SandboxChipsConfig; mentions?: MentionProvider[]; tasksManager?: any },
+  { agentSandbox, designer, pageAnalysis, hooks, chips, mentions, tasksManager, domainAudit }: { agentSandbox: AgentSandbox; designer?: Designer; pageAnalysis?: AuditPowerImplementation; hooks?: Hooks; chips?: SandboxChipsConfig; mentions?: MentionProvider[]; tasksManager?: any; domainAudit?: DomainAuditImplementation },
   {
     requestAsStream, llmPluginKey, virtualFiles, configDirName, skills, plugins, promptSections, tools,
-    getUserContextMessage, projectContext, formatUserMessage, disabledModes,
+    getUserContextMessage, projectContext, formatUserMessage, disabledModes, codeRules, designRules, initialFiles,
     disabledHandler, history, sender, agentRuntimeRefs, localAgent,
-  }: Omit<PluginParams, "initialFiles" | "codeRules" | "designRules" | "remoteAgent">
+  }: PluginParams
 ): ConnectToAIResult {
   const resolvedConfigDirName = configDirName ?? DEFAULT_CONFIG_DIR_NAME;
   const agentKey = context.getAgentKey(comId);
@@ -95,7 +101,7 @@ export function connectToAIFromSandbox(
   const getRuntimeTools = (config = runtimeRef.current) => config?.tools ?? tools;
   const activeTools = getRuntimeTools(runtime);
   const promptOptions = promptSectionsAdaptToPromptOption(getRuntimePromptSections(runtime));
-  const runtimeContext: SkillRuntimeContext = { agentSandbox };
+  const runtimeContext: SkillRuntimeContext = { agentSandbox, designer, codeRules, designRules };
   const getRuntimeSkills = (config = runtimeRef.current) =>
     (config?.skills ?? skills)?.map((skill) => injectSkillRuntimeContext(skill, runtimeContext));
   const getRuntimeVirtualFiles = () => runtimeRef.current?.virtualFiles ?? virtualFiles;
@@ -107,8 +113,8 @@ export function connectToAIFromSandbox(
     pageAnalysis,
   }), ...(plugins ?? [])]
     .map((plugin) => {
-      const withSandbox = typeof plugin === "function" && tasksManager
-        ? ((ctx: Parameters<typeof plugin>[0]) => plugin({ ...ctx, sandbox: Object.assign({}, ctx.sandbox, { tasksManager }) }))
+      const withSandbox = typeof plugin === "function" && (tasksManager || domainAudit)
+        ? ((ctx: Parameters<typeof plugin>[0]) => plugin({ ...ctx, sandbox: Object.assign({}, ctx.sandbox, { tasksManager, domainAudit }) }))
         : plugin;
       return injectPluginRuntimeContext(withSandbox, runtimeContext);
     });
@@ -152,7 +158,7 @@ export function connectToAIFromSandbox(
   const getVirtualFiles = async (): Promise<UnifiedFile[]> => {
     const fn = getRuntimeVirtualFiles();
     if (!fn) return [];
-    return fn({ configDirName: resolvedConfigDirName, getEffectiveLibrariesSection: async () => "" });
+    return fn({ configDirName: resolvedConfigDirName, getEffectiveLibrariesSection: async () => formatLibraryDocs(await designer?.getEffectiveLibraries() ?? []) });
   };
   let virtualFilesSnapshot: Promise<UnifiedFile[]> | undefined;
   const getVirtualFilesSnapshot = () => virtualFilesSnapshot ??= getVirtualFiles();
@@ -206,7 +212,13 @@ export function connectToAIFromSandbox(
       removeFiles: agentSandbox.files.removeFiles.bind(agentSandbox.files),
     },
     commands: agentSandbox.commands,
+    getContext: designer ? async () => buildDevelopmentGuideContext({
+      promptSections: getRuntimePromptSections(), codeRules, designRules,
+      libraries: await designer.getEffectiveLibraries(),
+    }) : agentSandbox.getContext?.bind(agentSandbox),
   };
+
+  const hostTools = designer ? [createCheckStatusTool({ current: designer }), createInitProjectTool(codeAgentSandbox)] : [];
 
   const agent = new CodeAgent({
     key: agentKey,
@@ -215,7 +227,7 @@ export function connectToAIFromSandbox(
     request: (llmPluginKey ? context.createLLMRequest(llmPluginKey, agentKey) : undefined) ?? requestAsStream,
     sandbox: codeAgentSandbox,
     configDirName: resolvedConfigDirName,
-    tools: [...(activeTools ?? [])],
+    tools: [...hostTools, ...(activeTools ?? [])],
     promptOptions,
     hooks: sandboxHooks,
     skills: runtimeSkills,
@@ -252,6 +264,7 @@ export function connectToAIFromSandbox(
     },
   });
 
+  const workspaceReady = attachFiles(agent, { sandbox: agentSandbox, initialFiles });
   context.aiQueue.setRequestGuard(agent, requestGuard);
 
   const baseTools = (agent as any)._base.tools as Tool[];
@@ -269,5 +282,5 @@ export function connectToAIFromSandbox(
   context.sandboxMap.set(agentKey, codeAgentSandbox);
   context.registerAgentComId(comId);
 
-  return { history: agent.getHistory(), disabledHandler, isRemoteAgent: false };
+  return { history: agent.getHistory(), disabledHandler, isRemoteAgent: false, workspaceReady };
 }

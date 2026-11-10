@@ -16,9 +16,7 @@ export function createMcpAttach(options: McpBridgeOptions, params: PluginParams)
     if (!(agent instanceof CodeAgent) || !sandbox || connections.has(key)) return;
 
     const { codeRules, designRules, agentRuntimeRefs, skills, promptSections } = params;
-    const runtimeContext = config.designer
-      ? { designer: config.designer, codeRules, designRules }
-      : { agentSandbox: config.agentSandbox };
+    const runtimeContext = { designer: config.designer, agentSandbox: config.agentSandbox, codeRules, designRules };
     connections.set(key, connectMcpBrowser({ ...options, workspaceId: options.workspaceId ?? comId }, agent, {
       getSkills: () => [
         ...(agentRuntimeRefs.get(key)?.current?.skills ?? skills ?? []).map(skill => injectSkillRuntimeContext(skill, runtimeContext)),

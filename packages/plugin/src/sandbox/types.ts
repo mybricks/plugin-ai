@@ -6,20 +6,10 @@ import type { MentionProvider } from "../ui/components/types";
 export type { MentionProvider, MentionMenuItem } from "../ui/components/types";
 
 /**
- * Designer 接口：由组件库通过 window._registSandBox_ 注入。
- * 同时提供文件系统操作和设计器实时状态能力。
+ * Designer 接口：由组件库通过 connectToAI 注入。
+ * 提供设计器实时状态；文件操作由 AgentSandbox 提供。
  */
 export interface Designer {
-  // ── 文件系统 ────────────────────────────────────────────────────────────────
-  getFiles(): Promise<Array<{ path: string; content: string }>>;
-  /**
-   * 写入文件，失败时 reject（抛出错误）。
-   */
-  updateFiles(files: Array<{ path: string; content: string }>): Promise<void>;
-  /**
-   * 删除文件，失败时 reject（抛出错误）。
-   */
-  deleteFiles(paths: string[]): Promise<void>;
   // ── 设计器状态 ───────────────────────────────────────────────────────────────
   /**
    * 获取设计器实时渲染状态并格式化为 Markdown。
@@ -42,12 +32,6 @@ export interface Designer {
    * 用于注入当前项目源码上下文。
    */
   exportResourceCode(): string;
-  /** 页面分析执行器；工具声明由 plugin-ai 的内置 AuditPower 插件提供。 */
-  pageAnalysis?: AuditPowerImplementation;
-  /** 由宿主提供的任务管理 API。 */
-  tasksManager?: any;
-  domainAudit?: DomainAuditImplementation;
-
 }
 
 /**
@@ -92,25 +76,24 @@ export type SandboxChipRecordConfig = Omit<SandboxChipConfig, "type"> & { type?:
 export type SandboxChipsConfig = SandboxChipConfig[] | Record<string, SandboxChipRecordConfig>;
 
 /**
- * window._registSandBox_ 的第二个参数。
+ * connectToAI 的第二个参数。
  */
 export interface RegistSandBoxConfig {
   /**
-   * Legacy Designer FS contract. Existing component libraries may keep using
-   * this property without changing their integration.
+   * 设计器状态与项目上下文能力。
    */
   designer?: Designer;
   /**
-   * New AgentSandbox contract. When supplied, CodeAgent uses its commands
-   * (including structured grep) while the host continues to provide its
-   * virtual-file and additional-directory overlays.
+   * 文件和命令操作，由宿主提供。
    */
-  agentSandbox?: AgentSandbox;
+  agentSandbox: AgentSandbox;
   understandAnyUI?: (import("react").ComponentType<{ bindingTo?: string; disabled?: boolean; Sender?: import("react").ComponentType<any>; Modal?: import("react").ComponentType<any>; setTitle?: (title: string) => void }> & { getInfo?: (params: { id?: string }) => Promise<{ title?: string; description?: string } | undefined> });
   /** AgentSandbox 场景的页面分析执行器（如 local-iframe HTTP 分析）。 */
   pageAnalysis?: AuditPowerImplementation;
   /** AgentSandbox 场景的任务管理 API。 */
   tasksManager?: any;
+  /** 宿主提供的领域审计实现。 */
+  domainAudit?: DomainAuditImplementation;
   hooks?: Hooks;
   /**
    * 注册 chip 相关能力，支持自定义 chip 定义和内置/自定义 chip 的 remove 回调。

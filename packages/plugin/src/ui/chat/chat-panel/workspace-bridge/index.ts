@@ -3,7 +3,7 @@ import type {
   Tool,
   ToolUIChannel,
 } from "../../../../../../agent/src";
-import type { Sandbox } from "../../../../../../agent/src/code-agent";
+import type { AgentSandbox } from "../../../../../../agent/src";
 import {
   BrowserToolBridge,
   type BrowserToolRequest,
@@ -38,13 +38,10 @@ export class WorkspaceBridge<TAgent> {
       agent: options.agent,
       tools: options.tools,
       canHandleRequests: options.canHandleBrowserTasks,
-      getSandbox: () => this.fileHmrSandbox,
       getMode: options.getMode,
       setMode: options.setMode,
     });
   }
-
-  private fileHmrSandbox?: Sandbox;
 
   getTools(): Tool[] {
     return this.browserTools.getTools();
@@ -78,17 +75,19 @@ export class WorkspaceBridge<TAgent> {
     return this.fileHmr.syncChanges(targetVersion);
   }
 
+  syncFileChangesToVersion(targetVersion: number): Promise<void> {
+    return this.fileHmr.syncToVersion(targetVersion);
+  }
+
   runAtVersion(targetVersion: number, action: () => void): Promise<void> {
     return this.fileHmr.runAtVersion(targetVersion, action);
   }
 
-  bindSandbox(sandbox: Sandbox): Promise<void> {
-    this.fileHmrSandbox = sandbox;
+  bindSandbox(sandbox: AgentSandbox): Promise<void> {
     return this.fileHmr.bindSandbox(sandbox);
   }
 
-  syncSnapshot(sandbox?: Sandbox): Promise<void> {
-    if (sandbox) this.fileHmrSandbox = sandbox;
+  syncSnapshot(sandbox?: AgentSandbox): Promise<void> {
     return this.fileHmr.syncSnapshot(sandbox);
   }
 

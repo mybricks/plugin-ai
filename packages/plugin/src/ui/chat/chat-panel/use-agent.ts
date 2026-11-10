@@ -130,7 +130,7 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
   }, [hasModelSelection, modelSelection, selectedModel]);
 
   useEffect(() => {
-    if (!agent || isHttpAgent(agent)) return;
+    if (!agent) return;
     let active = true;
     agent.initializePlugins().then(() => {
       if (active) setPluginRevision((revision) => revision + 1);
@@ -152,7 +152,7 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
   }, [agent, pluginRevision]);
 
   const todoArea = useMemo(() => {
-    if (!agent || isHttpAgent(agent)) return undefined;
+    if (!agent) return undefined;
     return agent.getPlugins().find((plugin) => plugin.ui?.todoArea)?.ui?.todoArea;
   }, [agent, pluginRevision]);
 

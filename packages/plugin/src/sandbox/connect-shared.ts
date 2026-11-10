@@ -101,7 +101,7 @@ interface ConnectToAIResultBase {
   disabledHandler: DisabledHandler;
   /**
    * 文件初始化完成后兑现，是 Runtime 和首个 Agent 请求的共同前置条件。
-   * remote Agent 优先同步服务端 workspace，失败后可回退 initialFiles；本地 Agent 按 initialFiles 同步。
+   * remote Agent 同步服务端 workspace；本地 Agent 按 initialFiles 同步。
    */
   workspaceReady?: Promise<void>;
 }

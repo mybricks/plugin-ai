@@ -17,7 +17,7 @@ import {
   type VersionFile,
   type VersionRecord,
 } from "../../../../../../agent/src";
-import { composePluginHooks, type Sandbox } from "../../../../../../agent/src/code-agent";
+import { composePluginHooks } from "../../../../../../agent/src/code-agent";
 import { collectPluginPromptTemplates, createMbsTemplates } from "../../../../../../agent/src/code-agent/mbs";
 import {
   createAfterToolCallParams,
@@ -112,6 +112,8 @@ interface HttpAgentRuntimeOptions {
   hooks?: AgentHooks;
   /** 与本地 CodeAgent 一致，插件 hooks 在顶层 hooks 之后执行。 */
   plugins?: CodeAgentPlugin[];
+  pluginFactories?: import("../../../../../../agent/src").CodeAgentPluginFactory[];
+  pluginContext?: Parameters<import("../../../../../../agent/src").CodeAgentPluginFactory>[0];
   /** 当前浏览器用户，写入每轮 /run 与本地 turn:start，对齐本地 CodeAgent。 */
   sender?: TurnSender;
 }
@@ -185,6 +187,7 @@ function normalizeTurnErrorCode(value: unknown): TurnRecord["errorCode"] | undef
       return undefined;
   }
 }
+
 /**
  * TODO: 服务端支持 Agent 探活和 turn 终态确认后，改用服务端状态判断任务是否结束。
  * 当前仍保留客户端超时作为兜底，但需要容忍代理缓冲和服务端背压。
@@ -208,6 +211,9 @@ export class HttpAgent {
   private readonly disabledModes: AgentMode[];
   private readonly hooks?: AgentHooks;
   private readonly plugins: CodeAgentPlugin[];
+  private pluginInitialization?: Promise<void>;
+  private readonly pluginFactories: NonNullable<HttpAgentRuntimeOptions["pluginFactories"]>;
+  private readonly pluginContext?: HttpAgentRuntimeOptions["pluginContext"];
   private readonly sender?: TurnSender;
   private readonly workspaceBridge: WorkspaceBridge<HttpAgent>;
   private mode: AgentMode = AgentModeEnum.Build;
@@ -256,8 +262,10 @@ export class HttpAgent {
     this.onVersionSaved = runtime.onVersionSaved;
     this.disabledModes = runtime.disabledModes ?? [];
     this.plugins = runtime.plugins ?? [];
+    this.pluginFactories = runtime.pluginFactories ?? [];
+    this.pluginContext = runtime.pluginContext;
     this.sender = runtime.sender;
-    this.hooks = composePluginHooks(runtime.hooks, this.plugins);
+    this.hooks = composePluginHooks(runtime.hooks, this.plugins, this.pluginFactories.length > 0);
     this.workspaceBridge = new WorkspaceBridge<HttpAgent>({
       workspaceId: this.workspaceId,
       requestJson: <T>(path: string, init?: RequestInit) =>
@@ -296,6 +304,7 @@ export class HttpAgent {
     this.historyInitialization = this.initializeHistory();
     void this.historyInitialization
       .then(() => this.workspaceBridge.waitInitialized())
+      .then(() => this.initializePlugins())
       .then(() => this.sessionRecovery.startReplay())
       .catch((error) => {
         console.error("[plugin-ai] remote init failed", error);
@@ -304,6 +313,64 @@ export class HttpAgent {
 
   getMode(): AgentMode {
     return this.mode;
+  }
+
+  getPlugins(): CodeAgentPlugin[] {
+    return [...this.plugins];
+  }
+
+  initializePlugins(): Promise<void> {
+    if (!this.pluginInitialization) {
+      this.pluginInitialization = (async () => {
+        if (!this.pluginContext || !this.pluginFactories.length) return;
+        await this.workspaceBridge.waitInitialized();
+        const sandbox = await this.getFileSandbox();
+        for (const factory of this.pluginFactories) {
+          try {
+            this.plugins.push(await factory({ ...this.pluginContext, sandbox, isInRemoteMode: true }));
+          } catch (error) {
+            console.warn("[HttpAgent] plugin factory failed to initialize:", error);
+          }
+        }
+      })();
+    }
+    return this.pluginInitialization;
+  }
+
+  /** 获取远端文件视图；本地视图由 FileHmr 维护。 */
+  async getFileSandbox(): Promise<import("../../../../../../agent/src").AgentSandbox> {
+    if (!this.pluginContext) throw new Error("Remote sandbox is unavailable.");
+    await this.workspaceBridge.waitInitialized();
+    return this.createRemotePluginSandbox(this.pluginContext.sandbox);
+  }
+
+  /** 插件读写以 workspace 为准；FileHmr 使用独立的宿主 sandbox 更新界面。 */
+  private createRemotePluginSandbox(local: import("../../../../../../agent/src").AgentSandbox): import("../../../../../../agent/src").AgentSandbox {
+    const read = async (path: string) => {
+      const query = new URLSearchParams({ path });
+      return this.requestJson<{ path: string; content: string } | null>(
+        `${this.workspacePath("files/content")}?${query.toString()}`,
+      );
+    };
+    const apply = async (operations: Array<{ type: "write"; path: string; content: string } | { type: "delete"; path: string }>) => {
+      const result = await this.remoteFs.applyOperations(operations);
+      if (result.conflicts.length) {
+        throw new Error(`Remote file conflict: ${result.conflicts.map((conflict) => conflict.path).join(", ")}`);
+      }
+      await this.workspaceBridge.syncFileChangesToVersion(result.version);
+    };
+    return {
+      ...local,
+      files: {
+        ...local.files,
+        read,
+        readFiles: async (paths) => (await Promise.all(paths.map(read))).filter((file): file is NonNullable<typeof file> => file !== null),
+        write: (file) => apply([{ type: "write", ...file }]),
+        writeFiles: (files) => apply(files.map((file) => ({ type: "write" as const, ...file }))),
+        remove: (path) => apply([{ type: "delete", path }]),
+        removeFiles: (paths) => apply(paths.map((path) => ({ type: "delete" as const, path }))),
+      },
+    };
   }
 
   /** 远端 workspace 中当前 active 的计划文件。 */
@@ -409,6 +476,7 @@ export class HttpAgent {
     });
     try {
       await this.historyInitialization;
+      await this.initializePlugins();
       await this.hooks?.beforeTurn?.({
         message: displayMessage,
         formattedMessage: modelMessage,
@@ -505,6 +573,7 @@ export class HttpAgent {
     });
     try {
       await this.historyInitialization;
+      await this.initializePlugins();
       await this.calibrateLastTurn(turnId);
       this.handleRemoteEvent({ event: "turn:resume", turnId, createdAt: Date.now(), data: { turnId } }, { updateSessionState: false });
       const turn = this.findTurn(turnId);
@@ -621,10 +690,10 @@ export class HttpAgent {
   };
 
   readonly files = {
-    syncSnapshot: async (sandbox: Sandbox): Promise<void> => {
+    syncSnapshot: async (sandbox: import("../../../../../../agent/src").AgentSandbox): Promise<void> => {
       await this.workspaceBridge.syncSnapshot(sandbox);
     },
-    bindSandbox: (sandbox: Sandbox): Promise<void> => {
+    bindSandbox: (sandbox: import("../../../../../../agent/src").AgentSandbox): Promise<void> => {
       return this.workspaceBridge.bindSandbox(sandbox);
     },
     ensureBrowserConnected: async (): Promise<void> => {

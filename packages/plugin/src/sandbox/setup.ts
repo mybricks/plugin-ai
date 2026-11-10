@@ -23,8 +23,10 @@ import { chipRegistry } from "./chip-registry";
 import { referRegistry, type ReferResolver } from "./refer-registry";
 export { referRegistry } from "./refer-registry";
 export type { ReferResolver, ReferData } from "./refer-registry";
-import { connectToAIFromV1 } from "./connect-v1";
-import { connectToAIFromSandbox } from "./connect-sandbox";
+import { connectToRemoteAI } from "./connect-remote";
+import { isHttpAgent } from "../ui/chat/chat-panel/remote/http-agent";
+import { createFileCommands } from "./file-commands";
+import { connectToLocalSandbox } from "./connect-sandbox";
 import type {
   ConnectToAIResult,
   AgentRuntimeConfig,
@@ -88,6 +90,10 @@ export type SenderOptions = Pick<
 >;
 
 export interface SandboxHelpers {
+  /** 获取当前 Agent 的文件视图；远端操作返回独立的冲突基线。 */
+  getAgentSandbox: (comId: string) => Promise<AgentSandbox>;
+  /** 基于宿主文件接口实现常用文件命令。 */
+  createFileCommands: typeof createFileCommands;
   /**
    * Creates the default AgentSandbox implementation from a V1-compatible file
    * source. Its command transport provides structured grep out of the box.
@@ -232,7 +238,7 @@ export interface SetupSandboxParams {
   /**
    * 注入到根工程虚拟 FS 的文件（每个 turn 调用一次）。
    * 典型用途：在根工程放 `<configDirName>/agent.md` 提供项目规范。
-   * 同路径下 virtualFiles 优先级高于 designer.getFiles() 返回的真实文件。
+   * 同路径下 virtualFiles 优先级高于 AgentSandbox 返回的真实文件。
    */
   virtualFiles?: (context: VirtualFilesRuntimeContext) => Promise<UnifiedFile[]>;
   /** Directory passed to local CodeAgent instances; defaults to `.agent`. */
@@ -308,19 +314,29 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
         context.understandAnyUI.set(context.getAgentKey(comId), config.understandAnyUI);
         context.events.emit("understandAnyUI", comId);
       }
-      if (config.agentSandbox) {
-        result = connectToAIFromSandbox(comId, {
+      if (!config.agentSandbox) throw new Error("connectToAI requires agentSandbox");
+      if (remoteAgent) {
+        result = connectToRemoteAI(comId, {
           agentSandbox: config.agentSandbox,
+          pageAnalysis: config.pageAnalysis,
+          designer: config.designer,
+          domainAudit: config.domainAudit,
+          hooks: config.hooks,
+          chips: config.chips,
+          mentions: config.mentions,
+          tasksManager: config.tasksManager,
+        }, { ...pluginParams, remoteAgent });
+      } else {
+        result = connectToLocalSandbox(comId, {
+          agentSandbox: config.agentSandbox,
+          designer: config.designer,
+          domainAudit: config.domainAudit,
           pageAnalysis: config.pageAnalysis,
           hooks: config.hooks,
           chips: config.chips,
           mentions: config.mentions,
           tasksManager: config.tasksManager,
         }, pluginParams);
-      } else if (config.designer) {
-        result = connectToAIFromV1(comId, { designer: config.designer, hooks: config.hooks, chips: config.chips, mentions: config.mentions }, pluginParams);
-      } else {
-        throw new Error("connectToAI requires either designer or agentSandbox");
       }
       if (params.mcp) {
         attachMcp ??= createMcpAttach(params.mcp, pluginParams);
@@ -338,6 +354,15 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
     helpers: {
+      async getAgentSandbox(comId: string) {
+        const key = context.getAgentKey(comId);
+        const agent = context.agentMap.get(key);
+        if (isHttpAgent(agent)) return agent.getFileSandbox();
+        const sandbox = context.sandboxMap.get(key);
+        if (!sandbox) throw new Error("Agent sandbox is unavailable.");
+        return sandbox;
+      },
+      createFileCommands,
       createAgentSandboxFromV1(sandbox: SandboxV1, options?: CreateAgentSandboxFromV1Options) {
         return createAgentSandboxFromV1(sandbox, options);
       },

@@ -32,7 +32,7 @@ export function createTaskFirstPlugin(options: TaskFirstPluginOptions = {}): Cod
 }
 
 async function resolveTaskFirstPlugin(
-  { sandbox, configDirName }: Parameters<CodeAgentPluginFactory>[0],
+  { sandbox, configDirName, isInRemoteMode }: Parameters<CodeAgentPluginFactory>[0],
 ): Promise<{ plugin: CodeAgentPlugin; taskPath: string }> {
   const branchInfo = await readGitBranchInfoFromSandbox(sandbox);
   const taskPath = getTaskDocumentPath(branchInfo, configDirName);
@@ -70,7 +70,7 @@ description: Delete a task and revert its related code
       }
       return [{ key: "task-document", content: `<system-reminder>\n当前任务文档：${taskPath}\n状态：${status}\n</system-reminder>` }];
     },
-    hooks: {
+    hooks: isInRemoteMode ? undefined : {
       beforeTurn: verification?.beforeTurn,
       afterTurn: verification?.afterTurn,
       async afterToolCall({ toolCall }) {

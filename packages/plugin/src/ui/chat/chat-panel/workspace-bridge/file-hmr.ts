@@ -1,4 +1,4 @@
-import type { Sandbox } from "../../../../../../agent/src/code-agent";
+import type { AgentSandbox } from "../../../../../../agent/src";
 import { hasDirtyAppPaths } from "../../../../sandbox/initial-files";
 
 interface FileManifestItem {
@@ -42,7 +42,7 @@ type RequestJson = <T = unknown>(
  * - 文件写入/删除都由服务端完成，客户端只同步服务端结果。
  */
 export class FileHmr {
-  private sandbox?: Sandbox;
+  private sandbox?: AgentSandbox;
   private version = 0;
   private localHashMap = new Map<string, string>();
   private initialized = false;
@@ -59,7 +59,7 @@ export class FileHmr {
     },
   ) {}
 
-  async bindSandbox(sandbox: Sandbox): Promise<void> {
+  async bindSandbox(sandbox: AgentSandbox): Promise<void> {
     this.sandbox = sandbox;
     await this.syncSnapshot(sandbox);
   }
@@ -121,6 +121,14 @@ export class FileHmr {
     return this.syncPromise;
   }
 
+  /** 远端写入返回后，确保宿主视图已经同步到对应版本。 */
+  async syncToVersion(targetVersion: number): Promise<void> {
+    await this.waitInitialized();
+    if (!this.sandbox || !this.initialized) throw new Error("Workspace file sync is not initialized.");
+    if (targetVersion > this.version) await this.syncChanges(targetVersion);
+    if (this.version < targetVersion) throw new Error(`Workspace file sync did not reach version ${targetVersion}.`);
+  }
+
   /** 等待文件同步到目标版本后执行回调；允许已经同步到更新的版本。 */
   async runAtVersion(targetVersion: number, action: () => void): Promise<void> {
     if (!this.sandbox) return;
@@ -141,7 +149,7 @@ export class FileHmr {
     return this.snapshotPromise;
   }
 
-  private async doSyncSnapshot(sandbox: Sandbox): Promise<void> {
+  private async doSyncSnapshot(sandbox: AgentSandbox): Promise<void> {
     const normalizePath = (path: string) => path.replace(/\\/g, "/").replace(/^\/+/, "");
     const manifest = await this.options.requestJson<FileManifestResponse>(
       this.workspacePath("files"),
@@ -156,7 +164,8 @@ export class FileHmr {
       manifest.files = undefined;
     }
 
-    const localFiles = await sandbox.getFiles();
+    const entries = await sandbox.files.list("", { recursive: true });
+    const localFiles = await sandbox.files.readFiles(entries.filter((entry) => entry.type !== "directory").map((entry) => entry.path));
     const localEntries = await mapWithConcurrency(localFiles, 4, async (file) => ({
       path: file.path,
       content: file.content,
@@ -179,7 +188,7 @@ export class FileHmr {
       (file): file is { path: string; content: string } => !!file,
     );
     if (filesToUpdate.length) {
-      await sandbox.updateFiles(filesToUpdate);
+      await sandbox.files.writeFiles(filesToUpdate);
       const hashes = await mapWithConcurrency(filesToUpdate, 4, async (file) => ({
         path: file.path,
         hash: await sha256(file.content),
@@ -201,7 +210,7 @@ export class FileHmr {
         })
         .map((file) => file.path);
       if (pathsToDelete.length) {
-        await sandbox.deleteFiles(pathsToDelete);
+        await sandbox.files.removeFiles(pathsToDelete);
         for (const path of pathsToDelete) this.localHashMap.delete(path);
       }
     }
@@ -209,7 +218,7 @@ export class FileHmr {
     this.initialized = true;
   }
 
-  private async pullRemoteChanges(sandbox: Sandbox): Promise<void> {
+  private async pullRemoteChanges(sandbox: AgentSandbox): Promise<void> {
     const query = new URLSearchParams({
       sinceVersion: String(this.version),
     });
@@ -228,12 +237,12 @@ export class FileHmr {
       for (const operation of change.ops ?? []) {
         if (!operation?.path) continue;
         if (operation.type === "delete") {
-          await sandbox.deleteFiles([operation.path]);
+          await sandbox.files.remove(operation.path);
           this.localHashMap.delete(operation.path);
         } else if (this.localHashMap.get(operation.path) !== operation.hash) {
           const file = await this.readRemoteFile(operation.path);
           if (file) {
-            await sandbox.updateFiles([file]);
+            await sandbox.files.write(file);
             this.localHashMap.set(file.path, operation.hash);
           }
         }
