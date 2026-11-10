@@ -216,6 +216,8 @@ export interface PluginAIParams {
   formatUserMessage?: AgentOptions["formatUserMessage"];
   /** 禁用的 Agent 运行模式；当只剩一种可用模式时隐藏模式切换器且不注册切换工具。 */
   disabledModes?: AgentOptions["disabledModes"];
+  /** 本地 Agent 的历史消息遮蔽配置。 */
+  mask?: AgentOptions["mask"];
   /** 组件运行时扩展 */
   componentRuntime?: {
     modules: Record<string, FrontendFileModules | BackendFileModules>
@@ -289,6 +291,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     projectContext,
     formatUserMessage,
     disabledModes,
+    mask,
     componentRuntime,
     disallowedDebugEnvs,
     llm,
@@ -403,6 +406,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     projectContext,
     formatUserMessage,
     disabledModes,
+    mask,
     onDisabledRequest,
     availableLibraries: codingConfig?.availableLibraries ?? [],
     themes: codingConfig?.themes ?? [],

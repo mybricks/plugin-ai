@@ -59,7 +59,8 @@ interface CliPdeAgentOptionBuilderOptions {
 }
 
 type CliPdeAgentOptionBuilderResult<T extends CliPdeAgentOptionBuilderOptions> =
-  Omit<T, "configDirName" | "promptSections" | "plugins" | "tools" | "projectRunnerImplementation"> & {
+  Omit<T, "mask" | "configDirName" | "promptSections" | "plugins" | "tools" | "projectRunnerImplementation"> & {
+    mask: { maxTurns: number };
     configDirName: string;
     promptSections: PromptSections;
     plugins: CodeAgentPluginInput[];
@@ -79,6 +80,7 @@ export function cliPdeAgentOptionBuilder<T extends CliPdeAgentOptionBuilderOptio
 
   return {
     ...restOptions,
+    mask: { maxTurns: 10 },
     configDirName: resolvedConfigDirName,
     promptSections: {
       ...cliPdePromptSection,

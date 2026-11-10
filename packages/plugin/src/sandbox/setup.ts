@@ -269,6 +269,7 @@ export interface SetupSandboxParams {
   formatUserMessage?: AgentOptions["formatUserMessage"];
   /** 禁用的 Agent 运行模式；当只剩一种可用模式时隐藏模式切换器且不注册切换工具。 */
   disabledModes?: AgentOptions["disabledModes"];
+  mask?: AgentOptions["mask"];
   /**
    * 插件处于 disabled 时若仍尝试 requestAI / retry / 手动保存版本，会调用此回调。
    * 典型用途：由宿主弹出 toast / message 提示用户当前不可发送。
@@ -290,7 +291,7 @@ export interface SetupSandboxParams {
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
 export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController {
-  const { requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, onDisabledRequest, history, remoteAgent, sender } = params;
+  const { requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, mask, onDisabledRequest, history, remoteAgent, sender } = params;
   const resolvedConfigDirName = configDirName ?? DEFAULT_CONFIG_DIR_NAME;
   // 空数组与某些应用产生的 App 空文件组合都视为无效快照，本地与远程 Agent 均不读取。
   const syncableInitialFiles = getSyncableInitialFiles(initialFiles);
@@ -301,7 +302,7 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
   const agentRuntimeRefs = new Map<string, AgentRuntimeRef>();
 
   const pluginParams: PluginParams = {
-    requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles: syncableInitialFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs,
+    requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles: syncableInitialFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, mask, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs,
   };
 
   let attachMcp: ReturnType<typeof createMcpAttach> | undefined;

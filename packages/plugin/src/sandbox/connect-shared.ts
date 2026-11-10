@@ -138,6 +138,7 @@ export interface PluginParams {
   projectContext?: ProjectContext;
   formatUserMessage?: AgentOptions["formatUserMessage"];
   disabledModes?: AgentOptions["disabledModes"];
+  mask?: AgentOptions["mask"];
   disabledHandler: DisabledHandler;
   history?: History;
   remoteAgent?: RemoteAgentConfig;
