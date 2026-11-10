@@ -28,10 +28,10 @@ interface User {
 
 type InputArea = "toolBlock" | "todoArea" | "sender";
 
-/** 工具交互优先；待办区仅在 AI 空闲且输入区可用时展示。 */
-function resolveInputArea(toolActive: boolean, loading: boolean, disabled: boolean, hasTodo: boolean): InputArea {
+/** 工具交互优先；待办区仅在最近一轮成功且输入区可用时展示。 */
+function resolveInputArea(toolActive: boolean, loading: boolean, disabled: boolean, hasTodo: boolean, lastTurnSucceeded: boolean): InputArea {
   if (toolActive) return "toolBlock";
-  if (!loading && !disabled && hasTodo) return "todoArea";
+  if (!loading && !disabled && hasTodo && lastTurnSucceeded) return "todoArea";
   return "sender";
 }
 
@@ -337,7 +337,8 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   }, [chatAgent.agent, todoComponent]);
   const hasTodo = !!todoComponent && !!todoState && todoState.agent === chatAgent.agent
     && todoState.component === todoComponent && todoState.active;
-  const inputArea = resolveInputArea(!!activeBlockingToolCallId, loading, isDisabled, hasTodo);
+  const lastTurnSucceeded = messages.length > 0 && messages[messages.length - 1].status === "success";
+  const inputArea = resolveInputArea(!!activeBlockingToolCallId, loading, isDisabled, hasTodo, lastTurnSucceeded);
   const senderNode = (
     <Sender
       ref={senderRef}
