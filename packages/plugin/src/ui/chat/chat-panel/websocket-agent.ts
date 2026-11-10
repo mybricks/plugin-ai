@@ -453,7 +453,8 @@ export class WebSocketAgent {
     signal: AbortSignal,
   ): Promise<void> {
     // 上传附件到会话文件接口（平台智能体会自动查询，不需要在 stream body 里再传）
-    await this.uploadAttachments(params.attachments ?? [], signal);
+    const fileResults = await this.uploadAttachments(params.attachments ?? [], signal);
+    const fileNames = fileResults ? [...fileResults.keys()] : [];
 
     // variables 需在智能体 businessVariables 声明集内，且携带时 agentCode 必填。
     // 配置的 projectId/appType 作为业务变量合并进 variables；
@@ -468,6 +469,7 @@ export class WebSocketAgent {
         agentCode: this.options.agentCode,
         sessionId: this.conversationSessionId,
         ...(useVariables ? { variables } : {}),
+        ...(fileNames.length > 0 ? { attachments: fileNames } : {}),
       },
       signal,
     );
@@ -524,6 +526,7 @@ export class WebSocketAgent {
       agentCode?: string;
       sessionId?: string;
       variables?: Record<string, any>;
+      attachments?: string[]
     },
     signal: AbortSignal,
   ): Promise<Response> {
@@ -540,6 +543,7 @@ export class WebSocketAgent {
         ...(body.agentCode ? { agentCode: body.agentCode } : {}),
         ...(body.sessionId ? { sessionId: body.sessionId } : {}),
         ...(body.variables ? { variables: body.variables } : {}),
+        ...(body.attachments ? { attachments: body.attachments } : {}),
       }),
     });
     if (!response.ok || !response.body) {
@@ -557,16 +561,17 @@ export class WebSocketAgent {
    *   - content：完整 data URI（data:image/png;base64,....）
    *   - url：远程地址，先 fetch 下载为 Blob 再上传（客户端代下）
    */
-  private async uploadAttachments(attachments: any[], signal: AbortSignal): Promise<void> {
+  private async uploadAttachments(attachments: any[], signal: AbortSignal): Promise<Map<string, any> | null> {
     const sessionId = this.conversationSessionId ?? this.sessionId;
-    if (!sessionId || !attachments.length) return;
+    if (!sessionId || !attachments.length) return null;
     // 只处理图片类附件；agentCode 是上传接口的必填项，缺失则跳过上传。
     const agentCode = this.options.agentCode;
     if (!agentCode) {
       console.warn("[WebSocketAgent] skip attachment upload: agentCode is required by the files API");
-      return;
+      return null;
     }
 
+    const fileResults = new Map<string, any>();
     for (let i = 0; i < attachments.length; i += 1) {
       const item = attachments[i];
       const isImage = item?.type === "image" || item?.mime?.startsWith?.("image/");
@@ -590,6 +595,10 @@ export class WebSocketAgent {
           continue;
         }
         const result = await response.json().catch(() => null);
+        const name = result?.file?.name
+        if (name) {
+          fileResults.set(name, result.file);
+        }
         if (result?.agentVisible === false) {
           console.warn("[WebSocketAgent] uploaded file not visible to agent:", result?.warnings);
         }
@@ -598,6 +607,7 @@ export class WebSocketAgent {
         console.warn("[WebSocketAgent] attachment upload error, skipped:", error);
       }
     }
+    return fileResults;
   }
 
   /** 把一个附件（data URI 或 url）转成用于上传的 Blob 及文件名。 */
