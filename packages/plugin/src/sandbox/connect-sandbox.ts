@@ -87,7 +87,7 @@ export function connectToLocalSandbox(
   {
     requestAsStream, llmPluginKey, virtualFiles, configDirName, skills, plugins, promptSections, tools,
     getUserContextMessage, projectContext, formatUserMessage, disabledModes, codeRules, designRules, initialFiles,
-    disabledHandler, history, sender, agentRuntimeRefs, localAgent,
+    disabledHandler, history, sender, agentRuntimeRefs,
   }: PluginParams
 ): ConnectToAIResult {
   const resolvedConfigDirName = configDirName ?? DEFAULT_CONFIG_DIR_NAME;
@@ -234,7 +234,6 @@ export function connectToLocalSandbox(
     plugins: runtimePlugins,
     subAgents: [],
     disabledModes,
-    ...(localAgent ? { mask: { maxTurns: 20 } } : {}),
     getAttachmentContextMessages: async () => {
       const items: AttachmentContextItem[] = [];
       const { files, directEntries } = await getProjectContextFiles();

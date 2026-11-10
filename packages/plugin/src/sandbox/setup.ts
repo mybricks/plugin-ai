@@ -281,7 +281,6 @@ export interface SetupSandboxParams {
   remoteAgent?: RemoteAgentConfig;
   /** 消息发送者信息，注入到每条用户消息中，UI 展示时优先使用 */
   sender?: TurnSender;
-  localAgent?: boolean;
 }
 
 // ─── 主入口 ───────────────────────────────────────────────────────────────────
@@ -291,7 +290,7 @@ export interface SetupSandboxParams {
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
 export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController {
-  const { requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, onDisabledRequest, history, remoteAgent, sender, localAgent } = params;
+  const { requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, onDisabledRequest, history, remoteAgent, sender } = params;
   const resolvedConfigDirName = configDirName ?? DEFAULT_CONFIG_DIR_NAME;
   // 空数组与某些应用产生的 App 空文件组合都视为无效快照，本地与远程 Agent 均不读取。
   const syncableInitialFiles = getSyncableInitialFiles(initialFiles);
@@ -302,7 +301,7 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
   const agentRuntimeRefs = new Map<string, AgentRuntimeRef>();
 
   const pluginParams: PluginParams = {
-    requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles: syncableInitialFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs, localAgent,
+    requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles: syncableInitialFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs,
   };
 
   let attachMcp: ReturnType<typeof createMcpAttach> | undefined;

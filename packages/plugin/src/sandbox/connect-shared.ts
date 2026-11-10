@@ -143,7 +143,6 @@ export interface PluginParams {
   remoteAgent?: RemoteAgentConfig;
   sender?: TurnSender;
   agentRuntimeRefs: Map<string, AgentRuntimeRef>;
-  localAgent?: boolean;
 }
 
 export interface SkillRuntimeContext {
