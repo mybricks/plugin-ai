@@ -7,7 +7,7 @@ import { getTurnMode } from "./utils/core";
  * 历史消息遮蔽配置。
  *
  * 遮蔽条件（OR 关系）：
- *   - 超过 `maxTurns` 的历史轮次每积累 4 轮，批量遮蔽最旧的一批
+ *   - 有效历史轮次每积累 `maxTurns` 轮，批量遮蔽最旧的一批
  *   - turn 结束时间距今超过 `maxAgeMinutes` 分钟
  *
  * 满足任一条件的 turn，其所有工具调用结果消息（role==='tool'）都会被替换为占位符，
@@ -18,7 +18,7 @@ import { getTurnMode } from "./utils/core";
  */
 export interface MaskOptions {
   /**
-   * 至少保留多少轮最近的历史不因轮数条件被遮蔽。
+   * 每批按轮数遮蔽多少个有效历史轮次。
    * 默认：4；设为 0 时立即遮蔽所有有效历史轮次。
    */
   maxTurns?: number;
@@ -74,7 +74,6 @@ export function buildProtectedAttachmentTurnIds(turns: TurnRecord[]): Set<string
 // ─── maskMessages ─────────────────────────────────────────────────────────────
 
 const DEFAULT_MAX_AGE_MINUTES = 60;
-const DEFAULT_TURN_BATCH_SIZE = 4;
 const DEFAULT_MIN_CONTENT_LENGTH = 200;
 const DEFAULT_TOOL_PLACEHOLDER = "[Old tool result content cleared]";
 const DEFAULT_ATTACHMENT_PLACEHOLDER = "[Old attachment cleared]";
@@ -99,12 +98,11 @@ export function computeMaskedTurnIds(
   );
   const totalTurns = validTurns.length;
   if (totalTurns === 0) return result;
-  const retainedTurns = Math.max(0, Math.ceil(maxTurns));
-  const eligibleTurns = Math.max(0, totalTurns - retainedTurns);
+  const batchSize = Math.ceil(maxTurns);
   const maskedByTurnsCount = maxTurns <= 0
     ? totalTurns
     : Number.isFinite(maxTurns)
-      ? Math.floor(eligibleTurns / DEFAULT_TURN_BATCH_SIZE) * DEFAULT_TURN_BATCH_SIZE
+      ? Math.floor(totalTurns / batchSize) * batchSize
       : 0;
 
   for (let i = 0; i < totalTurns; i++) {

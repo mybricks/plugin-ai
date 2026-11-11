@@ -188,15 +188,15 @@ export default function App({ title = 'My App' }: AppProps) {
 
 export const maskByTurnsCase: TestCase = {
   id: "mask-by-turns",
-  name: "按轮次批量触发 mask（maxTurns=2，批量 4 轮）",
+  name: "按轮次批量触发 mask（maxTurns=2，批量 2 轮）",
   group: "消息遮蔽",
   description:
-    "预设 7 轮历史，mask.maxTurns=2。超过保留轮数的 5 轮里，最旧的 4 轮一起遮蔽，最近 3 轮保持完整。",
+    "预设 7 轮历史，mask.maxTurns=2。每积累 2 轮批量遮蔽；最旧的 6 轮被遮蔽，最近 1 轮保持完整。",
   expectedBehavior:
-    "查看发给 LLM 的 messages（console），第 1～4 轮的 tool 消息 content 替换为占位符，第 5～7 轮保持原样。",
+    "查看发给 LLM 的 messages（console），第 1～6 轮的 tool 消息 content 替换为占位符，第 7 轮保持原样。",
   initialTurns: recentToolHistory,
   maskOptions: { maxTurns: 2, maxAgeMinutes: Infinity },
-  assertions: [assertMaskedToolTurns([1, 2, 3, 4], 7)],
+  assertions: [assertMaskedToolTurns([1, 2, 3, 4, 5, 6], 7)],
   request: makeScriptedRequest([
     {
       type: "content",
