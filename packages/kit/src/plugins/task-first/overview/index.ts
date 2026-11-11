@@ -16,6 +16,19 @@ import overviewDispatch from "./task-overview-dispatch.md";
 /** 异步维护总览的子 Agent 名称，供主 Agent 通过 call-sub-agent 调用。 */
 export const TASK_OVERVIEW_SUB_AGENT_NAME = "task-overview";
 
+function collectTaskIds(content: string | undefined): Set<string> {
+  const ids = new Set<string>();
+  const titleOccurrences = new Map<string, number>();
+  for (const section of (content ?? "").split(/(?=^##\s+)/m).filter((value) => /^##\s+/.test(value))) {
+    const title = section.split("\n", 1)[0]?.replace(/^##\s+/, "").trim();
+    if (!title) continue;
+    const occurrence = titleOccurrences.get(title) ?? 0;
+    titleOccurrences.set(title, occurrence + 1);
+    ids.add(title.match(/^(T-\d+)\b/)?.[1] ?? `${title}\u0000${occurrence}`);
+  }
+  return ids;
+}
+
 /**
  * 总览维护只读写文档和源码，不需要执行命令或改动项目运行时。
  * call-sub-agent 由 resolveSubAgentConfig 强制排除，无需在此声明。
@@ -58,6 +71,7 @@ export function withTaskOverview(
   taskPath: string,
 ): CodeAgentPlugin {
   const overviewPath = taskPath.replace(/TASKS\.md$/, "overview.yaml");
+  let taskIdsAtTurnStart: Set<string> | undefined;
   return {
     ...plugin,
     agents: [...(plugin.agents ?? []), createOverviewSubAgent(taskPath, overviewPath)],
@@ -67,20 +81,60 @@ export function withTaskOverview(
         .filter(Boolean)
         .join("\n\n"),
     },
+    hooks: {
+      ...plugin.hooks,
+      async beforeTurn(params) {
+        try {
+          taskIdsAtTurnStart = collectTaskIds((await sandbox.files.read(taskPath))?.content);
+        } catch (error) {
+          taskIdsAtTurnStart = undefined;
+          console.warn(`[task-overview] Failed to read ${taskPath} before turn:`, error);
+        }
+        await plugin.hooks?.beforeTurn?.(params);
+      },
+      async beforeTurnStop(params) {
+        const existing = await plugin.hooks?.beforeTurnStop?.(params);
+        const previousIds = taskIdsAtTurnStart;
+        taskIdsAtTurnStart = undefined;
+        if (!previousIds) return existing;
+
+        try {
+          const [taskFile, overviewFile] = await Promise.all([
+            sandbox.files.read(taskPath),
+            sandbox.files.read(overviewPath),
+          ]);
+          const addedTasks = [...collectTaskIds(taskFile?.content)].filter((id) => !previousIds.has(id));
+          if (!addedTasks.length || overviewFile) return existing;
+
+          const reminder = {
+            role: "user" as const,
+            content: `New task entries were added to \`${taskPath}\` during this turn, but \`${overviewPath}\` does not exist. Before ending the turn, asynchronously call the \`${TASK_OVERVIEW_SUB_AGENT_NAME}\` sub-agent to create and maintain the overview for the added tasks.`,
+          };
+          return { additionalMessages: [...(existing?.additionalMessages ?? []), reminder] };
+        } catch (error) {
+          console.warn(`[task-overview] Failed to check task and overview files before turn stop:`, error);
+          return existing;
+        }
+      },
+      async afterTurn(turn) {
+        taskIdsAtTurnStart = undefined;
+        await plugin.hooks?.afterTurn?.(turn);
+      },
+    },
     async getAttachmentContextMessages(attachmentContext) {
       const [taskMessages, status] = await Promise.all([
         plugin.getAttachmentContextMessages?.(attachmentContext),
         sandbox.files.read(overviewPath).then(
-          (file) => file ? "已存在" : "尚未创建",
+          (file) => file ? "Exists" : "Not created yet",
           (error) => {
-            console.warn(`[task-overview] 读取 ${overviewPath} 失败:`, error);
-            return "读取失败";
+            console.warn(`[task-overview] Failed to read ${overviewPath}:`, error);
+            return "Read failed";
           },
         ),
       ]);
       return [
         ...(taskMessages ?? []),
-        { key: "task-overview-document", content: `<system-reminder>\n当前任务总览文档：${overviewPath}\n状态：${status}\n</system-reminder>` },
+        { key: "task-overview-document", content: `<system-reminder>\nCurrent task overview document: ${overviewPath}\nStatus: ${status}\n</system-reminder>` },
       ];
     },
   };

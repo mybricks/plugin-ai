@@ -60,16 +60,16 @@ description: Delete a task and revert its related code
           ],
         }] : [],
     async getAttachmentContextMessages() {
-      let status = "尚未创建";
+      let status = "Not created yet";
       try {
         const file = await sandbox.files.read(taskPath);
         if (file) {
-          status = "已存在";
+          status = "Exists";
         }
       } catch (error) {
-        console.warn(`[task-first] 读取 ${taskPath} 失败:`, error);
+        console.warn(`[task-first] Failed to read ${taskPath}:`, error);
       }
-      return [{ key: "task-document", content: `<system-reminder>\n当前任务文档：${taskPath}\n状态：${status}\n</system-reminder>` }];
+      return [{ key: "task-document", content: `<system-reminder>\nCurrent task document: ${taskPath}\nStatus: ${status}\n</system-reminder>` }];
     },
     hooks: isInRemoteMode ? undefined : {
       beforeTurn: verification?.beforeTurn,

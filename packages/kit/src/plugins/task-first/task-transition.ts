@@ -87,7 +87,7 @@ export function createTaskTransitionHook({ sandbox, taskPath }: { sandbox: Agent
       try {
         content = (await sandbox.files.read(taskPath))?.content ?? "";
       } catch (error) {
-        console.warn(`[task-first] afterToolCall 读取 ${taskPath} 失败:`, error);
+        console.warn(`[task-first] afterToolCall failed to read ${taskPath}:`, error);
         return;
       }
 
@@ -117,7 +117,7 @@ export function createTaskTransitionHook({ sandbox, taskPath }: { sandbox: Agent
       try {
         await sandbox.files.write({ path: taskPath, content: updated });
       } catch (error) {
-        console.warn(`[task-first] afterToolCall 写回 ${taskPath} 失败:`, error);
+        console.warn(`[task-first] afterToolCall failed to write ${taskPath}:`, error);
         return;
       }
 
