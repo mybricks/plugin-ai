@@ -1,4 +1,4 @@
-import type { AgentMode, TokenUsage, ToolResult, TurnErrorCode, TurnSender } from "./types";
+import type { AgentMode, SubAgentTurnRecord, TokenUsage, ToolResult, TurnErrorCode, TurnSender } from "./types";
 
 // ─── SSE 风格事件类型 ─────────────────────────────────────────────────────────
 //
@@ -7,7 +7,33 @@ import type { AgentMode, TokenUsage, ToolResult, TurnErrorCode, TurnSender } fro
 //   2. llm       —— 每次 LLM 调用各触发一次（start → content* → complete），ReAct 多步时每 step 各一组
 //   3. tool      —— function call（content / call / result / error）
 
+export const SUB_AGENT_EVENT_NAMES = [
+  "turn:start", "llm:start", "llm:content", "llm:complete", "llm:retry",
+  "tool:args", "tool:call", "tool:result", "tool:error", "tool:progress",
+  "turn:complete", "turn:error", "turn:abort",
+] as const;
+
+type SubAgentEventName = typeof SUB_AGENT_EVENT_NAMES[number];
+
+export type SubAgentEvent = {
+  [K in SubAgentEventName]: {
+    parentTurnId: string;
+    parentAgentKey: string;
+    agentKey: string;
+    turnId: string;
+    callId: string;
+    subAgentType: string;
+    title?: string;
+    async: boolean;
+    event: K;
+    data: AgentEventMap[K];
+    createdAt: number;
+    turn?: SubAgentTurnRecord;
+  }
+}[SubAgentEventName];
+
 export type AgentEventMap = {
+  "subagent:event": SubAgentEvent;
   // ── 一次对话整体状态（只触发一次）─────────────────────────────────────────
 
   /**

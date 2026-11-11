@@ -1,8 +1,6 @@
 import type { Agent, ToolExecutionContext } from "../../../agent";
-import {
-  createChildAgentBridge,
-  type ChildAgentBridgeContext,
-} from "../../../child-agent";
+import { runChildAgent } from "../../../sub-agent/execution";
+import type { ChildAgentBridgeContext } from "../../../sub-agent/bridge";
 import type { Tool } from "../../../types";
 import type { Sandbox } from "../../index";
 import { isAgentSandbox, type AgentSandbox } from "../../../agent-sandbox";
@@ -122,7 +120,7 @@ const LARGE_GENERATION_WARNING = '本轮生成内容较多，请注意是否继�
 
 /**
  * SubAgent 的 execute 逻辑。
- * 子 turn / progress 走 createChildAgentBridge，与 call-sub-agent 共用。
+ * 子 turn / progress 走统一执行流程，与 call-sub-agent 共用。
  */
 async function executeSubAgent(
   parentAgent: Agent,
@@ -130,6 +128,7 @@ async function executeSubAgent(
   ctx: ChildAgentBridgeContext,
   sandbox: ProjectSandbox,
   expectedFiles: string[],
+  signal: AbortSignal | undefined,
   shouldWarnLargeGeneration = false
 ) {
   // 拼接完整消息
@@ -175,7 +174,7 @@ ${prompt}
   // - retry: false 禁用重试，避免重试时已写文件被跳过导致内容混杂
   // - hooks.beforeRequest：每次 LLM 请求前告知当前文件写入状态，
   //   确保 finishReason=length 续写时模型不会重复输出已写文件
-  const subAgent = parentAgent.createFork({
+  const createAgent = (session: { key: string; history?: import("../../../types").History }) => parentAgent.createFork({
     retry: false,
     hooks: {
       beforeToolCall: () => ({
@@ -198,24 +197,11 @@ ${prompt}
         };
       },
     },
-  });
-  const bridge = createChildAgentBridge({
-    subAgent,
-    parentAgent,
-    ctx,
-    subAgentType: INIT_PROJECT_TOOL_NAME,
-    title: "生成项目文件",
-    userText: prompt,
-    getProgressExtra: () => progressState,
-  });
-  if ("error" in bridge) {
-    return { output: bridge.error, metadata: { files: [] } };
-  }
-
+  }, { ...session, inheritSnapshot: true });
   // 节流 emitProgress，800ms 内最多触发一次（leading + trailing）
-  bridge.subscribe({
+  const subscription = {
     contentThrottleMs: 800,
-    onContent: async ({ content, thinkingContent }) => {
+    onContent: async ({ content, thinkingContent }: { content: string; thinkingContent?: string }) => {
       progressState.content = content || "";
       if (thinkingContent !== undefined) {
         progressState.thinkingContent = thinkingContent;
@@ -258,11 +244,21 @@ ${prompt}
 
       progressState.files = parsedFiles;
     },
-  });
+  };
 
-  const { lastTurn, status, error, wasCancelled } = await bridge.runRequest(fullPrompt);
-  const finished = bridge.finish(lastTurn, status, error);
-  const childMetadata = bridge.metadata(finished.status);
+  // 父 turn 取消时中止 fork；订阅和清理由公共生命周期统一管理。
+  const { lastTurn, error, wasCancelled, metadata: childMetadata } = await runChildAgent({
+    createAgent,
+    parentAgent,
+    ctx,
+    subAgentType: INIT_PROJECT_TOOL_NAME,
+    title: "生成项目文件",
+    userText: prompt,
+    getProgressExtra: () => progressState,
+    message: fullPrompt,
+    signal,
+    subscription,
+  });
 
   // 请求中途出错或用户取消：保留已写入文件，并把中断说明拼进 output。
   if (error || wasCancelled) {
@@ -458,12 +454,12 @@ export function createInitProjectTool(sandbox: ProjectSandbox): Tool {
         prompt,
         {
           emitProgress: toolContext.emitProgress,
-          signal: toolContext.signal,
+          turnId: toolContext.turnId,
           callId: toolContext.callId,
-          attachSubAgentTurn: toolContext.attachSubAgentTurn,
         },
         sandbox,
         filesToGenerate,
+        toolContext.signal,
         shouldWarnLargeGeneration
       );
     },

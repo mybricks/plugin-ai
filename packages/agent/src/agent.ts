@@ -1,3 +1,5 @@
+import { startBackgroundSubAgent, type BackgroundSubAgentRequest, type BackgroundSubAgentInfo } from "./sub-agent";
+import { getTurnsManager, isTurnsView, type TurnsManager } from "./history/turns";
 import { randomUUID } from "./uuid";
 import type { ToolDescriptor } from "./types/request";
 import { AgentEvents } from "./events";
@@ -404,6 +406,8 @@ export class Agent {
   /** Agent 自己持有的、仅运行期有效的工具卡片通信通道。 */
   private readonly toolUI: ToolUIChannel = createToolUIChannel();
   private _abortController: AbortController | null = null;
+  private readonly turnsManager?: TurnsManager;
+  private readonly childTurns = new Map<string, SubAgentTurnRecord>();
 
   constructor(options: AgentOptions) {
     // 仅在调用方”未声明该字段”时注入默认值；
@@ -435,6 +439,10 @@ export class Agent {
       ...(hasCompact ? {} : { compact: DEFAULT_COMPACT }),
       ...(hasRetry ? {} : { retry: retryOpts }),
     };
+    if (options.history && options.key) {
+      this.turnsManager = getTurnsManager(options.history, options.key);
+      if (!isTurnsView(options.history)) this.options.history = this.turnsManager.main;
+    }
     this._mode = normalizeAllowedAgentMode(initialMode, options);
     this.key = options.key;
     this.locale = locale;
@@ -474,6 +482,7 @@ export class Agent {
   async clearHistory(): Promise<void> {
     await this.historyManager.clear();
     this.turns = [];
+    this.childTurns.clear();
     this.compactRecord = null;
   }
 
@@ -1050,11 +1059,6 @@ export class Agent {
               emitProgress: (data: any) => {
                 this.events.emit("tool:progress", { callId, name, data, step, iterId: currentIterId });
               },
-              attachSubAgentTurn: (record) => {
-                // TODO: 不要将子 Agent 的完整 turn 嵌套进父 iteration；后续考虑将其表达为单独的 iteration。
-                const iter = currentIter as { turns?: SubAgentTurnRecord[] };
-                iter.turns = iter.turns ? [...iter.turns, record] : [record];
-              },
               waitUIRender: <T>() => this.toolUI.wait<T>(callId, { signal }),
             }),
           });
@@ -1276,6 +1280,35 @@ export class Agent {
     });
   }
 
+  /** 读取指定子 Agent 的独立 turns，合并当前运行中的记录。 */
+  async getSubAgentTurns(agentKey: string): Promise<SubAgentTurnRecord[]> {
+    return (await this.getChildTurns()).filter(turn => turn.agentKey === agentKey);
+  }
+
+  /** 读取父 turn 下的子记录；省略 parentTurnId 时返回当前会话的全部子 turn。 */
+  async getChildTurns(parentTurnId?: string): Promise<SubAgentTurnRecord[]> {
+    const persisted = this.turnsManager ? await this.turnsManager.children() : [];
+    const records = new Map(persisted.map(turn => [turn.id, turn]));
+    for (const turn of this.childTurns.values()) {
+      if (!records.has(turn.id) || turn.endTime) records.set(turn.id, turn);
+    }
+    return [...records.values()]
+      .filter(turn => !parentTurnId || turn.parentTurnId === parentTurnId)
+      .sort((a, b) => a.startTime - b.startTime);
+  }
+
+  /** 为子 Agent 创建独立历史视图；主、子 turn 共享底层存储和写队列。 */
+  async createChildSession(record: SubAgentTurnRecord): Promise<{ key: string; history?: History }> {
+    if (this.turnsManager) await this.turnsManager.reserveChild(record);
+    this.childTurns.set(record.id, record);
+    return { key: record.agentKey, history: this.turnsManager?.child(record) };
+  }
+
+  /** 不等待父 turn settled，也不继承父 turn 的取消信号。 */
+  async spawnBackgroundSubAgent(request: BackgroundSubAgentRequest): Promise<BackgroundSubAgentInfo> {
+    return startBackgroundSubAgent(this, request);
+  }
+
   // ─── Fork / subAgent 基础设施 ─────────────────────────────────────────────
 
   /**
@@ -1296,7 +1329,7 @@ export class Agent {
    *   打包进 options 来变通传递，是绕路而非真正的 fork。
    *   真正的 subAgent 机制应该 fork 出一个完整的 CodeAgent 实例，需要重新设计。
    */
-  createFork(forkOptions?: ForkAgentOptions): ForkAgent {
+  createFork(forkOptions?: ForkAgentOptions, session?: { key: string; history?: History; inheritSnapshot?: boolean }): ForkAgent {
     const { turnsSlice, tools, aiRole, mask, handoff, retry, mode, hooks, includeSandboxContext } = forkOptions ?? {};
 
     // turns + compactRecord 联动截取：
@@ -1333,8 +1366,8 @@ export class Agent {
       ...this.options,
       // 使用原始 request，让 fork 的 retry 覆盖真正生效，避免继承父 Agent 已包装的 retry。
       request: this.rawRequest,
-      key: randomUUID(),     // 随机隔离 key
-      history: undefined,    // fork 不写历史
+      key: session?.key ?? randomUUID(),
+      history: session?.history,
       // tools：不传=继承父；传了（含 []）则覆盖
       ...(forkOptions && "tools" in forkOptions ? { tools } : {}),
       // system：不传=继承父；传了则覆盖
@@ -1366,8 +1399,10 @@ export class Agent {
     };
 
     const fork = new ForkAgent(forkAgentOptions, defaultLLMOptions);
-    fork.turns = snapshotTurns;
-    fork.compactRecord = snapshotCompactRecord;
+    if (!session || session.inheritSnapshot) {
+      fork.turns = snapshotTurns;
+      fork.compactRecord = snapshotCompactRecord;
+    }
     return fork;
   }
 
@@ -1380,7 +1415,7 @@ export class Agent {
    *   - 支持通过 ForkAgentOptions 覆盖 system / tools / aiRole
    *   - 默认不携带父 turns 历史；如有需要可显式传入 turnsSlice
    */
-  createSubAgent(config: ForkAgentOptions): ForkAgent {
+  createSubAgent(config: ForkAgentOptions, session?: { key: string; history?: History }): ForkAgent {
     const baseTools = config.tools ?? (this.options.tools ?? []);
     const tools = baseTools.filter((t: Tool) => t.name !== CALL_SUB_AGENT_TOOL_NAME);
     return this.createFork({
@@ -1389,7 +1424,7 @@ export class Agent {
       ...(config.system !== undefined ? { system: config.system } : {}),
       ...(config.aiRole !== undefined ? { aiRole: config.aiRole } : {}),
       includeSandboxContext: config.includeSandboxContext ?? false,
-    });
+    }, session);
   }
 
   // ─── 内部 after-turn 钩子 ────────────────────────────────────────────────

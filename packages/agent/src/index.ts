@@ -14,8 +14,9 @@ export { computeHandoffTurnIds } from "./handoff";
 export { ChipRegistry, fileChipDef, FILE_CHIP_TYPE } from "./chip";
 export type { ChatChipDef, ChatChipFormatContext, ChatChipInstance, FileChipData } from "./chip";
 
-export type { AgentEventMap } from "./events";
-export type { Message, History, HistoryPersistMode, Tool, TurnErrorCode, TurnRecord, AgentEffect, TurnSender, ToolCallRecord, ToolResult, VersionFile, VersionRecord, BoundHistory, Attachment, IterationTrace, AttachmentContextItem, AttachmentContext, AttachmentContextEntry } from "./types";
+export { SUB_AGENT_EVENT_NAMES } from "./events";
+export type { AgentEventMap, SubAgentEvent } from "./events";
+export type { Message, History, HistoryPersistMode, Tool, TurnErrorCode, TurnRecord, SubAgentTurnRecord, AgentEffect, TurnSender, ToolCallRecord, ToolResult, VersionFile, VersionRecord, BoundHistory, Attachment, IterationTrace, AttachmentContextItem, AttachmentContext, AttachmentContextEntry } from "./types";
 export { ToolValidationError, bindHistory } from "./types";
 
 export { AGENT_INTERNAL_FILE_EXCLUDE, getAgentInternalFileExclude, CodeAgent, isFileExcluded, DEFAULT_CONFIG_DIR_NAME, getConfigDirPath, getPlanDir, getSkillsDir, getSkillDir, getAgentMdPath, getConfigDirNameFromAgent, getConfigDirPattern, normalizeConfigDirName, parseMbsTemplateRecord } from "./code-agent";
@@ -76,10 +77,11 @@ export { kv } from "./kv";
 export { IDBHistory } from "./history/idb-history";
 export { HTTPHistory } from "./history/http-history";
 export { HistoryManager } from "./history/manager";
+export { getTurnsManager } from "./history/turns";
 export type { HistoryManagerSnapshot, HistoryStatus } from "./history/manager";
 
-export { createSubAgentTool, CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
-export type { SubAgentConfig } from "./sub-agent";
+export { createSubAgentTool, CALL_SUB_AGENT_TOOL_NAME, collectSubAgentTurns, startBackgroundSubAgent, applySubAgentEvent, readLegacySubAgentData } from "./sub-agent";
+export type { SubAgentConfig, SubAgentMetadata, BackgroundSubAgentRequest, BackgroundSubAgentInfo, BackgroundSubAgentResult } from "./sub-agent";
 
 export { createRequestTimeoutStrategy, createEmptyResponseStrategy } from "./retry";
 export type { RetryOptions, RequestAttemptStrategy } from "./retry";
