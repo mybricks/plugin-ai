@@ -25,7 +25,7 @@ import css from "./tool-call-group.less";
 
 export interface ToolCallGroupProps {
   tools: ToolCallRecord[];
-  turn: Pick<MessageRecord, "status">;
+  turn: MessageRecord;
   toolRendererMap: Map<string, ToolRenderer>;
   toolSummaryRendererMap: Map<string, ToolSummaryRenderer>;
   agent?: ChatAgent;
@@ -46,7 +46,7 @@ interface ResolvedTool {
 
 function resolveToolSummary(
   tool: ToolCallRecord,
-  turn: Pick<MessageRecord, "status">,
+  turn: MessageRecord,
   toolSummaryRendererMap: Map<string, ToolSummaryRenderer>,
   agent?: ChatAgent,
   toolUI?: ToolUIChannel,
@@ -136,7 +136,7 @@ const CollapsedToolCallGroup = ({
   awaitingNext,
 }: {
   items: ResolvedTool[];
-  turn: Pick<MessageRecord, "status">;
+  turn: MessageRecord;
   toolRendererMap: Map<string, ToolRenderer>;
   agent?: ChatAgent;
   toolUI?: ToolUIChannel;

@@ -1,6 +1,7 @@
 import type { ToolCallRecord } from "../../../../../../agent/src";
 import type { ToolUIChannel } from "../../../../../../agent/src";
 import { getConfigDirNameFromAgent } from "../../../../../../agent/src";
+import type { MessageRecord } from "../../use-session";
 
 /**
  * UI 层工具调用视图，在持久化快照（ToolCallRecord）基础上叠加流式临时状态。
@@ -29,7 +30,7 @@ export type ToolRecord = ToolCallView;
 export interface ToolRendererContext {
   toolCallId: string;
   /** 所属消息 turn 的只读展示上下文。 */
-  turn?: { status: "pending" | "success" | "error" | "abort" };
+  turn?: MessageRecord;
   /** 提交结果；返回的 Promise 在提交被真正消费（如远端任务已下发）时才 resolve。 */
   submit: (value: unknown) => Promise<boolean>;
   cancel: () => Promise<boolean>;

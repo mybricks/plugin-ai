@@ -85,7 +85,7 @@ registerToolRenderer(
   (tool) => <CheckStatusRenderer tool={tool} />,
   () => lang.tool.viewStatus(),
 );
-registerToolRenderer(CALL_SUB_AGENT_TOOL_NAME, (tool) => <SubAgentRenderer tool={tool} />);
+registerToolRenderer(CALL_SUB_AGENT_TOOL_NAME, (tool, ctx) => <SubAgentRenderer tool={tool} turn={ctx.turn} />);
 registerToolRenderer(INIT_PROJECT_TOOL_NAME, (tool) => <InitProjectRenderer tool={tool} />);
 registerToolRenderer(
   GREP_TOOL_NAME,

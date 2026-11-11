@@ -231,10 +231,13 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
   const exportHistory = useCallback(async () => {
     if (!agent) return;
     try {
+      let turns;
+      if (isHttpAgent(agent)) turns = await agent.getTurnsForExport();
+      else turns = await context.pluginParams.history.load(agent.key);
       const content = {
         agentKey: agent.key,
         exportedAt: new Date().toISOString(),
-        turns: agent.getTurns(),
+        turns,
         compactRecord: agent.getCompactRecord?.() ?? null,
       };
       const name = `rxai-${Date.now()}.json`;

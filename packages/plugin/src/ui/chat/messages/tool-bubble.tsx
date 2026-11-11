@@ -28,7 +28,7 @@ const ToolBubble = React.memo(function ToolBubble({
   toolUI,
 }: {
   tool: ToolCallRecord;
-  turn: Pick<MessageRecord, "status">;
+  turn: MessageRecord;
   toolRendererMap: Map<string, ToolRenderer>;
   agent?: ChatAgent;
   toolUI?: ToolUIChannel;
@@ -70,7 +70,7 @@ const ToolBubble = React.memo(function ToolBubble({
 function renderToolWithErrorBoundary(
   renderer: ToolRenderer,
   tool: UIToolRecord,
-  turn: Pick<MessageRecord, "status">,
+  turn: MessageRecord,
   source: "custom" | "registry",
   agent?: ChatAgent,
   toolUI?: ToolUIChannel,
@@ -97,7 +97,7 @@ const ToolRendererInvoker = ({
 }: {
   renderer: ToolRenderer;
   tool: ToolCallRecord;
-  turn: Pick<MessageRecord, "status">;
+  turn: MessageRecord;
   agent?: ChatAgent;
   toolUI?: ToolUIChannel;
 }) => {

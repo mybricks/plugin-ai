@@ -1,5 +1,8 @@
+import type { BackgroundSubAgentInfo } from "../../../../../../agent/src";
 import {
   AgentEvents,
+  applySubAgentEvent,
+  type SubAgentTurnRecord,
   HistoryManager,
   AgentModeEnum,
   getAvailableAgentModes,
@@ -218,12 +221,16 @@ export class HttpAgent {
   private readonly workspaceBridge: WorkspaceBridge<HttpAgent>;
   private mode: AgentMode = AgentModeEnum.Build;
   private turns: TurnRecord[] = [];
+  private childTurns: SubAgentTurnRecord[] = [];
+  private childListRequest?: Promise<Array<BackgroundSubAgentInfo & { turn?: SubAgentTurnRecord }>>;
   private turnsPage: Required<Pick<TurnsPage, "hasMore">> &
     Pick<TurnsPage, "oldestTurnId"> = {
     hasMore: false,
     oldestTurnId: null,
   };
   private compactRecord: CompactRecord | null = null;
+  private readonly childConnections = new Map<string, AbortController>();
+  private readonly completedChildTurns = new Set<string>();
   private sessionState: AgentRuntimeState = { running: false };
   private sessionStateListeners = new Set<
     (state: AgentRuntimeState) => void
@@ -305,6 +312,7 @@ export class HttpAgent {
     void this.historyInitialization
       .then(() => this.workspaceBridge.waitInitialized())
       .then(() => this.initializePlugins())
+      .then(() => this.restoreSubagents())
       .then(() => this.sessionRecovery.startReplay())
       .catch((error) => {
         console.error("[plugin-ai] remote init failed", error);
@@ -413,6 +421,44 @@ export class HttpAgent {
 
   getTurns(): TurnRecord[] {
     return this.turns;
+  }
+
+  /** 从服务端 History 读取未经视图过滤的原始 turn 列表。 */
+  async getTurnsForExport(): Promise<TurnRecord[]> {
+    try {
+      return await this.requestJson<TurnRecord[]>(this.sessionPath("turns/export"));
+    } catch (error) {
+      // 旧服务端没有导出接口，沿用原来的导出行为。
+      if (!(error instanceof HttpResponseError && error.status === 404)) throw error;
+      return this.getTurns();
+    }
+  }
+
+  /** 读取指定子 Agent 的独立 turn，并合并本地事件流中的最新状态。 */
+  async getSubAgentTurns(agentKey: string): Promise<SubAgentTurnRecord[]> {
+    return (await this.getChildTurns()).filter(turn => turn.agentKey === agentKey);
+  }
+
+  /** 读取当前会话的子 turn；支持按父 turn 限定结果。 */
+  async getChildTurns(parentTurnId?: string): Promise<SubAgentTurnRecord[]> {
+    if (!this.childListRequest) {
+      const agentId = encodeURIComponent(this.agentId);
+      this.childListRequest = this.requestJson<Array<BackgroundSubAgentInfo & { turn?: SubAgentTurnRecord }>>(
+        this.workspacePath(`subagents?agentId=${agentId}`),
+      ).finally(() => { this.childListRequest = undefined; });
+    }
+    const children = await this.childListRequest;
+    const turns = new Map<string, SubAgentTurnRecord>();
+    for (const child of children) {
+      if (child.turn) turns.set(child.turn.id, child.turn);
+    }
+    for (const child of this.childTurns) {
+      const saved = turns.get(child.id);
+      if (!saved || child.endTime || !saved.endTime) turns.set(child.id, child);
+    }
+    return [...turns.values()]
+      .filter(turn => !parentTurnId || turn.parentTurnId === parentTurnId)
+      .sort((a, b) => a.startTime - b.startTime);
   }
 
   getTurnsPage(): Required<Pick<TurnsPage, "hasMore">> &
@@ -629,6 +675,8 @@ export class HttpAgent {
       method: "POST",
     });
     this.turns = [];
+    this.childTurns = [];
+    this.completedChildTurns.clear();
     this.compactRecord = null;
     this.turnsPage = {
       hasMore: false,
@@ -700,6 +748,8 @@ export class HttpAgent {
       await this.workspaceBridge.ensureConnected();
     },
     disconnect: (): void => {
+      this.childConnections.forEach(controller => controller.abort());
+      this.childConnections.clear();
       this.workspaceBridge.disconnect();
     },
   };
@@ -837,6 +887,53 @@ export class HttpAgent {
     this.setSessionState({ running: false });
   }
 
+  private async restoreSubagents(): Promise<void> {
+    try {
+      const agentId = encodeURIComponent(this.agentId);
+      const children = await this.requestJson<BackgroundSubAgentInfo[]>(this.workspacePath(`subagents?agentId=${agentId}`));
+      for (const child of children) if (child.status === "running" && (child as BackgroundSubAgentInfo & { async?: boolean }).async) this.observeSubagent(child);
+    } catch (error) {
+      // 旧服务端没有子会话接口，主会话初始化仍可继续。
+      if (!(error instanceof HttpResponseError && error.status === 404)) console.warn("[HttpAgent] subagent recovery failed", error);
+    }
+  }
+
+  private observeSubagent(info: BackgroundSubAgentInfo): void {
+    if (this.completedChildTurns.has(info.turnId) || this.childConnections.has(info.turnId)) return;
+    const controller = new AbortController();
+    this.childConnections.set(info.turnId, controller);
+    void (async () => {
+      let finished = false;
+      for (let attempt = 0; !finished && !controller.signal.aborted && attempt < 4; attempt++) {
+        try {
+          await this.requestEventStream(this.workspacePath(`subagents/${encodeURIComponent(info.agentKey)}/connect?agentId=${encodeURIComponent(this.agentId)}&turnId=${encodeURIComponent(info.turnId)}`), {}, {
+            signal: controller.signal,
+            onEvent: event => {
+              if (event.event === "subagent:event") {
+                this.handleRemoteEvent(event, { updateSessionState: false, acceptAsyncSubagent: true });
+                const childEvent = event.data as AgentEventMap["subagent:event"];
+                if (childEvent.event === "tool:result" || childEvent.event === "tool:error") {
+                  void this.workspaceBridge.syncFileChanges().catch(error => console.warn("[HttpAgent] subagent file sync failed", error));
+                }
+                if (["turn:complete", "turn:error", "turn:abort"].includes(childEvent.event)) {
+                  finished = true;
+                  this.completedChildTurns.add(info.turnId);
+                }
+              } else if (event.event === "workspace:file-change") {
+                void this.workspaceBridge.syncFileChanges(event.data?.version).catch(error => console.warn("[HttpAgent] subagent file sync failed", error));
+              }
+            },
+          });
+        } catch (error) {
+          if (attempt === 3) console.warn("[HttpAgent] subagent stream disconnected", error);
+        }
+        if (!finished && !controller.signal.aborted) await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+      }
+      if (!controller.signal.aborted) await this.workspaceBridge.syncFileChanges();
+    })().catch(error => console.warn("[HttpAgent] subagent sync failed", error))
+      .finally(() => this.childConnections.delete(info.turnId));
+  }
+
   private handleReplayEvent(event: RemoteAgentEvent): void {
     if (event.event === "session:error") {
       this.setSessionState({ running: false, error: event.data?.message ?? event.data });
@@ -875,8 +972,23 @@ export class HttpAgent {
       waitForRelease?: boolean;
       /** 本地合成事件仅用于同步消息记录，不应覆盖服务端阶段状态。 */
       updateSessionState?: boolean;
+      /** 异步子任务由过滤后的子 SSE 消费，避免父流和子流重复回放。 */
+      acceptAsyncSubagent?: boolean;
     } = {},
   ): void {
+    if (event.event === "subagent:event") {
+      const childEvent = event.data as AgentEventMap["subagent:event"];
+      if (childEvent.async && !options.acceptAsyncSubagent) return;
+      applySubAgentEvent(this.childTurns, childEvent);
+      this.events.emit("subagent:event", childEvent);
+      return;
+    }
+    if (event.event === "tool:result" && event.data?.name === "call-sub-agent") {
+      const metadata = event.data.result?.metadata;
+      if (metadata?.async === true && metadata.agentKey && metadata.turnId) {
+        this.observeSubagent(metadata as BackgroundSubAgentInfo);
+      }
+    }
     if (event.event === "session:released") {
       const turnId = this.eventTurnId(event);
       const version = event.data?.version;
@@ -1562,7 +1674,7 @@ export class HttpAgent {
       },
     });
     if (!response.ok) {
-      throw new Error(`${response.status} ${response.statusText}`);
+      throw new HttpResponseError(response.status, response.statusText);
     }
     if (response.status === 204) return undefined as T;
     const text = await response.text();

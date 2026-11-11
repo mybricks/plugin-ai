@@ -91,4 +91,3 @@ export function applySubAgentEvent(children: SubAgentTurnRecord[], event: SubAge
   else children[index] = record;
   return true;
 }
-

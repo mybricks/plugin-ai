@@ -333,7 +333,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
 
   if (name) context.name = name;
   (mentions ?? []).forEach((mention) => chipRegistry.register(mention.chip));
-  context.pluginParams = { name: context.name, user, onUpload: upload, onDownload: download, renderAttachmentSuffix, attachProcessors, mentions, renderHeaderExtra };
+  context.pluginParams = { name: context.name, user, onUpload: upload, onDownload: download, renderAttachmentSuffix, attachProcessors, mentions, renderHeaderExtra, history: history ?? new IDBHistory({ dbName: "@plugin-ai/plugin/messages" }) };
 
   // ── 调试工具：导入历史记录 ─────────────────────────────────────────────────
 

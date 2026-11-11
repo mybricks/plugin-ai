@@ -1,5 +1,7 @@
 import React, { useRef, useEffect, useState } from "react";
 import type { ToolRecord } from "../index";
+import type { MessageRecord } from "../../../use-session";
+import { readLegacySubAgentData } from "../../../../../../../agent/src";
 import { TextShimmer } from "../../../../components/text-shimmer";
 import { ChevronRight } from "../../../../components/icons";
 import { ElapsedTime } from "../../../../components/elapsed-time";
@@ -27,10 +29,32 @@ type SubAgentIteration = {
   toolCalls: SubAgentToolCall[];
 };
 
-function getIterations(tool: ToolRecord): SubAgentIteration[] {
-  const raw = tool.progress?.iterations ?? tool.result?.metadata?.iterations;
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((item): item is SubAgentIteration => !!item && typeof item.iterId === "string");
+function getIterations(tool: ToolRecord, turn?: MessageRecord): SubAgentIteration[] {
+  const legacy = readLegacySubAgentData(turn, tool);
+  const child = turn?.childTurns?.find(item => item.callId === tool.callId)
+    ?? legacy.records.find(item => item.callId === tool.callId);
+  if (!child) {
+    return legacy.iterations.filter((item): item is SubAgentIteration => !!item && typeof (item as SubAgentIteration).iterId === "string");
+  }
+  return child.iterations.flatMap(iteration => {
+    if ("type" in iteration || !iteration.iterId) return [];
+    return [{
+      iterId: iteration.iterId,
+      content: iteration.content ?? "",
+      thinkingContent: iteration.thinkingContent,
+      toolCalls: iteration.toolCalls.map(call => ({
+        callId: call.callId,
+        name: call.name,
+        title: call.title,
+        args: call.args,
+        output: call.result?.output,
+        error: call.error,
+        status: call.status === "success" || call.status === "error" ? call.status : "running",
+        startTime: call.execStartTime,
+        endTime: call.execEndTime,
+      })),
+    }];
+  });
 }
 
 function basename(p: string): string {
@@ -65,22 +89,73 @@ function hasIterationPeek(iteration: SubAgentIteration): boolean {
   return Boolean(iteration.content?.trim()) || iteration.toolCalls.length > 0;
 }
 
-export const SubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
+export const SubAgentRenderer = ({ tool, turn }: { tool: ToolRecord; turn?: MessageRecord }) => {
   const agentType: string = tool.args?.type ?? "";
   if (agentType === "init-project") {
     return <InitProjectRenderer tool={tool} />;
   }
-  return <DefaultSubAgentRenderer tool={tool} />;
+  const child = turn?.childTurns?.find(item => item.callId === tool.callId);
+  let displayTool = tool;
+  if (tool.status === "pending" && child?.endTime) {
+    let status: "success" | "error" = "success";
+    if (child.status === "error" || child.status === "abort") status = "error";
+    displayTool = { ...tool, status, execEndTime: child.endTime };
+  } else if (tool.status === "pending" && turn?.status !== "pending" && !child) {
+    // 父 turn 已中断，且没有可恢复的子任务时，旧工具快照不能继续显示 loading。
+    displayTool = { ...tool, status: "error" };
+  }
+  // 工具结果可能尚未写入历史，以子记录中的 async 补充识别后台任务。
+  if (tool.result?.metadata?.async === true || child?.async === true) {
+    return <BackgroundSubAgentRenderer tool={displayTool} child={child} interrupted={turn?.errorCode === "TURN_INCOMPLETE"} />;
+  }
+  return <DefaultSubAgentRenderer tool={displayTool} turn={turn} />;
 };
 
-const DefaultSubAgentRenderer = ({ tool }: { tool: ToolRecord }) => {
+/**
+ * 异步子 Agent 的卡片展示任务标题、状态和耗时；执行过程由子会话界面展示。
+ */
+const BackgroundSubAgentRenderer = ({ tool, child, interrupted }: { tool: ToolRecord; child?: NonNullable<MessageRecord["childTurns"]>[number]; interrupted?: boolean }) => {
+  const metadata = tool.result?.metadata ?? {};
+  const title: string = child?.title ?? metadata.title ?? tool.args?.name ?? tool.args?.type ?? "";
+  let status: "pending" | "success" | "error" = "pending";
+  if (child?.endTime) {
+    status = "success";
+    if (child.status === "error" || child.status === "abort") status = "error";
+  } else if (!child && tool.status !== "pending") {
+    status = tool.status === "error" ? "error" : "success";
+  }
+  // 父 turn 中断且子任务没有终态时，无法判断子任务是否仍在运行。
+  const statusUnknown = Boolean(interrupted && child && !child.endTime);
+  const backgroundTool: ToolRecord = {
+    ...tool,
+    status,
+    execStartTime: child?.startTime ?? tool.execStartTime,
+    execEndTime: child?.endTime ?? tool.execEndTime,
+  };
+
+  return (
+    <div className={css["sub-agent-card"]}>
+      <div className={css["sub-agent-header"]}>
+        <span className={css["sub-agent-header-icon"]}>
+          {statusUnknown ? "?" : <StatusIcon tool={backgroundTool} />}
+        </span>
+        <span className={css["sub-agent-header-title"]}>
+          {status === "pending" && !statusUnknown ? <TextShimmer>{title}</TextShimmer> : title}
+        </span>
+        {!statusUnknown && <Duration tool={backgroundTool} />}
+      </div>
+    </div>
+  );
+};
+
+const DefaultSubAgentRenderer = ({ tool, turn }: { tool: ToolRecord; turn?: MessageRecord }) => {
   const [expanded, setExpanded] = useState(false);
 
   const agentType: string = tool.args?.type ?? "";
   const taskName = tool.args?.name ?? "";
   const isPending = tool.status === "pending";
 
-  const iterations = getIterations(tool);
+  const iterations = getIterations(tool, turn);
   const visibleIterations = isPending
     ? iterations
     : iterations.filter(hasIterationPeek);

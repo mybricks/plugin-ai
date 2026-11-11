@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import type { Agent, HistoryStatus, TurnRecord } from "../../../../agent/src";
+import { applySubAgentEvent, type Agent, type HistoryStatus, type TurnRecord, type SubAgentTurnRecord } from "../../../../agent/src";
 import type { WarmupIter } from "../../../../agent/src/types";
 import { tryParsePartialArgs } from "./messages/tool-renders/partial-args";
 import type { ToolCallView } from "./messages/tool-renders";
@@ -9,6 +9,8 @@ export type SessionAgent = Pick<
   Agent,
   "events" | "historyManager" | "getTurns" | "getTools"
 > & {
+  getSubAgentTurns?: (agentKey: string) => Promise<SubAgentTurnRecord[]>;
+  getChildTurns?: (parentTurnId?: string) => Promise<SubAgentTurnRecord[]>;
   /** 服务端 Agent 的游标分页入口；本地 Agent 仍通过 getTurns(options) 加载。 */
   loadOlderTurns?: (limit?: number) => Promise<unknown>;
 };
@@ -30,6 +32,8 @@ export interface MessageRecord extends Omit<TurnRecord, "status" | "endTime" | "
   status: "pending" | "success" | "abort" | "error";
   endTime?: number;
   iterations: UIIteration[];
+  /** 仅 UI 使用的子 turn 视图，不写入主 turn 的 History。 */
+  childTurns?: SubAgentTurnRecord[];
 }
 
 type MessageIteration = UIIteration;
@@ -74,6 +78,53 @@ function turnsToMessageRecords(turns: TurnRecord[]): MessageRecord[] {
     }));
 }
 
+async function loadMessageRecords(agent: SessionAgent): Promise<MessageRecord[]> {
+  const records = turnsToMessageRecords(await agent.getTurns());
+  if (agent.getChildTurns) {
+    const hasChildCalls = records.some(record => record.iterations.some(iter => {
+      if ("type" in iter) return false;
+      return iter.toolCalls.some(tool => tool.name === "call-sub-agent" || tool.name === "init-project" || typeof tool.result?.metadata?.agentKey === "string");
+    }));
+    if (!hasChildCalls) return records;
+    try {
+      const children = await agent.getChildTurns();
+      for (const record of records) record.childTurns = children.filter(child => child.parentTurnId === record.id);
+    } catch (error) {
+      console.warn("[plugin-ai] failed to load child turns", error);
+    }
+    return records;
+  }
+  if (!agent.getSubAgentTurns) return records;
+  await Promise.all(records.map(async record => {
+    const keys = new Set<string>();
+    for (const iter of record.iterations) {
+      if ("type" in iter) continue;
+      for (const tool of iter.toolCalls) {
+        const key = tool.result?.metadata?.agentKey;
+        if (typeof key === "string") keys.add(key);
+      }
+    }
+    const children = await Promise.all([...keys].map(key => agent.getSubAgentTurns!(key)));
+    record.childTurns = children.flat().filter(child => child.parentTurnId === record.id);
+  }));
+  return records;
+}
+
+/** 合并加载期间收到的实时子事件，避免异步历史查询覆盖正在展示的进度。 */
+function mergeLiveChildren(records: MessageRecord[], current: MessageRecord[]): void {
+  const byId = new Map(current.map(record => [record.id, record]));
+  for (const record of records) {
+    const existing = byId.get(record.id)?.childTurns;
+    if (!existing?.length) continue;
+    const children = new Map((record.childTurns ?? []).map(child => [child.id, child]));
+    for (const child of existing) {
+      const saved = children.get(child.id);
+      if (!saved || child.endTime || !saved.endTime) children.set(child.id, child);
+    }
+    record.childTurns = [...children.values()];
+  }
+}
+
 function isWarmupIteration(iter: MessageIteration): iter is UIWarmupIter {
   return "type" in iter && iter.type === "warmup";
 }
@@ -111,7 +162,11 @@ function useHistoryLoader(
       setHistoryError(snapshot.error);
       setHasMore(snapshot.hasMore);
       if (snapshot.status === "ready") {
-        const records = turnsToMessageRecords(await agent.getTurns());
+        const records = await loadMessageRecords(agent);
+        if (cancelled) return;
+        const current = [...historyRef.current];
+        if (streamingRef.current) current.push(streamingRef.current);
+        mergeLiveChildren(records, current);
         const streaming = records.find((r) => r.status === "pending") ?? null;
         historyRef.current = streaming ? records.filter((r) => r !== streaming) : records;
         streamingRef.current = streaming
@@ -169,7 +224,10 @@ function useAgentEvents(
     };
 
     const syncFromSnapshot = async () => {
-      const records = turnsToMessageRecords(await a.getTurns());
+      const records = await loadMessageRecords(a);
+      const current = [...historyRef.current];
+      if (streamingRef.current) current.push(streamingRef.current);
+      mergeLiveChildren(records, current);
       const streaming = records.find((r) => r.status === "pending") ?? null;
       historyRef.current = streaming ? records.filter((r) => r !== streaming) : records;
       streamingRef.current = streaming
@@ -179,6 +237,28 @@ function useAgentEvents(
     };
 
     unsubsRef.current.push(
+      a.events.on("subagent:event", event => {
+        const records = streamingRef.current
+          ? [...historyRef.current, streamingRef.current]
+          : historyRef.current;
+        const parent = records.find(turn => turn.id === event.parentTurnId);
+        if (!parent) return;
+        const children = [...(parent.childTurns ?? [])];
+        if (!applySubAgentEvent(children, event)) return;
+        parent.childTurns = children;
+        // 后台子任务可能更新已经结束的 turn；更换引用让 memo 组件感知变化。
+        if (streamingRef.current?.id === event.parentTurnId) {
+          streamingRef.current = { ...streamingRef.current };
+        } else {
+          historyRef.current = historyRef.current.map(turn => {
+            if (turn.id === event.parentTurnId) return { ...turn };
+            return turn;
+          });
+        }
+        if (["turn:complete", "turn:abort", "turn:error"].includes(event.event)) flushCommit();
+        else scheduleCommit();
+      }),
+
       a.events.on("turn:start", ({ turnId, message, attachments, meta, userFormattedText, sender }) => {
         flushCommit();
         const userAttachments = (attachments ?? []).map((att: any) => ({
@@ -489,7 +569,10 @@ function useAgentEvents(
       if (!oldest) return;
       await agent.getTurns({ before: oldest.id, limit });
     }
-    const records = turnsToMessageRecords(await agent.getTurns());
+    const records = await loadMessageRecords(agent);
+    const current = [...historyRef.current];
+    if (streamingRef.current) current.push(streamingRef.current);
+    mergeLiveChildren(records, current);
     const streaming = streamingRef.current;
     historyRef.current = streaming
       ? records.filter((r) => r.id !== streaming.id)
