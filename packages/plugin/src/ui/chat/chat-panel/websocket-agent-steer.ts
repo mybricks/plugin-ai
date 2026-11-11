@@ -10,10 +10,16 @@ export interface SteerChannelDeps {
       agentCode?: string;
       sessionId?: string;
       steer: true;
+      attachments?: string[];
       variables?: Record<string, any>;
     },
     signal: AbortSignal,
   ): Promise<Response>;
+  /** 上传图片类附件到会话文件接口，返回「文件名 → 上传结果」；无附件/不可上传时返回 null。 */
+  uploadAttachments(
+    attachments: any[],
+    signal: AbortSignal,
+  ): Promise<Map<string, any> | null>;
   readStream(
     response: Response,
     signal: AbortSignal,
@@ -95,6 +101,10 @@ export class SteerChannel {
     let state: ChatStreamState | undefined;
     let terminal = false;
     try {
+      // 附件与普通轮一致：先上传到会话文件接口，再把文件名以 attachments 带进本轮请求。
+      const fileResults = await this.deps.uploadAttachments(params.attachments ?? [], abort.signal);
+      const fileNames = fileResults ? Array.from(fileResults.keys()) : [];
+
       const response = await this.deps.openStream(
         {
           message: params.message,
@@ -102,6 +112,7 @@ export class SteerChannel {
           sessionId,
           steer: true,
           variables: this.deps.buildVariables(params.variables),
+          ...(fileNames.length > 0 ? { attachments: fileNames } : {}),
         },
         abort.signal,
       );

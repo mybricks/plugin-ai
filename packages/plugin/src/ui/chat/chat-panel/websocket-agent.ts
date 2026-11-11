@@ -204,6 +204,7 @@ export class WebSocketAgent {
     this.steerChannel = new SteerChannel({
       openStream: (body, signal) => this.openChatStream(body, signal),
       readStream: (response, signal, onEvent) => this.readChatStream(response, signal, onEvent),
+      uploadAttachments: (attachments, signal) => this.uploadAttachments(attachments, signal),
       getSessionId: () => this.conversationSessionId ?? this.sessionId,
       getAgentCode: () => this.options.agentCode,
       buildVariables: (extra) => this.buildStreamVariables(extra),
