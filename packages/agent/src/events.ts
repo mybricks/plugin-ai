@@ -23,8 +23,10 @@ export type AgentEventMap = {
     meta?: Record<string, any>;
     /** 格式化后的消息文本（含 focus 等注入内容，不同于 message 时才存在） */
     userFormattedText?: string;
-    /** 发送者信息（由 formatUserMessage 返回，UI 展示时优先使用） */
+    /** 转发的 sender 信息（由 formatUserMessage 返回，UI 展示时优先使用） */
     sender?: TurnSender;
+    /** 调用方为这条消息分配的标识，用于把 UI 的乐观记录与真实 turn 对上号 */
+    clientMessageId?: string;
   };
 
   /**

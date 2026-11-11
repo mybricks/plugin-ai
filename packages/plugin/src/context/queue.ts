@@ -46,6 +46,8 @@ interface QueueEntry {
   requestRunning: boolean;
   agentState: AgentRuntimeState;
   queue: QueueItem[];
+  /** 手动停止后置位：暂停自动续发（队列保留），下一次主动发送时恢复。 */
+  paused?: boolean;
 }
 
 /** 统一本地与远程 Agent 运行态的前端请求队列。 */
@@ -83,7 +85,7 @@ export class AgentQueue {
     this.requestGuards.set(agent, guard);
   }
 
-  /** 发送请求；Agent 或当前请求正在运行时，进入浏览器内队列。 */
+  /** 发送请求；Agent 或当前请求正在运行时，进入浏览器内队列。主动发送会恢复被暂停的队列。 */
   send(
     agent: RuntimeAgent,
     runFn: () => Promise<void>,
@@ -91,6 +93,7 @@ export class AgentQueue {
   ) {
     if (this.blockIfDisabled(agent)) return;
     const entry = this.ensureEntry(agent);
+    entry.paused = false;
     if (this.isRunning(entry)) {
       const item: QueueItem = {
         id: `q-${++this.idCounter}`,
@@ -106,10 +109,15 @@ export class AgentQueue {
     this.run(entry, runFn);
   }
 
-  /** 中止当前正在执行的请求 */
+  /**
+   * 手动停止：中止当前正在执行的请求，并暂停自动续发。
+   * 等待队列保留（不清空），下一次主动发送时恢复 drain。
+   */
   stop(agent: RuntimeAgent) {
     const entry = this.ensureEntry(agent);
     if (this.isRunning(entry)) void entry.runtime.abort();
+    entry.paused = true;
+    this.notify(entry);
   }
 
   remove(agent: RuntimeAgent, id: string) {
@@ -184,7 +192,7 @@ export class AgentQueue {
   }
 
   private drain(entry: QueueEntry) {
-    if (this.isRunning(entry)) return;
+    if (entry.paused || this.isRunning(entry)) return;
     const next = entry.queue.shift();
     this.notify(entry);
     if (next) this.run(entry, next.runFn);

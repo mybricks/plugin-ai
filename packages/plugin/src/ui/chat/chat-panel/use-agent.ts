@@ -8,6 +8,7 @@ import { AgentModeEnum } from "../../../../../agent/src";
 import type { HistoryStatus } from "../../../../../agent/src";
 import type { ModelSelection } from "../../../../../request/src/providers";
 import { useSession } from "../use-session";
+import { usePendingSubmissions } from "./use-pending-submissions";
 import { isHttpAgent, type HttpAgent } from "./http-agent";
 import { isWebSocketAgent, type WebSocketAgent } from "./websocket-agent";
 import {
@@ -83,6 +84,7 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
   const availableModes = agent?.getAvailableModes() ?? [AgentModeEnum.Build];
   const showChatMode = availableModes.length > 1;
   const [chatMode, setChatModeState] = useState<AgentMode>(() => agent?.getMode() ?? availableModes[0] ?? AgentModeEnum.Build);
+  const submissions = usePendingSubmissions(agent);
 
   const modelSelection = context.getModelSelection(agent?.key);
   const hasModelSelection = !!(modelSelection && modelSelection.isValid());
@@ -171,14 +173,46 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
   }, [agent]);
 
   const sendNowFromQueue = useCallback((id: string) => {
-    if (agent) context.aiQueue.sendNow(agent, id);
-  }, [agent]);
+    if (!agent) return;
+    const item = context.aiQueue.getState(agent).queue.find((queued) => queued.id === id);
+    const wsAgent = isWebSocketAgent(agent) ? agent : undefined;
+    // 「优先发送」：WebSocket Agent 走平台插话（steer:true），由平台决定插入当前轮还是滚下一轮。
+    if (wsAgent && item) {
+      // 队列项 id（如 q-1）同时作为占位记录 id 与 agent 的 clientMessageId，建轮时回声以便让位。
+      submissions.add({
+        id,
+        userText: item.message,
+        userAttachments: item.attachments ?? [],
+        startTime: Date.now(),
+      });
+      context.aiQueue.remove(agent, id);
+      void wsAgent
+        .steer({
+          message: item.message,
+          attachments: item.attachments,
+          clientMessageId: id,
+        })
+        .catch(() => {
+          // 无论用户终止还是投递失败：消息都保留在屏幕上（去掉等待提示）。
+          // 后续如需区分"失败"状态，在这里给占位加标记即可。
+          submissions.settle(id);
+        })
+        .then(() => {
+          // steer 结束时若已无任何轮在跑：这条消息没落成 turn（可能还没走到接口），
+          // 消息保留在屏幕上，只去掉"等待响应"提示。
+          if (!wsAgent.getSessionState().running) submissions.settle(id);
+        });
+      return;
+    }
+    context.aiQueue.sendNow(agent, id);
+  }, [agent, submissions]);
 
   const clear = useCallback(async () => {
     if (!agent || isDisabled) return;
     await agent.clearHistory();
+    submissions.reset();
     clearSession();
-  }, [agent, clearSession, isDisabled]);
+  }, [agent, clearSession, isDisabled, submissions]);
 
   const loadMoreHistory = useCallback(async (count = 1) => {
     if (!agent) return;
@@ -226,10 +260,12 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
     if (mode) agent?.setMode(mode, "ui-change");
   }, [agent]);
 
+  const messagesWithPending = useMemo(() => submissions.merge(messages), [messages, submissions]);
+
   return {
     source: isWebSocketAgent(agent) ? "websocket" : isHttpAgent(agent) ? "http" : "local",
     agent,
-    messages,
+    messages: messagesWithPending,
     historyStatus,
     historyError,
     hasMore,

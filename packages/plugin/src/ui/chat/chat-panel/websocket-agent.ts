@@ -19,6 +19,7 @@ import type { ToolExecutionContext } from "../../../../../agent/src/types";
 import { createToolUIChannel, type ToolUIChannel } from "../../../../../agent/src/tool-ui";
 import type { AgentRuntimeState } from "../../../context/agent-runtime";
 import { WEBSOCKET_AGENT_SESSION_STAGE } from "./session-status";
+import { SteerChannel, type SteerParams } from "./websocket-agent-steer";
 
 /** 解析鉴权字段：支持字符串或按请求实时取值的函数。 */
 function resolveAuthValue(v?: string | (() => string | undefined | null)): string | undefined {
@@ -107,18 +108,21 @@ export type WebSocketAgentRequestAIParams =
 type WsEnvelope = { v?: number; type?: string; requestId?: string; payload?: any;[key: string]: any };
 type ToolResult = { ok: true; result: any } | { ok: false; error: { code: string; message: string } };
 type ChatEvent = { name: string; data: any };
+
 /** 与 TurnRecord.iterations 中的 LLM 迭代结构对齐（排除 warmup）。 */
-type LLMIter = {
+export interface LLMIter {
   iterId: string;
   content: string;
   toolCalls: ToolCallRecord[];
   startTime: number;
   endTime?: number;
   mode?: AgentMode;
-};
+}
 
-/** /chat/stream 的流式状态：iter 为当前活跃迭代，segment 为该 iter 内的正文累积。 */
-interface ChatStreamState {
+/** /chat/stream 的流式写入状态：iter 为当前活跃迭代，segment 为该 iter 内的正文累积。 */
+export interface ChatStreamState {
+  /** 当前正在写入的 turn；steer_delivered 时切换到插话自己的一轮。 */
+  turn: TurnRecord;
   iter: LLMIter;
   segment: string;
   /** 整轮累积的全部正文，仅用于 done 事件兜底判断（流内无 delta 时取 data.answer）。 */
@@ -175,6 +179,8 @@ export class WebSocketAgent {
   private conversationSessionId?: string;
   private activeTurnId?: string;
   private chatAbort?: AbortController;
+  /** 插话通道：steer 请求的发送、消费、在途计数与 inboxId 配对都在这里。 */
+  private readonly steerChannel: SteerChannel;
   private state: AgentRuntimeState = { running: false };
   private readonly getSessionIdForHistory?: () => string | undefined;
   private readonly onSessionReset?: (sessionId: string) => void | Promise<void>;
@@ -194,6 +200,19 @@ export class WebSocketAgent {
     this.historyManager = new HistoryManager({
       history: runtime.history ?? null,
       key: runtime.history ? (runtime.historyKey ?? this.key) : undefined,
+    });
+    this.steerChannel = new SteerChannel({
+      openStream: (body, signal) => this.openChatStream(body, signal),
+      readStream: (response, signal, onEvent) => this.readChatStream(response, signal, onEvent),
+      getSessionId: () => this.conversationSessionId ?? this.sessionId,
+      getAgentCode: () => this.options.agentCode,
+      buildVariables: (extra) => this.buildStreamVariables(extra),
+      beginTurn: (text, clientMessageId) => this.beginSteerState(text, clientMessageId),
+      appendDelta: (state, delta) => this.appendDelta(state, delta),
+      finishStream: (state, finalAnswer) => this.finishStream(state, finalAnswer),
+      closeIter: (iter) => this.closeLLMIter(iter, true),
+      finishTurn: (turn, status, error) => this.finishTurn(turn, status, error),
+      notifyRunning: () => this.refreshRunningState(),
     });
     // 优先使用传入的 sessionId，其次从持久化 KV 读取。
     const initialSessionId = options.sessionId ?? kv.get<PersistedSession>(this.persistedSessionKey())?.sessionId;
@@ -386,8 +405,18 @@ export class WebSocketAgent {
     } finally {
       params.signal?.removeEventListener("abort", externalAbort);
       this.chatAbort = undefined;
-      this.activeTurnId = undefined;
+      if (this.activeTurnId === turn.id) this.activeTurnId = undefined;
+      // 统一按"有轮在跑 / 有 steer 在途"计算运行态：任何异常路径都不能卡在 true，
+      // 也不能在 steer 还没落位时提前放行本地队列。
+      this.refreshRunningState();
     }
+  }
+
+  /** 统一计算运行态：有轮在跑或有 steer 在途 → running；否则置空闲。 */
+  private refreshRunningState(error?: unknown): void {
+    const running = !!(this.activeTurnId || this.steerChannel.busy);
+    const err = error !== undefined ? error : this.state.error;
+    this.setState({ running, ...(err !== undefined ? { error: err } : {}) });
   }
 
   async retry(turnId: string): Promise<void> {
@@ -408,7 +437,19 @@ export class WebSocketAgent {
 
   async abort(): Promise<void> {
     this.chatAbort?.abort();
+    // steer 是独立请求，不受 chatAbort 管辖，必须一起掐掉。
+    this.steerChannel.abortAll();
     await this.stopRemoteGeneration();
+  }
+
+  /**
+   * 轮中插话（平台原生 steer:true）：不打断当前轮，平台自行决定
+   * 插进这一轮的下一个工具步骤（steer_delivered，正文在原请求的流上），
+   * 还是滚成下一轮（steer_dropped，正文从本条 steer 流返回）。
+   * 具体协议处理见 SteerChannel。
+   */
+  async steer(params: SteerParams): Promise<void> {
+    await this.steerChannel.run(params);
   }
 
   async clearHistory(): Promise<void> {
@@ -445,6 +486,14 @@ export class WebSocketAgent {
     this.socketReady = false;
   }
   // ─── SSE 对话流 ────────────────────────────────────────────────────────
+  /** 组装 /chat/stream 的业务变量：合并配置的 projectId/appType；无 agentCode 时不发送。 */
+  private buildStreamVariables(extra?: Record<string, any>): Record<string, any> | undefined {
+    const variables: Record<string, any> = { ...(extra ?? {}) };
+    if (this.options.projectId !== undefined) variables.projectId = this.options.projectId;
+    if (this.options.appType !== undefined) variables.appType = this.options.appType;
+    return Object.keys(variables).length > 0 && this.options.agentCode ? variables : undefined;
+  }
+
   private async consumeChatStream(
     turn: TurnRecord,
     params: { message: string; attachments?: any[]; variables?: Record<string, any> },
@@ -454,18 +503,12 @@ export class WebSocketAgent {
     await this.uploadAttachments(params.attachments ?? [], signal);
 
     // variables 需在智能体 businessVariables 声明集内，且携带时 agentCode 必填。
-    // 配置的 projectId/appType 作为业务变量合并进 variables；
-    const variables: Record<string, any> = { ...(params.variables ?? {}) };
-    if (this.options.projectId !== undefined) variables.projectId = this.options.projectId;
-    if (this.options.appType !== undefined) variables.appType = this.options.appType;
- 
-    const useVariables = Object.keys(variables).length > 0 && !!this.options.agentCode;
     const response = await this.openChatStream(
       {
         message: params.message,
         agentCode: this.options.agentCode,
         sessionId: this.conversationSessionId,
-        ...(useVariables ? { variables } : {}),
+        variables: this.buildStreamVariables(params.variables),
       },
       signal,
     );
@@ -473,8 +516,8 @@ export class WebSocketAgent {
     // 远程平台整轮只走一条 SSE，正文与工具交替到达：工具执行后正文重新出现
     // 视为新一轮 LLM 输出，届时切新 iter（见 applyChatEvent 的 delta 分支），
     // 保证渲染层按时间顺序交错展示正文与工具（对齐本地 CodeAgent 每 step 一个 iter）。
-    const state: ChatStreamState = { iter: this.startLLMIter(turn), segment: "", answer: "" };
-    const terminal = await this.readChatStream(response, signal, (event) => this.applyChatEvent(turn, state, event));
+    const state: ChatStreamState = { turn, iter: this.startLLMIter(turn), segment: "", answer: "" };
+    const terminal = await this.readChatStream(response, signal, (event) => this.applyChatEvent(state, event));
     if (!terminal) {
       if (signal.aborted) return; // 被 abort，交由上层 finishTurn(abort)
       throw new Error("Chat stream closed before a terminal event");
@@ -522,6 +565,8 @@ export class WebSocketAgent {
       agentCode?: string;
       sessionId?: string;
       variables?: Record<string, any>;
+      /** 轮中插话：插进正在运行的那一轮的下一个工具步骤（平台原生能力）。 */
+      steer?: boolean;
     },
     signal: AbortSignal,
   ): Promise<Response> {
@@ -538,6 +583,7 @@ export class WebSocketAgent {
         ...(body.agentCode ? { agentCode: body.agentCode } : {}),
         ...(body.sessionId ? { sessionId: body.sessionId } : {}),
         ...(body.variables ? { variables: body.variables } : {}),
+        ...(body.steer ? { steer: true } : {}),
       }),
     });
     if (!response.ok || !response.body) {
@@ -656,7 +702,7 @@ export class WebSocketAgent {
     return terminal;
   }
 
-  private applyChatEvent(turn: TurnRecord, state: ChatStreamState, event: ChatEvent): boolean {
+  private applyChatEvent(state: ChatStreamState, event: ChatEvent): boolean {
     switch (event.name) {
       case "meta":
         // seed 阶段已确定 sessionId；这里只做对齐（平台理论上应回传同一个 id）。
@@ -669,46 +715,110 @@ export class WebSocketAgent {
           this.persistSession();
         }
         return false;
-      case "delta": {
-        const delta = typeof event.data === "string" ? event.data : String(event.data ?? "");
-        // 当前 iter 已承载工具调用时，正文重新出现意味着新一轮 LLM 输出：
-        // 关闭旧 iter 并新开一个，正文按段累积，避免整轮正文压平到顶部、工具堆到底部。
-        if (state.iter.toolCalls.length > 0) {
-          this.closeLLMIter(state.iter);
-          state.iter = this.startLLMIter(turn);
-          state.segment = "";
-        }
-        state.segment += delta;
-        state.answer += delta;
-        state.iter.content = state.segment;
-        this.events.emit("llm:content", { delta, content: state.segment, step: 1, iterId: state.iter.iterId });
+      case "delta":
+        this.appendDelta(state, typeof event.data === "string" ? event.data : String(event.data ?? ""));
         return false;
-      }
       case "tool_start":
         this.onRemoteToolStart(state.iter, event.data ?? {});
         return false;
       case "tool_result":
         this.onRemoteToolResult(event.data ?? {});
         return false;
-      case "done": {
-        const finalAnswer = event.data?.answer;
-        if (!state.answer && typeof finalAnswer === "string") {
-          state.iter.content = finalAnswer;
-          this.events.emit("llm:content", { delta: finalAnswer, content: finalAnswer, step: 1, iterId: state.iter.iterId });
-        }
-        this.closeLLMIter(state.iter, true);
-        this.finishTurn(turn, "success");
-        return true;
+      case "steer_delivered": {
+        // 插话已进入当前轮：暂停当前回复框，后续 delta 另起一条 turn（独立气泡 + 回复框）。
+        const previousTurn = state.turn;
+        const previousIter = state.iter;
+        const clientMessageId = this.steerChannel.takeClientId(event.data?.inboxId);
+        const next = this.beginSteerState(String(event.data?.text ?? ""), clientMessageId);
+        state.turn = next.turn;
+        state.iter = next.iter;
+        state.segment = "";
+        state.answer = "";
+        this.sealTurn(previousTurn, previousIter);
+        return false;
       }
+      case "steer_dropped": {
+        // 插话没赶上工具步骤，已被平台滚成下一轮；本轮不受影响，正文继续走本条流。
+        // 该插话不会再走 delivered，顺带清掉它的 inboxId 映射，避免累积。
+        this.steerChannel.forget(event.data?.inboxId);
+        return false;
+      }
+      case "done":
+        this.finishStream(state, event.data?.answer);
+        return true;
       case "stopped":
         state.iter.endTime = Date.now();
-        this.finishTurn(turn, "abort");
+        this.finishTurn(state.turn, "abort");
         return true;
       case "error":
         throw new Error(String(event.data?.message ?? event.data ?? "Remote agent error"));
       default:
         return false;
     }
+  }
+
+  /** 为插话创建独立的一轮（独立气泡 + 回复框）；push 进 turns 供 UI 重新对齐时识别为 pending。 */
+  private createSteerTurn(text: string, clientMessageId?: string): TurnRecord {
+    const turn: TurnRecord = {
+      id: createId("turn"),
+      startTime: Date.now(),
+      userText: text,
+      userAttachments: [],
+      iterations: [],
+      status: "success",
+      ...(clientMessageId ? { clientMessageId } : {}),
+    };
+    this.turns.push(turn);
+    this.activeTurnId = turn.id;
+    this.events.emit("turn:start", {
+      turnId: turn.id,
+      message: text,
+      ...(clientMessageId ? { clientMessageId } : {}),
+    });
+    return turn;
+  }
+
+  /** 建立插话轮并开好首个 iter，返回完整的流式状态（广播 turn:start / llm:start）。 */
+  private beginSteerState(text: string, clientMessageId?: string): ChatStreamState {
+    const turn = this.createSteerTurn(text, clientMessageId);
+    const iter = this.startLLMIter(turn);
+    this.setState({ running: true, turnId: turn.id });
+    return { turn, iter, segment: "", answer: "" };
+  }
+
+  /** 追加正文片段：当前 iter 已含工具调用时视为新的 LLM 输出，另起一段。 */
+  private appendDelta(state: ChatStreamState, delta: string): void {
+    if (state.iter.toolCalls.length > 0) {
+      this.closeLLMIter(state.iter);
+      state.iter = this.startLLMIter(state.turn);
+      state.segment = "";
+    }
+    state.segment += delta;
+    state.answer += delta;
+    state.iter.content = state.segment;
+    this.events.emit("llm:content", { delta, content: state.segment, step: 1, iterId: state.iter.iterId });
+  }
+
+  /** 收尾一次流：无 delta 时用 done.answer 兜底正文，关闭 iter 并结束 turn。 */
+  private finishStream(state: ChatStreamState, finalAnswer?: unknown): void {
+    if (!state.answer && typeof finalAnswer === "string" && finalAnswer) {
+      state.iter.content = finalAnswer;
+      this.events.emit("llm:content", { delta: finalAnswer, content: finalAnswer, step: 1, iterId: state.iter.iterId });
+    }
+    this.closeLLMIter(state.iter, true);
+    this.finishTurn(state.turn, "success");
+  }
+
+  /**
+   * 封口一个已完成的 turn：写结束态、落库、关闭 iter。
+   * closeLLMIter(done=true) 会让 UI 从 agent.turns 重新对齐，
+   * 因此调用前要确保"接管的 turn"已经就位。
+   */
+  private sealTurn(turn: TurnRecord, iter: LLMIter): void {
+    turn.status = "success";
+    turn.endTime = Date.now();
+    void this.persistTurn(turn);
+    this.closeLLMIter(iter, true);
   }
 
   /** 新开一个 LLM 迭代并广播 llm:start（对齐本地 CodeAgent 每 step 一个 iter 的结构）。 */
@@ -1028,12 +1138,17 @@ export class WebSocketAgent {
     turn.status = status;
     turn.endTime = Date.now();
     if (error) turn.error = String((error as any)?.message ?? error);
+    // 插话轮（steer 流 / delivered 后新开的一轮）也会设置 activeTurnId，必须在这里释放，
+    // 否则下一次正常发送会被 requestAI 的互斥守卫拦下（"turn is already running"）。
+    if (this.activeTurnId === turn.id) this.activeTurnId = undefined;
     this.toolResults.clear();
     // 延迟清理 toolIterMap：给迟到的 TOOL_CALL 一个短暂窗口，避免竞争条件导致找不到 iter
     const iterMap = this.toolIterMap;
     setTimeout(() => { iterMap.clear(); }, 5000);
     void this.persistTurn(turn);
-    this.setState({ running: false, ...(error ? { error } : {}) });
+    // 运行态统一由 refreshRunningState 计算：steer 在途时即使本轮结束也不能置空闲，
+    // 否则本地队列会立刻 drain，把后面的消息插到插话前面。
+    this.refreshRunningState(error ? error : undefined);
     if (status === "success") this.events.emit("turn:complete", {});
     else if (status === "abort") this.events.emit("turn:abort", {});
     else this.events.emit("turn:error", { error });

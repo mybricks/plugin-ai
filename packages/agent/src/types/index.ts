@@ -256,6 +256,11 @@ export interface TurnRecord {
   userText: string;
   /** 格式化后的用户消息文本（发给 LLM，含 focus 上下文等注入内容；未格式化时与 userText 相同） */
   userFormattedText?: string;
+  /**
+   * 调用方为这条消息分配的标识（客户端生成，仅用于关联 UI 上的乐观记录与真实 turn，
+   * 不参与 LLM 上下文、不写入历史）。
+   */
+  clientMessageId?: string;
   /** 用户附件（图片、PDF 等） */
   userAttachments: Attachment[];
   /**
