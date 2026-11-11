@@ -59,3 +59,16 @@ export const DefaultUserMessage = ({ record }: { record: MessageRecord }) => {
     </span>
   );
 };
+
+/** 用户消息的纯文本形式（复制等场景用）：[[chip:id]] 占位符替换为 chip 展示文案。 */
+export function getUserMessagePlainText(record: MessageRecord): string {
+  const chips = record.meta?.chips as { id: string; label: string }[] | undefined;
+  if (!chips?.length || !record.userText.includes("[[chip:")) return record.userText;
+  return record.userText
+    .replace(/\[\[chip:([^\]]+)\]\]/g, (placeholder, id: string) => {
+      const chip = chips.find((item) => item.id === id);
+      return chip ? ` ${chip.label} ` : placeholder;
+    })
+    .replace(/[ \t]+/g, " ")
+    .trim();
+}

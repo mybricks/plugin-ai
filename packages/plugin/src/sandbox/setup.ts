@@ -785,6 +785,11 @@ function connectToAI(
         session: remoteAgent.session,
         getSessionId: () => agentRef.current?.sessionId,
       });
+      // 历史附件 blob 下载完成后重新 emit ready，让 use-session 的订阅回调
+      // 重新 getTurns + commit，把 uploading 占位刷新为图片
+      sessionHistory.onAttachmentsResolved = () => {
+        agentRef.current?.historyManager.markReady();
+      };
       const wsHistory = history
         ? new MergedHistory(sessionHistory, history)
         : sessionHistory;

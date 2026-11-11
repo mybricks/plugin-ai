@@ -9,9 +9,10 @@
  *
  * 还原策略:
  * 1. 提取 `<user_query>` 内部正文;无该标签视为普通消息,原样返回。
- * 2. 从 `<referenced-dom-nodes>` 块的 `- @label：` 条目精确收集 dom chip 引用
- *    (长 label 优先替换,避免前缀误伤);chip 展示文案取条目内的
- *    「节点展示名」行(发送侧写入的输入框文案),缺失时回退条目标签。
+ * 2. 从 `<referenced-dom-nodes>` 块收集 dom chip 引用(长 label 优先替换,避免前缀误伤):
+ *    - 本仓库格式:`- @label：` 条目 + `节点展示名` 行;
+ *    - 宿主(设计器)格式:`Dom节点N: p class: ...` 条目,展示名取首行 class 列表中
+ *      最具体的类名(如 `.a .b .brand` → brand),取不到时回退条目标签。
  * 3. 剩余 `@token`(zone chip 引用,其引用块不携带 label)按 ASCII 标识符形态
  *    启发式还原;仅影响展示样式,不影响语义。
  */
@@ -30,10 +31,14 @@ export interface RestoredDisplayMessage {
 
 const USER_QUERY_PATTERN = /<user_query>\r?\n?([\s\S]*?)\r?\n?<\/user_query>/;
 const REFERENCED_DOM_NODES_PATTERN = /<referenced-dom-nodes[^>]*>([\s\S]*?)<\/referenced-dom-nodes>/g;
-/** `<referenced-dom-nodes>` 块内条目行:`- @label：`(全角冒号结尾) */
+/** 本仓库格式条目行:`- @label：`(全角冒号结尾) */
 const DOM_CHIP_LABEL_PATTERN = /^- @(.+?)[：:]\s*$/;
 /** 条目内的展示名行:` - 节点展示名： brand` */
 const DOM_CHIP_DISPLAY_NAME_PATTERN = /^\s*-\s*节点展示名[：:]\s*(.+?)\s*$/;
+/** 宿主（设计器）格式条目行:`Dom节点1: p class: ...`(半角冒号 + 节点描述) */
+const HOST_DOM_ENTRY_PATTERN = /^(Dom节点\d+)[：:]\s/;
+/** 宿主条目首行的 class 列表:取最具体(最后一个)类名作为展示名,如 `.a .b .loginSubtitle` → loginSubtitle */
+const HOST_ENTRY_CLASS_PATTERN = /class:\s*((?:\.[\w-]+\s*)+)/;
 /** 行内 zone chip 引用:@ 前须为空白/行首,避免误伤 someone@example.com 等内联文本 */
 const INLINE_CHIP_TOKEN_PATTERN = /(^|\s)@([A-Za-z_][A-Za-z0-9_.-]{0,63})/g;
 
@@ -41,6 +46,15 @@ const INLINE_CHIP_TOKEN_PATTERN = /(^|\s)@([A-Za-z_][A-Za-z0-9_.-]{0,63})/g;
 interface DomChipEntry {
   label: string;
   displayName?: string;
+}
+
+/** 从宿主条目首行提取最具体的类名作为展示名;无 class 信息时返回 undefined。 */
+function parseHostEntryDisplayName(line: string): string | undefined {
+  const classMatch = line.match(HOST_ENTRY_CLASS_PATTERN);
+  if (!classMatch) return undefined;
+  const segments = classMatch[1].trim().split(/\s+/).filter(Boolean);
+  const last = segments[segments.length - 1];
+  return last ? last.replace(/^\./, "") : undefined;
 }
 
 function collectDomEntries(text: string): DomChipEntry[] {
@@ -51,6 +65,16 @@ function collectDomEntries(text: string): DomChipEntry[] {
       const entryMatch = line.match(DOM_CHIP_LABEL_PATTERN);
       if (entryMatch) {
         current = { label: entryMatch[1] };
+        entries.push(current);
+        continue;
+      }
+      // 宿主格式条目:展示名从首行 class 列表推导(如 .a .b .brand → brand)。
+      const hostMatch = line.match(HOST_DOM_ENTRY_PATTERN);
+      if (hostMatch) {
+        current = {
+          label: hostMatch[1],
+          ...(parseHostEntryDisplayName(line) ? { displayName: parseHostEntryDisplayName(line) } : {}),
+        };
         entries.push(current);
         continue;
       }
