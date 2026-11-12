@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadAgentFixtures } from './helpers/load-agent.mjs';
-const { Agent, createSubAgentTool, collectSubAgentTurns, readLegacySubAgentData, applySubAgentEvent, getTurnsManager } = await loadAgentFixtures();
+const { Agent, createSubAgentTool, collectSubAgentTurns, readLegacySubAgentData, applyChildAgentEvent, getTurnsManager } = await loadAgentFixtures();
 const defaults = { key: 'parent', summary: { enabled: false }, compact: { enabled: false } };
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const config = { name: 'overview', title: 'Configured title', description: 'test', supportsAsync: true, allowedTools: ['echo'] };
@@ -28,13 +28,34 @@ function parentAgent(history, request, subConfig = config, extra = {}) {
   parent = new AgentClass({ ...defaults, history, tools: [tool, echo], request, ...options });
   return parent;
 }
+function observeChildEvents(agent, events) {
+  agent.events.on('subagent:created', info => {
+    const childEvents = agent.childAgentEvents(info.turnId);
+    assert.ok(childEvents, 'child event bus is available when created');
+    for (const event of ['turn:start', 'turn:complete', 'turn:error', 'turn:abort']) {
+      childEvents.on(event, data => events.push({ ...info, event, data }));
+    }
+  });
+}
 function waitForChild(agent) {
-  return new Promise(resolve => {
-    const stop = agent.events.on('subagent:event', async event => {
-      if (!event.async || !['turn:complete', 'turn:error', 'turn:abort'].includes(event.event)) return;
-      stop();
-      const turn = (await agent.getSubAgentTurns(event.agentKey)).find(item => item.id === event.turnId);
-      resolve({ agentKey: event.agentKey, turnId: event.turnId, status: turn.status, turn });
+  return new Promise((resolve, reject) => {
+    const stop = agent.events.on('subagent:created', info => {
+      if (!info.async) return;
+      const childEvents = agent.childAgentEvents(info.turnId);
+      assert.ok(childEvents);
+      const finish = async () => {
+        stop();
+        try {
+          // Native terminal events can precede the final history write.
+          for (let attempt = 0; attempt < 1000; attempt++) {
+            const turn = (await agent.getSubAgentTurns(info.agentKey)).find(item => item.id === info.turnId);
+            if (turn?.endTime) return resolve({ agentKey: info.agentKey, turnId: info.turnId, status: turn.status, turn });
+            await new Promise(r => setTimeout(r, 1));
+          }
+          reject(new Error('child history did not settle'));
+        } catch (error) { reject(error); }
+      };
+      for (const event of ['turn:complete', 'turn:error', 'turn:abort']) childEvents.on(event, finish);
     });
   });
 }
@@ -97,7 +118,7 @@ for (const mode of ['turn', 'iter']) test(`async persists independent child turn
 test('async is opt-in and rejected before creating a child', async () => {
   let spawned = false;
   const parent = new Agent({ ...defaults });
-  parent.events.on('subagent:event', () => { spawned = true; });
+  parent.events.on('subagent:created', () => { spawned = true; });
   const tool = createSubAgentTool(() => parent, [{ ...config, supportsAsync: false }]);
   await assert.rejects(tool.execute(args, {}), /does not support async/);
   assert.equal(spawned, false);
@@ -140,7 +161,7 @@ test('host subscribes to the built-in child without replacing creation or persis
     emits.write('parent done'); emits.complete();
   });
   const events = [];
-  parent.events.on('subagent:event', event => events.push(event));
+  observeChildEvents(parent, events);
   const completion = waitForChild(parent);
   await parent.requestAI({ message: 'start' });
   const result = await completion;
@@ -166,7 +187,7 @@ test('sync child keeps the parent waiting and returns its completed result', asy
     emits.write('parent done'); emits.complete();
   });
   const events = [];
-  parent.events.on('subagent:event', event => events.push(event));
+  observeChildEvents(parent, events);
   const task = parent.requestAI({ message: 'start' }).then(() => { parentFinished = true; });
   await started.promise;
   assert.equal(parentFinished, false);
@@ -206,7 +227,7 @@ test('cancelling the parent cancels a running sync child and emits its abort eve
     started.resolve();
   });
   const events = [];
-  parent.events.on('subagent:event', event => events.push(event));
+  observeChildEvents(parent, events);
   const task = parent.requestAI({ message: 'start' });
   await started.promise;
   parent.abort();
@@ -224,8 +245,8 @@ test('legacy snapshots remain readable and flat child records are collected', ()
 
 test('sync child events replay into an independent child turn view', () => {
   const children = [];
-  const event = { parentTurnId: 'parent', parentAgentKey: 'p', agentKey: 'a', turnId: 'child', callId: 'call', subAgentType: 'research', async: false, event: 'turn:start', data: { message: 'hello' }, createdAt: 123 };
-  assert.equal(applySubAgentEvent(children, event), true);
+  const info = { parentTurnId: 'parent', parentAgentKey: 'p', agentKey: 'a', turnId: 'child', callId: 'call', subAgentType: 'research', async: false, status: 'running', createdAt: 123 };
+  assert.equal(applyChildAgentEvent(children, info, 'turn:start', { message: 'hello' }), true);
   assert.equal(children[0].userText, 'hello');
   assert.equal(children[0].parentTurnId, 'parent');
 });
