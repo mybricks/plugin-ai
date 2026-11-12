@@ -243,6 +243,12 @@ export interface PluginAIParams {
   remoteAgent?: RemoteAgentConfig;
   /** 消息发送者信息，注入到每条用户消息中，UI 展示时优先使用 */
   sender?: TurnSender;
+  /**
+   * 结果回调：当 AI 回复后端接口是否全部完成时，将识别结果通知宿主。
+   * @param complete AI 回答是否包含“已完成/全部完成/是”等完成关键词
+   * @param answer  AI 的原始回复文本
+   */
+  onBackendComplete?: (complete: boolean, answer: string) => void;
 }
 
 export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<string, any> {
@@ -277,6 +283,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     renderAttachmentSuffix,
     mentions,
     mcpConnectors,
+    onBackendComplete,
   } = params;
 
   // 先设置 KV 命名空间，再恢复模型选择，避免读取到上一个 plugin 实例的状态。
@@ -302,7 +309,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
 
   context.name = name;
   (mentions ?? []).forEach((mention) => chipRegistry.register(mention.chip));
-  context.pluginParams = { name, user, onUpload: upload, onDownload: download, renderAttachmentSuffix, mentions, mcpConnectors };
+  context.pluginParams = { name, user, onUpload: upload, onDownload: download, renderAttachmentSuffix, mentions, mcpConnectors, onBackendComplete };
 
   // ── 调试工具：导入历史记录 ─────────────────────────────────────────────────
 

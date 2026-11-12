@@ -21,7 +21,7 @@ import { buildEnvironmentSection, buildAlwaysLoadedSkillsSection } from "../../.
 import { buildModeSection } from "../../../agent/src/mode-manager";
 import { AgentModeEnum } from "../../../agent/src";
 import { getCodeAgentSystemPrompt } from "../../../agent/src/code-agent/prompt";
-import type { Tool, Sandbox, CodeAgentPlugin, History, BoundHistory, TurnSender, AdditionalDirectory, AgentsMdConfig, SkillFile, UnifiedFile, AgentOptions, AgentMode, ChatChipInstance } from "../../../agent/src";
+import type { Tool, Sandbox, CodeAgentPlugin, History, BoundHistory, TurnSender, AdditionalDirectory, AgentsMdConfig, SkillFile, UnifiedFile, AgentOptions, AgentMode, ChatChipInstance, AgentHooks, TurnRecord } from "../../../agent/src";
 import type { PromptSections } from "../../../kit/src";
 import { buildDevelopmentGuideContext, buildExtraProjectInfoSection, buildProjectInfoSection, promptSectionsAdaptToPromptOption } from "../../../kit/src";
 import type { RequestAsStreamFn } from "../../../request/src";
@@ -37,7 +37,6 @@ import { ensureAIPanelOpen, ensureFocusComId } from "../utils/ensure-ai-panel-op
 import { createDomChip } from "../utils/dom-info";
 import { registerChipRemoveHandlers } from "./chip-remove";
 import { attachFiles, getSyncableInitialFiles, hasInitialFiles } from "./initial-files";
-
 // ─── 类型定义 ─────────────────────────────────────────────────────────────────
 
 /**
@@ -56,6 +55,59 @@ function normalizeChipConfigs(chips?: SandboxChipsConfig): SandboxChipConfig[] {
     ...config,
     type: config.type ?? type,
   }));
+}
+
+const BACKEND_COMPLETE_KEYWORDS = ["已完成", "全部完成", "是"];
+const BACKEND_INCOMPLETE_KEYWORDS = [
+  "未完成",
+  "未建成",
+  "未开发",
+  "未发布",
+  "未就绪",
+  "未通过",
+  "暂缓",
+  "失败",
+  "异常",
+  "中断",
+  "阻塞",
+  "平台侧问题",
+];
+
+function isBackendComplete(answer: string, keywords: string[] = BACKEND_COMPLETE_KEYWORDS): boolean {
+  const normalized = answer.toLowerCase();
+  const hasIncomplete = BACKEND_INCOMPLETE_KEYWORDS.some((keyword) =>
+    normalized.includes(keyword.toLowerCase())
+  );
+  if (hasIncomplete) return false;
+  return keywords.some((keyword) => normalized.includes(keyword.toLowerCase()));
+}
+
+function getTurnAnswer(turn: TurnRecord): string {
+  return turn.iterations
+    .filter((iter: any): iter is Exclude<typeof iter, { type: "warmup" }> => !("type" in iter))
+    .map((iter: any) => iter.content)
+    .join("")
+    .trim();
+}
+
+function createBackendCompleteHook(existingHooks?: AgentHooks): NonNullable<AgentHooks["afterTurn"]> {
+  return async (turn) => {
+    await existingHooks?.afterTurn?.(turn);
+
+    if (turn.status !== "success") return;
+
+    const onBackendComplete = context.pluginParams.onBackendComplete as
+      | ((complete: boolean, answer: string) => void)
+      | undefined;
+    if (!onBackendComplete) return;
+
+    const answer = getTurnAnswer(turn);
+    try {
+      onBackendComplete(isBackendComplete(answer), answer);
+    } catch (error) {
+      console.error("[plugin-ai] onBackendComplete callback failed:", error);
+    }
+  };
 }
 
 function registerChips(agentKey: string, chips?: SandboxChipsConfig): void {
@@ -750,8 +802,10 @@ function connectToAI(
 
   if (remoteAgent) {
     const agentType = remoteAgent.type ?? 'http';
+    const autoFollowUpHook = createBackendCompleteHook(hooks);
 
     if (agentType === 'websocket') {
+      const agentRef: { current?: WebSocketAgent } = {};
       // 创建 WebSocket Agent（新的 MCP 方式）
       if (!remoteAgent.token) {
         throw new Error('[plugin-ai] WebSocket agent requires token');
@@ -778,7 +832,6 @@ function connectToAI(
         ...browserToolsWithoutInit,
       ];
 
-      const agentRef: { current?: WebSocketAgent } = {};
       const sessionHistory = new SessionHTTPHistory({
         baseUrl: remoteAgent.baseUrl ?? 'http://112.17.139.222:8106',
         token: remoteAgent.token,
@@ -850,7 +903,10 @@ function connectToAI(
         tools: localExecTools,
         // 计划模式下 getPlanFile / abandonPlan 需要读写本地 sandbox 的 .agent/plans/
         sandbox,
-        hooks,
+        hooks: {
+          ...hooks,
+          afterTurn: autoFollowUpHook,
+        },
         history: wsHistory,
         historyKey: agentKey,
         getSeedMessages: buildSeedMessages,
@@ -877,7 +933,10 @@ function connectToAI(
       disabledHandler,
       ...(disabledModes ? { disabledModes } : {}),
       browserTools,
-      hooks,
+      hooks: {
+        ...hooks,
+        afterTurn: autoFollowUpHook,
+      },
     });
     // 与本地 CodeAgent 一致：存在 llmPluginKey 时把 HttpAgent.key 关联到 LLM runtime，
     // 使模型选择 UI 与 requestAI 能解析出当前选中模型。返回值 request 函数仅本地 Agent 使用。

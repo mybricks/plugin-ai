@@ -1164,11 +1164,12 @@ export class HttpAgent {
           ? "abort"
           : "error";
     const replayStartTask = this.replayStartHookTasks.get(turnId);
+    const storedTurn = this.findTurn(turnId);
     void Promise.resolve(replayStartTask)
       // 启动 hook 的错误已单独记录；仍要运行 afterTurn，以清理已部分建立的 UI 状态。
       .catch(() => undefined)
       .then(() => this.hooks?.afterTurn?.({
-        id: turnId,
+        ...(storedTurn ?? { id: turnId }),
         status,
         ...(event.event === "turn:error" ? { error: event.data?.error } : {}),
       } as TurnRecord))
