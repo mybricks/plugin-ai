@@ -29,7 +29,7 @@ export interface SteerChannelDeps {
   getAgentCode(): string | undefined;
   buildVariables(extra?: Record<string, any>): Record<string, any> | undefined;
   /** 建立插话轮并开好首个 iter（广播 turn:start / llm:start）。 */
-  beginTurn(text: string, clientMessageId?: string): ChatStreamState;
+  beginTurn(text: string, clientMessageId?: string, submittedAt?: number): ChatStreamState;
   appendDelta(state: ChatStreamState, delta: string): void;
   finishStream(state: ChatStreamState, finalAnswer?: unknown): void;
   /** 关闭 iter（done=true）。 */
@@ -45,6 +45,8 @@ export interface SteerParams {
   variables?: Record<string, any>;
   /** 调用方为这条消息分配的标识，建轮时随 turn:start 回传，用于 UI 精确对位。 */
   clientMessageId?: string;
+  /** 用户提交这条消息的时间（占位上屏时刻）；建轮时沿用，保证时间线顺序正确。 */
+  submittedAt?: number;
 }
 
 /**
@@ -130,14 +132,14 @@ export class SteerChannel {
             // 没有 delta 但平台一次给了全文时也要建轮，否则只有气泡没有回复。
             const finalAnswer = event.data?.answer;
             if (!state && typeof finalAnswer === "string" && finalAnswer) {
-              state = this.deps.beginTurn(params.message, params.clientMessageId);
+              state = this.deps.beginTurn(params.message, params.clientMessageId, params.submittedAt);
             }
             if (state) this.deps.finishStream(state, finalAnswer);
             return true;
           }
           case "delta": {
             // 首个正文才建轮：插话被插入当前轮时本流没有任何正文，不产生多余气泡。
-            if (!state) state = this.deps.beginTurn(params.message, params.clientMessageId);
+            if (!state) state = this.deps.beginTurn(params.message, params.clientMessageId, params.submittedAt);
             this.deps.appendDelta(
               state,
               typeof event.data === "string" ? event.data : String(event.data ?? ""),

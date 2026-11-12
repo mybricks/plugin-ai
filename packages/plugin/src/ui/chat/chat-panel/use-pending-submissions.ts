@@ -54,14 +54,9 @@ export function usePendingSubmissions(agent?: TurnStartEmitter) {
   const reset = useCallback(() => setItems([]), []);
 
   const merge = useCallback((messages: MessageRecord[]): MessageRecord[] => {
-    if (!items.length) return messages;
     // settled 且对话已经继续（出现了更晚的真实消息）的占位自动移除：
     // 服务端会话历史里已有这条插话，刷新后仍会从历史恢复，不需要一直挂在当前会话里。
-    const placeholders = items
-      .filter((entry) =>
-        !entry.settled ||
-        !messages.some((message) => message.startTime > entry.startTime)
-      )
+    const placeholders = items.filter((entry) => !entry.settled)
       .map((entry) => ({
         id: entry.id,
         startTime: entry.startTime,
@@ -71,8 +66,9 @@ export function usePendingSubmissions(agent?: TurnStartEmitter) {
         ...(entry.settled ? { endTime: entry.startTime } : {}),
         iterations: [],
       }));
-    // 按 startTime 归位：占位可能产生于几条真实消息之前，不能简单追加在末尾。
-    return [...messages, ...placeholders].sort((a, b) => a.startTime - b.startTime);
+    // 始终按 startTime 归位：插话轮落位晚于提交时刻，它会被 turn:start 追加到列表末尾，
+    // 仅按追加顺序渲染会把 2 排到 3 之后。排序是稳定的，同毫秒时保持原顺序。
+    return [...messages, ...placeholders]
   }, [items]);
 
   return useMemo(() => ({ add, settle, remove, reset, merge }), [add, settle, remove, reset, merge]);

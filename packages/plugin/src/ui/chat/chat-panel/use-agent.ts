@@ -179,11 +179,13 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
     // 「优先发送」：WebSocket Agent 走平台插话（steer:true），由平台决定插入当前轮还是滚下一轮。
     if (wsAgent && item) {
       // 队列项 id（如 q-1）同时作为占位记录 id 与 agent 的 clientMessageId，建轮时回声以便让位。
+      // submittedAt 一并传下去：建轮时沿用提交时刻，保证时间线排序与提交顺序一致。
+      const submittedAt = Date.now();
       submissions.add({
         id,
         userText: item.message,
         userAttachments: item.attachments ?? [],
-        startTime: Date.now(),
+        startTime: submittedAt,
       });
       context.aiQueue.remove(agent, id);
       void wsAgent
@@ -191,6 +193,7 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
           message: item.message,
           attachments: item.attachments,
           clientMessageId: id,
+          submittedAt,
         })
         .catch(() => {
           // 无论用户终止还是投递失败：消息都保留在屏幕上（去掉等待提示）。

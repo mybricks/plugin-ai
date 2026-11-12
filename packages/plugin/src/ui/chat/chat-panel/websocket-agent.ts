@@ -208,7 +208,7 @@ export class WebSocketAgent {
       getSessionId: () => this.conversationSessionId ?? this.sessionId,
       getAgentCode: () => this.options.agentCode,
       buildVariables: (extra) => this.buildStreamVariables(extra),
-      beginTurn: (text, clientMessageId) => this.beginSteerState(text, clientMessageId),
+      beginTurn: (text, clientMessageId, submittedAt) => this.beginSteerState(text, clientMessageId, submittedAt),
       appendDelta: (state, delta) => this.appendDelta(state, delta),
       finishStream: (state, finalAnswer) => this.finishStream(state, finalAnswer),
       closeIter: (iter) => this.closeLLMIter(iter, true),
@@ -385,7 +385,13 @@ export class WebSocketAgent {
     await this.hooks?.beforeRequest?.({ meta: params.meta, extra: params.extra });
 
     this.setState({ running: true, turnId, stage: { key: WEBSOCKET_AGENT_SESSION_STAGE.PREPARING } });
-    this.events.emit("turn:start", { turnId, message: displayText, attachments: params.attachments, meta: params.meta });
+    this.events.emit("turn:start", {
+      turnId,
+      message: displayText,
+      attachments: params.attachments,
+      meta: params.meta,
+      startTime: turn.startTime,
+    });
 
     const abort = new AbortController();
     this.chatAbort = abort;
@@ -771,10 +777,11 @@ export class WebSocketAgent {
   }
 
   /** 为插话创建独立的一轮（独立气泡 + 回复框）；push 进 turns 供 UI 重新对齐时识别为 pending。 */
-  private createSteerTurn(text: string, clientMessageId?: string): TurnRecord {
+  private createSteerTurn(text: string, clientMessageId?: string, submittedAt?: number): TurnRecord {
     const turn: TurnRecord = {
       id: createId("turn"),
-      startTime: Date.now(),
+      // 沿用用户提交时刻（占位上屏时间），保证时间线/排序与提交顺序一致。
+      startTime: submittedAt ?? Date.now(),
       userText: text,
       userAttachments: [],
       iterations: [],
@@ -786,14 +793,15 @@ export class WebSocketAgent {
     this.events.emit("turn:start", {
       turnId: turn.id,
       message: text,
+      startTime: turn.startTime,
       ...(clientMessageId ? { clientMessageId } : {}),
     });
     return turn;
   }
 
   /** 建立插话轮并开好首个 iter，返回完整的流式状态（广播 turn:start / llm:start）。 */
-  private beginSteerState(text: string, clientMessageId?: string): ChatStreamState {
-    const turn = this.createSteerTurn(text, clientMessageId);
+  private beginSteerState(text: string, clientMessageId?: string, submittedAt?: number): ChatStreamState {
+    const turn = this.createSteerTurn(text, clientMessageId, submittedAt);
     const iter = this.startLLMIter(turn);
     this.setState({ running: true, turnId: turn.id });
     return { turn, iter, segment: "", answer: "" };

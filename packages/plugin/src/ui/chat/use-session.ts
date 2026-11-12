@@ -179,7 +179,7 @@ function useAgentEvents(
     };
 
     unsubsRef.current.push(
-      a.events.on("turn:start", ({ turnId, message, attachments, meta, userFormattedText, sender }) => {
+      a.events.on("turn:start", ({ turnId, message, attachments, meta, userFormattedText, sender, startTime }) => {
         flushCommit();
         const userAttachments = (attachments ?? []).map((att: any) => ({
           type: att.type ?? "image",
@@ -191,7 +191,9 @@ function useAgentEvents(
         }));
         streamingRef.current = {
           id: turnId,
-          startTime: Date.now(),
+          // 优先使用事件里的事件起始时间：插话轮可能晚于真实消息落位，
+          // 用 Date.now() 会把它排到后提交的消息之后。
+          startTime: startTime ?? Date.now(),
           userText: message,
           ...(userFormattedText ? { userFormattedText } : {}),
           userAttachments,

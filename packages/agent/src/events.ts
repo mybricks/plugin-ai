@@ -27,6 +27,8 @@ export type AgentEventMap = {
     sender?: TurnSender;
     /** 调用方为这条消息分配的标识，用于把 UI 的乐观记录与真实 turn 对上号 */
     clientMessageId?: string;
+    /** 本轮的起始时间（Unix ms）；缺省时 UI 用当前时间。插话轮沿用用户提交时刻。 */
+    startTime?: number;
   };
 
   /**
