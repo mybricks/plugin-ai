@@ -7,6 +7,7 @@ import { createTaskFirstPlugin } from "../../plugins/task-first";
 import { createImpactDocumentPlugin } from "../../plugins/impact-document";
 import { createDevEnvPrepPlugin, type ProjectRunnerImplementation } from "../../plugins/dev-env-prep";
 import { createCanvasInfoPlugin } from "./canvas-info";
+import devEnvPrep from "./dev-env-prep.md";
 
 /** CLI PDE owns its task, review, and audit documents under this directory. */
 const CLI_PDE_CONFIG_DIR_NAME = ".lingchuang";
@@ -54,7 +55,7 @@ interface CliPdeAgentOptionBuilderOptions {
   plugins?: CodeAgentPluginInput[];
   /** 追加到 CLI PDE 的工具；ask_questions 始终由 preset 内置。 */
   tools?: Tool[];
-  /** 「开发环境准备」SubAgent 的 project-runner 实现；不传时工具仍注册，调用会报错。 */
+  /** 「开发环境准备」SubAgent 的 project-runner 实现；不传时不注册 dev-env-prep 插件。 */
   projectRunnerImplementation?: ProjectRunnerImplementation;
 }
 
@@ -84,12 +85,18 @@ export function cliPdeAgentOptionBuilder<T extends CliPdeAgentOptionBuilderOptio
     configDirName: resolvedConfigDirName,
     promptSections: {
       ...cliPdePromptSection,
-      agent: cliPdePromptSection.agent,
+      agent: {
+        ...cliPdePromptSection.agent,
+        identitySection: cliPdePromptSection.agent.identitySection.replace(
+          "<dev-env-prep>",
+          () => projectRunnerImplementation ? devEnvPrep : "",
+        ),
+      },
     },
     plugins: [
       cliPdePlugin,
       createCanvasInfoPlugin(),
-      createDevEnvPrepPlugin({ projectRunnerImplementation }),
+      ...(projectRunnerImplementation ? [createDevEnvPrepPlugin({ projectRunnerImplementation })] : []),
       createTaskFirstPlugin({ overview: true }),
       createImpactDocumentPlugin({ configDirName: resolvedConfigDirName }),
       ...(plugins ?? []),
