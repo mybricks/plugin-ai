@@ -11,6 +11,7 @@ import {
   type ToolResult,
 } from "../../../../agent/src";
 import auditPowerWorkflow from "./audit-power-workflow.md";
+import { getAuditPowerTitles } from "./index.i18n";
 
 export const AUDIT_UNDERSTAND_PAGE_TOOL_NAME = "docs_understand_page";
 export const AUDIT_VALIDATE_PAGE_TOOL_NAME = "docs_validate_page";
@@ -38,11 +39,12 @@ function unavailable(method: keyof AuditPowerImplementation): never {
   throw new Error(`audit-power: host did not provide ${method} implementation`);
 }
 
-function createAuditPowerTools(implementation?: AuditPowerImplementation): Tool[] {
+function createAuditPowerTools(implementation?: AuditPowerImplementation, locale?: string): Tool[] {
+  const titles = getAuditPowerTitles(locale);
   return [
     {
       name: AUDIT_UNDERSTAND_PAGE_TOOL_NAME,
-      title: "页面分析",
+      title: titles.understandPage,
       description: "分析 React TSX/JSX 页面，返回组件拓扑、接口调用、变量和事件信息。生成关联 YAML 文档前使用。",
       parameters: {
         type: "object",
@@ -66,7 +68,7 @@ function createAuditPowerTools(implementation?: AuditPowerImplementation): Tool[
     },
     {
       name: AUDIT_VALIDATE_PAGE_TOOL_NAME,
-      title: "页面文档校验",
+      title: titles.validatePage,
       description: "校验 graph 下 YAML 文档的事件覆盖、源码定位与基础结构。修改关联文档后使用。",
       parameters: { type: "object", properties: {} },
       execute() {
@@ -88,13 +90,13 @@ export function createAuditPowerPlugin(options: AuditPowerPluginOptions): CodeAg
 
   const desc = `提供画布级的审计能力，支持对页面、弹窗的「接口、事件」进行审计，通过维护 ${configDirName}/graph/*.yaml 文件，形成可视化分析视图，你只需告知生成哪个部分的审计视图即可，仅在主动提及时使用。`
 
-  return {
+  const forLocale = (locale = "zh"): CodeAgentPlugin => ({
     name: "audit-power",
     description: desc,
     agents: [{
       name: "audit-power",
       description: desc,
-      title: "页面审计",
+      title: getAuditPowerTitles(locale).agent,
       system: auditPowerWorkflow.replaceAll("<configDirName>", configDirName),
       allowedTools: [
         READ_TOOL_NAME,
@@ -107,9 +109,10 @@ export function createAuditPowerPlugin(options: AuditPowerPluginOptions): CodeAg
         AUDIT_UNDERSTAND_PAGE_TOOL_NAME,
         AUDIT_VALIDATE_PAGE_TOOL_NAME,
       ],
-      tools: createAuditPowerTools(options.implementation),
+      tools: createAuditPowerTools(options.implementation, locale),
     }],
-  };
+  });
+  return { ...forLocale(), forLocale };
 }
 
 export const AuditPowerPlugin = createAuditPowerPlugin;

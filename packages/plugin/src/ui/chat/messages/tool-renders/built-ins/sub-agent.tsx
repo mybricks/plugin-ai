@@ -116,7 +116,7 @@ export const SubAgentRenderer = ({ tool, turn }: { tool: ToolRecord; turn?: Mess
  */
 const BackgroundSubAgentRenderer = ({ tool, child, interrupted }: { tool: ToolRecord; child?: NonNullable<MessageRecord["childTurns"]>[number]; interrupted?: boolean }) => {
   const metadata = tool.result?.metadata ?? {};
-  const title: string = child?.title ?? metadata.title ?? tool.args?.name ?? tool.args?.type ?? "";
+  const title: string = tool.args?.name || child?.title || metadata.title || tool.args?.type || "";
   let status: "pending" | "success" | "error" = "pending";
   if (child?.endTime) {
     status = "success";
@@ -164,9 +164,11 @@ const DefaultSubAgentRenderer = ({ tool, turn }: { tool: ToolRecord; turn?: Mess
   const hasRunningTool = allToolCalls.some((toolCall) => toolCall.status === "running");
   const canExpand = visibleIterations.length > 1 || visibleIterations.some((it) => it.content.trim().length > 80);
 
+  const child = turn?.childTurns?.find(item => item.callId === tool.callId);
+  const displayName = taskName || child?.title || tool.result?.metadata?.title || agentType;
   const headerTitle = isPending
-    ? hasRunningTool ? lang.tool.executingTools() : taskName ? `${taskName}…` : agentType ? `${agentType}…` : lang.tool.processing()
-    : taskName || agentType || lang.tool.completed();
+    ? hasRunningTool ? lang.tool.executingTools() : displayName ? `${displayName}…` : lang.tool.processing()
+    : displayName || lang.tool.completed();
 
   const finalOutput = tool.result?.output ?? "";
   const lastContent = visibleIterations[visibleIterations.length - 1]?.content?.trim() ?? "";

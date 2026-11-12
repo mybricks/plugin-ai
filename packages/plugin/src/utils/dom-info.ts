@@ -1,5 +1,7 @@
+import { domInfoI18n as copy } from "./dom-info.i18n";
 import type { ChatChipFormatContext, ChatChipInstance } from "../../../agent/src";
 import { createChatChipId } from "./chip-id";
+import { lang } from "../i18n";
 
 export { createChatChipId };
 
@@ -68,16 +70,16 @@ export function createDomChip(focus?: AiServiceFocusParams): ChatChipInstance {
   return {
     id: createChatChipId(),
     type: DOM_CHIP_TYPE,
-    label: focus?.focusArea?.title ?? focus?.title ?? "当前聚焦元素",
+    label: focus?.focusArea?.title ?? focus?.title ?? lang.chat.focusElement(),
     data: { ele: focus?.focusArea?.ele },
   };
 }
 
 export function matchDefaultDomFocusContent(input: { message: string; chips: ChatChipInstance[] }): boolean {
-  const match = input.message.match(/^对于\[\[chip:([^\]]+)\]\]$/);
+  const match = input.message.match(/^(?:对于\[\[chip:([^\]]+)\]\]|(?:For \[\[chip:([^\]]+)\]\]|About \[\[chip:([^\]]+)\]\]:))$/);
   if (!match) return false;
 
-  const chip = input.chips.find((item) => item.id === match[1]);
+  const chip = input.chips.find((item) => item.id === (match[1] ?? match[2] ?? match[3]));
   return chip?.type === DOM_CHIP_TYPE;
 }
 
@@ -129,7 +131,7 @@ export function extractDomSummary(
   el: Element,
   options?: { singleTextMax?: number; totalMax?: number }
 ): string {
-  if (shouldSkipDomSummaryNode(el)) return "无页面代码摘要";
+  if (shouldSkipDomSummaryNode(el)) return copy.noSummary();
 
   const singleTextMax = options?.singleTextMax ?? DOM_SUMMARY_SINGLE_TEXT_MAX;
   const totalMax = options?.totalMax ?? DOM_SUMMARY_TOTAL_MAX;
@@ -149,8 +151,8 @@ export function extractDomSummary(
     const comName = node.getAttribute("data-com-name") || "";
     const parts: string[] = [tag];
     if (cls) parts.push(` class: ${cls}`);
-    if (comName) parts.push(` 组件: ${comName}`);
-    if (text) parts.push(`文本: "${text}"`);
+    if (comName) parts.push(copy.component(comName));
+    if (text) parts.push(copy.text(text));
     const desc = parts.join("");
     lines.push("  ".repeat(indent) + desc);
     if (indent < 3 && !shouldSkipDomSummaryChildren(node)) {
@@ -169,7 +171,7 @@ export function extractDomSummary(
   if (result.length <= totalMax) return result;
   const half = Math.floor((totalMax - 30) / 2);
   result =
-    result.slice(0, half) + "\n... [中间内容已省略] ...\n" + result.slice(result.length - half);
+    result.slice(0, half) + `\n... [${copy.omitted()}] ...\n` + result.slice(result.length - half);
   return result;
 }
 
@@ -197,23 +199,23 @@ function getClosestDomLoc<T extends DomLoc>(el: Element): T | undefined {
 }
 
 export function getElementCodeLocation(el?: Element): string {
-  if (!el) return "未知";
+  if (!el) return copy.unknown();
 
   const loc = getClosestDomLoc<DomLoc>(el);
-  if (!loc) return "未知";
+  if (!loc) return copy.unknown();
 
   const jsxFile = loc.files?.jsx;
   const startLine = loc.codeLine?.start;
   const endLine = loc.codeLine?.end;
 
-  if (!jsxFile && !startLine) return "未知";
+  if (!jsxFile && !startLine) return copy.unknown();
 
   const lineDesc =
     startLine && endLine && endLine !== startLine
       ? `L${startLine}-L${endLine}`
       : startLine
       ? `L${startLine}`
-      : "未知行";
+      : copy.unknownLine();
 
   return jsxFile ? `${jsxFile} ${lineDesc}` : lineDesc;
 }
@@ -242,7 +244,7 @@ function getRepeatSignature(el: Element, cache: WeakMap<Element, RepeatSignature
   if (locText) {
     const signature = {
       key: `loc:${locText}`,
-      reason: `兄弟节点拥有相同 JSX 位置 ${locText}`,
+      reason: copy.sameLocation(locText),
     };
     cache.set(el, signature);
     return signature;
@@ -254,7 +256,7 @@ function getRepeatSignature(el: Element, cache: WeakMap<Element, RepeatSignature
   if (comName && zoneSelector) {
     const signature = {
       key: `com+selector:${comName}:${zoneSelector}`,
-      reason: `兄弟节点拥有相同组件名「${comName}」和选择器「${zoneSelector}」`,
+      reason: copy.sameComponentSelector(comName, zoneSelector),
     };
     cache.set(el, signature);
     return signature;
@@ -263,7 +265,7 @@ function getRepeatSignature(el: Element, cache: WeakMap<Element, RepeatSignature
   if (zoneSelector) {
     const signature = {
       key: `selector:${zoneSelector}`,
-      reason: `兄弟节点拥有相同选择器「${zoneSelector}」`,
+      reason: copy.sameSelector(zoneSelector),
     };
     cache.set(el, signature);
     return signature;
@@ -272,7 +274,7 @@ function getRepeatSignature(el: Element, cache: WeakMap<Element, RepeatSignature
   if (comName) {
     const signature = {
       key: `com:${comName}`,
-      reason: `兄弟节点拥有相同组件名「${comName}」`,
+      reason: copy.sameComponent(comName),
     };
     cache.set(el, signature);
     return signature;
@@ -391,23 +393,23 @@ function formatRepeatContexts(contexts: RepeatAncestorContext[], indent = " - ")
   const lines: string[] = [];
 
   contexts.forEach((context, index) => {
-    const loopLabel = contexts.length === 1 ? "循环 JSX" : `第 ${index + 1} 层循环 JSX`;
+    const loopLabel = copy.loop(index + 1, contexts.length);
     const signature = context.signature;
-    const reason = signature ? `，依据：${signature.reason}` : "";
+    const reason = signature ? copy.reason(signature.reason) : "";
 
     if (context.skipped) {
-      lines.push(`${indent}节点疑似位于${loopLabel}中，父级兄弟节点共 ${context.total} 个，超过扫描上限 ${REPEAT_CONTEXT_MAX_SIBLINGS}，已跳过逐项重复推断${reason}。`);
+      lines.push(`${indent}${copy.skipped(loopLabel, context.total, REPEAT_CONTEXT_MAX_SIBLINGS, reason)}`);
       return;
     }
 
     if (context.index) {
-      lines.push(`${indent}节点疑似位于${loopLabel}中，当前是 JSX 中的第 ${context.index} 项 / 共 ${context.total} 项${reason}。`);
+      lines.push(`${indent}${copy.item(loopLabel, context.index, context.total, reason)}`);
     } else {
-      lines.push(`${indent}节点疑似位于${loopLabel}中${reason}。`);
+      lines.push(`${indent}${copy.possibleLoop(loopLabel, reason)}`);
     }
   });
 
-  lines.push(`${indent}注意：需要结合用户需求判断是仅修改当前项，还是修改循环 JSX 中的全部同类项；必要时向用户咨询确认。`);
+  lines.push(`${indent}${copy.loopCaution()}`);
   return lines;
 }
 
@@ -425,8 +427,8 @@ export function buildElementRepeatContextInfo(el?: Element): ElementRepeatContex
   const lines = el ? formatElementRepeatContextLines(el, `- `) : [];
   const hasRepeatContext = lines.length > 0;
   const block = hasRepeatContext
-    ? [`- 循环/重复上下文：`, ...lines.map((line) => `  ${line}`)].join("\n")
-    : `- 循环/重复上下文：未发现疑似循环 JSX / map 重复项`;
+    ? [`- ${copy.repeatTitle()}`, ...lines.map((line) => `  ${line}`)].join("\n")
+    : `- ${copy.noRepeat()}`;
 
   return { lines, hasRepeatContext, block };
 }
@@ -438,7 +440,7 @@ function getDomClassNames(el: Element): string {
   const loc = getClosestDomLoc<DomLoc & { cn?: string[] }>(el);
   if (loc?.cn?.length) return loc.cn.join(",");
 
-  return "无";
+  return copy.none();
 }
 
 function getDomCodeLocation(el: Element): string {
@@ -448,7 +450,7 @@ function getDomCodeLocation(el: Element): string {
   const startLine = loc?.codeLine?.start;
   const endLine = loc?.codeLine?.end;
 
-  if (!jsxFile && !lessFile && !startLine && !endLine) return "未知";
+  if (!jsxFile && !lessFile && !startLine && !endLine) return copy.unknown();
 
   const codeLine =
     startLine && endLine
@@ -459,9 +461,9 @@ function getDomCodeLocation(el: Element): string {
       ? `L${startLine}`
       : endLine
       ? `L${endLine}`
-      : "未知行";
-  const jsxText = jsxFile ? `位于${jsxFile}的${codeLine}` : `位于未知文件的${codeLine}`;
-  const lessText = lessFile ? `，相关的less文件为${lessFile}` : "";
+      : copy.unknownLine();
+  const jsxText = copy.location(jsxFile, codeLine);
+  const lessText = lessFile ? copy.less(lessFile) : "";
 
   return `${jsxText}${lessText}`;
 }
@@ -475,9 +477,9 @@ function buildDomChipInfo(label: string, params: { ele?: Element, info?: string 
 
   if (!ele) {
     return [
-      `- @${label}：未知`,
-      "  - 该节点到叶子节点的结构摘要：未知",
-      "  - 相关的渲染 JSX 代码：未知",
+      `- @${label}：${copy.unknown()}`,
+      `  - ${copy.summaryTitle()}${copy.unknown()}`,
+      `  - ${copy.codeTitle()}${copy.unknown()}`,
     ].join("\n");
   }
 
@@ -485,9 +487,9 @@ function buildDomChipInfo(label: string, params: { ele?: Element, info?: string 
   const summary = extractDomSummary(ele);
   return [
     `- @${label}：${summary.split("\n")[0]}`,
-    "  - 该节点到叶子节点的结构摘要：",
+    `  - ${copy.summaryTitle()}`,
     indentText(summary, "    "),
-    `  - 相关的渲染 JSX 代码：${getDomCodeLocation(ele)}`,
+    `  - ${copy.codeTitle()}${getDomCodeLocation(ele)}`,
     ...repeatContextLines.map((line) => ` ${line}`),
   ].join("\n");
 }
@@ -505,14 +507,7 @@ export function indentText(text: string, indent: string): string {
  */
 export function buildFocusInfo(el: Element): string {
   const type = el.getAttribute("data-zone-type") ?? "";
-  let typeDesc = "区域";
-  if (type === "page") {
-    typeDesc = "页面";
-  } else if (type === "com") {
-    typeDesc = "组件";
-  } else if (type === "popup") {
-    typeDesc = "弹层";
-  }
+  const typeDesc = copy.focusType(type);
   // let selectors: string[] = [];
   // try {
   //   selectors = JSON.parse(el.getAttribute("data-zone-selector") ?? "[]");
@@ -522,13 +517,13 @@ export function buildFocusInfo(el: Element): string {
   const domSummary = extractDomSummary(el);
   const metaLines: string[] = [];
   // if (selectors.length > 0) metaLines.push(`类名：${selectors.join(" ")}`);
-  metaLines.push(`区域相关代码：${getDomCodeLocation(el)}`);
+  metaLines.push(copy.focusCode(getDomCodeLocation(el)));
   metaLines.push(...formatRepeatContexts(collectRepeatAncestorContexts(el), ""));
   const metaStr = metaLines.length > 0 ? `\n${metaLines.join("\n")}` : "";
   return `<focus-attention>
-注意：用户当前聚焦到了一个${typeDesc}。上面的需求大概率和这部分聚焦区域有关联，尽量不超出此聚焦区域。
+${copy.focusAttention(typeDesc)}
 ${metaStr}
-以下是该区域到子节点的 DOM 结构摘要，用于辅助定位元素和问题：
+${copy.focusSummary()}
 ${domSummary}
 </focus-attention>
   `.trim();
@@ -565,7 +560,7 @@ export function formatDomChipMessage({ message, chips }: ChatChipFormatContext):
         }
         eleToLabel.set(ele, label);
       } else {
-        const label = `Dom节点${counter++}`;
+        const label = copy.node(counter++);
         eleToLabel.set(ele, label);
         labelToInfo.set(label, {
           ele,
@@ -578,21 +573,21 @@ export function formatDomChipMessage({ message, chips }: ChatChipFormatContext):
   let resolved = message;
   for (const chip of chips) {
     const ele = getChipElement(chip);
-    const label = eleToLabel.get(ele) ?? "Dom节点";
+    const label = eleToLabel.get(ele) ?? copy.node();
     // 行内占位符替换为 @节点名，让被引用实体在正文中一眼可辨，与文件 chip 的 @文件名 保持一致
     resolved = resolved.split(`[[chip:${chip.id}]]`).join(` @${label} `);
   }
   resolved = normalizeDomChipSpacing(resolved);
 
   // Dom 节点说明用语义标签包裹，与正文显式分层，避免被当成待排查的任务。
-  const domInfo = labelToInfo.size === 0 ? '' : `\n\n<referenced-dom-nodes note="上方 @Dom 节点的详情，供参考。">\n${
+  const domInfo = labelToInfo.size === 0 ? '' : `\n\n<referenced-dom-nodes note="${copy.note()}">\n${
     Array.from(labelToInfo).map(([label, { ele, info }]) => {
       return buildDomChipInfo(label, { ele, info })
     }).join("\n")
   }\n</referenced-dom-nodes>`
 
   const zoneChipInfo = zoneChipMap.size === 0 ? '' : Array.from(zoneChipMap).map(([type, chipSet]) => {
-    return `\n\n<referenced-nodes type="${type}" note="上方 @ 引用的${type}节点详情，供参考。">\n${Array.from(chipSet).map(({ info }: any) => {
+    return `\n\n<referenced-nodes type="${type}" note="${copy.zoneNote(type)}">\n${Array.from(chipSet).map(({ info }: any) => {
       return info
     }).join("\n")}\n</referenced-nodes>`
   }).join('')

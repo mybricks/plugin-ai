@@ -1,6 +1,6 @@
 import type { Tool, ToolResult } from "../../../types";
 import { ToolValidationError } from "../../../types";
-import { type SkillFile, renderSkillContent } from "../../skills";
+import { type SkillFile, renderSkillContent, resolveLocalizedSkill } from "../../skills";
 import { getSkillDir, getSkillsDir } from "../../config-dir";
 
 /** 与 `createSkillTool` 注册的 `name` 一致，供 UI 等侧注册渲染器使用 */
@@ -21,6 +21,7 @@ export const USE_SKILL_TOOL_NAME = "use_skill";
 export function createSkillTool(
   skills: SkillFile[],
   configDirName?: string,
+  locale = "zh",
 ): Tool {
   const skillsDir = getSkillsDir(configDirName);
   const skillNames = skills.map((s) => s.name);
@@ -67,13 +68,13 @@ export function createSkillTool(
         throw new ToolValidationError(`SKILL.md not found in skill "${skill.name}". This skill is misconfigured.`);
       }
 
-      const { output, hasSupportFiles } = await renderSkillContent(skill, configDirName);
+      const { output, hasSupportFiles } = await renderSkillContent(skill, configDirName, locale);
 
       return {
         output,
         metadata: {
           skillName: skill.name,
-          displayName: skill.displayName ?? skill.name,
+          displayName: resolveLocalizedSkill(skill, locale).displayName,
           skillPath: getSkillDir(skill.name, configDirName),
           hasSupportFiles,
         },

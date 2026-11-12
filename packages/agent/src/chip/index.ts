@@ -123,7 +123,7 @@ export const fileChipDef: ChatChipDef = {
 
         // 截断说明放在标签外作为正文提示，模型更容易注意到
         const header = data.truncated
-          ? `<file name="${nameAttr}">（内容过长已截断，仅展示前 ${lineCount} 行）`
+          ? `<file name="${nameAttr}"> (content truncated; showing the first ${lineCount} lines)`
           : `<file name="${nameAttr}">`;
 
         fileBlocks.push(
@@ -133,7 +133,7 @@ export const fileChipDef: ChatChipDef = {
     }
 
     if (fileBlocks.length > 0) {
-      resolved = `${resolved}\n\n以下是上方通过 @文件名 引用的文件内容：\n${fileBlocks.join("\n\n")}`;
+      resolved = `${resolved}\n\nFile contents referenced by @filename above:\n${fileBlocks.join("\n\n")}`;
     }
 
     return resolved;

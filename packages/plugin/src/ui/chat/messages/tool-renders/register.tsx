@@ -100,8 +100,8 @@ registerToolRenderersFromTools([
 ]);
 registerToolRenderer(
   USE_SKILL_TOOL_NAME,
-  (tool) => <SkillRenderer tool={tool} />,
-  (tool) => lang.tool.useSkill(tool.args?.skill),
+  (tool, ctx) => <SkillRenderer tool={tool} displayName={ctx.getSkillDisplayName?.(tool.args?.skill)} />,
+  (tool, ctx) => lang.tool.useSkill(ctx.getSkillDisplayName?.(tool.args?.skill) ?? tool.result?.metadata?.displayName ?? tool.args?.skill),
 );
 registerToolRenderer(
   BASH_TOOL_NAME,

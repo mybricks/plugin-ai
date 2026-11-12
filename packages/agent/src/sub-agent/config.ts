@@ -1,5 +1,5 @@
 import type { Agent } from "../agent";
-import type { SkillFile } from "../code-agent/skills";
+import { resolveLocalizedSkill, type SkillFile } from "../code-agent/skills";
 import type { ResolvedSubAgentConfig, SubAgentConfig } from "./types";
 
 /** 与 `createSubAgentTool` 注册的 `name` 一致，供 UI 等侧注册渲染器使用 */
@@ -30,7 +30,7 @@ export function resolveSubAgentConfig(
   const skillContents = (config.skills ?? []).flatMap((name) => {
     const skill = skills.find((item) => item.name === name);
     const mainSkillMd = skill?.files.find((file) => file.path === "SKILL.md");
-    return mainSkillMd ? [`<skill name="${name}">\n${mainSkillMd.content}\n</skill>`] : [];
+    return skill && mainSkillMd ? [`<skill name="${name}">\n${resolveLocalizedSkill(skill, parent.locale).content}\n</skill>`] : [];
   });
   const skillSection = skillContents.length
     ? `以下是预加载的 Skills，请直接遵照执行，无需再调用 use_skill 工具：\n\n${skillContents.join("\n\n")}`

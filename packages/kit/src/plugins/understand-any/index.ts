@@ -8,7 +8,10 @@ export function createUnderstandAnyCorePlugin(configDirName: string): CodeAgentP
     skills: [{
       name: "understand-any",
       displayName: "可视化解读",
-      files: [{ path: "SKILL.md", content: skill.replaceAll("<configDirName>", configDirName) }],
+      files: [
+        { path: "SKILL.md", content: skill.replaceAll("<configDirName>", configDirName) },
+        { path: "SKILL.en.md", content: "---\ndisplayName: Visual explain\ndescription: Create and maintain visual explanations based on project code and related materials\n---" },
+      ],
     }],
     promptTemplates: [{
       name: "understand-any",

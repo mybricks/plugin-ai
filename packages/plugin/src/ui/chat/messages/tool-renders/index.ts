@@ -35,6 +35,7 @@ export interface ToolRendererContext {
   submit: (value: unknown) => Promise<boolean>;
   cancel: () => Promise<boolean>;
   configDirName: string;
+  getSkillDisplayName?: (name: string) => string | undefined;
 }
 
 /** 正常展示用：独立工具卡片 / 分组展开后的逐条详情，始终返回一个 React 元素。 */
@@ -60,6 +61,8 @@ export function createToolRendererContext(
     submit: (value) => toolUI?.respond(toolCallId, value) ?? Promise.resolve(false),
     cancel: () => toolUI?.cancel(toolCallId) ?? Promise.resolve(false),
     configDirName: getConfigDirNameFromAgent(agent),
+    getSkillDisplayName: typeof (agent as any)?.getSkillDisplayName === "function"
+      ? (name) => (agent as any).getSkillDisplayName(name) : undefined,
   };
 }
 

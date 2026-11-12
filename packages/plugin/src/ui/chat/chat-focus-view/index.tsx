@@ -7,7 +7,7 @@ import type { ChatChipDef } from "../../../../../agent/src";
 import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
 import { createDomChip, DOM_CHIP_TYPE, formatDomChipMessage, matchDefaultDomFocusContent } from "../../../utils/dom-info";
 import { usePluginDisabled } from "../../../utils/use-plugin-disabled";
-import { lang } from "../../../i18n";
+import { getPluginLocale, lang } from "../../../i18n";
 import css from "./index.less";
 
 export interface ChatFocusViewProps {
@@ -82,7 +82,7 @@ const ChatFocusView = ({
     if (contextDisabled || !agent || !comId) return;
     const { message, attachments, chips } = params;
     const focusChip = focusParams?.focusArea?.ele ? createDomChip(focusParams) : undefined;
-    const requestMessage = focusChip ? `对于[[chip:${focusChip.id}]]${message}` : message;
+    const requestMessage = focusChip ? lang.chat.focusReference(`[[chip:${focusChip.id}]]`, message) : message;
     const requestChips = [...(focusChip ? [focusChip] : []), ...(chips ?? [])];
     const meta = requestChips.length ? { chips: requestChips } : undefined;
 
@@ -120,7 +120,7 @@ const ChatFocusView = ({
 
       // appendInput 内部会解析 [[chip:id]] 并从 meta.chips 取实例渲染成 chip span
       context.appendInput(comId, {
-        message: `${prefix}对于[[chip:${chip.id}]]${suffix}；`,
+        message: `${prefix}${lang.chat.focusReference(`[[chip:${chip.id}]]`, suffix)}${getPluginLocale() === "en" ? ";" : "；"}`,
         meta: { chips: [chip] },
         animation: true,
       });

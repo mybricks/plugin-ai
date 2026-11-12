@@ -134,7 +134,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
       if (canReplace) {
         const chip = createDomChip(focus);
         panel.replaceFocusContent({
-          message: `对于[[chip:${chip.id}]]`,
+          message: lang.chat.focusReference(`[[chip:${chip.id}]]`),
           meta: { chips: [chip] },
         });
         return;

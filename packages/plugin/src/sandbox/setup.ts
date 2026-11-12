@@ -16,6 +16,7 @@ import type { PrdRenderProps } from "../ui/renders/prd-render";
 import type { ReviewRenderProps } from "../ui/renders/review-render";
 import { LoadingViewWithStyles, ComChatStartViewWithStyles, PrdRenderWithStyles, ReviewRenderWithStyles } from "../ui/renders/register";
 import { context } from "../context";
+import { lang } from "../i18n";
 import { ensureAIPanelOpen, ensureFocusComId } from "../utils/ensure-ai-panel-open";
 import { createDomChip } from "../utils/dom-info";
 import { getSyncableInitialFiles } from "./initial-files";
@@ -59,7 +60,7 @@ function withMentionFocus(params: SendToAgentParams): SendToAgentParams {
   const chip = createDomChip(focus);
   return {
     ...params,
-    message: `对于[[chip:${chip.id}]]${params.message}`,
+    message: lang.chat.focusReference(`[[chip:${chip.id}]]`, params.message),
     meta: {
       ...params.meta,
       chips: [...(params.meta?.chips ?? []), chip],

@@ -14,6 +14,7 @@ import { createUnderstandAnyContribute } from "./contributes/understand";
 import { createUnderstandAnyCorePlugin } from "../../kit/src/plugins/understand-any";
 
 import { context } from "./context";
+import { lang } from "./i18n";
 import { setupSandbox } from "./sandbox";
 import { chipRegistry } from "./sandbox/setup";
 import type { AgentRuntimeConfig, RemoteAgentConfig, Designer, Hooks, RegistSandBoxConfig, PluginGetUserContextMessage, ProjectContext, SendToAgentParams } from "./sandbox";
@@ -523,7 +524,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
                 ? createDomChip(focus)
                 : undefined;
               const requestMessage = focusChip
-                ? `对于[[chip:${focusChip.id}]]${requestParams.message ?? ""}`
+                ? lang.chat.focusReference(`[[chip:${focusChip.id}]]`, requestParams.message ?? "")
                 : requestParams.message ?? "";
               const requestMeta = focusChip
                 ? {

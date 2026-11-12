@@ -35,7 +35,7 @@ export const lang = {
   },
   header: {
     clearHistory: () => i18n({ zh: "清空对话记录", en: "Clear history" }),
-    exportHistory: () => i18n({ zh: "导出对话记录", en: "Export history" }),
+    exportHistory: () => i18n({ zh: "导出对话记录", en: "Export session" }),
   },
   chat: {
     defaultPlaceholder: (name: string) => i18n({
@@ -48,6 +48,8 @@ export const lang = {
     }),
     startTitle: () => i18n({ zh: "在这里，开始您的需求", en: "Start your request here" }),
     focusPlaceholder: () => i18n({ zh: "描述需求，追加到对话批量处理或者立即发送", en: "Describe it, then add or send." }),
+    focusReference: (chip: string, message = "") => i18n({ zh: `对于${chip}${message}`, en: `About ${chip}:${message ? ` ${message}` : ""}` }),
+    focusElement: () => i18n({ zh: "当前聚焦元素", en: "Selected element" }),
     defaultFocusPlaceholder: () => i18n({ zh: "您可以描述对于此区域的需求", en: "Describe this area" }),
     appendToChat: () => i18n({ zh: "追加到对话", en: "Add to chat" }),
     appendToChatTip: () => i18n({ zh: "追加到对话框，可与其他消息一起编辑后发送", en: "Add to edit with other messages" }),
@@ -247,12 +249,12 @@ export const lang = {
     lines: (count: number) => i18n({ zh: `${count} 行`, en: `${count} lines` }),
     files: (count: number) => i18n({ zh: `${count} 个文件`, en: `${count} files` }),
     command: () => i18n({ zh: "执行命令", en: "Run command" }),
-    viewStatus: () => i18n({ zh: "查看当前状态", en: "View status" }),
+    viewStatus: () => i18n({ zh: "查看当前状态", en: "Check status" }),
     deleteFile: (name?: string) => i18n({ zh: name ? `删除文件 ${name}` : "删除文件", en: name ? `Delete file ${name}` : "Delete file" }),
     deleteFiles: (deleted: number, total: number) => i18n({ zh: `删除文件 ${deleted}/${total} 项`, en: `Delete files ${deleted}/${total}` }),
     editFile: (path?: string) => i18n({ zh: path ? `修改文件 ${path}` : "修改文件", en: path ? `Edit file ${path}` : "Edit file" }),
     writeFile: (path?: string) => i18n({ zh: path ? `写文件 ${path}` : "写文件", en: path ? `Write file ${path}` : "Write file" }),
-    readFile: (path?: string) => i18n({ zh: path ? `查看文件 ${path}` : "查看文件", en: path ? `View file ${path}` : "View file" }),
+    readFile: (path?: string) => i18n({ zh: path ? `查看文件 ${path}` : "查看文件", en: path ? `Read File ${path}` : "Read File" }),
     searchFiles: (pattern?: string) => i18n({ zh: pattern ? `查找文件 ${pattern}` : "查找文件", en: pattern ? `Find files: ${pattern}` : "Find files" }),
     searchContent: (pattern?: string) => i18n({ zh: pattern ? `内容搜索 ${pattern}` : "内容搜索中", en: pattern ? `Search: ${pattern}` : "Searching" }),
     searchResults: (count: number) => i18n({ zh: `${count} 个结果`, en: `${count} results` }),

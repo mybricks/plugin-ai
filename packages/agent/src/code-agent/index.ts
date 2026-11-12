@@ -47,6 +47,7 @@ import {
   type SkillActivation,
   type SkillMeta,
   resolveSkillMeta,
+  resolveLocalizedSkill,
   renderSkillContent,
   shouldAlwaysLoadSkill,
   shouldExposeSkillToModel,
@@ -162,6 +163,8 @@ export interface CodeAgentPlugin {
    * 命名规范：[a-z0-9][a-z0-9_-]*
    */
   name: string;
+  /** Resolve locale-dependent plugin resources for the owning Agent. */
+  forLocale?: (locale: string) => CodeAgentPlugin;
   /** 插件版本号（可选，展示用） */
   version?: string;
   /** 插件描述（可选，展示/调试用） */
@@ -531,7 +534,7 @@ export function composePluginHooks(
 
 // ─── 构建环境信息 ──────────────────────────────────────────────────────────────
 
-function buildCapabilityCatalogSection(skills?: SkillFile[], subAgents?: SubAgentConfig[]): string {
+function buildCapabilityCatalogSection(skills?: SkillFile[], subAgents?: SubAgentConfig[], locale = "zh"): string {
   const sections: string[] = [];
 
   // ── Skills 目录 ───────────────────────────────────────────────────────────
@@ -541,7 +544,7 @@ function buildCapabilityCatalogSection(skills?: SkillFile[], subAgents?: SubAgen
       const lines = modelSkills.map((s) => {
         const skillMd = s.files.find((f) => f.path === "SKILL.md");
         if (!skillMd) return `  ${s.name}`;
-        const { description, whenToUse } = resolveSkillMeta(skillMd.content, s.name);
+        const { description, whenToUse } = resolveLocalizedSkill(s, locale);
         let line = `  ${s.name}: ${description}`;
         if (whenToUse) line += `（适用场景：${whenToUse}）`;
         return line;
@@ -589,18 +592,18 @@ function buildCurrentTimeSection(referenceTime: number, locale: string): string 
 
 function buildLocaleSection(locale: string): string {
   const content = /^en(?:-|$)/i.test(locale)
-    ? "Always use English to communicate with the user and generate content."
-    : "建议使用中文与用户交流并生成内容。";
+    ? "Always use English to communicate with the user, write code and comments, and generate code assets and other content."
+    : "建议使用中文与用户交流、写代码、写注释、生成代码资产等各类内容";
   return `<system-reminder>\n${content}\n</system-reminder>`;
 }
 
-async function buildAlwaysLoadedSkillsContent(skills: SkillFile[], configDirName: string): Promise<string> {
+async function buildAlwaysLoadedSkillsContent(skills: SkillFile[], configDirName: string, locale: string): Promise<string> {
   const alwaysSkills = skills.filter(shouldAlwaysLoadSkill);
   if (!alwaysSkills.length) return "";
 
   const blocks: string[] = [];
   for (const skill of alwaysSkills) {
-    blocks.push((await renderSkillContent(skill, configDirName)).output);
+    blocks.push((await renderSkillContent(skill, configDirName, locale)).output);
   }
 
   return `以下 Skill 已默认打开，请直接遵照执行，无需再调用 ${USE_SKILL_TOOL_NAME} 工具：\n\n${blocks.join("\n\n---\n\n")}`;
@@ -670,7 +673,7 @@ export class CodeAgent extends Agent {
       : createAgentSandboxFromV1(sandbox, { allowedCommands: bash?.allowedCommands });
 
     const pluginRuntime: PluginRuntimeState = {
-      plugins: pluginInputs.filter((plugin): plugin is CodeAgentPlugin => typeof plugin !== "function"),
+      plugins: pluginInputs.filter((plugin): plugin is CodeAgentPlugin => typeof plugin !== "function").map(plugin => plugin.forLocale?.(locale) ?? plugin),
       factories: pluginInputs.filter((plugin): plugin is CodeAgentPluginFactory => typeof plugin === "function"),
     };
     const { plugins, factories: pluginFactories } = pluginRuntime;
@@ -752,7 +755,7 @@ export class CodeAgent extends Agent {
       const skills = [...baseSkills, ...getPluginSkills()];
       const [agentsMdMessage, alwaysLoadedSkillsContent, ctx] = await Promise.all([
         createAgentsMdContextMessage(toolSandbox, configDirName),
-        buildAlwaysLoadedSkillsContent(skills, configDirName),
+        buildAlwaysLoadedSkillsContent(skills, configDirName, locale),
         includeSandboxContext ? (toolSandbox.getContext?.() ?? null) : null,
       ]);
 
@@ -760,6 +763,7 @@ export class CodeAgent extends Agent {
       const capabilityCatalog = buildCapabilityCatalogSection(
         allSkills.length ? allSkills : undefined,
         allSubAgents.length ? allSubAgents : undefined,
+        locale,
       );
       const modeCatalog = buildModeCatalogSection({
         availableModes: getAvailableAgentModes({ disabledModes: agentOptions.disabledModes }),
@@ -909,7 +913,7 @@ export class CodeAgent extends Agent {
     const { skills, subAgents, tools } = this._getPluginResources();
 
     const modelSkills = skills.filter(shouldExposeSkillToModel);
-    const skillTool = modelSkills.length ? createSkillTool(modelSkills, this.configDirName) : null;
+    const skillTool = modelSkills.length ? createSkillTool(modelSkills, this.configDirName, this.locale) : null;
     const subAgentTool = subAgents.length
       ? createSubAgentTool(
           () => this,
@@ -945,10 +949,11 @@ export class CodeAgent extends Agent {
     const initialize = async () => {
       for (const factory of factories) {
         try {
-          const plugin = await factory({
+          const resolved = await factory({
             sandbox: this._sandbox,
             configDirName: this.configDirName,
           });
+          const plugin = resolved.forLocale?.(this.locale) ?? resolved;
           if (!PLUGIN_NAME_PATTERN.test(plugin.name)) {
             console.warn(`[CodeAgent] Plugin name "${plugin.name}" 不符合命名规范 [a-z0-9][a-z0-9_-]。`);
           }
@@ -979,6 +984,12 @@ export class CodeAgent extends Agent {
   setPromptOptions(promptOptions: CodeAgentPromptOptions | false | undefined): void {
     this._systemPrompt.options = promptOptions;
     this._refreshSystemPrompt();
+  }
+
+  /** Resolve a skill's display name by its stable identifier. */
+  getSkillDisplayName(name: string): string | undefined {
+    const skill = this._getPluginResources().skills.find(item => item.name === name);
+    return skill?.files.some(file => file.path === "SKILL.md") ? resolveLocalizedSkill(skill, this.locale).displayName : undefined;
   }
 
   /** 已初始化插件的快照。 */
