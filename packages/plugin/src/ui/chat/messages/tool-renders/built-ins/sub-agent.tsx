@@ -27,15 +27,18 @@ export const SubAgentRenderer = ({ tool, turn }: { tool: ToolRecord; turn?: Mess
   } else if (tool.status === "pending" && turn?.status !== "pending" && !child) {
     displayTool = { ...tool, status: "error" };
   }
-  const background = tool.result?.metadata?.async === true || child?.async === true;
+  const background = tool.args?.async === true || tool.result?.metadata?.async === true || child?.async === true;
   const statusUnknown = Boolean(background && turn?.errorCode === "TURN_INCOMPLETE" && child && !child.endTime);
   if (background && child) {
     displayTool = {
       ...displayTool,
-      status: child.endTime ? (child.status === "error" || child.status === "abort" ? "error" : "success") : "pending",
+      status: child.endTime && (child.status === "error" || child.status === "abort") ? "error" : "success",
       execStartTime: child.startTime ?? tool.execStartTime,
       execEndTime: child.endTime ?? tool.execEndTime,
     };
+  }
+  if (background && !child && tool.result?.metadata?.async === true && displayTool.status === "pending") {
+    displayTool = { ...displayTool, status: "success" };
   }
   const title = tool.args?.name || child?.title || tool.result?.metadata?.title || agentType || lang.tool.processing();
   const iterations = child?.iterations ?? legacy.iterations;
@@ -76,7 +79,7 @@ export const SubAgentRenderer = ({ tool, turn }: { tool: ToolRecord; turn?: Mess
           {displayTool.status === "pending" && !statusUnknown ? <TextShimmer>{title}</TextShimmer> : title}
         </span>
         {iterationCount > 0 && <span className={css["tool-meta"]}>{lang.tool.toolCalls(iterationCount)}</span>}
-        {!statusUnknown && <Duration tool={displayTool} />}
+        {!background && !statusUnknown && <Duration tool={displayTool} />}
         {hasDetail && <button type="button" className={css["sub-agent-open"]} onClick={() => setOpen(true)} aria-label={lang.tool.subAgentOpen()}><ChevronRight /></button>}
       {open && target && createPortal(
         <div className={css["sub-agent-page"]}>
