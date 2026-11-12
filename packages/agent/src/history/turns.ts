@@ -1,4 +1,5 @@
 import type { History, SubAgentTurnRecord, TurnRecord } from "../types";
+import { cloneHistoryValue } from "./snapshot";
 
 /** 子 turn 与主 turn 共用同一个底层 History key，通过 parentTurnId 区分。 */
 export function isChildTurn(turn: TurnRecord): turn is SubAgentTurnRecord {
@@ -97,7 +98,7 @@ export class TurnsManager {
         await manager.write(async () => {
           if (child && manager.pending.has(saved.id)) await manager.history.update(manager.key, saved.id, saved);
           else await manager.history.append(manager.key, saved);
-          manager.pending.set(saved.id, structuredClone(saved));
+          manager.pending.set(saved.id, cloneHistoryValue(saved));
         });
       },
       async update(_key, id, patch) {
@@ -105,7 +106,7 @@ export class TurnsManager {
           const saved = child && id === child.id ? { ...patch, startTime: child.startTime } : patch;
           await manager.history.update(manager.key, id, saved);
           const current = manager.pending.get(id);
-          if (current) manager.pending.set(id, { ...current, ...structuredClone(saved) });
+          if (current) manager.pending.set(id, { ...current, ...cloneHistoryValue(saved) });
         });
       },
     };
