@@ -75,7 +75,7 @@ export function createSubAgentTool(
       // 检查用户消息是否有图片附件，优先以附件决定 aiRole
       const hasImage = ctx.getUserMessage().attachments?.some((attachment) => attachment.type === "image") ?? false;
       const aiRole = resolveAiRole(resolved, hasImage);
-      const title = config.title ?? args.name;
+      const title = args.name?.trim() || config.title || args.type;
 
       const request: ChildAgentRequest = {
         parentAgentKey: parent.key ?? "",

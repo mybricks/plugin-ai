@@ -1,5 +1,4 @@
 import type { Agent } from "../agent";
-import type { SubAgentEvent } from "../events";
 import type { RequestAICommonOptions, SubAgentTurnRecord, TokenUsage, TurnRecord } from "../types";
 import type { SubAgentMetadata } from "./types";
 
@@ -157,18 +156,6 @@ export function createChildAgentBridge(
     parentTurnId: ctx.turnId ?? parentAgent.getTurns().slice(-1)[0]?.id ?? "",
   });
 
-  // 供转发 subagent:event 时附上的身份信息。
-  const identity: Pick<SubAgentEvent, "parentTurnId" | "parentAgentKey" | "agentKey" | "turnId" | "callId" | "subAgentType" | "title" | "async"> = {
-    parentTurnId: ctx.turnId ?? parentAgent.getTurns().slice(-1)[0]?.id ?? "",
-    parentAgentKey: parentAgent.key ?? "",
-    agentKey,
-    turnId: record.id,
-    callId,
-    subAgentType,
-    title,
-    async: record.async === true,
-  };
-
   // 进度快照：按 iterId 维护各 LLM 迭代及其工具调用，getIterations() 保证引用稳定。
   const iterOrder: string[] = [];
   const iterMap = new Map<string, ChildAgentProgressIteration>();
@@ -217,6 +204,8 @@ export function createChildAgentBridge(
     status === "abort" ? "aborted" : status === "error" ? "error" : "success";
 
   let disposeSubscription: (() => void) | null = null;
+  /** 子 Agent 是否已经原生产出终态事件；finish() 据此决定是否补发。 */
+  let terminalSeen = false;
 
   const subscribe: ChildAgentBridge["subscribe"] = (subscribeOptions = {}) => {
     disposeSubscription?.();
@@ -250,20 +239,12 @@ export function createChildAgentBridge(
       emitProgress();
     };
 
-    const emitSubAgentEvent = (event: SubAgentEvent["event"], data: unknown) => {
-      parentAgent.events.emit("subagent:event", {
-        ...identity, event, data, createdAt: Date.now(),
-      } as SubAgentEvent);
-    };
-
     const unsubscribeTurnStart = subAgent.events.on("turn:start", (data) => {
       record.userText = data.message;
-      emitSubAgentEvent("turn:start", data);
     });
 
     const unsubscribeLLMStart = subAgent.events.on("llm:start", (data) => {
       ensureIter(data.iterId).startTime ??= data.startTime;
-      emitSubAgentEvent("llm:start", data);
       emitProgress();
     });
 
@@ -272,7 +253,6 @@ export function createChildAgentBridge(
       const iter = ensureIter(iterId);
       iter.content = content ?? "";
       if (thinkingContent !== undefined) iter.thinkingContent = thinkingContent;
-      emitSubAgentEvent("llm:content", data);
       const next = subscribeOptions.onContent?.({ content, thinkingContent, iterId });
       if (next && typeof (next as Promise<void>).then === "function") {
         void (next as Promise<void>).then(emitContentThrottled, emitContentThrottled);
@@ -287,20 +267,14 @@ export function createChildAgentBridge(
       iter.endTime = endTime;
       iter.finishReason = finishReason;
       if (usage) { iter.usage = usage; iter.model = usage.model; }
-      emitSubAgentEvent("llm:complete", data);
       // LLM complete 通常不会再有 content；必须强制发送，避免最终用量丢失。
       flushContent();
-    });
-
-    const unsubscribeLLMRetry = subAgent.events.on("llm:retry", (data) => {
-      emitSubAgentEvent("llm:retry", data);
     });
 
     const unsubscribeToolArgs = subAgent.events.on("tool:args", (data) => {
       const iterId = toolCallIterIndex.get(data.callId);
       const tool = (iterId ? iterMap.get(iterId) : undefined)?.toolCalls.find(t => t.callId === data.callId);
       if (tool) Object.assign(tool, { argsContent: data.content });
-      emitSubAgentEvent("tool:args", data);
     });
 
     const unsubscribeToolCall = subAgent.events.on("tool:call", (data) => {
@@ -314,7 +288,6 @@ export function createChildAgentBridge(
         startTime,
       });
       toolCallIterIndex.set(toolCallId, iterId);
-      emitSubAgentEvent("tool:call", data);
       emitProgress();
     });
 
@@ -329,7 +302,6 @@ export function createChildAgentBridge(
         tool.endTime = endTime;
         tool.output = typeof result?.output === "string" ? result.output : undefined;
       }
-      emitSubAgentEvent("tool:result", data);
       emitProgress();
     });
 
@@ -344,7 +316,6 @@ export function createChildAgentBridge(
         tool.endTime = endTime;
         tool.error = error;
       }
-      emitSubAgentEvent("tool:error", data);
       emitProgress();
     });
 
@@ -352,11 +323,18 @@ export function createChildAgentBridge(
       const iterId = toolCallIterIndex.get(data.callId);
       const tool = (iterId ? iterMap.get(iterId) : undefined)?.toolCalls.find(t => t.callId === data.callId);
       if (tool) Object.assign(tool, { progress: data.data });
-      emitSubAgentEvent("tool:progress", data);
     });
 
+    // 子 Agent 自身会原生产出终态事件；这里只记录是否已经出现过，
+    // 供 finish() 判断是否需要补发（异常路径下原生事件可能缺失）。
+    const markTerminal = () => { terminalSeen = true; };
+    const unsubscribeTurnComplete = subAgent.events.on("turn:complete", markTerminal);
+    const unsubscribeTurnAbort = subAgent.events.on("turn:abort", markTerminal);
+    const unsubscribeTurnError = subAgent.events.on("turn:error", markTerminal);
+
     // 取消信号绑定由调用方决定（bindAbortSignal → subAgent.abort()），
-    // subscribe 只负责进度订阅与事件转发。
+    // subscribe 只负责进度订阅。
+
 
     emitProgress();
 
@@ -369,12 +347,14 @@ export function createChildAgentBridge(
       unsubscribeLLMStart();
       unsubscribeLLMContent();
       unsubscribeLLMComplete();
-      unsubscribeLLMRetry();
       unsubscribeToolArgs();
       unsubscribeToolCall();
       unsubscribeToolResult();
       unsubscribeToolError();
       unsubscribeToolProgress();
+      unsubscribeTurnComplete();
+      unsubscribeTurnAbort();
+      unsubscribeTurnError();
       if (disposeSubscription === dispose) disposeSubscription = null;
     };
     disposeSubscription = dispose;
@@ -407,8 +387,8 @@ export function createChildAgentBridge(
     title,
     agentKey,
     turnId: record.id,
-    parentAgentKey: identity.parentAgentKey,
-    parentTurnId: identity.parentTurnId,
+    parentAgentKey: parentAgent.key ?? "",
+    parentTurnId: record.parentTurnId,
     parentToolCallId: callId,
     startedAt: record.startTime,
   });
@@ -448,16 +428,20 @@ export function createChildAgentBridge(
       disposeSubscription?.();
       applyTurn(lastTurn, status, error);
       const statusLabel = progressStatus(status);
-      // 合成终态事件；执行过程已通过实时事件发送，完整记录保存在子 turn 的 History 中。
-      const finishEventName: SubAgentEvent["event"] =
-        status === "success" ? "turn:complete" : status === "abort" ? "turn:abort" : "turn:error";
-      const finishData = status === "error" ? { error: record.error, errorCode: record.errorCode } : {};
-      parentAgent.events.emit("subagent:event", {
-        ...identity,
-        event: finishEventName,
-        data: finishData,
-        createdAt: record.endTime!,
-      } as SubAgentEvent);
+      // 子 Agent 通常会原生发出终态；异常抛出等路径可能缺失，这里补一条，
+      // 保证订阅方总能收到收口信号，不会停在 running。
+      if (!terminalSeen) {
+        const finishEventName: "turn:complete" | "turn:abort" | "turn:error" =
+          status === "success" ? "turn:complete" : status === "abort" ? "turn:abort" : "turn:error";
+        if (finishEventName === "turn:error") {
+          subAgent.events.emit("turn:error", {
+            error: new Error(record.error ?? ""),
+            errorCode: record.errorCode,
+          });
+        } else {
+          subAgent.events.emit(finishEventName, {});
+        }
+      }
       emitProgress({ status: statusLabel, endTime: record.endTime });
       return { agentKey, status: statusLabel, iterations: getIterations() };
     },

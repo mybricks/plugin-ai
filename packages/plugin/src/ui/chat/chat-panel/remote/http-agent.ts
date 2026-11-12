@@ -1,7 +1,7 @@
-import type { BackgroundSubAgentInfo } from "../../../../../../agent/src";
+import type { BackgroundSubAgentInfo, SubAgentCreatedInfo } from "../../../../../../agent/src";
 import {
   AgentEvents,
-  applySubAgentEvent,
+  applyChildAgentEvent,
   type SubAgentTurnRecord,
   HistoryManager,
   AgentModeEnum,
@@ -222,6 +222,7 @@ export class HttpAgent {
   private mode: AgentMode = AgentModeEnum.Build;
   private turns: TurnRecord[] = [];
   private childTurns: SubAgentTurnRecord[] = [];
+  private readonly childAgentBuses = new Map<string, AgentEvents>();
   private childListRequest?: Promise<Array<BackgroundSubAgentInfo & { turn?: SubAgentTurnRecord }>>;
   private turnsPage: Required<Pick<TurnsPage, "hasMore">> &
     Pick<TurnsPage, "oldestTurnId"> = {
@@ -466,6 +467,14 @@ export class HttpAgent {
     return { ...this.turnsPage };
   }
 
+  /**
+   * 远程场景下子 Agent 没有真实实例，这里返回一条本地总线：
+   * 子 SSE 收到原生事件后原样 emit 进来，订阅方与本地场景走同一套 on(...)。
+   */
+  childAgentEvents(turnId: string): AgentEvents | undefined {
+    return this.childAgentBuses.get(turnId);
+  }
+
   async loadOlderTurns(limit = DEFAULT_TURNS_PAGE_SIZE): Promise<TurnsPage> {
     await this.historyInitialization;
     if (!this.turnsPage.hasMore || !this.turnsPage.oldestTurnId) {
@@ -677,6 +686,7 @@ export class HttpAgent {
     this.turns = [];
     this.childTurns = [];
     this.completedChildTurns.clear();
+    this.childAgentBuses.clear();
     this.compactRecord = null;
     this.turnsPage = {
       hasMore: false,
@@ -750,6 +760,7 @@ export class HttpAgent {
     disconnect: (): void => {
       this.childConnections.forEach(controller => controller.abort());
       this.childConnections.clear();
+      this.childAgentBuses.clear();
       this.workspaceBridge.disconnect();
     },
   };
@@ -891,17 +902,60 @@ export class HttpAgent {
     try {
       const agentId = encodeURIComponent(this.agentId);
       const children = await this.requestJson<BackgroundSubAgentInfo[]>(this.workspacePath(`subagents?agentId=${agentId}`));
-      for (const child of children) if (child.status === "running" && (child as BackgroundSubAgentInfo & { async?: boolean }).async) this.observeSubagent(child);
+      for (const child of children) if (child.status === "running" && child.async) this.announceChildAgent(child);
     } catch (error) {
       // 旧服务端没有子会话接口，主会话初始化仍可继续。
       if (!(error instanceof HttpResponseError && error.status === 404)) console.warn("[HttpAgent] subagent recovery failed", error);
     }
   }
 
+  /**
+   * 统一的子 Agent 发现入口：先建总线再发通知，最后接子通道。
+   *
+   * 顺序不能变：订阅方收到 subagent:created 时会立刻调 childAgentEvents(turnId)，
+   * 此时总线必须已经存在。
+   */
+  private announceChildAgent(info: BackgroundSubAgentInfo): void {
+    if (!this.childAgentBuses.has(info.turnId)) {
+      this.childAgentBuses.set(info.turnId, new AgentEvents());
+    }
+    this.events.emit("subagent:created", {
+      turnId: info.turnId,
+      parentTurnId: info.parentTurnId,
+      parentAgentKey: info.parentAgentKey,
+      agentKey: info.agentKey,
+      callId: info.parentToolCallId,
+      subAgentType: info.type,
+      title: info.title,
+      async: info.async === true,
+      status: info.status,
+      createdAt: info.startedAt,
+    });
+    this.observeSubagent(info);
+  }
+
   private observeSubagent(info: BackgroundSubAgentInfo): void {
+    if (info.status !== "running") return;
     if (this.completedChildTurns.has(info.turnId) || this.childConnections.has(info.turnId)) return;
+    const bus = this.childAgentBuses.get(info.turnId) ?? (() => {
+      const b = new AgentEvents();
+      this.childAgentBuses.set(info.turnId, b);
+      return b;
+    })();
     const controller = new AbortController();
     this.childConnections.set(info.turnId, controller);
+    const identity: SubAgentCreatedInfo = {
+      turnId: info.turnId,
+      parentTurnId: info.parentTurnId,
+      parentAgentKey: info.parentAgentKey,
+      agentKey: info.agentKey,
+      callId: info.parentToolCallId,
+      subAgentType: info.type,
+      title: info.title,
+      async: info.async === true,
+      status: "running",
+      createdAt: info.startedAt,
+    };
     void (async () => {
       let finished = false;
       for (let attempt = 0; !finished && !controller.signal.aborted && attempt < 4; attempt++) {
@@ -909,18 +963,19 @@ export class HttpAgent {
           await this.requestEventStream(this.workspacePath(`subagents/${encodeURIComponent(info.agentKey)}/connect?agentId=${encodeURIComponent(this.agentId)}&turnId=${encodeURIComponent(info.turnId)}`), {}, {
             signal: controller.signal,
             onEvent: event => {
-              if (event.event === "subagent:event") {
-                this.handleRemoteEvent(event, { updateSessionState: false, acceptAsyncSubagent: true });
-                const childEvent = event.data as AgentEventMap["subagent:event"];
-                if (childEvent.event === "tool:result" || childEvent.event === "tool:error") {
-                  void this.workspaceBridge.syncFileChanges().catch(error => console.warn("[HttpAgent] subagent file sync failed", error));
-                }
-                if (["turn:complete", "turn:error", "turn:abort"].includes(childEvent.event)) {
-                  finished = true;
-                  this.completedChildTurns.add(info.turnId);
-                }
-              } else if (event.event === "workspace:file-change") {
+              if (event.event === "workspace:file-change") {
                 void this.workspaceBridge.syncFileChanges(event.data?.version).catch(error => console.warn("[HttpAgent] subagent file sync failed", error));
+                return;
+              }
+              bus.emit(event.event as keyof AgentEventMap, event.data as never);
+              applyChildAgentEvent(this.childTurns, identity, event.event as never, event.data as never);
+              if (event.event === "turn:complete" || event.event === "turn:error" || event.event === "turn:abort") {
+                finished = true;
+                this.completedChildTurns.add(info.turnId);
+                return;
+              }
+              if (event.event === "tool:result" || event.event === "tool:error") {
+                void this.workspaceBridge.syncFileChanges().catch(error => console.warn("[HttpAgent] subagent file sync failed", error));
               }
             },
           });
@@ -931,7 +986,10 @@ export class HttpAgent {
       }
       if (!controller.signal.aborted) await this.workspaceBridge.syncFileChanges();
     })().catch(error => console.warn("[HttpAgent] subagent sync failed", error))
-      .finally(() => this.childConnections.delete(info.turnId));
+      .finally(() => {
+        this.childConnections.delete(info.turnId);
+        this.childAgentBuses.delete(info.turnId);
+      });
   }
 
   private handleReplayEvent(event: RemoteAgentEvent): void {
@@ -972,21 +1030,28 @@ export class HttpAgent {
       waitForRelease?: boolean;
       /** 本地合成事件仅用于同步消息记录，不应覆盖服务端阶段状态。 */
       updateSessionState?: boolean;
-      /** 异步子任务由过滤后的子 SSE 消费，避免父流和子流重复回放。 */
-      acceptAsyncSubagent?: boolean;
     } = {},
   ): void {
-    if (event.event === "subagent:event") {
-      const childEvent = event.data as AgentEventMap["subagent:event"];
-      if (childEvent.async && !options.acceptAsyncSubagent) return;
-      applySubAgentEvent(this.childTurns, childEvent);
-      this.events.emit("subagent:event", childEvent);
+    if (event.event === "subagent:created") {
+      const info = event.data as SubAgentCreatedInfo;
+      this.announceChildAgent({
+        agentKey: info.agentKey,
+        turnId: info.turnId,
+        parentAgentKey: info.parentAgentKey,
+        parentTurnId: info.parentTurnId,
+        parentToolCallId: info.callId,
+        type: info.subAgentType,
+        title: info.title ?? "",
+        status: info.status,
+        async: info.async,
+        startedAt: info.createdAt,
+      });
       return;
     }
     if (event.event === "tool:result" && event.data?.name === "call-sub-agent") {
       const metadata = event.data.result?.metadata;
       if (metadata?.async === true && metadata.agentKey && metadata.turnId) {
-        this.observeSubagent(metadata as BackgroundSubAgentInfo);
+        this.announceChildAgent(metadata as BackgroundSubAgentInfo);
       }
     }
     if (event.event === "session:released") {

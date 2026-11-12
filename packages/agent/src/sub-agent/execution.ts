@@ -18,8 +18,8 @@ export type ChildAgentExecutionResult = ChildAgentRequestResult & {
 };
 
 /**
- * 启动子 Agent 并返回完成 Promise。同步和后台均会发出 subagent:event，
- * 调用方可分别选择等待完成，或先返回标识并在后台观察完成状态。
+ * 启动子 Agent 并返回完成 Promise。同步和后台均会在执行开始前发出 `subagent:created`，
+ * 订阅方据此按 turnId 订阅该子任务的原生事件流。
  */
 export async function startChildAgent(options: ChildAgentExecutionOptions): Promise<{
   completion: Promise<ChildAgentExecutionResult>;
@@ -36,6 +36,21 @@ export async function startChildAgent(options: ChildAgentExecutionOptions): Prom
   const bridge = createChildAgentBridge({ ...options, record, subAgent });
   if ("error" in bridge) throw new Error(bridge.error);
 
+  // 先登记实例再发通知，保证订阅方收到 subagent:created 时一定能取到 agent.events。
+  options.parentAgent.registerChildAgent(record.id, subAgent);
+  options.parentAgent.events.emit("subagent:created", {
+    turnId: record.id,
+    parentTurnId: record.parentTurnId,
+    parentAgentKey: options.parentAgent.key ?? "",
+    agentKey: record.agentKey,
+    callId: record.callId,
+    subAgentType: options.subAgentType,
+    title: options.title,
+    async: record.async === true,
+    status: "running",
+    createdAt: record.startTime,
+  });
+
   const dispose = bridge.subscribe(options.subscription);
   const unbind = bindAbortSignal(options.signal, () => subAgent.abort());
   const completion = (async () => {
@@ -51,6 +66,8 @@ export async function startChildAgent(options: ChildAgentExecutionOptions): Prom
     } finally {
       unbind();
       dispose();
+      // 事件写入依赖订阅方的 finally 收口，实例引用要等到这里才释放。
+      options.parentAgent.releaseChildAgent(record.id);
     }
   })();
   return { completion };

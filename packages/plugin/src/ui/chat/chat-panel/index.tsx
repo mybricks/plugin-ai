@@ -11,6 +11,7 @@ import type { AttachProcessor } from "../../../content-limits";
 import type { MentionProvider } from "../../components/types";
 import { TodoArea } from "../../components/todo-area";
 import { MessageList } from "../messages";
+import "../messages/tool-renders/register";
 import type { ActionBarItem, HistoryCollapseConfig } from "../messages";
 import { useHistoryCollapse } from "./use-history-collapse";
 import { Header } from "./header";
@@ -416,7 +417,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       >
         {headerNode}
 
-        <div className={css["body-area"]}>
+        <div className={css["body-area"]} data-chat-body>
           <div className={css["messages-area"]}>
             {historyLoading ? (
               <div className={css["history-status"]}>{lang.chat.historyLoading()}</div>

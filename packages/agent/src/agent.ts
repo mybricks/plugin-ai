@@ -408,6 +408,7 @@ export class Agent {
   private _abortController: AbortController | null = null;
   private readonly turnsManager?: TurnsManager;
   private readonly childTurns = new Map<string, SubAgentTurnRecord>();
+  private readonly childAgentInstances = new Map<string, Agent>();
 
   constructor(options: AgentOptions) {
     // 仅在调用方”未声明该字段”时注入默认值；
@@ -483,6 +484,7 @@ export class Agent {
     await this.historyManager.clear();
     this.turns = [];
     this.childTurns.clear();
+    this.childAgentInstances.clear();
     this.compactRecord = null;
   }
 
@@ -1302,6 +1304,30 @@ export class Agent {
     if (this.turnsManager) await this.turnsManager.reserveChild(record);
     this.childTurns.set(record.id, record);
     return { key: record.agentKey, history: this.turnsManager?.child(record) };
+  }
+
+  /**
+   * 登记子 Agent 实例，供订阅方按子 turnId 取到它的事件总线。
+   *
+   * 由 `startChildAgent` 在发出 `subagent:created` 之前调用，保证订阅方收到通知时
+   * 一定能取到实例。本地场景直接返回子 Agent 的真实 `events`；
+   * 远程场景由服务端把事件经通道投递，不经过这里。
+   */
+  registerChildAgent(turnId: string, child: Agent): void {
+    this.childAgentInstances.set(turnId, child);
+  }
+
+  /**
+   * 取得子 Agent 的事件总线。未登记（子任务还没开始或已释放）时返回 undefined，
+   * 调用方跳过即可，不需要当作错误。
+   */
+  childAgentEvents(turnId: string): AgentEvents | undefined {
+    return this.childAgentInstances.get(turnId)?.events;
+  }
+
+  /** 释放子 Agent 实例引用，子任务结束并完成事件写入后调用。 */
+  releaseChildAgent(turnId: string): void {
+    this.childAgentInstances.delete(turnId);
   }
 
   /** 不等待父 turn settled，也不继承父 turn 的取消信号。 */

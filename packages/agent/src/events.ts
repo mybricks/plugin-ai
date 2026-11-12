@@ -1,4 +1,4 @@
-import type { AgentMode, SubAgentTurnRecord, TokenUsage, ToolResult, TurnErrorCode, TurnSender } from "./types";
+import type { AgentMode, TokenUsage, ToolResult, TurnErrorCode, TurnSender } from "./types";
 
 // ─── SSE 风格事件类型 ─────────────────────────────────────────────────────────
 //
@@ -7,33 +7,43 @@ import type { AgentMode, SubAgentTurnRecord, TokenUsage, ToolResult, TurnErrorCo
 //   2. llm       —— 每次 LLM 调用各触发一次（start → content* → complete），ReAct 多步时每 step 各一组
 //   3. tool      —— function call（content / call / result / error）
 
-export const SUB_AGENT_EVENT_NAMES = [
-  "turn:start", "llm:start", "llm:content", "llm:complete", "llm:retry",
-  "tool:args", "tool:call", "tool:result", "tool:error", "tool:progress",
-  "turn:complete", "turn:error", "turn:abort",
-] as const;
-
-type SubAgentEventName = typeof SUB_AGENT_EVENT_NAMES[number];
-
-export type SubAgentEvent = {
-  [K in SubAgentEventName]: {
-    parentTurnId: string;
-    parentAgentKey: string;
-    agentKey: string;
-    turnId: string;
-    callId: string;
-    subAgentType: string;
-    title?: string;
-    async: boolean;
-    event: K;
-    data: AgentEventMap[K];
-    createdAt: number;
-    turn?: SubAgentTurnRecord;
-  }
-}[SubAgentEventName];
+/**
+ * 子 Agent 创建通知的身份信息。
+ *
+ * 只承载可序列化数据，跨进程（SSE）投递安全。真正的子 Agent 实例通过
+ * `agent.childAgentEvents(turnId)` 获取，绝不进入事件载荷。
+ */
+export interface SubAgentCreatedInfo {
+  /** 子 turn ID，同时是 childAgentEvents 的索引键 */
+  turnId: string;
+  /** 父 turn ID */
+  parentTurnId: string;
+  /** 父 Agent 的 key */
+  parentAgentKey: string;
+  /** 子 Agent 的 key */
+  agentKey: string;
+  /** 触发子 Agent 的父工具调用 ID */
+  callId: string;
+  /** 子 Agent 类型标识 */
+  subAgentType: string;
+  /** 展示标题 */
+  title?: string;
+  /** 是否为后台子 Agent（生命周期独立于父 turn） */
+  async: boolean;
+  /** 创建后的初始状态，供重放时判断是否还需要连通道 */
+  status: "running" | "success" | "error" | "abort";
+  /** 创建时间（Unix ms） */
+  createdAt: number;
+}
 
 export type AgentEventMap = {
-  "subagent:event": SubAgentEvent;
+  /**
+   * 子 Agent 实例已创建，即将开始执行。在子 Agent 发出任何自身事件之前同步触发，
+   * 订阅方据此拿到 turnId 后调用 `childAgentEvents(turnId)` 订阅该子任务的原生事件流。
+   *
+   * 不进入 AGENT_EVENTS 持久化列表：它是控制面信令，只做内存分发。
+   */
+  "subagent:created": SubAgentCreatedInfo;
   // ── 一次对话整体状态（只触发一次）─────────────────────────────────────────
 
   /**

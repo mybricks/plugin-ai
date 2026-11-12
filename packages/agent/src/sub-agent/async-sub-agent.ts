@@ -5,7 +5,7 @@ import type { ToolResult } from "../types";
 import { createAgentKey, randomUUID } from "../uuid";
 import type { BackgroundSubAgentInfo, BackgroundSubAgentRequest, SubAgentMetadata } from "./types";
 
-/** 后台启动子 Agent，立即返回会话标识；进度通过 subagent:event 上报。 */
+/** 后台启动子 Agent，立即返回会话标识；进度通过 `subagent:created` + 子事件总线获取。 */
 export async function runBackgroundSubAgent(
   parent: Agent,
   request: BackgroundSubAgentRequest,
@@ -31,7 +31,8 @@ export async function runBackgroundSubAgent(
 
 /**
  * 启动一个后台子 Agent：立即返回会话标识，子 Agent 在后台继续执行，
- * 进度通过 `subagent:event` 事件上报，持久化时机遵循父 History 的 turn / iter 模式。
+ * 进度通过 `subagent:created` 通知 + 子 Agent 自身事件总线上报，
+ * 持久化时机遵循父 History 的 turn / iter 模式。
  *
  * 不继承父 turn 的取消信号：后台子 Agent 有独立的生命周期，
  * 父 turn 结束后仍可继续运行。

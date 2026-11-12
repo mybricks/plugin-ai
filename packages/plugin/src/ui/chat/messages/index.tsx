@@ -26,7 +26,6 @@ import { DefaultUserMessage } from "../chat-panel/user-message";
 import { useChatPanel } from "../chat-panel/context";
 import { isPlanFilePath, usePlanState } from "../../components/plan";
 import { mountReferMentionsInContainer, unmountReferMentionsInContainer } from "../../components/refer-mention";
-import "./tool-renders/register";
 import css from "./index.less";
 import messageSkinCss from "../../markdown/skin-message.less";
 import { renderMermaidInContainer } from "../../markdown/mermaid";
@@ -95,6 +94,8 @@ export type ActionBarItem = ActionBarBuiltinItem | ActionBarCustomItem;
 
 export interface MessageListProps {
   messages: MessageRecord[];
+  /** 是否展示每轮的用户消息和时间。 */
+  showUserMessage?: boolean;
   agent?: ChatAgent;
   /** 远端 Agent 的浏览器工具交互通道；本地 Agent 仍由 agent.getToolUI() 提供。 */
   toolUI?: ToolUIChannel;
@@ -167,7 +168,7 @@ const CollapseBar = ({
 const DEFAULT_ACTION_BAR: ActionBarItem[] = [];
 
 const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
-  function MessageListInner({ messages, agent, toolUI, activeStageText, activeTurnId, finalizing, actionBar, onRetry, onDelete, onExecutePlan, canExecutePlan = true, renderEmpty, renderFooter, collapseCursor, onExpandHistory }, ref) {
+  function MessageListInner({ messages, showUserMessage = true, agent, toolUI, activeStageText, activeTurnId, finalizing, actionBar, onRetry, onDelete, onExecutePlan, canExecutePlan = true, renderEmpty, renderFooter, collapseCursor, onExpandHistory }, ref) {
   const resolvedActionBar = actionBar ?? DEFAULT_ACTION_BAR;
   const mainRef = useRef<HTMLElement>(null);
   const scrollerRef = useRef<AutoScroller | null>(null);
@@ -245,6 +246,7 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
                 <MessageBubble
                   key={record.id}
                   record={record}
+                  showUserMessage={showUserMessage}
                   toolRendererMap={toolRendererMap}
                   toolSummaryRendererMap={toolSummaryRendererMap}
                   actionBar={resolvedActionBar}
@@ -273,8 +275,9 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
 
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
-const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMap, toolSummaryRendererMap, actionBar, onRetry, onDelete, isLast, agent, toolUI, stageText, finalizing, onExecutePlan, canExecutePlan = true, activePlan }: {
+const MessageBubble = React.memo(function MessageBubble({ record, showUserMessage, toolRendererMap, toolSummaryRendererMap, actionBar, onRetry, onDelete, isLast, agent, toolUI, stageText, finalizing, onExecutePlan, canExecutePlan = true, activePlan }: {
   record: MessageRecord;
+  showUserMessage: boolean;
   toolRendererMap: Map<string, ToolRenderer>;
   toolSummaryRendererMap: Map<string, ToolSummaryRenderer>;
   actionBar: ActionBarItem[];
@@ -382,10 +385,8 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
 
   return (
     <div className={classNames(css["chat-bubble-container"], !isLast && css["chat-bubble-container--history"])}>
-      {/* 时间戳居中 */}
+      {showUserMessage && <>
       <div className={css["chat-bubble-time"]}>{formatTime(record.startTime)}</div>
-
-      {/* 用户消息 —— 靠右 */}
       <div className={classNames(css["chat-bubble"], css["user-bubble"])}>
         {shouldShowUserHeader && (
           <header className={css["chat-bubble-header"]}>
@@ -414,6 +415,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
           )}
         </section>
       </div>
+      </>}
 
       {/* AI 回复 —— 靠左 */}
       <div className={classNames(css["chat-bubble"], css["ai-bubble"])}>

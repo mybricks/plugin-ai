@@ -1254,3 +1254,46 @@ button.ask-question-option-selected:hover:not(:disabled) { background: color-mix
   word-break: break-word;
   background: rgba(255, 68, 68, 0.06);
 }
+
+.sub-agent-open, .sub-agent-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 4px;
+  &:hover { color: var(--mybricks-color-primary, #FA6400); }
+  svg { width: 12px; height: 12px; }
+}
+
+.sub-agent-page {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  background: var(--mybricks-bg-color-main, #fff);
+}
+
+.sub-agent-page-header {
+  display: flex;
+  align-items: center;
+  gap: var(--chat-block-gap, 6px);
+  height: var(--chat-header-height, 40px);
+  min-height: var(--chat-header-height, 40px);
+  padding: 0 13px;
+  border-bottom: 1px solid var(--mybricks-border-color-main, #e6e6e6);
+  background: var(--mybricks-bg-color-main, #fff);
+  color: var(--mybricks-text-color-main, #333);
+  font-size: var(--chat-font-size, 12px);
+  font-weight: 700;
+  span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+
+.sub-agent-back svg { transform: rotate(180deg); }

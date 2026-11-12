@@ -1,14 +1,20 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { applySubAgentEvent, type Agent, type HistoryStatus, type TurnRecord, type SubAgentTurnRecord } from "../../../../agent/src";
+import { applyChildAgentEvent, type Agent, type AgentEventMap, type AgentEvents, type HistoryStatus, type SubAgentCreatedInfo, type TurnRecord, type SubAgentTurnRecord } from "../../../../agent/src";
 import type { WarmupIter } from "../../../../agent/src/types";
 import { tryParsePartialArgs } from "./messages/tool-renders/partial-args";
 import type { ToolCallView } from "./messages/tool-renders";
 
 /** 本地 CodeAgent 与服务端 HttpAgent 共用的会话输入边界。 */
-export type SessionAgent = Pick<
+export type AgentPort = Pick<
   Agent,
-  "events" | "historyManager" | "getTurns" | "getTools"
+  "events" | "historyManager" | "getTools"
 > & {
+  getTurns: (options?: { before?: string; limit?: number }) => TurnRecord[];
+  /**
+   * 按子 turnId 取子 Agent 的事件总线。本地实现返回真实 Agent 的 events，
+   * 远程实现返回由子通道投喂的本地总线。未就绪时返回 undefined。
+   */
+  childAgentEvents?: (turnId: string) => AgentEvents | undefined;
   getSubAgentTurns?: (agentKey: string) => Promise<SubAgentTurnRecord[]>;
   getChildTurns?: (parentTurnId?: string) => Promise<SubAgentTurnRecord[]>;
   /** 服务端 Agent 的游标分页入口；本地 Agent 仍通过 getTurns(options) 加载。 */
@@ -78,7 +84,7 @@ function turnsToMessageRecords(turns: TurnRecord[]): MessageRecord[] {
     }));
 }
 
-async function loadMessageRecords(agent: SessionAgent): Promise<MessageRecord[]> {
+async function loadMessageRecords(agent: AgentPort): Promise<MessageRecord[]> {
   const records = turnsToMessageRecords(await agent.getTurns());
   if (agent.getChildTurns) {
     const hasChildCalls = records.some(record => record.iterations.some(iter => {
@@ -132,7 +138,7 @@ function isWarmupIteration(iter: MessageIteration): iter is UIWarmupIter {
 // ─── useHistoryLoader ─────────────────────────────────────────────────────────
 
 function useHistoryLoader(
-  agent: SessionAgent | undefined,
+  agent: AgentPort | undefined,
   historyRef: React.MutableRefObject<MessageRecord[]>,
   streamingRef: React.MutableRefObject<MessageRecord | null>,
   commit: () => void,
@@ -194,7 +200,7 @@ function useAgentEvents(
 ) {
   const unsubsRef = useRef<(() => void)[]>([]);
 
-  const subscribeSession = useCallback((a: SessionAgent, opts?: { onTurnStart?: () => void; onTurnEnd?: () => void }) => {
+  const subscribeSession = useCallback((a: AgentPort, opts?: { onTurnStart?: () => void; onTurnEnd?: () => void }) => {
     unsubsRef.current.forEach((u) => u());
     unsubsRef.current = [];
 
@@ -236,27 +242,60 @@ function useAgentEvents(
       commit();
     };
 
+    // 子 Agent 独立订阅：subagent:created 只带身份信息，事件从子 Agent 自己的总线来。
+    const childSubscriptions = new Map<string, () => void>();
+
+    const applyChildEvent = (
+      info: SubAgentCreatedInfo,
+      event: keyof AgentEventMap,
+      data: unknown,
+    ) => {
+      const records = streamingRef.current
+        ? [...historyRef.current, streamingRef.current]
+        : historyRef.current;
+      const parent = records.find(turn => turn.id === info.parentTurnId);
+      if (!parent) return;
+      const children = [...(parent.childTurns ?? [])];
+      if (!applyChildAgentEvent(children, info, event as never, data as never)) return;
+      parent.childTurns = children;
+      // 后台子任务可能更新已经结束的 turn；更换引用让 memo 组件感知变化。
+      if (streamingRef.current?.id === info.parentTurnId) {
+        streamingRef.current = { ...streamingRef.current };
+      } else {
+        historyRef.current = historyRef.current.map(turn => {
+          if (turn.id === info.parentTurnId) return { ...turn };
+          return turn;
+        });
+      }
+      if (event === "turn:complete" || event === "turn:abort" || event === "turn:error") flushCommit();
+      else scheduleCommit();
+    };
+
+    const CHILD_TRACKED_EVENTS: (keyof AgentEventMap)[] = [
+      "turn:start", "turn:complete", "turn:abort", "turn:error", "llm:retry",
+      "llm:start", "llm:content", "llm:complete",
+      "tool:call", "tool:args", "tool:result", "tool:error", "tool:progress",
+    ];
+
+    const subscribeChild = (info: SubAgentCreatedInfo) => {
+      if (childSubscriptions.has(info.turnId)) return;
+      const events = a.childAgentEvents?.(info.turnId);
+      if (!events) return;
+      const unsubs = CHILD_TRACKED_EVENTS.map(name =>
+        events.on(name, data => applyChildEvent(info, name, data)),
+      );
+      const dispose = () => {
+        unsubs.forEach(u => u());
+        childSubscriptions.delete(info.turnId);
+      };
+      childSubscriptions.set(info.turnId, dispose);
+    };
+
     unsubsRef.current.push(
-      a.events.on("subagent:event", event => {
-        const records = streamingRef.current
-          ? [...historyRef.current, streamingRef.current]
-          : historyRef.current;
-        const parent = records.find(turn => turn.id === event.parentTurnId);
-        if (!parent) return;
-        const children = [...(parent.childTurns ?? [])];
-        if (!applySubAgentEvent(children, event)) return;
-        parent.childTurns = children;
-        // 后台子任务可能更新已经结束的 turn；更换引用让 memo 组件感知变化。
-        if (streamingRef.current?.id === event.parentTurnId) {
-          streamingRef.current = { ...streamingRef.current };
-        } else {
-          historyRef.current = historyRef.current.map(turn => {
-            if (turn.id === event.parentTurnId) return { ...turn };
-            return turn;
-          });
-        }
-        if (["turn:complete", "turn:abort", "turn:error"].includes(event.event)) flushCommit();
-        else scheduleCommit();
+      a.events.on("subagent:created", info => {
+        subscribeChild(info);
+        // 先渲染一条 pending 子任务，不必等子 Agent 自己的第一个事件。
+        applyChildEvent(info, "subagent:created", info);
       }),
 
       a.events.on("turn:start", ({ turnId, message, attachments, meta, userFormattedText, sender }) => {
@@ -550,6 +589,9 @@ function useAgentEvents(
 
     return () => {
       cancelCommit();
+      // 子订阅与父订阅是两套生命周期，父销毁时一并释放，避免残留监听。
+      childSubscriptions.forEach((dispose) => dispose());
+      childSubscriptions.clear();
       unsubsRef.current.forEach((u) => u());
       unsubsRef.current = [];
     };
@@ -561,7 +603,7 @@ function useAgentEvents(
     commit();
   }, [commit]);
 
-  const loadMoreHistory = useCallback(async (agent: SessionAgent, limit: number) => {
+  const loadMoreHistory = useCallback(async (agent: AgentPort, limit: number) => {
     if (agent.loadOlderTurns) {
       await agent.loadOlderTurns(limit);
     } else {
@@ -585,7 +627,7 @@ function useAgentEvents(
 
 // ─── useSession ───────────────────────────────────────────────────────────────
 
-export function useSession(agent: SessionAgent | undefined) {
+export function useSession(agent: AgentPort | undefined) {
   const historyRef = useRef<MessageRecord[]>([]);
   const streamingRef = useRef<MessageRecord | null>(null);
   const loadingMoreRef = useRef(false);
@@ -615,7 +657,7 @@ export function useSession(agent: SessionAgent | undefined) {
 
   const { historyStatus, historyError, hasMore } = useHistoryLoader(agent, historyRef, streamingRef, commit);
   const { subscribeSession, clearSession, loadMoreHistory: loadMoreHistoryBase } = useAgentEvents(historyRef, streamingRef, commit);
-  const loadMoreHistory = useCallback(async (targetAgent: SessionAgent, limit: number) => {
+  const loadMoreHistory = useCallback(async (targetAgent: AgentPort, limit: number) => {
     if (loadingMoreRef.current) return;
     loadingMoreRef.current = true;
     setIsLoadingMore(true);

@@ -87,6 +87,7 @@ export interface BackgroundSubAgentInfo {
   type: string;
   title: string;
   status: "running" | "success" | "error" | "abort";
+  async?: boolean;
   startedAt: number;
   endedAt?: number;
   error?: string;

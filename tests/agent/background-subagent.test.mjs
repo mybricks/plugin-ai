@@ -4,7 +4,7 @@ import { loadAgentFixtures } from './helpers/load-agent.mjs';
 const { Agent, createSubAgentTool, collectSubAgentTurns, readLegacySubAgentData, applySubAgentEvent, getTurnsManager } = await loadAgentFixtures();
 const defaults = { key: 'parent', summary: { enabled: false }, compact: { enabled: false } };
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
-const config = { name: 'overview', description: 'test', supportsAsync: true, allowedTools: ['echo'] };
+const config = { name: 'overview', title: 'Configured title', description: 'test', supportsAsync: true, allowedTools: ['echo'] };
 const args = { type: 'overview', name: 'overview', prompt: 'inspect', async: true };
 const echo = { name: 'echo', description: 'echo', parameters: { type: 'object', properties: {} }, execute: async () => ({ output: 'tool history' }) };
 function storage(persistMode) {
@@ -70,6 +70,8 @@ for (const mode of ['turn', 'iter']) test(`async persists independent child turn
   assert.equal(metadata.parentAgentKey, 'parent');
   assert.equal(metadata.parentToolCallId, 'call-1');
   assert.equal(metadata.subAgentType, 'overview');
+  assert.equal(metadata.title, args.name);
+  assert.equal(child.title, args.name);
   assert.equal(metadata.startedAt, child.startTime);
   assert.equal(metadata.status, undefined);
   assert.equal(child.iterations[0].toolCalls[0].result.output, 'tool history');
@@ -177,6 +179,8 @@ test('sync child keeps the parent waiting and returns its completed result', asy
   assert.equal(turn.iterations[0].turns, undefined);
   const child = (await parent.getSubAgentTurns(result.metadata.agentKey))[0];
   assert.equal(child.status, 'success');
+  assert.equal(child.title, args.name);
+  assert.equal(result.metadata.title, args.name);
   assert.equal(child.callId, 'call-1');
   assert.equal(result.metadata.iterations, undefined);
   assert.equal(result.metadata.status, undefined);
