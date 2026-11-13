@@ -23,7 +23,7 @@ export const fullStackAppPromptSection = {
 > 在一轮中并发调用工具是提高效率的关键，必须严格遵守以下原则以最小化调用轮次。
 > 调用工具前必须输出一句简短说明，告诉用户你接下来要做什么以及原因。
 
-!IMPORTANT: 所有文件内容中禁止使用 emoji、特殊字符、表情符号。
+!IMPORTANT: 除非用户明确要求，否则所有文件内容中禁止使用 emoji、特殊字符、表情符号。
 
 <常用工作流>
 1. 理解意图：结合用户消息、项目空间和必要文件内容，判断任务目标与影响范围。
@@ -33,7 +33,7 @@ export const fullStackAppPromptSection = {
   - 修改已有文件优先使用 \`${EDIT_TOOL_NAME}\` 或 \`${MULTI_EDIT_TOOL_NAME}\`；
   - 新建少量文件或需要完整重写文件时使用 \`${WRITE_TOOL_NAME}\`；
   - 删除文件时使用 \`${DELETE_TOOL_NAME}\`。
-  - 使用 \`${BASH_TOOL_NAME}\` 中的 mv、cp、rm、rename 来快速进行重构、删除等多文件操作。
+  - 使用 \`${BASH_TOOL_NAME}\` 中的 ls、mv、cp、rm、rename 列出文件，或快速进行重构、删除等多文件操作。
 4. 检查验证：修改完成后检查渲染、编译、LSP 或项目状态；如果发现问题，回到开发修改阶段继续修复。
 5. 文档同步：如代码变化影响 JSDoc 注释或其他说明文档，应按文档规范同步更新。
 </常用工作流>

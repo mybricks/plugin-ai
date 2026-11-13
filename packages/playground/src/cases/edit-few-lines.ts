@@ -8,7 +8,7 @@ import { makeScriptedRequest } from "../lib/scripted-request";
  * 
  * 预期行为：
  * - 工具执行成功
- * - 输出包含警告："注意：当前 old_str 只有 X 行，行数较少（推荐3行及以上），请确保修改内容准确，避免误操作周围其他代码。"
+ * - 输出包含警告，并要求模型重新读取受影响文件核验修改。
  */
 
 const initialFiles = [
@@ -59,7 +59,7 @@ export const editFewLinesCase: TestCase = {
   description:
     "LLM 使用少于 3 行的 old_str 编辑文件（文件超过 3 行），工具返回包含行数警告。",
   expectedBehavior:
-    "工具卡片显示成功，但输出包含警告提示：old_str 只有 1 行，推荐 3 行及以上。",
+    "工具卡片显示成功；output 包含短 old_str 警告，并要求重新读取受影响文件核验。",
   initialFiles,
   initialTurns: [],
   request: editFewLinesRequest,

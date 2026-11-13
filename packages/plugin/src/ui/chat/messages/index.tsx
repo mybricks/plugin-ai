@@ -8,38 +8,72 @@ import { ElapsedTime } from "../../components/elapsed-time";
 import type { MessageRecord } from "../use-session";
 import type {
   ToolCallRecord,
+  TurnErrorCode,
   WarmupIter,
 } from "../../../../../agent/src/types";
 import type { ToolUIChannel } from "../../../../../agent/src";
 import type { ChatAgent } from "../chat-panel/use-agent";
-import { AgentModeEnum } from "../../../../../agent/src";
+import { isWebSocketAgent } from "../chat-panel/websocket-agent";
+import { AgentModeEnum, getConfigDirNameFromAgent, type CodeAgent } from "../../../../../agent/src";
 import type { ActivePlanFile } from "../../../../../agent/src/mode-manager";
 import { WRITE_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/write";
 import { EDIT_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/edit";
 import { MULTI_WRITE_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/multi-write";
 import { MULTI_EDIT_TOOL_NAME } from "../../../../../agent/src/code-agent/tools/multi-edit";
-import { createToolRendererContext, getToolRenderer } from "./tool-renders/index";
-import type { ToolRenderer } from "./tool-renders/index";
-import { ToolCallsGroup } from "./tool-renders/shared";
-import { DefaultToolRenderer } from "./tool-renders/renders";
-import { DefaultUserMessage, getUserMessagePlainText } from "../chat-panel/user-message";
+import type { ToolRenderer, ToolSummaryRenderer } from "./tool-renders/index";
+import { flattenTurnParts, groupTurnParts } from "./group-parts";
+import { ToolCallGroup } from "./tool-call-group";
+import { DefaultUserMessage } from "../chat-panel/user-message";
 import { useChatPanel } from "../chat-panel/context";
 import { isPlanFilePath, usePlanState } from "../../components/plan";
-import "./tool-renders/register";
+import { mountReferMentionsInContainer, unmountReferMentionsInContainer } from "../../components/refer-mention";
 import css from "./index.less";
 import messageSkinCss from "../../markdown/skin-message.less";
 import { renderMermaidInContainer } from "../../markdown/mermaid";
+import { alertsPlugin } from "../../markdown/alerts";
 import { PlanFileCardWithContent } from "./action-cards/plan-card";
 import { SuggestionsBlock } from "./action-cards/suggestions-card";
 import { ActionBar } from "./action-bar";
 import { context } from "../../../context";
+import { ModelSelector } from "../../components/model-selector";
+import type { ModelSelection } from "../../../../../request/src";
+import { getPluginLocale, lang } from "../../../i18n";
 
 /** 将通用网络失败映射为用户友好的提示；其余错误保留原始 message。 */
-function toUserFriendlyError(msg: string): string {
+function toUserFriendlyError(msg?: string, errorCode?: TurnErrorCode): string {
+  const rawCode = errorCode ?? msg;
+  const code = rawCode === "TURN_INCOMPLETE" || rawCode === "TURN_INTERRUPTED"
+    ? "TURN_INCOMPLETE"
+    : rawCode === "TURN_LOOP_DETECTED" || rawCode === "MODEL_AUTO_INTERRUPTED"
+      ? "TURN_LOOP_DETECTED"
+      : rawCode === "CONTEXT_COMPACTION_FAILED"
+        ? rawCode
+        : undefined;
+  if (code === "TURN_INCOMPLETE") return lang.chat.turnInterrupted();
+  if (code === "TURN_LOOP_DETECTED") return lang.chat.modelAutoInterrupted();
+  if (code === "CONTEXT_COMPACTION_FAILED") return lang.chat.contextCompactionFailed();
+  if (errorCode === "NETWORK_ERROR") return lang.chat.networkInterrupted();
+  if (errorCode === "MODEL_ERROR") return lang.chat.serviceFailed();
+  if (!msg) return lang.chat.serviceFailed();
   if (msg === 'Failed to fetch' || msg === 'Load failed') {
-    return '模型服务连接失败，请检查网络或稍后重试';
+    return lang.chat.connectionFailed();
+  }
+  if (msg.includes('Invalid value')) {
+    return lang.chat.serviceFailed();
   }
   return msg;
+}
+
+function getWarmupText(iter: WarmupIter): string {
+  if (iter.operation === "context_compaction") {
+    if (iter.status === "loading") {
+      return iter.retryCount ? lang.chat.contextCompactionRetrying(iter.retryCount) : lang.chat.contextCompacting();
+    }
+    if (iter.status === "success") return lang.chat.contextCompactionCompleted();
+    if (iter.status === "abort") return lang.chat.contextCompactionCancelled();
+    if (iter.errorCode === "CONTEXT_COMPACTION_FAILED") return lang.chat.contextCompactionFailed();
+  }
+  return iter.content ?? "";
 }
 
 
@@ -61,6 +95,8 @@ export type ActionBarItem = ActionBarBuiltinItem | ActionBarCustomItem;
 
 export interface MessageListProps {
   messages: MessageRecord[];
+  /** 是否展示每轮的用户消息和时间。 */
+  showUserMessage?: boolean;
   agent?: ChatAgent;
   /** 远端 Agent 的浏览器工具交互通道；本地 Agent 仍由 agent.getToolUI() 提供。 */
   toolUI?: ToolUIChannel;
@@ -68,6 +104,7 @@ export interface MessageListProps {
   activeStageText?: string;
   /** 当前运行阶段所属的 turn。 */
   activeTurnId?: string;
+  finalizing?: boolean;
   /**
    * ActionBar 白名单配置。
    * - 不传：默认只展示复制
@@ -75,7 +112,7 @@ export interface MessageListProps {
    */
   actionBar?: ActionBarItem[];
   /** 自定义重试行为；不传时默认调用 agent.retry。 */
-  onRetry?: (turnId: string) => void;
+  onRetry?: (turnId: string, selection?: ModelSelection) => void;
   /** 自定义删除行为；不传时默认调用 agent.deleteTurn。 */
   onDelete?: (turnId: string) => void;
   onExecutePlan?: (title: string) => void;
@@ -113,13 +150,13 @@ const CollapseBar = ({
   <div className={css["collapse-bar"]}>
     <div className={css["collapse-bar-line"]} />
     <span className={css["collapse-bar-text"]}>
-      {isLoadingMore ? "加载中..." : (collapsedCount > 0 ? `已折叠 ${collapsedCount} 轮历史对话` : "更多历史对话记录")}
+      {isLoadingMore ? lang.common.loading() : (collapsedCount > 0 ? lang.chat.historyCollapsed(collapsedCount) : lang.chat.moreHistory())}
     </span>
     {!isLoadingMore && (
       <div className={css["collapse-bar-actions"]}>
-        <button className={css["collapse-bar-btn"]} onClick={() => { void onExpandOne(); }}>展开一条</button>
+        <button className={css["collapse-bar-btn"]} onClick={() => { void onExpandOne(); }}>{lang.chat.expandOne()}</button>
         <button className={css["collapse-bar-btn"]} onClick={() => { void onExpandSecondary(); }}>
-          {collapsedCount > 0 ? "展开全部" : "展开 10 条"}
+          {collapsedCount > 0 ? lang.chat.expandAll() : lang.chat.expandTen()}
         </button>
       </div>
     )}
@@ -132,7 +169,7 @@ const CollapseBar = ({
 const DEFAULT_ACTION_BAR: ActionBarItem[] = [];
 
 const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
-  function MessageListInner({ messages, agent, toolUI, activeStageText, activeTurnId, actionBar, onRetry, onDelete, onExecutePlan, canExecutePlan = true, renderEmpty, renderFooter, collapseCursor, onExpandHistory }, ref) {
+  function MessageListInner({ messages, showUserMessage = true, agent, toolUI, activeStageText, activeTurnId, finalizing, actionBar, onRetry, onDelete, onExecutePlan, canExecutePlan = true, renderEmpty, renderFooter, collapseCursor, onExpandHistory }, ref) {
   const resolvedActionBar = actionBar ?? DEFAULT_ACTION_BAR;
   const mainRef = useRef<HTMLElement>(null);
   const scrollerRef = useRef<AutoScroller | null>(null);
@@ -150,6 +187,21 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
       for (const tool of tools) {
         if (tool.render) {
           map.set(tool.name, tool.render);
+        }
+      }
+    }
+
+    return map;
+  }, [agent]);
+  const toolSummaryRendererMap = useMemo(() => {
+    const map = new Map<string, ToolSummaryRenderer>();
+
+    // 自定义工具的聚合摘要渲染器（与 render 是两个独立字段）
+    if (agent) {
+      const tools = agent.getTools();
+      for (const tool of tools) {
+        if ((tool as any).summaryRender) {
+          map.set(tool.name, (tool as any).summaryRender);
         }
       }
     }
@@ -195,14 +247,17 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
                 <MessageBubble
                   key={record.id}
                   record={record}
+                  showUserMessage={showUserMessage}
                   toolRendererMap={toolRendererMap}
+                  toolSummaryRendererMap={toolSummaryRendererMap}
                   actionBar={resolvedActionBar}
-                  onRetry={isLast && record.status !== "pending" ? onRetry : undefined}
+                  onRetry={isLast && record.status !== "pending" && !(finalizing && record.id === activeTurnId) ? onRetry : undefined}
                   onDelete={onDelete}
                   isLast={isLast}
                   agent={agent}
                   toolUI={toolUI}
                   stageText={stageText}
+                  finalizing={finalizing && record.id === activeTurnId}
                   onExecutePlan={onExecutePlan}
                   canExecutePlan={canExecutePlan}
                   activePlan={activePlan}
@@ -221,22 +276,25 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
 
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
-const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMap, actionBar, onRetry, onDelete, isLast, agent, toolUI, stageText, onExecutePlan, canExecutePlan = true, activePlan }: {
+const MessageBubble = React.memo(function MessageBubble({ record, showUserMessage, toolRendererMap, toolSummaryRendererMap, actionBar, onRetry, onDelete, isLast, agent, toolUI, stageText, finalizing, onExecutePlan, canExecutePlan = true, activePlan }: {
   record: MessageRecord;
+  showUserMessage: boolean;
   toolRendererMap: Map<string, ToolRenderer>;
+  toolSummaryRendererMap: Map<string, ToolSummaryRenderer>;
   actionBar: ActionBarItem[];
 
-  onRetry?: (turnId: string) => void;
+  onRetry?: (turnId: string, selection?: ModelSelection) => void;
   onDelete?: (turnId: string) => void;
   isLast?: boolean;
-  agent?: MessageAgent;
+  agent?: ChatAgent;
   toolUI?: ToolUIChannel;
   stageText?: string;
+  finalizing?: boolean;
   onExecutePlan?: (title: string) => void;
   canExecutePlan?: boolean;
   activePlan: ActivePlanFile | null;
 }) {
-  const { user, renderUserMessage } = useChatPanel();
+  const { user, renderUserMessage, modelSelector, groupToolCalls } = useChatPanel();
   const userName = record.sender?.name ?? user?.name;
   const userAvatar = record.sender?.avatar ?? user?.avatar;
   // 名字与头像都为空时不渲染用户头栏（user 整体不传或 name/avatar 均未配置的场景）
@@ -250,15 +308,23 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
     isPlanRecord;
   const planFile = useMemo(() => {
     if (!isCompletedPlanRecord) return null;
-    return getActivePlanFileFromRecord(record, activePlan);
-  }, [record, isCompletedPlanRecord, activePlan]);
+    return getActivePlanFileFromRecord(record, activePlan, getConfigDirNameFromAgent(agent));
+  }, [record, isCompletedPlanRecord, activePlan, agent]);
   const shouldShowPlanCard =
     isCompletedPlanRecord &&
     Boolean(planFile?.content?.trim());
   const canOperatePlanCard = Boolean(isLast) && Boolean(agent);
 
-  // 重试状态：{ attempt, maxRetries } 或 null
-  const [retryState, setRetryState] = useState<{ attempt: number; maxRetries: number } | null>(null);
+  const turnBlocks = useMemo(
+    () => groupTurnParts(
+      flattenTurnParts(record.iterations, record.status === "pending"),
+      groupToolCalls,
+    ),
+    [record.iterations, record.status, groupToolCalls],
+  );
+
+  // 重试状态只属于触发它的 LLM iter，不能延续到工具执行后的下一轮 iter。
+  const [retryState, setRetryState] = useState<{ step: number; attempt: number; maxRetries: number } | null>(null);
   const handleDeleteTurn = () => {
     if (onDelete) {
       onDelete(record.id);
@@ -267,34 +333,46 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
     const deleteTurn = (agent as Partial<CodeAgent> | undefined)?.deleteTurn;
     if (deleteTurn) void deleteTurn.call(agent, record.id);
   };
-  const handleRetryTurn = () => {
+  const handleRetryTurn = (selection?: ModelSelection) => {
     if (onRetry) {
-      onRetry(record.id);
+      onRetry(record.id, selection);
       return;
     }
     if (!agent) return;
     if (!agent.key) {
-      void agent.retry(record.id);
+      // WebSocket Agent 的模型在平台侧固定，忽略本地 selection。
+      if (selection && !isWebSocketAgent(agent)) void agent.retry({ turnId: record.id, ...selection });
+      else void agent.retry(record.id);
       return;
     }
     context.aiQueue.send(
       agent,
       async () => {
-        await agent.retry(record.id);
+        if (selection && !isWebSocketAgent(agent)) await agent.retry({ turnId: record.id, ...selection });
+        else await agent.retry(record.id);
       },
-      { message: "重试" }
+      { message: lang.common.retry() }
     );
+  };
+  const handleRetryWithModel = (selection: Parameters<NonNullable<typeof modelSelector>["onSelect"]>[0]) => {
+    modelSelector?.onSelect(selection);
+    handleRetryTurn(selection);
   };
 
   // 订阅 llm:retry 事件
   useEffect(() => {
     if (!agent) return;
 
-    const unsubscribe = agent.events.on('llm:retry', ({ step, attempt, maxRetries }) => {
+    const unsubscribeRetry = agent.events.on('llm:retry', ({ step, attempt, maxRetries }) => {
       // 只显示当前 pending record 的重试状态
       if (record.status === 'pending') {
-        setRetryState({ attempt, maxRetries });
+        setRetryState({ step, attempt, maxRetries });
       }
+    });
+
+    // 当前 iter 成功返回后，无论接下来是执行工具还是进入下一轮 LLM，都不应继续显示它的重试信息。
+    const unsubscribeComplete = agent.events.on('llm:complete', ({ step }) => {
+      setRetryState((current) => current?.step === step ? null : current);
     });
 
     // 清理：当 record 不再 pending 时清空重试状态
@@ -302,15 +380,16 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
       setRetryState(null);
     }
 
-    return unsubscribe;
+    return () => {
+      unsubscribeRetry();
+      unsubscribeComplete();
+    };
   }, [agent, record.status]);
 
   return (
     <div className={classNames(css["chat-bubble-container"], !isLast && css["chat-bubble-container--history"])}>
-      {/* 时间戳居中 */}
+      {showUserMessage && <>
       <div className={css["chat-bubble-time"]}>{formatTime(record.startTime)}</div>
-
-      {/* 用户消息 —— 靠右 */}
       <div className={classNames(css["chat-bubble"], css["user-bubble"])}>
         {shouldShowUserHeader && (
           <header className={css["chat-bubble-header"]}>
@@ -336,11 +415,12 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
           )}
           {record.userText && (
             <ActionBar className={css["user-action-bar"]}>
-              <ActionBar.Copy key="copy" text={getUserMessagePlainText(record)} />
+              <ActionBar.Copy key="copy" text={record.userText} meta={record.meta} />
             </ActionBar>
           )}
         </section>
       </div>
+      </>}
 
       {/* AI 回复 —— 靠左 */}
       <div className={classNames(css["chat-bubble"], css["ai-bubble"])}>
@@ -359,50 +439,78 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
         <section className={classNames(css["chat-message-container"], css["ai-message"])}>
           <div className={css["message-flow"]}>
             {/* 无任何 iteration 且 pending → 规划占位 */}
-            {record.status === "pending" && record.iterations.length === 0 && (
+            {record.status === "pending" && record.iterations.length === 0 && !finalizing && (
               <div className={css["iter-header"]}>
                 <div className={css["iter-header-content"]}>
                   {retryState && (
                     <span className={css["retry-info"]}>
-                      重试 {retryState.attempt}/{retryState.maxRetries}
+                      {lang.chat.retryProgress(retryState.attempt, retryState.maxRetries)}
                     </span>
                   )}
-                  <TextShimmer className={css["iter-header-placeholder"]}>{stageText ?? "等待模型响应..."}</TextShimmer>
+                  <TextShimmer className={css["iter-header-placeholder"]}>{stageText ?? lang.chat.waitingForModel()}</TextShimmer>
                 </div>
               </div>
             )}
 
-            {/* completed iter 与流式 iter 都以独立 memo 单元渲染。 */}
-            {record.iterations.map((iter, iterIdx) => (
-              <MessageIteration
-                key={iter.iterId}
-                iter={iter}
-                isLastItem={iterIdx === record.iterations.length - 1}
-                isPending={record.status === "pending"}
-                retryState={retryState}
-                toolRendererMap={toolRendererMap}
-                agent={agent}
-                toolUI={toolUI}
-                stageText={stageText}
-              />
-            ))}
+            {/* 把 iterations 摊平为「文本/占位头部」与「连续工具调用」两种 block：
+                只要中间没被文本打断，跨多个 iteration 的连续工具调用也会合并成一个 tool-group，
+                是否折叠展示由 ChatPanel 的 groupToolCalls 开关决定（见 tool-call-group.tsx）。 */}
+            {turnBlocks.map((block) =>
+              block.kind === "tool-group" ? (
+                <ToolCallGroup
+                  key={block.key}
+                  tools={block.tools}
+                  turn={record}
+                  toolRendererMap={toolRendererMap}
+                  toolSummaryRendererMap={toolSummaryRendererMap}
+                  agent={agent}
+                  toolUI={toolUI}
+                  awaitingNext={block.awaitingNext}
+                />
+              ) : (
+                <MessageIteration
+                  key={block.key}
+                  iter={block.part.iter}
+                  isLastItem={block.part.isLastItem}
+                  isPending={record.status === "pending"}
+                  retryState={retryState}
+                  stageText={stageText}
+                />
+              )
+            )}
 
             {/* 已取消 */}
             {record.status === "abort" && (
-              <div className={css["ai-chat-abort-tip"]}>已取消</div>
+              <div className={css["ai-chat-abort-tip"]}>{lang.chat.cancelled()}</div>
             )}
 
             {/* 错误 */}
-            {record.status === "error" && record.error && (
+            {record.status === "error" && (record.error || record.errorCode) && (
               <div className={css["ai-chat-error-code-block"]}>
-                <div className={css["ai-chat-error-content"]}>{toUserFriendlyError(record.error)}</div>
-                {(onRetry || agent) && !record.error.includes("连续调用，已自动中断") && (
+                <div className={css["ai-chat-error-content"]}>{toUserFriendlyError(record.error, record.errorCode)}</div>
+                {onRetry && (
                   <div className={css["ai-chat-error-actions"]}>
+                    {(!record.errorCode || record.errorCode === "MODEL_ERROR") && modelSelector && modelSelector.models.length > 1 && (
+                      <ModelSelector
+                        modelSelector={{
+                          models: modelSelector.models,
+                          selected: modelSelector.selected,
+                          onSelect: handleRetryWithModel,
+                        }}
+                        syncSelected={false}
+                        placement="top"
+                        trigger={
+                          <button className={css["retry-other-model-button"]}>
+                            {lang.chat.retryWithOtherModel()}
+                          </button>
+                        }
+                      />
+                    )}
                     <button
                       className={css["retry-button"]}
-                      onClick={handleRetryTurn}
+                      onClick={() => handleRetryTurn()}
                     >
-                      重试
+                      {lang.common.retry()}
                     </button>
                   </div>
                 )}
@@ -445,7 +553,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
                   return <ActionBar.Delete key="delete" onDelete={handleDeleteTurn} />;
                 }
                 if (item === "retry" && isLast && (onRetry || agent) && record.status !== "abort") {
-                  return <ActionBar.Retry key="retry" onRetry={handleRetryTurn} />;
+                  return <ActionBar.Retry key="retry" onRetry={() => handleRetryTurn()} />;
                 }
                 return null;
               }
@@ -458,37 +566,34 @@ const MessageBubble = React.memo(function MessageBubble({ record, toolRendererMa
   )
 });
 
-/** 单个 iter 是流式更新的最小 React 边界；completed iter 会因引用稳定而直接 memo bailout。 */
+/** 单个 iter 的「头部」：文本 / warmup / 规划中占位。不再负责渲染 toolCalls（已上移到 MessageBubble 的 turnBlocks）。 */
 const MessageIteration = React.memo(function MessageIteration({
   iter,
   isLastItem,
   isPending,
   retryState,
-  toolRendererMap,
-  agent,
-  toolUI,
   stageText,
 }: {
   iter: MessageRecord["iterations"][number];
   isLastItem: boolean;
   isPending: boolean;
-  retryState: { attempt: number; maxRetries: number } | null;
-  toolRendererMap: Map<string, ToolRenderer>;
-  agent?: MessageAgent;
-  toolUI?: ToolUIChannel;
+  retryState: { step: number; attempt: number; maxRetries: number } | null;
   stageText?: string;
 }) {
   if (iter.type === "warmup") {
     const warmupIter = iter as WarmupIter;
-    if (warmupIter.status === "error") return null;
+    // 与旧版行为一致：失败和取消由 turn 级错误/取消提示统一表达，
+    // 不在 warmup 记录中重复展示。
+    if (warmupIter.status === "error" || warmupIter.status === "abort") return null;
     const isLoading = warmupIter.status === "loading";
+    const warmupText = getWarmupText(warmupIter);
     return (
       <div className={css["iter-header"]}>
         <div className={css["iter-header-content"]}>
           {isLoading ? (
-            <TextShimmer className={css["iter-header-placeholder"]}>{warmupIter.content}</TextShimmer>
+            <TextShimmer className={css["iter-header-placeholder"]}>{warmupText}</TextShimmer>
           ) : (
-            <span>{warmupIter.content}</span>
+            <span>{warmupText}</span>
           )}
         </div>
         <ElapsedTime startTime={warmupIter.startTime} endTime={warmupIter.endTime} className={css["planning-elapsed"]} />
@@ -498,11 +603,23 @@ const MessageIteration = React.memo(function MessageIteration({
 
   const llmDone = iter.endTime !== undefined;
   const llmStreaming = isLastItem && isPending && !llmDone;
+  // 有思考内容时，它是「模型响应中」之后的下一个阶段；正文开始或该 iter 完成后不再展示。
+  // 三个状态共用 iter.startTime 做累计计时，因此只需互斥展示，不需要额外的时间字段。
+  const isThinking = Boolean(iter.thinkingContent) && !iter.content && llmStreaming;
+  const shouldShowResponsePlaceholder = !isThinking && iter.toolCalls.length === 0 && isPending;
+
+  // 工具调用由外层 ToolCallGroup 渲染；已结束且没有正文的思考不留下空白历史节点。
+  if (!iter.content && !isThinking && !shouldShowResponsePlaceholder) return null;
 
   return (
     <>
-      {iter.thinkingContent && (
-        <ThinkingCard thinkingContent={iter.thinkingContent} llmStreaming={llmStreaming} />
+      {isThinking && iter.thinkingContent && (
+        <ThinkingCard
+          thinkingContent={iter.thinkingContent}
+          llmStreaming={llmStreaming}
+          startTime={iter.startTime}
+          endTime={iter.endTime}
+        />
       )}
 
       <div className={css["iter-header"]}>
@@ -511,44 +628,31 @@ const MessageIteration = React.memo(function MessageIteration({
             <div className={css["iter-header-content"]}>
               {retryState && isLastItem && isPending && (
                 <span className={css["retry-info"]}>
-                  重试 {retryState.attempt}/{retryState.maxRetries}
+                  {lang.chat.retryProgress(retryState.attempt, retryState.maxRetries)}
                 </span>
               )}
               <MarkdownMessage message={iter.content} />
             </div>
             {iter.startTime && <ElapsedTime startTime={iter.startTime} endTime={iter.endTime} className={css["planning-elapsed"]} />}
           </>
-        ) : iter.toolCalls.length === 0 && isPending ? (
+        ) : shouldShowResponsePlaceholder ? (
           <>
             <div className={css["iter-header-content"]}>
               {retryState && isLastItem && (
                 <span className={css["retry-info"]}>
-                  重试 {retryState.attempt}/{retryState.maxRetries}
+                  {lang.chat.retryProgress(retryState.attempt, retryState.maxRetries)}
                 </span>
               )}
-              <TextShimmer className={css["iter-header-placeholder"]}>{stageText ?? "等待模型响应..."}</TextShimmer>
+              <TextShimmer className={css["iter-header-placeholder"]}>{stageText ?? lang.chat.waitingForModel()}</TextShimmer>
             </div>
             {iter.startTime && <ElapsedTime startTime={iter.startTime} endTime={iter.endTime} className={css["planning-elapsed"]} />}
           </>
         ) : null}
       </div>
-      {iter.toolCalls.length > 0 && (
-        <ToolCallsGroup
-          isFinish={!(isLastItem && isPending)}
-          toolCalls={iter.toolCalls}
-          renderTool={(tool) => (
-            <ToolBubble
-              tool={tool}
-              toolRendererMap={toolRendererMap}
-              agent={agent}
-              toolUI={toolUI}
-            />
-          )}
-        />
-      )}
     </>
   );
 });
+
 
 /** 字符数超过此值时折叠，避免长文本首次渲染开销 */
 const COLLAPSE_CHAR_THRESHOLD = 300;
@@ -560,9 +664,11 @@ interface CollapsibleUserMessageProps {
   text: string;
   /** 展开后渲染的完整内容，折叠时不调用，避免不必要的渲染开销 */
   renderFull: () => React.ReactNode;
+  /** 可选的折叠预览渲染，用于保留 MBS 等内联语义样式。 */
+  renderPreview?: () => React.ReactNode;
 }
 
-const CollapsibleUserMessage = ({ text, renderFull }: CollapsibleUserMessageProps) => {
+const CollapsibleUserMessage = ({ text, renderFull, renderPreview }: CollapsibleUserMessageProps) => {
   const needsCollapse = text.length > COLLAPSE_CHAR_THRESHOLD;
   const [collapsed, setCollapsed] = useState(true);
 
@@ -574,7 +680,7 @@ const CollapsibleUserMessage = ({ text, renderFull }: CollapsibleUserMessageProp
     <div className={css["collapsible-message"]}>
       <div className={classNames(css["collapsible-body"], collapsed && css["collapsible-body--collapsed"])}>
         {collapsed
-          ? <span className={css["collapsible-preview"]}>{text.slice(0, COLLAPSE_PREVIEW_CHARS)}</span>
+          ? renderPreview?.() ?? <span className={css["collapsible-preview"]}>{text.slice(0, COLLAPSE_PREVIEW_CHARS)}</span>
           : renderFull()
         }
       </div>
@@ -582,14 +688,17 @@ const CollapsibleUserMessage = ({ text, renderFull }: CollapsibleUserMessageProp
         className={css["collapsible-toggle"]}
         onClick={() => setCollapsed((c) => !c)}
       >
-        {collapsed ? "展开" : "收起"}
+        {collapsed ? lang.chat.expand() : lang.chat.collapse()}
       </button>
     </div>
   );
 };
 
 const UserMessageContent = ({ record }: { record: MessageRecord }) => {
-  const isMarkdown = !record.meta?.focus && !record.meta?.chips?.length && /!\[[^\]]*]\([^)]+\)/.test(record.userText);
+  const hasInlineTokens = !!record.meta?.chips?.length || record.userText.includes("[$mbs-template:");
+  const isMarkdown = !record.meta?.focus
+    && !hasInlineTokens
+    && /!\[[^\]]*]\([^)]+\)/.test(record.userText);
 
   return (
     <CollapsibleUserMessage
@@ -599,11 +708,18 @@ const UserMessageContent = ({ record }: { record: MessageRecord }) => {
           ? <MarkdownMessage message={record.userText} className={css["user-message-text"]} />
           : <DefaultUserMessage record={record} />
       }
+      renderPreview={hasInlineTokens ? () => (
+        <DefaultUserMessage record={{ ...record, userText: record.userText.slice(0, COLLAPSE_PREVIEW_CHARS) }} />
+      ) : undefined}
     />
   );
 };
 
-function getActivePlanFileFromRecord(record: MessageRecord, activePlan: ActivePlanFile | null): ActivePlanFile | null {
+function getActivePlanFileFromRecord(
+  record: MessageRecord,
+  activePlan: ActivePlanFile | null,
+  configDirName?: string,
+): ActivePlanFile | null {
   if (!activePlan || activePlan.status !== "active" || !activePlan.content.trim()) return null;
 
   const relatedPlanPaths = new Set<string>();
@@ -612,7 +728,7 @@ function getActivePlanFileFromRecord(record: MessageRecord, activePlan: ActivePl
     if (iter.type === "warmup") continue;
 
     for (const tool of iter.toolCalls) {
-      for (const path of getPlanPathsFromTool(tool)) {
+      for (const path of getPlanPathsFromTool(tool, configDirName)) {
         relatedPlanPaths.add(path);
       }
     }
@@ -621,11 +737,11 @@ function getActivePlanFileFromRecord(record: MessageRecord, activePlan: ActivePl
   return relatedPlanPaths.has(activePlan.path.replace(/^\/+/, "")) ? activePlan : null;
 }
 
-function getPlanPathsFromTool(tool: ToolCallRecord): string[] {
+function getPlanPathsFromTool(tool: ToolCallRecord, configDirName?: string): string[] {
   const normalizePlanPath = (path: unknown) => {
     if (typeof path !== "string" || !path) return null;
     const normalized = path.replace(/^\/+/, "");
-    return isPlanFilePath(normalized) ? normalized : null;
+    return isPlanFilePath(normalized, configDirName) ? normalized : null;
   };
 
   if (tool.name === WRITE_TOOL_NAME || tool.name === EDIT_TOOL_NAME) {
@@ -646,158 +762,48 @@ function getPlanPathsFromTool(tool: ToolCallRecord): string[] {
   return [];
 }
 
-// ─── ToolBubble ───────────────────────────────────────────────────────────────
-
-type UIToolRecord = Omit<ToolCallRecord, "status"> & { status: "pending" | "success" | "error" };
-
-/**
- * ToolCallRecord 的 status 在 agent 层允许缺省；渲染层统一收敛为三种展示状态。
- * memo 让同一 iter 内未改变的工具卡片跳过本次流式更新。
- */
-const ToolBubble = React.memo(function ToolBubble({
-  tool,
-  toolRendererMap,
-  agent,
-  toolUI,
-}: {
-  tool: ToolCallRecord;
-  toolRendererMap: Map<string, ToolRenderer>;
-  agent?: MessageAgent;
-  toolUI?: ToolUIChannel;
-}) {
-  const uiTool: UIToolRecord = {
-    ...tool,
-    status: tool.status === "success" || tool.status === "error" ? tool.status : "pending",
-  };
-  // 优先从 agent 的工具列表中查找自定义渲染函数（已缓存）
-  const customRenderer = toolRendererMap.get(uiTool.name);
-  if (customRenderer) {
-    return renderToolWithErrorBoundary(
-      customRenderer,
-      uiTool,
-      "custom",
-      agent,
-      toolUI,
-    );
-  }
-
-  // 降级到全局 registry（用于内置工具）
-  const globalRenderer = getToolRenderer(uiTool.name);
-  if (globalRenderer) {
-    return renderToolWithErrorBoundary(
-      globalRenderer,
-      uiTool,
-      "registry",
-      agent,
-      toolUI,
-    );
-  }
-
-  // 最终降级到默认渲染器
-  return <DefaultToolRenderer tool={uiTool as any} />;
-});
-
-function renderToolWithErrorBoundary(
-  renderer: ToolRenderer,
-  tool: UIToolRecord,
-  source: "custom" | "registry",
-  agent?: MessageAgent,
-  toolUI?: ToolUIChannel,
-) {
-  return React.createElement(
-    ToolRendererErrorBoundary as any,
-    { tool, source, resetKey: getToolRendererResetKey(tool) },
-    <ToolRendererInvoker
-      renderer={renderer}
-      tool={tool as any}
-      agent={agent}
-      toolUI={toolUI}
-    />
-  );
-}
-
-const ToolRendererInvoker = ({
-  renderer,
-  tool,
-  agent,
-  toolUI,
-}: {
-  renderer: ToolRenderer;
-  tool: ToolCallRecord;
-  agent?: MessageAgent;
-  toolUI?: ToolUIChannel;
-}) => {
-  return renderer(
-    tool as any,
-    createToolRendererContext(tool.callId, toolUI ?? agent?.getToolUI()),
-  );
-};
-
-class ToolRendererErrorBoundary extends React.Component<
-  { tool: ToolCallRecord; source: "custom" | "registry"; resetKey: string; children: React.ReactNode },
-  { hasError: boolean }
-> {
-  state = { hasError: false };
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: unknown) {
-    console.warn("[ToolRenderer] render failed, fallback to default renderer", {
-      toolName: this.props.tool.name,
-      callId: this.props.tool.callId,
-      source: this.props.source,
-      error,
-    });
-  }
-
-  componentDidUpdate(prevProps: { resetKey: string }) {
-    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
-      this.setState({ hasError: false });
-    }
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return <DefaultToolRenderer tool={this.props.tool as any} />;
-    }
-    return this.props.children;
-  }
-}
-
-function getToolRendererResetKey(tool: UIToolRecord): string {
-  return `${tool.callId}:${tool.status}:${tool.execEndTime}`;
-}
-
 const ThinkingCard = ({
   thinkingContent,
   llmStreaming,
+  startTime,
+  endTime,
 }: {
   thinkingContent: string;
   llmStreaming: boolean;
+  startTime: number;
+  endTime?: number;
 }) => {
-  const bodyRef = useRef<HTMLDivElement>(null);
-  const message = `${thinkingContent}${llmStreaming ? "..." : ""}`;
-
-  useEffect(() => {
-    if (bodyRef.current) {
-      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
-    }
-  }, [message]);
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <div className={css["think-card"]}>
-      <div className={css["think-card-header"]}>
+      <button
+        type="button"
+        className={css["think-card-header"]}
+        onClick={() => setExpanded((value) => !value)}
+        aria-expanded={expanded}
+        aria-label={expanded ? lang.chat.collapse() : lang.chat.expand()}
+      >
         {llmStreaming ? (
-          <TextShimmer className={css["think-card-title"]}>思考中</TextShimmer>
+          <TextShimmer className={css["think-card-title"]}>{lang.chat.thinkingInProgress()}</TextShimmer>
         ) : (
-          <span className={css["think-card-title"]}>思考</span>
+          <span className={css["think-card-title"]}>{lang.chat.thinking()}</span>
         )}
-      </div>
-      <div ref={bodyRef} className={css["think-card-body"]}>
-        <MarkdownMessage message={message} />
-      </div>
+        <ElapsedTime
+          startTime={startTime}
+          endTime={llmStreaming ? undefined : endTime}
+          className={css["think-card-duration"]}
+          showImmediately
+        />
+        <span className={css["think-card-toggle"]} aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.2s" }} width="1em" height="1em"><path d="m9 6 6 6-6 6" /></svg>
+        </span>
+      </button>
+      {expanded && (
+        <div className={css["think-card-body"]}>
+          <MarkdownMessage message={thinkingContent} />
+        </div>
+      )}
     </div>
   );
 };
@@ -830,14 +836,17 @@ const MarkdownMessage = ({ message, className }: { message: string; className?: 
   // 优先使用外部自定义皮肤，否则回退内置 skin-message
   const skinClass = markdownSkin?.message ?? messageSkinCss["markdown-skin-message"];
   const md = useMemo(() => {
-    const instance = markdownit({ linkify: true });
+    const instance = markdownit({ linkify: true }).use(alertsPlugin);
     markdownitConfig?.configure?.(instance);
+    // 仅自动识别带协议的链接。否则 `TASKS.md` 会被 linkify-it 当成 `.md` 域名而误转成链接。
+    instance.linkify.set({ fuzzyLink: false, fuzzyEmail: false });
     return instance;
   }, [markdownitConfig]);
 
   useEffect(() => {
     if (!ref.current) return;
 
+    unmountReferMentionsInContainer(ref.current);
     ref.current.innerHTML = md.render(message);
 
     Array.from(ref.current.querySelectorAll<HTMLAnchorElement>("a[href]")).forEach((anchor) => {
@@ -845,6 +854,9 @@ const MarkdownMessage = ({ message, className }: { message: string; className?: 
       anchor.target = "_blank";
       anchor.rel = "noopener noreferrer";
     });
+
+    // 识别已注册 scheme（如 task://）的引用链接，原地替换为可 hover 的引用卡片
+    mountReferMentionsInContainer(ref.current);
 
     // 渲染 mermaid 流程图（异步，不阻塞内容展示）
     renderMermaidInContainer(ref.current).catch(() => {});
@@ -861,6 +873,10 @@ const MarkdownMessage = ({ message, className }: { message: string; className?: 
     });
   }, [message, md]);
 
+  useEffect(() => () => {
+    if (ref.current) unmountReferMentionsInContainer(ref.current);
+  }, []);
+
   const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement | null;
     const anchor = target?.closest?.("a[href]") as HTMLAnchorElement | null;
@@ -872,6 +888,12 @@ const MarkdownMessage = ({ message, className }: { message: string; className?: 
         window.open(href, "_blank", "noopener,noreferrer");
         return;
       }
+
+      // Markdown 的原生锚点会自行处理 file: 等非白名单协议；这里必须显式
+      // 拦截，避免消息内容借由普通链接打开本地文件或其他未知协议。
+      event.preventDefault();
+      event.stopPropagation();
+      return;
     }
 
     const image = target?.closest?.("img") as HTMLImageElement | null;
@@ -926,23 +948,18 @@ function getTurnText(record: MessageRecord): string {
 function formatTime(ts: number): string {
   const d = new Date(ts);
   const now = new Date();
-  const time = `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
   const isSameDay =
     d.getFullYear() === now.getFullYear() &&
     d.getMonth() === now.getMonth() &&
     d.getDate() === now.getDate();
 
-  if (isSameDay) {
-    return time;
-  }
-
-  const date = `${d.getMonth() + 1}月${d.getDate()}日`;
-
-  if (d.getFullYear() === now.getFullYear()) {
-    return `${date} ${time}`;
-  }
-
-  return `${d.getFullYear()}年${date} ${time}`;
+  const locale = getPluginLocale() === "en" ? "en-US" : "zh-CN";
+  const options: Intl.DateTimeFormatOptions = isSameDay
+    ? { hour: "2-digit", minute: "2-digit" }
+    : d.getFullYear() === now.getFullYear()
+      ? { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }
+      : { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" };
+  return new Intl.DateTimeFormat(locale, options).format(d);
 }
 
 // ─── AutoScroller ─────────────────────────────────────────────────────────────

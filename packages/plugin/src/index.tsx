@@ -3,38 +3,56 @@ import React from "react";
 import pkg from "../../../package.json";
 console.log(`%c ${pkg.name} %c@${pkg.version}`, `color:#FFF;background:#fa6400`, ``, ``);
 
-import { IDBHistory } from "../../agent/src";
-import type { AgentOptions, CodeAgentPlugin, SkillFile, TurnSender } from "../../agent/src";
+import { IDBHistory, normalizeConfigDirName } from "../../agent/src";
+import type { AgentOptions, CodeAgentPluginInput, SkillFile, TurnSender } from "../../agent/src";
 import { createRequestAsStream, createOnUpload } from "../../request/src";
 import type { RequestAsStreamFn, ProviderConfig } from "../../request/src";
 export type { ProviderConfig, RemoteProviderConfig, CustomProviderConfig, ModelConfig, ModelSelection } from "../../request/src";
 import { type PromptSections } from "../../kit/src";
 import { DEFAULT_PLUGIN_SKILLS } from "./skills/default";
+import { createUnderstandAnyContribute } from "./contributes/understand";
+import { createUnderstandAnyCorePlugin } from "../../kit/src/plugins/understand-any";
 
 import { context } from "./context";
+import { lang } from "./i18n";
 import { setupSandbox } from "./sandbox";
 import { chipRegistry } from "./sandbox/setup";
-import type { AgentRuntimeConfig, RemoteAgentConfig, Designer, Hooks, RegistSandBoxConfig, PluginGetUserContextMessage, SendToAgentParams } from "./sandbox";
+import type { AgentRuntimeConfig, RemoteAgentConfig, Designer, Hooks, RegistSandBoxConfig, PluginGetUserContextMessage, ProjectContext, SendToAgentParams } from "./sandbox";
 import { ChatPanelList } from "./ui/chat/chat-panel-list";
 import { ComChatFocusView } from "./ui/chat/chat-focus-view";
 import { ensureAIPanelOpen, ensureFocusComId } from "./utils/ensure-ai-panel-open";
 import { createDomChip } from "./utils/dom-info";
 import type { MentionProvider } from "./ui/components/types";
+import type { AttachProcessor } from "./content-limits";
 
 // ─── 工具类型重导出 ────────────────────────────────────────────────────────────
 
 export { Agent, IDBHistory, IDBSandbox, Tools } from "../../agent/src";
 export { CodeAgent } from "./compat-code-agent";
 export type { CompatibleCodeAgentOptions } from "./compat-code-agent";
+export { createAgentSandboxFromV1, isAgentSandbox } from "../../agent/src";
+export type {
+  AgentSandbox,
+  AgentSandboxCommandNext,
+  AgentSandboxCommandProxy,
+  AgentSandboxCommandRequest,
+  AgentSandboxCommandResult,
+  AgentSandboxCommandTransport,
+  AgentSandboxCommands,
+  AgentSandboxFiles,
+  CreateAgentSandboxFromV1Options,
+  SandboxV1,
+} from "../../agent/src";
 export { DisabledHandler } from "./disabled-handler";
 export type { DisabledMessage, DisabledRequestHandler } from "./disabled-handler";
-export type { AdditionalDirectory, AgentEventMap, AgentsMdConfig, CodeAgentPlugin, SkillFile, UnifiedFile } from "../../agent/src";
+export type { AgentEventMap, AgentHooks, CodeAgentPlugin, CodeAgentPluginFactory, CodeAgentPluginInput, PromptTemplateFile, SkillFile, UnifiedFile } from "../../agent/src";
 export { createRequestAsStream, createOnUpload } from "../../request/src";
 export type { RequestAsStreamFn } from "../../request/src";
 export { openSetting, closeSetting, SettingModal } from "./ui/setting";
 export type { SettingModalProps } from "./ui/setting";
-export type { AgentRuntimeConfig, RemoteAgentConfig, ConnectToAIResult, Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams, PluginGetUserContextMessage, VirtualFilesRuntimeContext, ChatChipRemoveHandler, SandboxChipConfig, SandboxChipRecordConfig, SandboxChipsConfig } from "./sandbox";
+export type { AgentRuntimeConfig, RemoteAgentConfig, ConnectToAIResult, Designer, Hooks, RegistSandBoxConfig, SandboxAPI, SandboxHelpers, SandboxConfig, SendToAgentParams, SenderOptions, PluginGetUserContextMessage, ProjectContext, VirtualFilesRuntimeContext, ChatChipRemoveHandler, SandboxChipConfig, SandboxChipRecordConfig, SandboxChipsConfig } from "./sandbox";
 export type { MentionProvider, MentionMenuItem } from "./ui/components/types";
+export type { AttachProcessor, FileContent, FileReference, LinkAttachment } from "./content-limits";
 // ProviderConfig / ModelConfig 已由 request 包导出，此处仅导出 plugin 专属类型
 export type { SettingValue } from "./ui/setting";
 export { ChatPanel } from "./ui/chat";
@@ -65,16 +83,6 @@ export interface PluginAIController {
   enable(): void;
   /** 动态设置禁用状态 */
   setDisabled(value: boolean): void;
-  /**
-   * 广播启用插件：影响所有已创建的 CodeAgent 实例，且对后续新建实例同样生效。
-   * 下一个 turn 开始时生效（skills / tools / agents 会重新合并）。
-   */
-  enablePlugin(name: string): void;
-  /**
-   * 广播禁用插件：影响所有已创建的 CodeAgent 实例，且对后续新建实例同样生效。
-   * 下一个 turn 开始时生效（skills / tools / agents 会重新合并）。
-   */
-  disablePlugin(name: string): void;
   /** 向指定 comId 的 Agent 发送消息，复用 sandbox helpers.sendToAgent 的队列/聚焦逻辑。 */
   requestAI(comId: string, params: SendToAgentParams): void;
   /**
@@ -141,6 +149,8 @@ interface BackendFileModules extends FileModules {
 }
 
 export interface PluginAIParams {
+  /** Optional connection to an explicitly configured Node MCP bridge. */
+  mcp?: import("./mcp/browser-bridge").McpBridgeOptions;
   name?: string;
   user?: { name?: string; avatar?: string };
   /** 插件命名空间，用于隔离多实例的 agent 存储和队列，必填 */
@@ -161,14 +171,20 @@ export interface PluginAIParams {
     designRules?: string;
   };
   /**
+   * CodeAgent 的项目配置目录名，默认 `.agent`。
+   * Skills、规则文件和计划文件会分别使用 `<configDirName>/skills/`、
+   * `<configDirName>/agent.md` 和 `<configDirName>/plans/`。
+   */
+  configDirName?: string;
+  /**
    * 注入到根工程虚拟 FS 的文件（每个 turn 调用一次）。
-   * 典型用途：在根工程放 `.agent/agent.md` 提供项目规范，LLM 可通过 `read_file` 读取。
+   * 典型用途：在根工程放 `<configDirName>/agent.md` 提供项目规范，LLM 可通过 `read_file` 读取。
    * 同路径下 virtualFiles 优先级高于真实文件。
    *
    * @example
    * ```ts
-   * virtualFiles: async (context) => [{
-   *   path: ".agent/agent.md",
+    * virtualFiles: async (context) => [{
+    *   path: `${context.configDirName}/agent.md`,
    *   content: "# 项目规范\n...",
    * }]
    * ```
@@ -180,19 +196,23 @@ export interface PluginAIParams {
    * 注意：导入或默认赋值时可能传入空数组，它不代表初始化内容一定为空，因此会被视为未提供。
    */
   initialFiles?: Array<{ path: string; content: string }>;
-  /** 技能文件列表，挂载为虚拟 .agent/skills/ 目录，LLM 通过 use_skill 工具按需加载 */
+  /** 技能文件列表，挂载为虚拟 <configDirName>/skills/ 目录，LLM 通过 use_skill 工具按需加载 */
   skills?: SkillFile[];
-  /** 插件列表，会将内部 skills / agents / tools / additionalDirectories 合并进 CodeAgent 顶层配置 */
-  plugins?: CodeAgentPlugin[];
+  /** 插件列表，会将内部 skills / agents / tools / hooks 合并进 CodeAgent 顶层配置 */
+  plugins?: CodeAgentPluginInput[];
   /** 覆盖内置系统提示词各节，按 key 深度合并，未提供的 key 保留 MYBRICKS_PROMPT_SECTIONS 默认值 */
   promptSections?: PromptSections;
   /** 额外自定义工具，追加到内置工具（read_file / write_file 等）之后 */
   tools?: import("../../agent/src").Tool[];
+  /** 附件前置处理器，按文件名或链接 URL 匹配并在内置处理前执行。 */
+  attachProcessors?: AttachProcessor[];
   /**
    * 外部增量注入的用户上下文文本。每个 turn 开始时读取一次，
    * 返回内容会拼接到内置项目空间上下文后，作为 user context 注入给 CodeAgent。
    */
   getUserContextMessage?: PluginGetUserContextMessage;
+  /** 项目空间上下文；默认项目级。目录级须传入当前工作目录展示名。 */
+  projectContext?: ProjectContext;
   /**
    * 外部自定义用户消息格式化函数。入参是经过 plugin sandbox 标准处理后的参数
    * （例如已追加 focus 信息、focus meta、sender），返回值会作为最终发给 CodeAgent 的用户消息。
@@ -201,6 +221,8 @@ export interface PluginAIParams {
   formatUserMessage?: AgentOptions["formatUserMessage"];
   /** 禁用的 Agent 运行模式；当只剩一种可用模式时隐藏模式切换器且不注册切换工具。 */
   disabledModes?: AgentOptions["disabledModes"];
+  /** 本地 Agent 的历史消息遮蔽配置。 */
+  mask?: AgentOptions["mask"];
   /** 组件运行时扩展 */
   componentRuntime?: {
     modules: Record<string, FrontendFileModules | BackendFileModules>
@@ -209,6 +231,7 @@ export interface PluginAIParams {
       /** 代码编辑器内复制回调 */
       onCodeEditorCopy: () => { filename: string; code: string; }
     }
+    mode?: string
   }
   /** 禁用调试环境列表 */
   disallowedDebugEnvs?: string[];
@@ -217,6 +240,17 @@ export interface PluginAIParams {
    * 在 Sender 附件上传按钮之后插入自定义渲染内容。
    */
   renderAttachmentSuffix?: () => React.ReactNode;
+  /**
+   * 在 Header 清空/导出按钮之前插入自定义内容（如宿主自己的状态图标+文案）。
+   * 入参 ctx.overlay 是一个覆盖层操作句柄：调用 overlay.open(node) 可以让该 node
+   * 覆盖在消息列表区域上方展示，overlay.close() 收起；展示什么、什么时候开关
+   * 完全由宿主自己决定（典型用法：图标点击时 open 一个操作日志/详情面板）。
+   * pluginAI 只提供这一个开关能力和挂载位置，不关心里面渲染什么。
+   * 参数是对象而非直接传 overlay，方便后续扩展字段而不破坏签名。
+   * renderHeaderExtra 返回 null/false/undefined 时不展示图标本身。
+   * 典型用途：展示某个外部资源（如无头浏览器）的连接/运行状态，点击查看详情。
+   */
+  renderHeaderExtra?: (ctx: import("./ui/chat").ChatHeaderExtraContext) => React.ReactNode;
   /**
    * 自定义 mention 注册源。
    * 点击 Sender 的 + 号或输入 @ 时可选择，选中后插入 chip，发送前由 chip.format 转成模型上下文。
@@ -253,7 +287,7 @@ export interface PluginAIParams {
 
 export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<string, any> {
   const {
-    name = "智能助手",
+    name,
     user,
     key: pluginKey,
     onRequest,
@@ -261,15 +295,19 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     onDownload,
     onDisabledRequest,
     codingConfig,
+    configDirName,
     virtualFiles,
     initialFiles,
     skills,
     plugins,
     promptSections,
     tools,
+    attachProcessors,
     getUserContextMessage,
+    projectContext,
     formatUserMessage,
     disabledModes,
+    mask,
     componentRuntime,
     disallowedDebugEnvs,
     llm,
@@ -281,10 +319,14 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     remoteAgent,
     sender,
     renderAttachmentSuffix,
+    renderHeaderExtra,
     mentions,
+    mcp,
     mcpConnectors,
     onBackendComplete,
   } = params;
+
+  const resolvedConfigDirName = normalizeConfigDirName(configDirName);
 
   // 先设置 KV 命名空间，再恢复模型选择，避免读取到上一个 plugin 实例的状态。
   context.setPluginKey(pluginKey);
@@ -307,19 +349,22 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     document.body.removeChild(eleLink);
   });
 
-  context.name = name;
+  if (name) context.name = name;
   (mentions ?? []).forEach((mention) => chipRegistry.register(mention.chip));
-  context.pluginParams = { name, user, onUpload: upload, onDownload: download, renderAttachmentSuffix, mentions, mcpConnectors, onBackendComplete };
+  context.pluginParams = { name: context.name, user, onUpload: upload, onDownload: download, renderAttachmentSuffix, attachProcessors, mentions, renderHeaderExtra, mcpConnectors, onBackendComplete, history: history ?? new IDBHistory({ dbName: "@plugin-ai/plugin/messages" }) };
 
   // ── 调试工具：导入历史记录 ─────────────────────────────────────────────────
 
-  (window as any).__importRxAIJson__ = async () => {
+  (window as any).__importRxAIJson__ = () => new Promise<boolean>((resolve) => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".json,.rxai";
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
+      if (!file) {
+        resolve(false);
+        return;
+      }
       
       try {
         const text = await file.text();
@@ -327,48 +372,59 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
         
         if (!Array.isArray(data.turns)) {
           alert("无效的历史记录文件格式");
+          resolve(false);
           return;
         }
         
         const currentAgentKey = context.getAgentKey();
         if (!currentAgentKey) {
           alert("当前没有聚焦的组件，请先点击一个组件后再导入");
+          resolve(false);
           return;
         }
         const currentAgent = context.agentMap.get(currentAgentKey);
         if (currentAgent?.kind === "http") {
           alert("当前是服务端 Agent，历史导入需要走服务端 history 接口，不能写入本地 IDB。");
+          resolve(false);
           return;
         }
         
-        const history = new IDBHistory({ dbName: "@plugin-ai/plugin/messages" });
-        await history.import(currentAgentKey, data.turns);
-        if (data.compactRecord) {
-          await history.saveCompact(currentAgentKey, data.compactRecord);
-        }
+        // 使用宿主注入的 history，保证 showcase 等按工作区隔离历史的场景写回正确的存储。
+        const importHistory = history ?? new IDBHistory({ dbName: "@plugin-ai/plugin/messages" });
+        await importHistory.import(currentAgentKey, data.turns);
+        // 导入是覆盖操作：文件未包含 compact 时也要清除目标工作区旧的摘要，
+        // 否则摘要游标可能指向已不存在的 turn。
+        await importHistory.saveCompact(currentAgentKey, data.compactRecord ?? null);
         alert(`导入成功！agentKey: ${currentAgentKey}, turns: ${data.turns.length}`);
+        resolve(true);
       } catch (err) {
         console.error("导入失败:", err);
         alert(`导入失败: ${err instanceof Error ? err.message : String(err)}`);
+        resolve(false);
       }
     };
+    input.oncancel = () => resolve(false);
     input.click();
-  };
+  });
 
   // ── window._sandbox_：sandbox 与 Plugin 的统一交互 API ─────────────────────
 
   const agentRuntimeController = setupSandbox({
+    mcp,
     requestAsStream,
     llmPluginKey: pluginKey,
+    configDirName: resolvedConfigDirName,
     virtualFiles,
     initialFiles,
     skills: mergedSkills,
-    plugins,
+    plugins: [...(plugins ?? []), createUnderstandAnyCorePlugin(resolvedConfigDirName)],
     promptSections,
     tools,
     getUserContextMessage,
+    projectContext,
     formatUserMessage,
     disabledModes,
+    mask,
     onDisabledRequest,
     availableLibraries: codingConfig?.availableLibraries ?? [],
     themes: codingConfig?.themes ?? [],
@@ -398,12 +454,6 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
       setDisabled(value: boolean) {
         context.setDisabled(value);
       },
-      enablePlugin(name: string) {
-        context.enablePlugin(name);
-      },
-      disablePlugin(name: string) {
-        context.disablePlugin(name);
-      },
       requestAI(comId: string, params: SendToAgentParams) {
         window._sandbox_?.helpers.sendToAgent(comId, params);
       },
@@ -426,6 +476,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
       },
     },
     contributes: {
+      secondaryToolbarNormal: createUnderstandAnyContribute(),
       aiService: {
         init(_api: any) {
           // 兼容旧版：给组件 runtime 提供项目配置读取入口
@@ -444,6 +495,18 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
               return <ComChatFocusView />;
             },
             focus(params: AiServiceFocusParams) {
+              if (componentRuntime?.mode === 'local-iframe') {
+                const ele = params?.focusArea?.ele
+                if (ele) {
+                  const testDocument = ele.ownerDocument
+                  // @ts-ignore
+                  window.__APP__.runTestEvents.emit('test', {
+                    document: testDocument,
+                    window: testDocument.defaultView
+                  })
+                }
+              }
+
               // TODO：没comId的，都是没用的聚焦，之前设计器出过一次bug，兼容下这种情况，不要写进去
               if (!params.comId && params.pageId) {
                 return
@@ -481,7 +544,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
                 ? createDomChip(focus)
                 : undefined;
               const requestMessage = focusChip
-                ? `对于[[chip:${focusChip.id}]]${requestParams.message ?? ""}`
+                ? lang.chat.focusReference(`[[chip:${focusChip.id}]]`, requestParams.message ?? "")
                 : requestParams.message ?? "";
               const requestMeta = focusChip
                 ? {

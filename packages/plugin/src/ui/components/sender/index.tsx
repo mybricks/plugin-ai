@@ -1,7 +1,6 @@
-import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback } from "react"
+import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback, useMemo } from "react"
 import classNames from "classnames";
 import { message } from "antd";
-import { Tooltip } from "../tooltip";
 import { Loading, Plus, Send } from "../icons";
 import { Popup } from "../popup";
 import { AttachmentsList } from "../attachments";
@@ -12,22 +11,27 @@ import { ChatMode, type ChatModeType } from "../chat-mode";
 import { ModelSelector } from "../model-selector";
 import type { ModelSelectorProps } from "../model-selector";
 import type { QueueItem } from "../../../context/queue";
-import type { ModelSelection } from "../../../../../request/src/providers";
+import { context } from "../../../context";
+import { lang } from "../../../i18n";
 import type { SendToAgentParams } from "../../../sandbox";
 import { triggerChipRemove } from "../../../sandbox/chip-remove";
 import type { AgentMode, ChatChipDef, ChatChipInstance } from "../../../../../agent/src";
 import { removeLeadingPlaceholderBreakBeforeChip } from "./utils";
+import { createChatChipId } from "../../../utils/chip-id";
+import { readMchipClipboard } from "./mchip-clipboard";
 import {
   unmountChipContainer,
   createChipContainer,
   updateChipContainer,
   updateChipWrapperSpacing,
-  serializeEditorContent,
   measureEditorContent,
-  getAdjacentChipAtCaret,
   removeChipFromEditor,
   fileChipDef,
 } from "./chip";
+import { getAdjacentSenderInlineToken, removeSenderInlineToken } from "./inline-token";
+import { focusEditorAtEnd, getEditorTextCaret } from "./editor-selection";
+import { insertSlashTemplateToken, readSlashMenuInput, selectSlashTemplateCommand, clearSlashTrigger } from "./slash-editor";
+import { serializeCopiedSenderContent, serializeSenderContent } from "./sender-serialization";
 import {
   isSupportedImageFile,
   readFileToBase64,
@@ -47,14 +51,21 @@ import {
 } from "./attach-processor";
 import {
   MentionMenu,
-  buildRootMentionEntries,
+  buildRootMentionSections,
   createFileMentionEntry,
   flattenMentionItems,
+  flattenMentionSections,
   toMentionEntries,
+  MENTION_SECTION_MAX_ENTRIES,
   type MentionMenuEntry,
+  type MentionMenuSection,
 } from "./mention";
 import type { AttachProcessor, FileContent } from "../../../content-limits";
-import { CodeAgent } from "../../../../../agent/src";
+import { CodeAgent, parseMbsTemplateRecord } from "../../../../../agent/src";
+import { useSlashMenu } from "./slash-menu";
+import type { SenderPromptTemplateSlashCommand, SenderSlashCommand } from "./slash-command";
+import { resolvePromptTemplateSlashCommand } from "./slash-protocol";
+import { handleListNavigationKeyDown } from "../menu-keyboard";
 import css from "./index.less"
 
 // ─── 全局鼠标位置追踪（模块级单例，供飞行动画读取起点）────────────────────────────
@@ -142,45 +153,84 @@ function flyToTarget(targetEl: HTMLElement, label: string, onLanded: () => void)
 
 // ─── PendingQueue ─────────────────────────────────────────────────────────────
 
-const PendingQueue = ({ queue, onRemove, onSendNow }: { queue: QueueItem[]; onRemove?: (id: string) => void; onSendNow?: (id: string) => void }) => {
-  const [expanded, setExpanded] = useState(true);
+export const PendingQueue = ({
+  queue,
+  onRemove,
+  onSendNow,
+  onEdit,
+  compact = false,
+}: {
+  queue: QueueItem[];
+  onRemove?: (id: string) => void;
+  onSendNow?: (id: string) => void;
+  onEdit?: (item: QueueItem) => void;
+  compact?: boolean;
+}) => {
   if (!queue.length) return null;
   return (
-    <div className={css.pendingQueue}>
-      <div className={css.pendingQueueHeader} onClick={() => setExpanded(v => !v)}>
-        <span className={css.pendingQueueArrow}>{expanded ? <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="12" height="12" style={{ transform: 'rotate(0deg)', display: 'block' }}><path d="M512 714.666667c-8.533333 0-17.066667-2.133333-23.466667-8.533334l-341.333333-341.333333c-12.8-12.8-12.8-32 0-44.8 12.8-12.8 32-12.8 44.8 0l320 317.866667 317.866667-320c12.8-12.8 32-12.8 44.8 0 12.8 12.8 12.8 32 0 44.8L533.333333 704c-4.266667 8.533333-12.8 10.666667-21.333333 10.666667z" fill="currentColor" /></svg> : <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="12" height="12" style={{ transform: 'rotate(-90deg)', display: 'block' }}><path d="M512 714.666667c-8.533333 0-17.066667-2.133333-23.466667-8.533334l-341.333333-341.333333c-12.8-12.8-12.8-32 0-44.8 12.8-12.8 32-12.8 44.8 0l320 317.866667 317.866667-320c12.8-12.8 32-12.8 44.8 0 12.8 12.8 12.8 32 0 44.8L533.333333 704c-4.266667 8.533333-12.8 10.666667-21.333333 10.666667z" fill="currentColor" /></svg>}</span>
-        <span>{queue.length} 个待发送问题</span>
+    <div className={classNames(css.pendingQueue, { [css.pendingQueueMini]: compact })}>
+      <div className={css.pendingQueueHeader}>
+        <span className={css.pendingQueueCount}>{lang.sender.queuedMessages(queue.length)}</span>
       </div>
-      {expanded && (
-        <div className={css.pendingQueueList}>
-          {queue.map((item, index) => (
-            <div key={item.id} className={css.pendingQueueItem}>
-              <span className={css.pendingQueueDot} />
+      <div className={classNames(css.pendingQueueList, { [css.miniList]: compact })}>
+        {queue.map((item, index) => (
+          <div key={item.id} className={css.pendingQueueItem}>
+            <span className={css.pendingQueueIndex}>{index + 1}</span>
+            <div className={css.pendingQueueContent}>
               {item.params?.focus && (item.params.focus.focusArea || item.params.focus.title) && (
                 <span className={css.pendingQueueFocus}>
                   <span className={css.pendingQueueFocusArea}>
-                    {item.params.focus.focusArea?.title || item.params.focus.title}
+                    "{item.params.focus.focusArea?.title || item.params.focus.title}"
                   </span>
                 </span>
               )}
-              <span className={css.pendingQueueMsg}>{item.message || `消息 ${index + 1}`}</span>
+              <span className={css.pendingQueueMsg}>{item.message || lang.sender.message(index + 1)}</span>
               {item.attachments && item.attachments.length > 0 && (
-                <span className={css.pendingQueueBadge}>{item.attachments.length} 个附件</span>
+                <span className={css.pendingQueueBadge}>{lang.sender.attachments(item.attachments.length)}</span>
               )}
-              <Tooltip title="立即发送（中止当前请求）" placement="topRight">
-                <button className={css.pendingQueueSend} onClick={() => onSendNow?.(item.id)}>
+            </div>
+            <div className={css.pendingQueueActions}>
+              {onSendNow && (
+                <button
+                  className={css.pendingQueueSend}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSendNow(item.id);
+                  }}
+                  data-mybricks-tip={lang.sender.sendNowQueued()}
+                  aria-label={lang.sender.sendNowQueued()}
+                >
                   <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M86 896L981 512 86 128l-1 299 640 85-640 85z" /></svg>
                 </button>
-              </Tooltip>
-              <Tooltip title="移除">
-                <button className={css.pendingQueueDel} onClick={() => onRemove?.(item.id)}>
-                  <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" fill="none"><path d="M874.666667 241.066667h-202.666667V170.666667c0-40.533333-34.133333-74.666667-74.666667-74.666667h-170.666666c-40.533333 0-74.666667 34.133333-74.666667 74.666667v70.4H149.333333c-17.066667 0-32 14.933333-32 32s14.933333 32 32 32h53.333334V853.333333c0 40.533333 34.133333 74.666667 74.666666 74.666667h469.333334c40.533333 0 74.666667-34.133333 74.666666-74.666667V305.066667H874.666667c17.066667 0 32-14.933333 32-32s-14.933333-32-32-32zM416 170.666667c0-6.4 4.266667-10.666667 10.666667-10.666667h170.666666c6.4 0 10.666667 4.266667 10.666667 10.666667v70.4h-192V170.666667z m341.333333 682.666666c0 6.4-4.266667 10.666667-10.666666 10.666667H277.333333c-6.4 0-10.666667-4.266667-10.666666-10.666667V309.333333h490.666666V853.333333z" fill="currentColor" /><path d="M426.666667 736c17.066667 0 32-14.933333 32-32V490.666667c0-17.066667-14.933333-32-32-32s-32 14.933333-32 32v213.333333c0 17.066667 14.933333 32 32 32zM597.333333 736c17.066667 0 32-14.933333 32-32V490.666667c0-17.066667-14.933333-32-32-32s-32 14.933333-32 32v213.333333c0 17.066667 14.933333 32 32 32z" fill="currentColor" /></svg>
+              )}
+              {onEdit && (
+                <button
+                  className={css.pendingQueueEdit}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit(item);
+                  }}
+                  data-mybricks-tip={lang.sender.editQueued()}
+                  aria-label={lang.sender.editQueued()}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
                 </button>
-              </Tooltip>
+              )}
+              <button
+                className={css.pendingQueueDel}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemove?.(item.id);
+                }}
+                data-mybricks-tip={lang.sender.remove()}
+                aria-label={lang.sender.remove()}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
@@ -196,19 +246,6 @@ function getClipboardText(data: DataTransfer): string {
 
   const doc = new DOMParser().parseFromString(html, 'text/html');
   return doc.body.innerText || doc.body.textContent || '';
-}
-
-function focusEditorAtEnd(editor: HTMLDivElement) {
-  editor.focus();
-
-  const selection = window.getSelection();
-  if (!selection) return;
-
-  const range = document.createRange();
-  range.selectNodeContents(editor);
-  range.collapse(false);
-  selection.removeAllRanges();
-  selection.addRange(range);
 }
 
 // ─── SenderProps ─────────────────────────────────────────────────────────────
@@ -259,9 +296,13 @@ interface SenderProps {
   onBlur?: () => void;
   mode?: "mention"
   chatMode?: ChatModeType;
+  /** 当前 agent 实际可用的模式集合；缺省时下拉会展示全部内置模式。 */
+  availableChatModes?: NonNullable<ChatModeType>[];
   onChatModeChange?: (chatMode: ChatModeType) => void;
   /** 输入框风格：compact（紧凑，默认）| loose（松散，padding 更大）| bubble（悬浮气泡，最紧凑，无附件按钮）*/
   variant?: 'compact' | 'loose' | 'bubble';
+  /** 是否展示附件上传入口（+ 号），默认 true */
+  showAttachments?: boolean;
   /** 自定义图片上传函数，返回 CDN URL；不传则使用 base64 */
   onUpload?: (file: File) => Promise<string>;
   onStop?: () => void;
@@ -269,6 +310,8 @@ interface SenderProps {
   onRemoveFromQueue?: (id: string) => void;
   /** 插队：中止当前请求并立即发送指定排队消息。 */
   onSendNowFromQueue?: (id: string) => void;
+  /** 阻塞式工具等待用户操作时，收起输入框并显示紧凑队列栏。 */
+  blocking?: boolean;
   /** 输入框上方的 focus 信息渲染（mention 区域展示） */
   renderFocus?: () => React.ReactNode;
   /** 在 Sender 顶部渲染一组 panel，Sender 负责统一外壳与分割线 */
@@ -283,11 +326,7 @@ interface SenderProps {
   /** 自定义根元素类名，用于外部覆盖样式 */
   className?: string;
   /** 模型选择器配置 */
-  modelSelector?: {
-    models: Array<ModelSelection & { modelName: string; description?: string }>;
-    selected?: ModelSelection | null;
-    onSelect: (selection: ModelSelection) => void;
-  };
+  modelSelector?: ModelSelectorProps["modelSelector"];
   /**
    * Chat chip 类型注册表（从 agent.getChipTypes() 获取）。
    * 用于在输入框中渲染 chip。
@@ -300,6 +339,8 @@ interface SenderProps {
    * - 选中后插入 ChatChipInstance，发送前由对应 ChatChipDef.format 转为模型上下文
    */
   mentions?: MentionProvider[];
+  /** Commands discovered by ChatPanel from the active CodeAgent plugins. */
+  slashCommands?: SenderSlashCommand[];
   /**
    * 连接器选择配置（受控对象）。
    * - 在输入框左下角渲染一个连接器下拉按钮
@@ -341,6 +382,13 @@ interface SenderRef {
   /** 当前输入框是否可以被外部自动追加内容 */
   canAppendInput: () => boolean;
   /**
+   * 当前输入框是否可同步默认 focus 内容。
+   *
+   * 默认 focus 内容在面板隐藏期间也需要保持最新；因此仅要求编辑器已挂载，
+   * 不要求其当前具有可见布局。
+   */
+  canSyncFocusContent: () => boolean;
+  /**
    * 向输入框追加内容。
    * - string / SendToAgentParams：纯文本追加（兼容旧用法）
    * - { message, meta }：message 中可含 [[chip:id]] 占位符，
@@ -373,19 +421,22 @@ interface SenderRef {
 
 const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const {
-    loading, placeholder = "请输入", defaultFocusPlaceholder, disabled,
-    onBlur, attachmentsPrompt, mode, chatMode, onChatModeChange,
-    variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue, onSendNowFromQueue,
+    loading, placeholder = lang.sender.placeholder(), defaultFocusPlaceholder, disabled,
+    onBlur, attachmentsPrompt, mode, chatMode, availableChatModes, onChatModeChange,
+    variant = 'compact', onUpload, onStop, pendingQueue, onRemoveFromQueue, onSendNowFromQueue, blocking = false,
     renderFocus, abovePanels, renderActionPrefix, renderAttachmentSuffix,
     modelSelector, className, chipTypes = [], matchDefaultFocusContent,
     selectorRenderInTop = false,
+    showAttachments = true,
     attachProcessors,
     agent,
     mentions: mentionProviders = [],
     mcpConnectors: connectorConfig,
+    slashCommands = [],
   } = props;
 
   const isBubble = variant === 'bubble';
+  const containerRef = useRef<HTMLDivElement>(null);
   const inputEditorRef = useRef<HTMLDivElement>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [inputContent, setInputContent] = useState<string | null>(null);
@@ -393,12 +444,12 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const [uploading, setUploading] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [mentionMenuOpen, setMentionMenuOpen] = useState(false);
-  const [mentionMenuTitle, setMentionMenuTitle] = useState("添加上下文");
-  const [mentionMenuEntries, setMentionMenuEntries] = useState<MentionMenuEntry[]>([]);
+  const [mentionMenuTitle, setMentionMenuTitle] = useState(lang.sender.addContext());
+  const [mentionMenuSections, setMentionMenuSections] = useState<MentionMenuSection[]>([]);
   const [mentionMenuLoading, setMentionMenuLoading] = useState(false);
-  const [mentionMenuCanBack, setMentionMenuCanBack] = useState(false);
   const [mentionMenuMode, setMentionMenuMode] = useState<"plus" | "trigger">("plus");
   const [mentionAnchorRect, setMentionAnchorRect] = useState<DOMRect | null>(null);
+  const [mentionMenuMaxWidth, setMentionMenuMaxWidth] = useState<number | undefined>(undefined);
   const [mentionHighlightIndex, setMentionHighlightIndex] = useState(0);
   const [connectorMenuOpen, setConnectorMenuOpen] = useState(false);
   /** 防止 dragLeave 在子元素之间移动时误触发，通过计数器追踪真正的进出 */
@@ -415,8 +466,13 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const pendingFileMapRef = useRef<Map<string, File | FileContent>>(new Map());
   const mentionTriggerRangeRef = useRef<Range | null>(null);
   const mentionMenuRequestRef = useRef(0);
-  const selectMentionEntryRef = useRef<(entry: MentionMenuEntry) => void | Promise<void>>(() => { });
-  const uploadAttachmentRef = useRef<() => void>(() => { });
+  /** 展开分类为扁平条目，供键盘导航按整体索引移动/选中，索引顺序与渲染顺序一致。 */
+  const mentionMenuFlatEntries = useMemo(
+    () => flattenMentionSections(mentionMenuSections),
+    [mentionMenuSections],
+  );
+  const selectMentionEntryRef = useRef<(entry: MentionMenuEntry) => void | Promise<void>>(() => {});
+  const uploadAttachmentRef = useRef<() => void>(() => {});
   const mentionFileInputRef = useRef<HTMLInputElement>(null);
 
   /** 默认 focus 内容串的整体尺寸，用于把 placeholder 推到内容串后面。 */
@@ -449,7 +505,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     const editor = inputEditorRef.current;
     removeLeadingPlaceholderBreakBeforeChip(editor);
     updateChipWrapperSpacing(editor);
-    const { message, chips } = serializeEditorContent(editor, chipMapRef.current);
+    const { message, chips } = serializeSenderContent(editor, chipMapRef.current);
     const nextIsDefaultFocusContent = !!message && !!matchDefaultFocusContent?.({ message, chips });
     setIsDefaultFocusContent(nextIsDefaultFocusContent);
     setInputContent(nextIsDefaultFocusContent ? null : message || null);
@@ -464,7 +520,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
     requestAnimationFrame(() => {
       if (!inputEditorRef.current) return;
-      const nextInput = serializeEditorContent(inputEditorRef.current, chipMapRef.current);
+      const nextInput = serializeSenderContent(inputEditorRef.current, chipMapRef.current);
       if (!nextInput.message || !matchDefaultFocusContent?.(nextInput)) {
         setIsDefaultFocusContent(false);
         setDefaultFocusContentSize(null);
@@ -476,14 +532,11 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   }, [matchDefaultFocusContent]);
 
   const triggerReceiveAnimation = useCallback((label?: string) => {
-    const editorEl = inputEditorRef.current;
-    if (!editorEl) return;
-    const editorWrapper = editorEl.closest(`.${css.editor}`) as HTMLElement | null;
-    const target = editorWrapper ?? editorEl.parentElement;
+    // 队列与输入区共享 Sender 根节点；阻塞时仅隐藏输入区，动画始终落到同一容器。
+    const target = containerRef.current;
     if (!target) return;
 
     const doLand = () => {
-      // 飞行落地后：弹起 + 流光边框
       target.classList.add(css.receivingBounce);
       target.classList.add(css.receivingGlow);
       setTimeout(() => target.classList.remove(css.receivingBounce), 450);
@@ -641,26 +694,43 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     syncInputContent();
   }, [syncInputContent, notifyChipRemove]);
 
+  /**
+   * 每次唤起 @ 菜单时同步测量一次 Sender 容器宽度，用于撑开 mention 菜单的最大宽度。
+   * 不引入 ResizeObserver / resize 监听：菜单本来就是"每次打开都重新计算候选项"，
+   * 顺手在打开的这一刻测量一次即可，容器宽度变化只会在下次打开时生效。
+   */
+  const measureMentionMenuMaxWidth = useCallback(() => {
+    const containerWidth = containerRef.current?.getBoundingClientRect().width;
+    if (!containerWidth) {
+      setMentionMenuMaxWidth(undefined);
+      return;
+    }
+    const MIN_WIDTH = 180;
+    const MAX_WIDTH = 360;
+    const clamped = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(containerWidth)));
+    setMentionMenuMaxWidth(clamped);
+  }, []);
+
   const openRootMentionMenu = useCallback(async (nextMode: "plus" | "trigger") => {
     if (disabled || uploading) return;
     const requestId = ++mentionMenuRequestRef.current;
+    measureMentionMenuMaxWidth();
     if (nextMode === "plus") {
       mentionTriggerRangeRef.current = null;
       setMentionAnchorRect(null);
     }
     setMentionMenuMode(nextMode);
-    setMentionMenuTitle(nextMode === "plus" ? "添加上下文" : "@");
-    setMentionMenuCanBack(false);
+    setMentionMenuTitle(nextMode === "plus" ? lang.sender.addContext() : "@");
     setMentionMenuOpen(true);
     setMentionMenuLoading(true);
 
-    const entries = await buildRootMentionEntries(mentionProviders);
+    const sections = await buildRootMentionSections(mentionProviders);
 
     if (requestId !== mentionMenuRequestRef.current) return;
-    setMentionMenuEntries(entries);
+    setMentionMenuSections(sections);
     setMentionHighlightIndex(0);
     setMentionMenuLoading(false);
-  }, [disabled, mentionProviders, uploading]);
+  }, [disabled, mentionProviders, uploading, measureMentionMenuMaxWidth]);
 
   const openPlusMentionMenu = useCallback(async () => {
     if (!hasCustomMentions) {
@@ -673,37 +743,43 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const openTriggerMentionMenu = useCallback(async (query: string) => {
     if (disabled) return;
     const requestId = ++mentionMenuRequestRef.current;
+    measureMentionMenuMaxWidth();
     setMentionMenuMode("trigger");
     setMentionMenuTitle(query ? `@${query}` : "@");
-    setMentionMenuCanBack(false);
     setMentionMenuOpen(true);
     setMentionMenuLoading(true);
 
     const normalizedQuery = query.trim().toLowerCase();
-    const entries: MentionMenuEntry[] = normalizedQuery
-      ? []
-      : await buildRootMentionEntries(mentionProviders);
+    let sections: MentionMenuSection[];
 
-    if (normalizedQuery) {
+    if (!normalizedQuery) {
+      sections = await buildRootMentionSections(mentionProviders);
+    } else {
+      sections = [];
       const fileEntry = createFileMentionEntry();
       const fileText = [fileEntry.label, ...(fileEntry.keywords ?? [])].join(" ").toLowerCase();
       if (fileText.includes(normalizedQuery)) {
-        entries.push(fileEntry);
+        sections.push({ key: "__root__", entries: [fileEntry] });
       }
 
       for (const provider of mentionProviders) {
         const items = provider.search
           ? await provider.search(query)
           : (await flattenMentionItems(provider)).filter((item) => {
-            const text = [item.label, item.description, ...(item.keywords ?? [])].filter(Boolean).join(" ").toLowerCase();
-            return text.includes(normalizedQuery);
-          });
-        entries.push(...toMentionEntries(provider, items));
+              const text = [item.label, item.description, ...(item.keywords ?? [])].filter(Boolean).join(" ").toLowerCase();
+              return text.includes(normalizedQuery);
+            });
+        if (items.length === 0) continue;
+        sections.push({
+          key: provider.id,
+          title: provider.label,
+          entries: toMentionEntries(provider, items).slice(0, MENTION_SECTION_MAX_ENTRIES),
+        });
       }
     }
 
     if (requestId !== mentionMenuRequestRef.current) return;
-    setMentionMenuEntries(entries);
+    setMentionMenuSections(sections);
     setMentionHighlightIndex(0);
     setMentionMenuLoading(false);
   }, [disabled, mentionProviders]);
@@ -714,7 +790,6 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     setMentionAnchorRect(null);
     setMentionMenuOpen(false);
     setMentionMenuLoading(false);
-    setMentionMenuCanBack(false);
     setMentionHighlightIndex(0);
   }, []);
 
@@ -740,38 +815,53 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const detectMentionTrigger = useCallback(() => {
     const editor = inputEditorRef.current;
     if (!editor || !hasCustomMentions || disabled) return;
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) {
+    const caret = getEditorTextCaret(editor);
+    if (!caret) {
       closeMentionMenu();
       return;
     }
-    const range = selection.getRangeAt(0);
-    if (!editor.contains(range.commonAncestorContainer)) {
-      closeMentionMenu();
-      return;
-    }
-    const node = range.startContainer;
-    if (node.nodeType !== Node.TEXT_NODE) {
-      closeMentionMenu();
-      return;
-    }
-    const text = node.textContent ?? "";
-    const beforeCaret = text.slice(0, range.startOffset);
-    const match = beforeCaret.match(/(^|\s)@([^\s@]*)$/);
+    const match = caret.before.match(/(^|\s)@([^\s@]*)$/);
     if (!match) {
       closeMentionMenu();
       return;
     }
 
     const query = match[2] ?? "";
-    const start = range.startOffset - query.length - 1;
+    const start = caret.offset - query.length - 1;
     const triggerRange = document.createRange();
-    triggerRange.setStart(node, start);
-    triggerRange.setEnd(node, range.startOffset);
+    triggerRange.setStart(caret.node, start);
+    triggerRange.setEnd(caret.node, caret.offset);
     mentionTriggerRangeRef.current = triggerRange;
     setMentionAnchorRect(measureRangeRect(triggerRange));
     void openTriggerMentionMenu(query);
   }, [closeMentionMenu, disabled, hasCustomMentions, measureRangeRect, openTriggerMentionMenu]);
+
+  const readSlashInput = useCallback(() => {
+    return readSlashMenuInput(inputEditorRef.current);
+  }, []);
+
+  const insertSlashTemplate = useCallback((command: SenderPromptTemplateSlashCommand, args = "") => {
+    const editor = inputEditorRef.current;
+    if (editor && insertSlashTemplateToken(editor, command, args)) syncInputContent();
+  }, [syncInputContent]);
+
+  const selectSlashCommand = useCallback((command: SenderSlashCommand) => {
+    if (command.kind === "action") {
+      const editor = inputEditorRef.current;
+      if (editor && clearSlashTrigger(editor)) syncInputContent();
+      void command.execute();
+      return;
+    }
+    const editor = inputEditorRef.current;
+    if (editor && selectSlashTemplateCommand(editor, command)) syncInputContent();
+  }, [syncInputContent]);
+
+  const slashMenu = useSlashMenu({
+    commands: slashCommands,
+    disabled,
+    readInput: readSlashInput,
+    onSelectCommand: selectSlashCommand,
+  });
 
   const insertMentionChip = useCallback((chip: ChatChipInstance, replaceRange?: Range | null) => {
     const editor = inputEditorRef.current;
@@ -800,10 +890,6 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     }
     syncInputContent();
   }, [insertChip, syncInputContent]);
-
-  const backToRootMentionMenu = useCallback(() => {
-    void openRootMentionMenu(mentionMenuMode);
-  }, [mentionMenuMode, openRootMentionMenu]);
 
   const clearEditorContent = useCallback(() => {
     const editor = inputEditorRef.current;
@@ -835,6 +921,10 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         const editor = inputEditorRef.current;
         return !!(!disabled && editor?.isConnected && editor.getClientRects().length > 0);
       },
+      canSyncFocusContent: () => {
+        const editor = inputEditorRef.current;
+        return !!(!disabled && editor?.isConnected);
+      },
       appendInput,
       getInput: () => {
         const editor = inputEditorRef.current;
@@ -842,7 +932,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           return { message: "", attachments: [...attachments], chips: [] };
         }
         updateChipWrapperSpacing(editor);
-        const { message, chips } = serializeEditorContent(editor, chipMapRef.current);
+        const { message, chips } = serializeSenderContent(editor, chipMapRef.current);
         return {
           message,
           attachments: [...attachments],
@@ -860,7 +950,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   }, [appendInput, attachments, insertChip, disabled, clearEditorContent, replaceFocusContent]);
 
   const resolvePendingFileChips = async (chips: ChatChipInstance[]): Promise<ChatChipInstance[] | null> => {
-    const sandbox = agent instanceof CodeAgent ? agent.getSandbox() : undefined;
+    const sandbox = agent instanceof CodeAgent ? context.sandboxMap.get(agent.key) : undefined;
     const nextChips: ChatChipInstance[] = [];
 
     for (const chip of chips) {
@@ -890,7 +980,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         });
       } catch (err) {
         console.error("[@mybricks/plugin-ai - 处理文件失败]", err);
-        message.error(`处理「${file.name}」失败，已取消发送`);
+        message.error(lang.sender.fileProcessFailed(file.name));
         return null;
       }
     }
@@ -900,7 +990,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
   const send = async () => {
     const editor = inputEditorRef.current!;
-    const { message: serializedMessage, chips } = serializeEditorContent(editor, chipMapRef.current);
+    const { message: serializedMessage, chips } = serializeSenderContent(editor, chipMapRef.current);
     const hasUploadingAttachment = attachments.some((a) => a.uploading);
     if (serializedMessage && !disabled && !uploading && !hasLoadingChips && !hasUploadingAttachment && !processingSendRef.current) {
       processingSendRef.current = true;
@@ -945,6 +1035,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const onInput = () => {
     syncInputContent();
     setTimeout(detectMentionTrigger, 0);
+    slashMenu.onInput();
   }
 
   const notifySelectedChipRemove = useCallback((editor: HTMLDivElement, range: Range) => {
@@ -974,58 +1065,38 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   }, [notifyChipRemove]);
 
   const handleMentionMenuKeyDown = useCallback((event: Pick<KeyboardEvent | React.KeyboardEvent, "key" | "preventDefault">): boolean => {
-    if (!mentionMenuOpen) return false;
-
-    if (event.key === "Escape") {
-      event.preventDefault();
-      closeMentionMenu();
-      return true;
-    }
-
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      if (mentionMenuEntries.length > 0) {
-        const step = event.key === "ArrowDown" ? 1 : -1;
-        setMentionHighlightIndex((prev) => (prev + step + mentionMenuEntries.length) % mentionMenuEntries.length);
-      }
-      return true;
-    }
-
-    if (event.key === "Enter" || event.key === "Tab") {
-      event.preventDefault();
-      const entry = mentionMenuEntries[mentionHighlightIndex];
-      if (entry) void selectMentionEntryRef.current(entry);
-      return true;
-    }
-
-    if (event.key === "ArrowRight") {
-      const entry = mentionMenuEntries[mentionHighlightIndex];
-      if (entry?.children) {
-        event.preventDefault();
-        void selectMentionEntryRef.current(entry);
-      }
-      return true;
-    }
-
-    if ((event.key === "ArrowLeft" || event.key === "Backspace") && mentionMenuCanBack) {
-      event.preventDefault();
-      backToRootMentionMenu();
-      return true;
-    }
+    if (handleListNavigationKeyDown(event, {
+      open: mentionMenuOpen,
+      items: mentionMenuFlatEntries,
+      highlightedIndex: mentionHighlightIndex,
+      onMoveHighlight: (step, itemCount) => {
+        setMentionHighlightIndex((previous) => (previous + step + itemCount) % itemCount);
+      },
+      onSelect: (entry) => selectMentionEntryRef.current(entry),
+      onClose: closeMentionMenu,
+    })) return true;
 
     return false;
-  }, [backToRootMentionMenu, closeMentionMenu, mentionHighlightIndex, mentionMenuCanBack, mentionMenuEntries, mentionMenuOpen]);
+  }, [closeMentionMenu, mentionHighlightIndex, mentionMenuFlatEntries, mentionMenuOpen]);
+
+  /**
+   * 所有输入浮层共用的热键入口。顺序即优先级；新增浮层时只需在此注册
+   * 自己的 handler，编辑器和浮层外的 document capture 会自动保持一致。
+   */
+  const handleOverlayKeyDown = useCallback((event: Pick<KeyboardEvent | React.KeyboardEvent, "key" | "preventDefault">): boolean => {
+    return slashMenu.onKeyDown(event) || handleMentionMenuKeyDown(event);
+  }, [handleMentionMenuKeyDown, slashMenu]);
 
   useEffect(() => {
-    if (!mentionMenuOpen) return;
+    if (!mentionMenuOpen && !slashMenu.open) return;
     const onDocumentKeyDown = (event: KeyboardEvent) => {
       const editor = inputEditorRef.current;
       if (editor?.contains(event.target as Node)) return;
-      handleMentionMenuKeyDown(event);
+      handleOverlayKeyDown(event);
     };
     document.addEventListener("keydown", onDocumentKeyDown, true);
     return () => document.removeEventListener("keydown", onDocumentKeyDown, true);
-  }, [handleMentionMenuKeyDown, mentionMenuOpen]);
+  }, [handleOverlayKeyDown, mentionMenuOpen, slashMenu.open]);
 
   // ── 撤销/重做保护 ──────────────────────────────────────────────────────────
   // 宿主设计器在 document 上监听 Ctrl+Z（画布撤销）：start-view 渲染在宿主页面的
@@ -1056,7 +1127,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   }, [disabled]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (handleMentionMenuKeyDown(event)) {
+    if (handleOverlayKeyDown(event)) {
       return;
     }
 
@@ -1089,7 +1160,15 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     }
 
     if (event.key === 'Backspace') {
-      const chipEl = editor ? getAdjacentChipAtCaret(editor, range, "backward") : null;
+      const inlineToken = editor ? getAdjacentSenderInlineToken(editor, range, "backward") : null;
+      if (editor && inlineToken?.kind === "slash") {
+        event.preventDefault();
+        removeSenderInlineToken(editor, inlineToken.element);
+        syncInputContent();
+        return;
+      }
+
+      const chipEl = inlineToken?.kind === "chip" ? inlineToken.element : null;
       if (editor && chipEl) {
         event.preventDefault();
         const chipId = chipEl.dataset.chipId ?? "";
@@ -1102,7 +1181,15 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     }
 
     if (event.key === 'Delete') {
-      const chipEl = editor ? getAdjacentChipAtCaret(editor, range, "forward") : null;
+      const inlineToken = editor ? getAdjacentSenderInlineToken(editor, range, "forward") : null;
+      if (editor && inlineToken?.kind === "slash") {
+        event.preventDefault();
+        removeSenderInlineToken(editor, inlineToken.element);
+        syncInputContent();
+        return;
+      }
+
+      const chipEl = inlineToken?.kind === "chip" ? inlineToken.element : null;
       if (editor && chipEl) {
         event.preventDefault();
         const chipId = chipEl.dataset.chipId ?? "";
@@ -1153,7 +1240,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     const processors = attachProcessors ?? [];
 
     for (const rawFile of nonImageFiles) {
-      const id = Math.random().toString(36).slice(2, 7);
+      const id = createChatChipId();
       const placeholderInstance: ChatChipInstance = {
         id,
         type: FILE_CHIP_TYPE,
@@ -1179,8 +1266,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         if (!chipWrapperMapRef.current.has(id)) {
           continue;
         }
-        if (transformed === null) {
-          // 处理器内部已弹提示，移除 loading chip
+        if (transformed === undefined || transformed === null) {
           const wrapper = chipWrapperMapRef.current.get(id);
           if (wrapper) {
             unmountChipContainer(wrapper);
@@ -1262,7 +1348,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         syncInputContent();
       } catch (err) {
         console.error("[@mybricks/plugin-ai - 读取文件失败]", err);
-        message.error(`读取「${rawFile.name}」失败，已跳过`);
+        message.error(lang.sender.fileReadFailed(rawFile.name));
         const wrapper = chipWrapperMapRef.current.get(id);
         if (wrapper) {
           unmountChipContainer(wrapper);
@@ -1296,11 +1382,11 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     }
 
     if (invalidFiles.length > 0 && validFiles.length === 0) {
-      message.info(`当前仅支持上传${SUPPORTED_IMAGE_LABEL}格式的图片`);
+      message.info(lang.sender.uploadUnsupportedImage(SUPPORTED_IMAGE_LABEL));
       return;
     }
     if (invalidFiles.length > 0) {
-      message.info(`${invalidFiles.length} 个文件格式不支持（仅支持${SUPPORTED_IMAGE_LABEL}）已跳过`);
+      message.info(lang.sender.skippedUnsupportedFiles(invalidFiles.length, SUPPORTED_IMAGE_LABEL));
     }
 
     if (validFiles.length === 0) return;
@@ -1308,30 +1394,30 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     // Step 2：数量上限截断
     const slots = 5 - attachments.length;
     if (slots <= 0) {
-      message.info("当前最多只能上传五张图片");
+      message.info(lang.sender.imageLimitReached());
       return;
     }
     const toUpload = validFiles.slice(0, slots);
     if (validFiles.length > slots) {
-      message.info(`已上传 ${slots} 张，超出上限的 ${validFiles.length - slots} 张已忽略`);
+      message.info(lang.sender.extraImagesSkipped(slots, validFiles.length - slots));
     }
 
     // Step 3：逐个校验并上传
     for (const file of toUpload) {
       if (file.size > MAX_IMAGE_SIZE_BYTES) {
-        message.info(`文件「${file.name}」大小 ${(file.size / 1024 / 1024).toFixed(2)}MB，超过了${MAX_IMAGE_SIZE_MB}MB，已跳过`);
+        message.info(lang.sender.imageTooLarge(file.name, (file.size / 1024 / 1024).toFixed(2), MAX_IMAGE_SIZE_MB));
         continue;
       }
 
       try {
         const { width, height } = await getImageSize(file);
         if (width > 8000 || height > 8000) {
-          message.info(`文件「${file.name}」尺寸 ${width}x${height}px，宽高任一不得大于8000px，已跳过`);
+          message.info(lang.sender.imageTooLargeDimensions(file.name, width, height));
           continue;
         }
       } catch (event) {
         console.error("[@mybricks/plugin-ai - 读取图片尺寸失败]", event);
-        message.error(`读取「${file.name}」尺寸失败，已跳过`);
+        message.error(lang.sender.imageDimensionsReadFailed(file.name));
         continue;
       }
 
@@ -1371,7 +1457,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           URL.revokeObjectURL(localUrl);
           setAttachments((prev) => prev.filter((a) => a !== placeholder));
           console.error("[@mybricks/plugin-ai - 图片上传CDN失败]", event);
-          message.error("图片上传失败，请重试");
+          message.error(lang.sender.imageUploadFailed());
         })
         .finally(() => {
           setUploading(false);
@@ -1440,21 +1526,10 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       return;
     }
 
-    const children = entry.children
-      ? typeof entry.children === "function" ? await entry.children() : entry.children
-      : undefined;
-    if (children?.length) {
-      setMentionMenuTitle(entry.label);
-      setMentionMenuCanBack(true);
-      setMentionMenuEntries(toMentionEntries(entry.provider, children));
-      setMentionHighlightIndex(0);
-      return;
-    }
-
     const chip = entry.toChip
       ? await entry.toChip(entry)
       : {
-        id: `${entry.provider.id}_${Math.random().toString(36).slice(2, 9)}`,
+        id: `${entry.provider.id}_${createChatChipId()}`,
         type: entry.type ?? entry.provider.chip.type,
         label: entry.label,
         data: { ...(entry.data ?? {}), label: entry.label },
@@ -1462,8 +1537,21 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
     insertMentionChip(chip, mentionMenuMode === "trigger" ? mentionTriggerRangeRef.current : null);
     closeMentionMenu();
-  }, [closeMentionMenu, insertMentionChip, mentionMenuMode, syncInputContent, toMentionEntries]);
+  }, [closeMentionMenu, insertMentionChip, mentionMenuMode]);
   selectMentionEntryRef.current = selectMentionEntry;
+
+  const onCopy = useCallback((event: React.ClipboardEvent<HTMLDivElement>) => {
+    const editor = inputEditorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection?.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) return;
+
+    const copied = serializeCopiedSenderContent(range.cloneContents());
+    if (!copied.containsSlashToken) return;
+    event.preventDefault();
+    event.clipboardData.setData("text/plain", copied.text);
+  }, []);
 
   const onPaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -1471,18 +1559,32 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       return;
     }
 
-    const content = getClipboardText(event.clipboardData);
+    const mchip = readMchipClipboard(event.clipboardData);
+    // Prefer the durable MBS protocol over the Sender-private clipboard
+    // payload. This makes copied text from any app round-trip as an inline
+    // slash token, while ordinary chips keep using the private payload below.
+    const content = mchip?.message || getClipboardText(event.clipboardData);
     if (content) {
-      const selection = window.getSelection();
+      const mbsTemplate = parseMbsTemplateRecord(content);
+      if (mbsTemplate) {
+        insertSlashTemplate(
+          resolvePromptTemplateSlashCommand(
+            mbsTemplate.reference,
+            slashCommands.filter((command): command is SenderPromptTemplateSlashCommand => command.kind === "prompt-template"),
+          ),
+          mbsTemplate.args,
+        );
+        return;
+      }
 
-      if (!selection?.rangeCount) {
+      // MBS 协议消息走 appendInput（chip 结构化插入）。
+      if (mchip) {
+        appendInput(mchip);
         return;
       }
 
       // 优先用 execCommand 插入：会进入浏览器原生撤销栈（Ctrl+Z 可撤销本次粘贴），
       // 且自动替换当前选区内容；insertText 不解析 HTML，无需转义。
-      // 注意：会把文本中的 \n 当作段落分隔符拆成一串 <div>，
-      // 由 serializeEditorContent 统一归一化为 \n。
       // execCommand 不可用（返回 false / 抛错）时退回手动 DOM 插入（该路径不可撤销）。
       let inserted = false;
       try {
@@ -1495,7 +1597,10 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         return;
       }
 
+      const selection = window.getSelection();
+      if (!selection?.rangeCount) return;
       const range = selection.getRangeAt(0);
+      if (!inputEditorRef.current?.contains(range.commonAncestorContainer)) return;
       range.deleteContents();
       const textNode = document.createTextNode(content);
       range.insertNode(textNode);
@@ -1563,21 +1668,20 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   const mentionMenuNode = mentionMenuOpen ? (
     <MentionMenu
       title={mentionMenuTitle}
-      entries={mentionMenuEntries}
+      sections={mentionMenuSections}
       loading={mentionMenuLoading}
-      canBack={mentionMenuCanBack}
       highlightedIndex={mentionHighlightIndex}
-      onBack={backToRootMentionMenu}
       onHighlight={setMentionHighlightIndex}
       onSelect={(entry) => {
         void selectMentionEntry(entry);
       }}
+      maxWidth={mentionMenuMaxWidth}
     />
   ) : null;
 
   const connectorMenuNode = connectorConfig && connectorConfig.options.length > 0 ? (
     <div className={css.connectorMenu}>
-      <div className={css.connectorMenuTitle}>选择连接器</div>
+      <div className={css.connectorMenuTitle}>{lang.sender.selectConnector()}</div>
       {connectorConfig.options.map((option) => {
         const checked = connectorConfig.selected.includes(option.id);
         return (
@@ -1604,8 +1708,28 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     </div>
   ) : null;
 
+  const handleEditQueueItem = useCallback((item: QueueItem) => {
+    onRemoveFromQueue?.(item.id);
+    clearEditorContent();
+    setAttachments(item.attachments || []);
+    appendInput({
+      message: item.message || "",
+      meta: { chips: item.params?.chips || [] }
+    });
+  }, [onRemoveFromQueue, clearEditorContent, appendInput]);
+
   return (
-    <div className={classNames(css.container, { [css.loose]: variant === 'loose', [css.bubble]: variant === 'bubble' }, className)}>
+    <div ref={containerRef} className={classNames(css.container, {
+      [css.loose]: variant === 'loose',
+      [css.bubble]: variant === 'bubble',
+      [css.blocking]: blocking,
+    }, className)}>
+      {blocking && pendingQueue && pendingQueue.length > 0 ? (
+        <div className={css.blockingQueueSummary}>
+          {lang.sender.queuedMessages(pendingQueue.length)}
+        </div>
+      ) : null}
+      <div style={{ display: blocking ? "none" : undefined }}>
       {abovePanels && abovePanels.length > 0 ? (
         <div className={css.senderAbove}>
           {abovePanels.map((panel) => (
@@ -1616,7 +1740,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         </div>
       ) : null}
       {pendingQueue && pendingQueue.length > 0 && (
-        <PendingQueue queue={pendingQueue} onRemove={onRemoveFromQueue} onSendNow={onSendNowFromQueue} />
+        <PendingQueue queue={pendingQueue} onRemove={onRemoveFromQueue} onSendNow={onSendNowFromQueue} onEdit={!blocking ? handleEditQueueItem : undefined} />
       )}
       <div className={classNames(css.editor, {
         [css.noMentions]: mode === "mention" && !renderFocus,
@@ -1634,8 +1758,8 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         ) : null}
         {isDraggingOver && (
           <div className={css.dragOverlay}>
-            <span className={css.dragOverlayTitle}>拖放文件至此</span>
-            <span className={css.dragOverlayHint}>支持图片及常见文件，视频/压缩包等会跳过，图片最大 {MAX_IMAGE_SIZE_MB}MB</span>
+            <span className={css.dragOverlayTitle}>{lang.sender.dragFilesHere()}</span>
+            <span className={css.dragOverlayHint}>{lang.sender.dragFilesHint(MAX_IMAGE_SIZE_MB)}</span>
           </div>
         )}
         {renderFocus ? (
@@ -1645,7 +1769,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         ) : null}
         {selectorRenderInTop && (chatMode || (modelSelector && modelSelector.models.length > 0)) ? (
           <div className={css.selectorsAboveInput}>
-            {chatMode ? <ChatMode disabled={disabled || loading} chatMode={chatMode} onChange={onChatModeChange} /> : null}
+            {chatMode ? <ChatMode disabled={disabled || loading} chatMode={chatMode} availableModes={availableChatModes} onChange={onChatModeChange} /> : null}
             {modelSelector && modelSelector.models.length > 0 && (
               <ModelSelector modelSelector={modelSelector} disabled={disabled || uploading || loading} />
             )}
@@ -1662,9 +1786,25 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
               onCompositionStart={onCompositionStart}
               onCompositionEnd={onCompositionEnd}
               onInput={onInput}
+              onCopy={onCopy}
               onPaste={onPaste}
               onBlur={onBlur}
             ></div>
+            <Popup
+              open={slashMenu.open}
+              onOpenChange={(nextOpen) => {
+                if (!nextOpen) slashMenu.close();
+              }}
+              placement="top-start"
+              offset={8}
+              disabled
+              anchorRect={inputEditorRef.current?.getBoundingClientRect() ?? null}
+              className={css.slashPopupTrigger}
+              overlayClassName={css.slashPopup}
+              trigger={<span />}
+            >
+              {slashMenu.node}
+            </Popup>
             {!inputContent && (!isDefaultFocusContent || defaultFocusContentSize) && (
               <div className={css.inputPlaceholder}>
                 {defaultFocusContentSize ? (
@@ -1687,15 +1827,17 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           <div className={classNames(css.leftArea, {
             [css.disabled]: disabled || uploading
           })}>
-            <input
-              ref={mentionFileInputRef}
-              className={css.fileMenuInput}
-              type="file"
-              accept={SUPPORTED_FILE_ACCEPT}
-              multiple
-              onChange={handleMentionFileInputChange}
-            />
-            <Popup
+            {showAttachments && (
+              <>
+                <input
+                  ref={mentionFileInputRef}
+                  className={css.fileMenuInput}
+                  type="file"
+                  accept={SUPPORTED_FILE_ACCEPT}
+                  multiple
+                  onChange={handleMentionFileInputChange}
+                />
+                <Popup
               open={mentionMenuOpen}
               onOpenChange={(nextOpen) => {
                 if (!nextOpen) {
@@ -1713,6 +1855,8 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
               trigger={(
                 <div
                   data-zone-type="ai-request"
+                  data-mybricks-tip={lang.sender.add()}
+                  aria-label={lang.sender.add()}
                   className={classNames(css.attachmentButton, css.plusButton, { [css.open]: mentionMenuOpen })}
                 >
                   <Plus />
@@ -1723,7 +1867,6 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
             </Popup>
 
             {renderAttachmentSuffix?.()}
-            {/* {!selectorRenderInTop && chatMode ? <ChatMode disabled={disabled || loading} chatMode={chatMode} onChange={onChatModeChange} /> : null} */}
             {connectorConfig && connectorConfig.options.length > 0 && (
               <Popup
                 open={connectorMenuOpen}
@@ -1747,13 +1890,16 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
                     }}
                   >
                     <Connector />
-                    连接器
+                    {lang.sender.connectors()}
                   </div>
                 )}
               >
                 {connectorMenuNode}
               </Popup>
             )}
+              </>
+            )}
+            {!selectorRenderInTop && chatMode ? <ChatMode disabled={disabled || loading} chatMode={chatMode} availableModes={availableChatModes} onChange={onChatModeChange} /> : null}
           </div>
           <div className={css.rightArea}>
             {renderActionPrefix?.({
@@ -1772,7 +1918,8 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
                 className={classNames(css.sendButton, {
                   [css.loadingButton]: loading || uploading || hasLoadingChips
                 })}
-                data-mybricks-tip={loading ? "停止" : ""}
+                data-mybricks-tip={loading ? lang.sender.stop() : uploading || hasLoadingChips ? lang.tool.processing() : lang.sender.send()}
+                aria-label={loading ? lang.sender.stop() : uploading || hasLoadingChips ? lang.tool.processing() : lang.sender.send()}
                 onClick={(e) => {
                   if (loading) {
                     e.stopPropagation();
@@ -1785,6 +1932,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   )

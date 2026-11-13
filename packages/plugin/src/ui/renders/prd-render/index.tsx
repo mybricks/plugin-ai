@@ -3,13 +3,15 @@ import markdownit from "markdown-it";
 import css from "./index.less";
 import prdSkinCss from "../../markdown/skin-prd.less";
 import { renderMermaidInContainer } from "../../markdown/mermaid";
+import { alertsPlugin } from "../../markdown/alerts";
 import classNames from "classnames";
+import { lang } from "../../../i18n";
 
 const md = markdownit({
   html: true,
   linkify: true,
   typographer: true,
-});
+}).use(alertsPlugin);
 
 export interface PrdRenderProps {
   /** Markdown 字符串内容 */
@@ -34,7 +36,7 @@ const PrdRender = ({
   style,
   maxHeight,
   showTitle = false,
-  title = "需求文档",
+  title = lang.prd.title(),
   darkMode = false,
 }: PrdRenderProps) => {
   const bodyRef = useRef<HTMLDivElement>(null);

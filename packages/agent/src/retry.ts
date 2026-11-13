@@ -1,6 +1,9 @@
-import type { RequestAsStreamFn, RequestAsStreamParams } from "./types/request";
+import type { RequestAsStreamFn, RequestAsStreamParams, RequestAsStreamEmits } from "./types/request";
 import type { AgentEvents } from "./events";
 import { AbortError, isAbortError } from "./errors";
+
+/** 每次请求尝试的可组合策略。 */
+export type RequestAttemptStrategy = (request: RequestAsStreamFn) => RequestAsStreamFn;
 
 /**
  * 重试配置项
@@ -12,6 +15,72 @@ export interface RetryOptions {
   baseDelayMs?: number;
   /** 最大退避延迟（ms），默认 30000 (30秒) */
   maxDelayMs?: number;
+  /** 流式请求空闲超时（ms），默认 180000；false 禁用。 */
+  timeoutMs?: number | false;
+}
+
+/** 与空闲计时共用的模型响应回调；只检查是否调用，不检查参数内容。 */
+const RESPONSE_EVENTS = ["write", "onUsage", "onThinking", "onToolCalls", "onToolCallStream", "onFinishReason"] as const;
+
+/** 模型正常完成前没有任何响应回调时报告错误，交由重试机制处理。 */
+export function createEmptyResponseStrategy(): RequestAttemptStrategy {
+  return (request) => (params) => {
+    let hasResponse = false;
+    const emits: RequestAsStreamEmits = {
+      ...params.emits,
+      complete: (value) => {
+        if (!hasResponse) {
+          params.emits.error(new Error("Model completed without response events"));
+          return;
+        }
+        params.emits.complete(value);
+      },
+    };
+    for (const key of RESPONSE_EVENTS) {
+      const original = params.emits[key] as ((value: any) => void) | undefined;
+      if (original) (emits as any)[key] = (value: any) => { hasResponse = true; original(value); };
+    }
+    return request({ ...params, emits });
+  };
+}
+
+/** 流式请求在指定时间内没有任何事件时失败，并尝试取消底层请求。 */
+export function createRequestTimeoutStrategy(timeoutMs: number): RequestAttemptStrategy {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new RangeError("timeoutMs must be a positive finite number");
+  return (request) => (params) => new Promise<void>((resolve, reject) => {
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const cancelHandlers: Array<() => void> = [];
+    const cleanup = () => { active = false; clearTimeout(timer); };
+    const cancel = () => {
+      for (const fn of cancelHandlers) { try { fn(); } catch { /* best effort */ } }
+    };
+    const reset = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (!active) return;
+        cleanup();
+        cancel();
+        const error = new Error(`Model request timed out after ${timeoutMs}ms of inactivity`);
+        error.name = "TimeoutError";
+        reject(error);
+      }, timeoutMs);
+    };
+    const emits: RequestAsStreamEmits = {
+      ...params.emits,
+      cancel: (fn) => { if (active) cancelHandlers.push(fn); else { try { fn(); } catch { /* best effort */ } } },
+      error: (error) => { if (!active) return; cleanup(); reject(error); },
+      complete: (value) => { if (!active) return; cleanup(); params.emits.complete(value); resolve(); },
+    };
+    for (const key of RESPONSE_EVENTS) {
+      const original = params.emits[key] as ((value: any) => void) | undefined;
+      if (original) (emits as any)[key] = (value: any) => { if (active) { reset(); original(value); } };
+    }
+    params.emits.cancel(() => { if (active) { cleanup(); cancel(); reject(new AbortError()); } });
+    reset();
+    try { Promise.resolve(request({ ...params, emits })).catch((error) => { if (active) { cleanup(); reject(error); } }); }
+    catch (error) { if (active) { cleanup(); reject(error); } }
+  });
 }
 
 /**
@@ -27,6 +96,10 @@ export function wrapRequestWithRetry(
   retryOpts: RetryOptions,
   events: AgentEvents
 ): RequestAsStreamFn {
+  const { timeoutMs = 180000 } = retryOpts;
+  const strategies: RequestAttemptStrategy[] = [createEmptyResponseStrategy()];
+  if (timeoutMs !== false) strategies.push(createRequestTimeoutStrategy(timeoutMs));
+  const request = strategies.reduce((next, strategy) => strategy(next), baseFn);
   return async (params: RequestAsStreamParams) => {
     const { maxRetries = 2, baseDelayMs = 1000, maxDelayMs = 30000 } = retryOpts;
 
@@ -70,7 +143,7 @@ export function wrapRequestWithRetry(
           };
 
           // 执行请求
-          baseFn(params)
+          request(params)
             .then(() => {
               cleanup();
               resolve();

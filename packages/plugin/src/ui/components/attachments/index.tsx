@@ -3,6 +3,7 @@ import { Close } from "../icons";
 import css from "./index.less";
 import classNames from "classnames";
 import { ImagePreviewGroup } from "../image-preview";
+import { lang } from "../../../i18n";
 
 interface Attachment {
   type: "image";
@@ -70,8 +71,7 @@ const AttachmentItem = (props: { attachment: Attachment, onDelete?: () => void; 
       >
         {attachment.uploading ? (
           <div className={css.uploadingPlaceholder}>
-            <span className={css.uploadingText}>上传</span>
-            <span className={css.uploadingText}>中...</span>
+            <span className={css.uploadingText}>{lang.sender.uploading()}</span>
           </div>
         ) : (
           <img ref={imgRef} src={attachment.content} onClick={() => onPreview?.()} />

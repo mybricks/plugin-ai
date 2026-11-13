@@ -24,11 +24,82 @@ import { READ_TOOL_NAME } from "../read";
 
 export type Replacer = (content: string, find: string) => string[];
 
+/** 是否在编辑成功的 A/M 文件摘要后输出本轮的行级增删统计。 */
+export const ENABLE_EDIT_CHANGE_STATS = true;
+
+export interface LineChangeStats {
+  added: number;
+  removed: number;
+}
+
+const MAX_LCS_LINE_CELLS = 1_000_000;
+
+function toLines(content: string): string[] {
+  if (content === "") return [];
+  const lines = content.split("\n");
+  if (lines[lines.length - 1] === "") lines.pop();
+  return lines;
+}
+
+/**
+ * 计算类似 Git diff 的本轮行级增删统计。
+ * 大文件避免构造过大的 LCS 矩阵，回退为首尾公共区间统计。
+ */
+export function calculateLineChangeStats(before: string, after: string): LineChangeStats {
+  const beforeLines = toLines(before);
+  const afterLines = toLines(after);
+  const cells = beforeLines.length * afterLines.length;
+
+  if (cells > MAX_LCS_LINE_CELLS) {
+    let prefix = 0;
+    while (prefix < beforeLines.length && prefix < afterLines.length && beforeLines[prefix] === afterLines[prefix]) {
+      prefix++;
+    }
+
+    let beforeEnd = beforeLines.length - 1;
+    let afterEnd = afterLines.length - 1;
+    while (beforeEnd >= prefix && afterEnd >= prefix && beforeLines[beforeEnd] === afterLines[afterEnd]) {
+      beforeEnd--;
+      afterEnd--;
+    }
+
+    return { added: afterEnd - prefix + 1, removed: beforeEnd - prefix + 1 };
+  }
+
+  let previous = new Uint32Array(afterLines.length + 1);
+  let current = new Uint32Array(afterLines.length + 1);
+  for (const beforeLine of beforeLines) {
+    for (let index = 0; index < afterLines.length; index++) {
+      current[index + 1] = beforeLine === afterLines[index]
+        ? previous[index] + 1
+        : Math.max(previous[index + 1], current[index]);
+    }
+    [previous, current] = [current, previous];
+    current.fill(0);
+  }
+
+  const common = previous[afterLines.length];
+  return {
+    added: afterLines.length - common,
+    removed: beforeLines.length - common,
+  };
+}
+
 // ─── 内置策略 ─────────────────────────────────────────────────────────────────
 
 function simpleReplacer(content: string, find: string): string[] {
   if (find === "" || !content.includes(find)) return [];
   return [find];
+}
+
+function countOccurrences(content: string, search: string): number {
+  let count = 0;
+  let index = 0;
+  while ((index = content.indexOf(search, index)) !== -1) {
+    count++;
+    index += search.length;
+  }
+  return count;
 }
 
 function lineTrimmedReplacer(content: string, find: string): string[] {
@@ -137,6 +208,7 @@ export interface ReplaceResult {
   ok: boolean;
   newContent?: string;
   strategy?: string;
+  replacementCount?: number;
   error?: "NOT_FOUND" | "MULTIPLE_MATCH" | "NO_CHANGE";
   message?: string;
 }
@@ -173,24 +245,30 @@ export function replaceInContent(content: string, oldStr: string, newStr: string
 
   // 整文件写入
   if (oldStr === "") {
-    return { ok: true, newContent: newStr, strategy: "insert" };
+    return { ok: true, newContent: newStr, strategy: "insert", replacementCount: 1 };
   }
 
   let foundMultiple = false;
 
   const tryMatches = (candidates: Array<{ name: string; match: string }>) => {
     for (const { name, match: search } of candidates) {
+      if (!search) continue;
       const index = content.indexOf(search);
       if (index === -1) continue;
-      const lastIndex = content.lastIndexOf(search);
-      if (!replaceAll && index !== lastIndex) {
+      const replacementCount = countOccurrences(content, search);
+      if (!replaceAll && replacementCount > 1) {
         foundMultiple = true;
         continue;
       }
       const newContent = replaceAll
         ? content.split(search).join(newStr)
         : content.substring(0, index) + newStr + content.substring(index + search.length);
-      return { ok: true as const, newContent, strategy: name };
+      return {
+        ok: true as const,
+        newContent,
+        strategy: name,
+        replacementCount: replaceAll ? replacementCount : 1,
+      };
     }
     return null;
   };

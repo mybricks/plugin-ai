@@ -1,6 +1,7 @@
 import React, { useEffect, useCallback } from "react";
 import ReactDOM from "react-dom";
 import classNames from "classnames";
+import { lang } from "../../../i18n";
 import css from "./index.less";
 
 export interface ModalProps {
@@ -69,7 +70,7 @@ export const Modal: React.FC<ModalProps> = ({
             <div
               className={css.closeButton}
               onClick={onClose}
-              title="关闭"
+              title={lang.common.close()}
             >
               <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="14" height="14">
                 <path d="M557.312 513.248l265.28-263.904c12.544-12.48 12.608-32.704 0.128-45.248-12.512-12.576-32.704-12.608-45.248-0.128L512.128 467.904 246.944 203.936c-12.48-12.544-32.704-12.608-45.248-0.128-12.576 12.512-12.608 32.704-0.128 45.248l265.216 263.84L201.6 776.8c-12.544 12.48-12.608 32.704-0.128 45.248 6.24 6.272 14.464 9.44 22.688 9.44 8.16 0 16.32-3.104 22.56-9.312l265.216-263.872 265.152 263.872c6.24 6.208 14.4 9.312 22.56 9.312 8.224 0 16.448-3.168 22.688-9.44 12.48-12.544 12.416-32.768-0.128-45.248L557.312 513.248z" fill="currentColor" />

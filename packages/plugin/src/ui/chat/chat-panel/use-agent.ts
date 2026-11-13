@@ -1,20 +1,26 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, createElement } from "react";
 import { context } from "../../../context";
 import { chipRegistry } from "../../../sandbox/setup";
 import type { QueueItem } from "../../../context/queue";
 import type { SenderProps } from "../../components/sender";
-import type { AgentMode, CodeAgent } from "../../../../../agent/src";
+import type { AgentMode, CodeAgent, CodeAgentPlugin } from "../../../../../agent/src";
 import { AgentModeEnum } from "../../../../../agent/src";
 import type { HistoryStatus } from "../../../../../agent/src";
-import type { ModelSelection } from "../../../../../request/src/providers";
+import type { ModelSelection } from "../../../../../request/src";
 import { useSession } from "../use-session";
 import { usePendingSubmissions } from "./use-pending-submissions";
-import { isHttpAgent, type HttpAgent } from "./http-agent";
+import { isHttpAgent, type HttpAgent } from "./remote/http-agent";
 import { isWebSocketAgent, type WebSocketAgent } from "./websocket-agent";
+import { HTTP_AGENT_SESSION_STAGE } from "./session-status";
 import {
   useSessionState,
   type UseSessionStateOptions,
 } from "./use-session-state";
+import type { SenderActionSlashCommand, SenderPromptTemplateSlashCommand, SenderSlashCommand } from "../../components/sender/slash-command";
+import { jsonStringifySafe } from "../../../utils/json";
+import { lang } from "../../../i18n";
+import { ChatModeIcon, getChatModePresentation } from "../../components/chat-mode";
+import { Skill } from "../../components/icons";
 
 export type ChatAgent = CodeAgent | HttpAgent | WebSocketAgent;
 
@@ -30,6 +36,7 @@ export interface ChatPanelAgentState {
   loading: boolean;
   loadingTip: string;
   loadingTurnId?: string;
+  finalizing: boolean;
   pendingQueue: QueueItem[];
   availableModes: AgentMode[];
   showChatMode: boolean;
@@ -45,7 +52,9 @@ export interface ChatPanelAgentState {
   exportHistory: () => Promise<void>;
   executePlan: (title: string) => void;
   setChatMode: (mode: AgentMode | null) => void;
-  retry: (turnId: string) => void;
+  retry: (turnId: string, selection?: ModelSelection) => void;
+  slashCommands: SenderSlashCommand[];
+  todoArea?: NonNullable<CodeAgentPlugin["ui"]>["todoArea"];
 }
 
 export interface UseAgentOptions {
@@ -85,6 +94,7 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
   const showChatMode = availableModes.length > 1;
   const [chatMode, setChatModeState] = useState<AgentMode>(() => agent?.getMode() ?? availableModes[0] ?? AgentModeEnum.Build);
   const submissions = usePendingSubmissions(agent);
+  const [pluginRevision, setPluginRevision] = useState(0);
 
   const modelSelection = context.getModelSelection(agent?.key);
   const hasModelSelection = !!(modelSelection && modelSelection.isValid());
@@ -122,6 +132,58 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
       },
     };
   }, [hasModelSelection, modelSelection, selectedModel]);
+
+  useEffect(() => {
+    if (!agent || isWebSocketAgent(agent)) return;
+    let active = true;
+    agent.initializePlugins().then(() => {
+      if (active) setPluginRevision((revision) => revision + 1);
+    });
+    return () => { active = false; };
+  }, [agent]);
+
+  const mbsTemplateCommands = useMemo<SenderPromptTemplateSlashCommand[]>(() => {
+    // WebSocket Agent 的模板/插件能力由平台侧配置，本地不维护。
+    if (!agent || isHttpAgent(agent) || isWebSocketAgent(agent)) return [];
+    return agent.getMbsTemplates().map((template) => ({
+      kind: "prompt-template",
+      name: template.name,
+      displayName: template.displayName,
+      description: template.description,
+      scope: template.scope,
+      reference: template.reference,
+      icon: createElement(Skill),
+    }));
+  }, [agent, pluginRevision]);
+
+  const todoArea = useMemo(() => {
+    if (!agent || isWebSocketAgent(agent)) return undefined;
+    return agent.getPlugins().find((plugin) => plugin.ui?.todoArea)?.ui?.todoArea;
+  }, [agent, pluginRevision]);
+
+  const modeSlashCommands = useMemo<SenderActionSlashCommand[]>(() => {
+    if (!agent) return [];
+    const currentMode = chatMode ?? agent.getMode();
+    return agent.getAvailableModes()
+      .filter((mode) => mode !== currentMode)
+      .map((mode) => {
+        const presentation = getChatModePresentation(mode);
+        return {
+          kind: "action",
+          name: mode,
+          displayName: presentation.triggerTitle,
+          description: presentation.description,
+          scope: "builtin",
+          icon: createElement(ChatModeIcon, { mode }),
+          execute: () => agent.setMode(mode, "slash-command"),
+        } satisfies SenderActionSlashCommand;
+      });
+  }, [agent, chatMode, pluginRevision]);
+
+  const slashCommands = useMemo<SenderSlashCommand[]>(
+    () => [...mbsTemplateCommands, ...modeSlashCommands],
+    [mbsTemplateCommands, modeSlashCommands],
+  );
 
   useEffect(() => {
     if (!agent) return;
@@ -225,14 +287,17 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
   const exportHistory = useCallback(async () => {
     if (!agent) return;
     try {
+      let turns;
+      if (isHttpAgent(agent)) turns = await agent.getTurnsForExport();
+      else turns = await context.pluginParams.history.load(agent.key);
       const content = {
         agentKey: agent.key,
         exportedAt: new Date().toISOString(),
-        turns: agent.getTurns(),
+        turns,
         compactRecord: agent.getCompactRecord?.() ?? null,
       };
       const name = `rxai-${Date.now()}.json`;
-      await context.pluginParams.onDownload({ name, content: JSON.stringify(content) });
+      await context.pluginParams.onDownload({ name, content: jsonStringifySafe(content) });
     } catch (error) {
       console.error("[plugin-ai] export history failed", error);
     }
@@ -250,14 +315,17 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
     );
   }, [agent, canExecutePlan]);
 
-  const retry = useCallback((turnId: string) => {
-    if (!agent || isDisabled) return;
+  const retry = useCallback((turnId: string, selection?: ModelSelection) => {
+    if (!agent) return;
+    // 交给 aiQueue 的 request guard 统一处理禁用态并提示用户；在这里
+    // 提前返回会让消息气泡的“重试”按钮变成无反馈的静默操作。
     context.aiQueue.send(
       agent,
-      () => agent.retry(turnId),
-      { message: "重试" },
+      // WebSocket Agent 的模型在平台侧固定，忽略本地 selection。
+      () => selection && !isWebSocketAgent(agent) ? agent.retry({ turnId, ...selection }) : agent.retry(turnId),
+      { message: lang.common.retry() },
     );
-  }, [agent, isDisabled]);
+  }, [agent]);
 
   const setChatMode = useCallback((mode: AgentMode | null) => {
     if (mode) agent?.setMode(mode, "ui-change");
@@ -277,6 +345,7 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
     loading,
     loadingTip,
     loadingTurnId,
+    finalizing: sessionState.stage?.key === HTTP_AGENT_SESSION_STAGE.FINALIZING,
     pendingQueue,
     availableModes,
     showChatMode,
@@ -293,5 +362,7 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
     executePlan,
     retry,
     setChatMode,
+    slashCommands,
+    todoArea,
   };
 }

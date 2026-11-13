@@ -20,7 +20,7 @@ export interface HistoryLoadResult {
 /**
  * 纯状态机：只负责管理历史加载的生命周期（idle → loading → ready / error）。
  * turns 的内存存储由 Agent.turns 唯一持有，不在此处维护副本。
- * Agent 在写好 turns 之后调用 markReady()，保证订阅者收到通知时数据已就绪。
+ * Agent 在将 turns 写入内存后调用 markReady()，保证订阅者收到通知时数据已就绪。
  */
 export class HistoryManager {
   private status: HistoryStatus;
@@ -28,9 +28,23 @@ export class HistoryManager {
   private loadPromise: Promise<HistoryLoadResult | null> | null = null;
   private listeners = new Set<HistoryManagerListener>();
   private hasMore: boolean = false;
+  /**
+   * 写操作队列：append/update/replaceTurn 底层实现通常是"读全量 → merge → 整体覆盖写"，
+   * 并发调用会互相覆盖。这里用一条串行队列保证同一个 key 的写操作严格按顺序执行。
+   */
+  private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(private readonly options: { history?: History | null; key?: string }) {
     this.status = options.history && options.key ? "idle" : "ready";
+  }
+
+  /**
+   * 将一次写操作接入串行队列；失败不会阻止后续写入，调用方仍会收到错误。
+   */
+  private enqueueWrite<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.writeQueue.then(task, task);
+    this.writeQueue = result.then(() => undefined, () => undefined);
+    return result;
   }
 
   hasStorage(): boolean {
@@ -109,22 +123,27 @@ export class HistoryManager {
 
   async append(record: TurnRecord): Promise<void> {
     const { history, key } = this.options;
-    if (history && key) await history.append(key, record);
+    if (!history || !key) return;
+    await this.enqueueWrite(() => history.append(key, record));
   }
 
   async update(turnId: string, patch: Partial<TurnRecord>): Promise<void> {
     const { history, key } = this.options;
-    if (history && key) await history.update(key, turnId, patch);
+    if (!history || !key) return;
+    await this.enqueueWrite(() => history.update(key, turnId, patch));
   }
 
   async replaceTurn(record: TurnRecord): Promise<void> {
     const { history, key } = this.options;
-    if (history && key) await history.update(key, record.id, record);
+    if (!history || !key) return;
+    await this.enqueueWrite(() => history.update(key, record.id, record));
   }
 
   async clear(): Promise<void> {
     const { history, key } = this.options;
-    if (history && key) await history.clear(key);
+    if (history && key) {
+      await this.enqueueWrite(() => history.clear(key));
+    }
     this.status = "ready";
     this.error = null;
     this.emit();

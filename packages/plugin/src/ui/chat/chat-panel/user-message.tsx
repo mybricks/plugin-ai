@@ -1,5 +1,7 @@
 import React from "react";
 import { MentionTag } from "../../components/mention";
+import { MbsTemplateToken } from "../../components/mbs-template-token";
+import { useChatPanel } from "./context";
 import type { MessageRecord } from "../use-session";
 import css from "./index.less";
 
@@ -14,13 +16,19 @@ const UserMessageChip = ({ label, tightLeft }: { label: string; tightLeft?: bool
   </span>
 );
 
-function renderUserTextWithChips(userText: string, chips?: { id: string; label: string }[]): React.ReactNode {
-  if (!chips?.length || !userText.includes("[[chip:")) {
+function renderUserTextWithChips(
+  userText: string,
+  chips?: { id: string; label: string }[],
+  mbsTemplateDisplayNames?: Record<string, string>,
+): React.ReactNode {
+  const hasChip = !!chips?.length && userText.includes("[[chip:");
+  const hasMbsTemplate = userText.includes("[$mbs-template:");
+  if (!hasChip && !hasMbsTemplate) {
     return userText;
   }
 
-  const chipMap = new Map(chips.map((c) => [c.id, c]));
-  const parts = userText.split(/(\[\[chip:[^\]]+\]\])/);
+  const chipMap = new Map((chips ?? []).map((c) => [c.id, c]));
+  const parts = userText.split(/(\[\[chip:[^\]]+\]\]|\[\$mbs-template:[^\]\s]+\])/);
   let previousRenderedNodeIsChip = false;
 
   return (
@@ -35,6 +43,16 @@ function renderUserTextWithChips(userText: string, chips?: { id: string; label: 
           return node;
         }
 
+        const mbsMatch = part.match(/^\[\$mbs-template:([^\]\s]+)\]$/);
+        if (mbsMatch) {
+          previousRenderedNodeIsChip = false;
+          return <MbsTemplateToken
+            key={i}
+            name={mbsMatch[1]}
+            displayName={mbsTemplateDisplayNames?.[mbsMatch[1]]}
+          />;
+        }
+
         if (!part) return null;
         previousRenderedNodeIsChip = false;
         return <React.Fragment key={i}>{part}</React.Fragment>;
@@ -44,6 +62,7 @@ function renderUserTextWithChips(userText: string, chips?: { id: string; label: 
 }
 
 export const DefaultUserMessage = ({ record }: { record: MessageRecord }) => {
+  const { mbsTemplateDisplayNames } = useChatPanel();
   const focus = record.meta?.focus;
   const chips = record.meta?.chips as { id: string; label: string }[] | undefined;
 
@@ -55,7 +74,7 @@ export const DefaultUserMessage = ({ record }: { record: MessageRecord }) => {
           {" "}
         </span>
       )}
-      {renderUserTextWithChips(record.userText, chips)}
+      {renderUserTextWithChips(record.userText, chips, mbsTemplateDisplayNames)}
     </span>
   );
 };

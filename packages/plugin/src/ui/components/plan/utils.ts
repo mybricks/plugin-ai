@@ -1,11 +1,11 @@
 import markdownit from "markdown-it";
-import { DEFAULT_PLAN_DIR } from "../../../../../agent/src/mode-manager";
+import { getPlanDir } from "../../../../../agent/src";
 
 const md = markdownit();
 
-export function isPlanFilePath(path: string): boolean {
+export function isPlanFilePath(path: string, configDirName?: string): boolean {
   const normalized = path.replace(/^\/+/, "");
-  return normalized.startsWith(DEFAULT_PLAN_DIR);
+  return normalized.startsWith(getPlanDir(configDirName));
 }
 
 export function extractPlanDateFolder(path: string): string | null {

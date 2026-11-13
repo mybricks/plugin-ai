@@ -1,22 +1,76 @@
-export { Agent, AgentEvents, ForkAgent } from "./agent";
-export type { AgentMode, AgentOptions, AgentHooks, RequestAIOptions, RequestAICommonOptions, MessageRequestAIOptions, DisplayModelRequestAIOptions, FormatUserMessageParams, MaskOptions, HandoffOptions, ForkOptions, ForkAgentOptions, CompactRecord, FormatUserMessageResult, AgentsMdConfig, AgentsMdConfigResolver } from "./agent";
+export { Agent, AgentEvents, ForkAgent, DEFAULT_AGENT_LOCALE, normalizeAgentLocale } from "./agent";
+export type {
+  AfterToolCallParams,
+  BeforeToolCallParams,
+  BeforeToolCallResult,
+  ToolCallDecision,
+  ToolCallOutcome,
+  TurnSummaryResult,
+} from "./hooks";
+export type { AgentMode, AgentOptions, AgentHooks, RequestAIOptions, RequestAICommonOptions, MessageRequestAIOptions, DisplayModelRequestAIOptions, FormatUserMessageParams, MaskOptions, HandoffOptions, ForkOptions, ForkAgentOptions, CompactRecord, FormatUserMessageResult, ToolExecutionParams, ToolExecutor } from "./agent";
 export type { RequestAsStreamFn, RequestAsStreamParams, RequestAsStreamEmits, ToolDescriptor, ToolCallSpec, ToolCallStreamDelta } from "./types/request";
-export { maskMessages } from "./mask";
 export { computeHandoffTurnIds } from "./handoff";
 
 export { ChipRegistry, fileChipDef, FILE_CHIP_TYPE } from "./chip";
 export type { ChatChipDef, ChatChipFormatContext, ChatChipInstance, FileChipData } from "./chip";
 
-export type { AgentEventMap } from "./events";
-export type { Message, History, HistoryPersistMode, Tool, TurnRecord, TurnSender, ToolCallRecord, ToolResult, VersionFile, VersionRecord, BoundHistory, Attachment, IterationTrace } from "./types";
+export type { AgentEventMap, SubAgentCreatedInfo } from "./events";
+export type { Message, History, HistoryPersistMode, Tool, TurnErrorCode, TurnRecord, SubAgentTurnRecord, AgentEffect, TurnSender, ToolCallRecord, ToolResult, VersionFile, VersionRecord, BoundHistory, Attachment, IterationTrace, AttachmentContextItem, AttachmentContext, AttachmentContextEntry } from "./types";
 export { ToolValidationError, bindHistory } from "./types";
 
-export { AGENT_INTERNAL_FILE_EXCLUDE, CodeAgent, isFileExcluded } from "./code-agent";
-export type { AdditionalDirectory, CodeAgentBuiltinToolName, CodeAgentOptions, CodeAgentPlugin, CodeAgentPromptOptions, FileExclude, GetFilesOptions, Sandbox, SkillActivation, SkillFile, SkillMeta, UnifiedFile } from "./code-agent";
+export { AGENT_INTERNAL_FILE_EXCLUDE, getAgentInternalFileExclude, CodeAgent, isFileExcluded, DEFAULT_CONFIG_DIR_NAME, getConfigDirPath, getPlanDir, getSkillsDir, getSkillDir, getAgentMdPath, getConfigDirNameFromAgent, getConfigDirPattern, normalizeConfigDirName, parseMbsTemplateRecord } from "./code-agent";
+export type { BashToolOptions, CodeAgentBuiltinToolName, CodeAgentOptions, CodeAgentPlugin, CodeAgentPluginFactory, CodeAgentPluginInput, CodeAgentPromptOptions, FileExclude, GetFilesOptions, Sandbox, SkillActivation, SkillFile, SkillMeta, PromptTemplateFile, MbsTemplateRecord, UnifiedFile } from "./code-agent";
+export {
+  createAgentSandboxFromV1,
+  createAgentSandboxRuntime,
+  createFileSystemFindCommandProxy,
+  createFileSystemGrepCommandProxy,
+  createFileSystemGlobCommandProxy,
+  createMvCommandProxy,
+  createCpCommandProxy,
+  createRmCommandProxy,
+  createRenameCommandProxy,
+  createTouchCommandProxy,
+  createSedCommandProxy,
+  createHeadCommandProxy,
+  createLsCommandProxy,
+  DEFAULT_BASH_ALLOWED_COMMANDS,
+  isAgentSandbox,
+} from "./agent-sandbox";
+export type {
+  AgentSandbox,
+  AgentSandboxCommandNext,
+  AgentSandboxCommandExecutionOptions,
+  AgentSandboxCommandErrorCode,
+  AgentSandboxCommandError,
+  AgentSandboxCommandProxy,
+  AgentSandboxCommandRequest,
+  AgentSandboxCommandResult,
+  AgentSandboxCommandTransport,
+  AgentSandboxCommands,
+  AgentSandboxFile,
+  AgentSandboxFileEntry,
+  AgentSandboxListOptions,
+  AgentSandboxFindInput,
+  AgentSandboxFindResult,
+  AgentSandboxFiles,
+  AgentSandboxGrepInput,
+  AgentSandboxGrepMatch,
+  AgentSandboxGrepResult,
+  CreateAgentSandboxFromV1Options,
+  SandboxV1,
+} from "./agent-sandbox";
 export { IDBSandbox } from "./code-agent/idb-sandbox";
 export type { IDBSandboxFileRecord, IDBSandboxOptions, IDBSandboxState } from "./code-agent/idb-sandbox";
-export { READ_TOOL_NAME, WRITE_TOOL_NAME, MULTI_WRITE_TOOL_NAME, EDIT_TOOL_NAME, MULTI_EDIT_TOOL_NAME, DELETE_TOOL_NAME, GREP_TOOL_NAME, GLOB_TOOL_NAME, USE_SKILL_TOOL_NAME, BASH_TOOL_NAME, INIT_PROJECT_TOOL_NAME, createInitProjectTool } from "./code-agent/tools";
-export { SWITCH_MODE_TOOL_NAME, getAvailableAgentModes, AgentModeEnum } from "./mode-manager";
+export { READ_TOOL_NAME, WRITE_TOOL_NAME, MULTI_WRITE_TOOL_NAME, EDIT_TOOL_NAME, MULTI_EDIT_TOOL_NAME, DELETE_TOOL_NAME, GREP_TOOL_NAME, GLOB_TOOL_NAME, USE_SKILL_TOOL_NAME, BASH_TOOL_NAME, HISTORY_READ_TOOL_NAME, INIT_PROJECT_TOOL_NAME, createHistoryReadTool, createInitProjectTool } from "./code-agent/tools";
+export type { HistoryReadFilter, HistoryReadMatch, HistoryReadOutputLevel, HistoryReadParams, HistoryReadRecord, HistoryReadRole, HistoryReadTurnRange } from "./code-agent/tools";
+export {
+  SWITCH_MODE_TOOL_NAME,
+  getAvailableAgentModes,
+  getAgentModeMetadata,
+  AgentModeEnum,
+  type AgentModeMetadata,
+} from "./mode-manager";
 export { kv } from "./kv";
 
 export { IDBHistory } from "./history/idb-history";
@@ -24,12 +78,14 @@ export { HTTPHistory } from "./history/http-history";
 export { SessionHTTPHistory } from "./history/session-http-history";
 export { MergedHistory } from "./history/merged-history";
 export { HistoryManager } from "./history/manager";
+export { getTurnsManager } from "./history/turns";
 export type { HistoryManagerSnapshot, HistoryStatus } from "./history/manager";
 
-export { createSubAgentTool, resolveSubAgentMeta, CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
-export type { SubAgentConfig, SubAgentFile, SubAgentMeta } from "./sub-agent";
+export { createSubAgentTool, CALL_SUB_AGENT_TOOL_NAME, collectSubAgentTurns, startBackgroundSubAgent, applyChildAgentEvent, readLegacySubAgentData } from "./sub-agent";
+export type { SubAgentConfig, SubAgentMetadata, BackgroundSubAgentRequest, BackgroundSubAgentInfo, BackgroundSubAgentResult } from "./sub-agent";
 
-export type { RetryOptions } from "./retry";
+export { createRequestTimeoutStrategy, createEmptyResponseStrategy } from "./retry";
+export type { RetryOptions, RequestAttemptStrategy } from "./retry";
 export { AbortError, isAbortError } from "./errors";
 export { createToolUIChannel } from "./tool-ui";
 export type { ToolUIChannel } from "./tool-ui";

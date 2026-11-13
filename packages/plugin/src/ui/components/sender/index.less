@@ -4,6 +4,39 @@
 
 .container {
   padding: var(--chat-sender-padding, 8px);
+  position: relative;
+  border-radius: var(--chat-sender-border-radius, 12px);
+
+  &.receivingBounce {
+    animation: senderReceiveBounce 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  }
+
+  &.receivingGlow::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    z-index: 20;
+    pointer-events: none;
+    background: linear-gradient(
+      100deg,
+      transparent 0%,
+      color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 90%, transparent) 50%,
+      transparent 100%
+    );
+    background-size: 250% 100%;
+    padding: 1.5px;
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    animation: senderReceiveGlow 1.4s ease-out forwards;
+  }
+
+  &.blocking {
+    padding-top: 0;
+  }
 
   .senderAbove {
     margin: 0 10px;
@@ -364,36 +397,6 @@
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 15%, transparent);
     }
 
-    // ─── appendInput 注入动画：弹起 ──────────────────────────────────────────
-    &.receivingBounce {
-      animation: senderReceiveBounce 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
-    }
-
-    // ─── appendInput 注入动画：流光边框扫描 ──────────────────────────────────
-    &.receivingGlow::after {
-      content: '';
-      position: absolute;
-      inset: -1px;
-      border-radius: inherit;
-      z-index: 20;
-      pointer-events: none;
-      // 用渐变模拟流光，只露出边框宽度区域（mask 排除内容区）
-      background: linear-gradient(
-        100deg,
-        transparent 0%,
-        color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 90%, transparent) 50%,
-        transparent 100%
-      );
-      background-size: 250% 100%;
-      padding: 1.5px;
-      -webkit-mask:
-        linear-gradient(#fff 0 0) content-box,
-        linear-gradient(#fff 0 0);
-      -webkit-mask-composite: xor;
-              mask-composite: exclude;
-      animation: senderReceiveGlow 1.4s ease-out forwards;
-    }
-
     .dragOverlay {
       position: absolute;
       inset: 0;
@@ -485,7 +488,7 @@
           color: var(--mybricks-color-primary, #FA6400);
           border: 1px solid var(--mybricks-color-primary, #FA6400);
           background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 8%, transparent);
-          // max-width: 180px;
+          max-width: 180px;
           min-width: 0;
           // text-overflow 在 flex 容器上无效，由内层 .chipText 负责省略号
           overflow: hidden;
@@ -512,8 +515,7 @@
           }
 
           // 自定义 chip wrapper（contenteditable=false 内联元素）
-          // max-width / overflow / text-overflow 由内层 .chip / .chipDefault 负责，
-          // wrapper 只需限制自身不溢出父容器即可。
+          // wrapper 和 React 挂载节点都限制宽度，确保窄输入框中也能收缩。
           .chipWrapper {
             display: inline-flex;
             align-items: center;
@@ -523,12 +525,15 @@
             padding-right: 3px;
             user-select: none;
             cursor: default;
+            max-width: 100%;
+            box-sizing: border-box;
             min-width: 0;   // 允许内层 flex 子项收缩
             overflow: hidden;
 
             // ReactDOM.render 挂载的匿名 root span，需要允许收缩
             > span {
               min-width: 0;
+              max-width: 100%;
               display: inline-flex;
               align-items: center;
             }
@@ -641,6 +646,23 @@
               }
             }
           }
+
+        }
+
+        .slashPopupTrigger {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 1px;
+          height: 1px;
+          overflow: hidden;
+          opacity: 0;
+          pointer-events: none;
+        }
+
+        .slashPopup {
+          border-color: var(--mybricks-border-color-main, #E6E6E6);
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
         }
 
         .inputPlaceholder {
@@ -840,6 +862,172 @@
   }
 }
 
+.blockingQueueSummary {
+  color: var(--mybricks-color-primary, #FA6400);
+  font-size: var(--chat-font-size-sm, 12px);
+  font-weight: 500;
+  line-height: 20px;
+  text-align: left;
+}
+
+// 独立为顶层规则，供普通 Sender 使用。
+.pendingQueue {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 8px 6px;
+  padding: 4px;
+  background: var(--mybricks-bg-color-secondary, #F5F5F5);
+  border: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  border-radius: 8px;
+  font-size: var(--chat-font-size-sm, 12px);
+
+  &.pendingQueueMini {
+    margin: 0;
+    margin-bottom: 0;
+    width: 100%;
+  }
+
+  .pendingQueueHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2px 4px 4px;
+    color: var(--mybricks-text-color-main, #333);
+    opacity: 0.6;
+
+    .pendingQueueCount {
+      font-weight: 500;
+    }
+  }
+
+  .pendingQueueList {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+
+    &.miniList {
+      max-height: 120px;
+      overflow-y: auto;
+    }
+  }
+
+  .pendingQueueItem {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: var(--mybricks-bg-color-main, #FFF);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    font-size: var(--chat-font-size-sm, 12px);
+    color: var(--mybricks-text-color-main, #333);
+    min-height: 28px;
+    transition: background 0.15s;
+
+    &:hover {
+      background: color-mix(in srgb, var(--mybricks-bg-color-main, #FFF) 95%, var(--mybricks-color-primary, #FA6400));
+    }
+
+    .pendingQueueIndex {
+      font-family: monospace;
+      color: var(--mybricks-text-color-main, #333);
+      opacity: 0.35;
+      width: 16px;
+      text-align: center;
+      font-size: 11px;
+    }
+
+    .pendingQueueContent {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow: hidden;
+
+      .pendingQueueFocus {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        color: var(--mybricks-text-color-main, #333);
+        white-space: nowrap;
+
+        .pendingQueueFocusArea {
+          color: var(--mybricks-color-primary, #FA6400);
+          margin-left: 2px;
+        }
+      }
+
+      .pendingQueueMsg {
+        flex: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .pendingQueueBadge {
+        flex-shrink: 0;
+        font-size: 10px;
+        padding: 1px 6px;
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--mybricks-text-color-main, #333) 6%, transparent);
+        color: var(--mybricks-text-color-main, #333);
+        opacity: 0.6;
+      }
+    }
+
+    .pendingQueueActions {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      opacity: 0;
+      transition: opacity 0.15s;
+
+      .pendingQueueDel,
+      .pendingQueueEdit,
+      .pendingQueueSend {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        cursor: pointer;
+        color: var(--mybricks-text-color-main, #333);
+        opacity: 0.45;
+        transition: color 0.15s, background 0.15s, opacity 0.15s;
+
+        &:hover {
+          opacity: 0.85;
+          background: color-mix(in srgb, var(--mybricks-text-color-main, #333) 8%, transparent);
+        }
+
+        svg {
+          width: 13px;
+          height: 13px;
+        }
+      }
+
+      // 插队立即发送：主色调，与普通操作区分。
+      .pendingQueueSend {
+        color: var(--mybricks-color-primary, #FA6400);
+
+        &:hover {
+          color: var(--mybricks-color-primary, #FA6400);
+          background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 10%, transparent);
+        }
+      }
+    }
+
+    &:hover .pendingQueueActions {
+      opacity: 1;
+    }
+  }
+}
+
 .mentionPopup {
   border-color: var(--mybricks-border-color-main, #E6E6E6);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
@@ -926,8 +1114,10 @@
 }
 
 .mentionMenu {
-  width: 180px;
-  max-height: 240px;
+  width: max-content;
+  min-width: 160px;
+  max-width: 180px;
+  max-height: 320px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -941,31 +1131,6 @@
   min-height: 24px;
   padding: 4px 6px 2px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-.mentionMenuBack {
-  width: 18px;
-  height: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  padding: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font-size: 16px;
-  line-height: 20px;
-
-  svg {
-    width: 14px;
-    height: 14px;
-  }
-
-  &:hover {
-    background: var(--mybricks-bg-color-hover, #F5F5F5);
-  }
 }
 
 .mentionMenuHeaderIcon {
@@ -999,6 +1164,21 @@
   overflow: auto;
 }
 
+.mentionMenuSection {
+  & + & {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+  }
+}
+
+.mentionMenuSectionTitle {
+  padding: 4px 6px 2px;
+  font-size: var(--chat-font-size-sm, 12px);
+  line-height: 15px;
+  opacity: 0.45;
+}
+
 .mentionMenuItem {
   width: 100%;
   min-height: 30px;
@@ -1013,9 +1193,12 @@
   text-align: left;
   cursor: pointer;
 
-  &:hover,
-  &.highlighted {
+  &:hover {
     background: var(--mybricks-bg-color-hover, #F5F5F5);
+  }
+
+  &.highlighted {
+    background: color-mix(in srgb, var(--mybricks-color-primary, #FA6400) 7%, transparent);
   }
 }
 
@@ -1065,19 +1248,6 @@
   font-size: var(--chat-font-size-sm, 12px);
   line-height: 13px;
   opacity: 0.55;
-}
-
-.mentionMenuArrow {
-  flex-shrink: 0;
-  opacity: 0.5;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-
-  svg {
-    width: 14px;
-    height: 14px;
-  }
 }
 
 .mentionMenuEmpty {

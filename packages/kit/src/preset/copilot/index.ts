@@ -2,6 +2,7 @@ import {
   BASH_TOOL_NAME,
   READ_TOOL_NAME,
   type AgentOptions,
+  type AttachmentContextItem,
   type CodeAgentBuiltinToolName,
   type CodeAgentOptions,
   type CodeAgentPromptOptions,
@@ -190,12 +191,12 @@ export function copilotAgentOptionBuilder(options: CopilotAgentOptionBuilderOpti
     builtinTools: builtinTools ?? defaultBuiltinTools,
     tools: [...businessTools, ...(tools ?? [])],
     getAttachmentContextMessages: async (ctx) => {
-      const sections: string[] = [];
+      const items: (AttachmentContextItem | string)[] = [];
       const businessContext = buildBusinessContextSection(businessSkills);
-      if (businessContext) sections.push(businessContext);
+      if (businessContext) items.push({ key: "business", content: businessContext });
       const extra = await getAttachmentContextMessages?.(ctx);
-      if (extra?.length) sections.push(...extra);
-      return sections;
+      if (extra?.length) items.push(...extra);
+      return items;
     },
   };
 }

@@ -1,0 +1,118 @@
+import {
+  BASH_TOOL_NAME,
+  EDIT_TOOL_NAME,
+  GREP_TOOL_NAME,
+  MULTI_EDIT_TOOL_NAME,
+  MULTI_WRITE_TOOL_NAME,
+  READ_TOOL_NAME,
+  WRITE_TOOL_NAME,
+  type CodeAgentPlugin,
+  type Tool,
+  type ToolResult,
+} from "../../../../agent/src";
+import auditPowerWorkflow from "./audit-power-workflow.md";
+import { getAuditPowerTitles } from "./index.i18n";
+
+export const AUDIT_UNDERSTAND_PAGE_TOOL_NAME = "docs_understand_page";
+export const AUDIT_VALIDATE_PAGE_TOOL_NAME = "docs_validate_page";
+
+const UNDERSTAND_PAGE_PROFILES = ["basic", "ui", "interactions", "full"] as const;
+export type AuditPowerProfile = typeof UNDERSTAND_PAGE_PROFILES[number];
+
+/** The host owns execution only; AuditPower owns both public Tool contracts. */
+export interface AuditPowerImplementation {
+  understandPage(params: { file: string; profile?: AuditPowerProfile }): Promise<ToolResult>;
+  validatePage(): Promise<ToolResult>;
+}
+
+export interface AuditPowerPluginOptions {
+  configDirName: string;
+  implementation?: AuditPowerImplementation;
+  description?: string;
+}
+
+function isUnderstandPageProfile(value: unknown): value is AuditPowerProfile {
+  return typeof value === "string" && (UNDERSTAND_PAGE_PROFILES as readonly string[]).includes(value);
+}
+
+function unavailable(method: keyof AuditPowerImplementation): never {
+  throw new Error(`audit-power: host did not provide ${method} implementation`);
+}
+
+function createAuditPowerTools(implementation?: AuditPowerImplementation, locale?: string): Tool[] {
+  const titles = getAuditPowerTitles(locale);
+  return [
+    {
+      name: AUDIT_UNDERSTAND_PAGE_TOOL_NAME,
+      title: titles.understandPage,
+      description: "分析 React TSX/JSX 页面，返回组件拓扑、接口调用、变量和事件信息。生成关联 YAML 文档前使用。",
+      parameters: {
+        type: "object",
+        properties: {
+          file: { type: "string", description: "项目根目录下的相对路径，例如 pages/SignIn/index.tsx" },
+          profile: { type: "string", enum: [...UNDERSTAND_PAGE_PROFILES], description: "分析 profile，默认 full" },
+        },
+        required: ["file"],
+      },
+      validate(params: { file?: unknown; profile?: unknown }) {
+        if (typeof params?.file !== "string" || !params.file.trim()) {
+          throw new Error("understand_page: file is required and must be a non-empty string");
+        }
+        if (params.profile !== undefined && !isUnderstandPageProfile(params.profile)) {
+          throw new Error(`understand_page: invalid profile \"${String(params.profile)}\"`);
+        }
+      },
+      execute(params: { file: string; profile?: AuditPowerProfile }) {
+        return implementation ? implementation.understandPage(params) : unavailable("understandPage");
+      },
+    },
+    {
+      name: AUDIT_VALIDATE_PAGE_TOOL_NAME,
+      title: titles.validatePage,
+      description: "校验 graph 下 YAML 文档的事件覆盖、源码定位与基础结构。修改关联文档后使用。",
+      parameters: { type: "object", properties: {} },
+      execute() {
+        return implementation ? implementation.validatePage() : unavailable("validatePage");
+      },
+    },
+  ];
+}
+
+/**
+ * Creates AuditPower as a plugin-provided, context-isolated SubAgent.
+ *
+ * The page-analysis tools intentionally live on the agent declaration instead of
+ * plugin.tools, so the parent Agent never exposes them directly.
+ */
+export function createAuditPowerPlugin(options: AuditPowerPluginOptions): CodeAgentPlugin {
+  const configDirName = options.configDirName.replace(/^\/+|\/+$/g, "");
+  if (!configDirName) throw new Error("audit-power: configDirName is required");
+
+  const desc = `提供画布级的审计能力，支持对页面、弹窗的「接口、事件」进行审计，通过维护 ${configDirName}/graph/*.yaml 文件，形成可视化分析视图，你只需告知生成哪个部分的审计视图即可，仅在主动提及时使用。`
+
+  const forLocale = (locale = "zh"): CodeAgentPlugin => ({
+    name: "audit-power",
+    description: desc,
+    agents: [{
+      name: "audit-power",
+      description: desc,
+      title: getAuditPowerTitles(locale).agent,
+      system: auditPowerWorkflow.replaceAll("<configDirName>", configDirName),
+      allowedTools: [
+        READ_TOOL_NAME,
+        GREP_TOOL_NAME,
+        BASH_TOOL_NAME,
+        WRITE_TOOL_NAME,
+        EDIT_TOOL_NAME,
+        MULTI_WRITE_TOOL_NAME,
+        MULTI_EDIT_TOOL_NAME,
+        AUDIT_UNDERSTAND_PAGE_TOOL_NAME,
+        AUDIT_VALIDATE_PAGE_TOOL_NAME,
+      ],
+      tools: createAuditPowerTools(options.implementation, locale),
+    }],
+  });
+  return { ...forLocale(), forLocale };
+}
+
+export const AuditPowerPlugin = createAuditPowerPlugin;

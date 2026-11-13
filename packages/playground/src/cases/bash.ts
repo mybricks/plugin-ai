@@ -1210,13 +1210,359 @@ export const bashMvNotFoundCase: TestCase = {
   ),
 };
 
+function bashListing(agent: any): string | null {
+  const lastTurn = agent?.turns?.at?.(-1);
+  if (!lastTurn || lastTurn.status !== "success") return null;
+  const toolCall = lastTurn.iterations
+    ?.flatMap((iter: any) => iter.toolCalls ?? [])
+    ?.find((tool: any) => tool.name === BASH_TOOL_NAME);
+  if (!toolCall || toolCall.status !== "success") return null;
+  return String(toolCall.result?.output ?? "");
+}
+
+const REFACTOR_SRC_FILES = [
+  "src/App.tsx",
+  "src/components/Button.tsx",
+  "src/components/Card.tsx",
+  "src/components/Modal.tsx",
+  "src/pages/Home.tsx",
+  "src/pages/Settings.tsx",
+  "src/styles/components.css",
+  "src/theme/OldTheme.ts",
+  "src/utils/format.ts",
+  "src/utils/validate.ts",
+].join("\n");
+
+/** ls 递归列出目录下的文件 */
+export const bashLsCase: TestCase = {
+  id: "bash-ls",
+  name: "bash: ls 列出目录",
+  group: "Bash 文件操作",
+  description:
+    "LLM 调用 bash ls。目录默认递归列出其下全部文件路径。",
+  expectedBehavior:
+    "工具卡片绿色。ls src 列出 src 下全部文件路径。ls src/components 列出 Button.tsx、Card.tsx、Modal.tsx 的完整路径。",
+  initialTurns: [],
+  initialFiles: REFACTOR_FILES,
+  request: makeScriptedRequest(
+    [
+      {
+        type: "tool_calls",
+        calls: [
+          {
+            id: "c_ls_src",
+            name: BASH_TOOL_NAME,
+            args: {
+              command: "ls src",
+              description: "列出 src 目录",
+            },
+          },
+        ],
+        delayMs: 300,
+      },
+      {
+        type: "tool_calls",
+        calls: [
+          {
+            id: "c_ls_components",
+            name: BASH_TOOL_NAME,
+            args: {
+              command: "ls src/components",
+              description: "列出组件目录",
+            },
+          },
+        ],
+        delayMs: 300,
+      },
+      {
+        type: "content",
+        chunks: ["src 下有页面、组件和工具目录；components 里是 Button、Card、Modal。"],
+        ttftMs: 200,
+        chunkDelayMs: 50,
+      },
+    ],
+    { loop: true }
+  ),
+  assertions: [
+    {
+      name: "ls 递归列出目标目录下的文件",
+      run: ({ agent }) => {
+        const lastTurn = (agent as any)?.turns?.at?.(-1);
+        if (!lastTurn || lastTurn.status !== "success") return null;
+        const outputs = (lastTurn.iterations
+          ?.flatMap((iter: any) => iter.toolCalls ?? [])
+          ?.filter((tool: any) => tool.name === BASH_TOOL_NAME) ?? [])
+          .map((tool: any) => String(tool.result?.output ?? ""));
+        if (outputs.length < 2) return null;
+        const componentEntries = [
+          "src/components/Button.tsx",
+          "src/components/Card.tsx",
+          "src/components/Modal.tsx",
+        ];
+        const pass = outputs[0] === REFACTOR_SRC_FILES
+          && outputs[1] === componentEntries.join("\n");
+        return {
+          pass,
+          message: pass ? "ls 递归列出目录下的文件" : outputs.join("\n---\n"),
+        };
+      },
+    },
+  ],
+};
+
+/** ls 不传路径，列出项目根 */
+export const bashLsNoArgCase: TestCase = {
+  id: "bash-ls-no-args",
+  name: "bash: ls 不传路径",
+  group: "Bash 文件操作",
+  description: "LLM 调用 bash ls，不传路径，应递归列出项目内全部文件。",
+  expectedBehavior: "工具卡片绿色，输出为 src 下全部文件的完整路径。",
+  initialTurns: [],
+  initialFiles: REFACTOR_FILES,
+  request: makeScriptedRequest(
+    [
+      {
+        type: "tool_calls",
+        calls: [
+          {
+            id: "c_ls_root",
+            name: BASH_TOOL_NAME,
+            args: { command: "ls", description: "列出项目根目录" },
+          },
+        ],
+        delayMs: 300,
+      },
+      {
+        type: "content",
+        chunks: ["项目根目录下是 src/。"],
+        ttftMs: 200,
+        chunkDelayMs: 50,
+      },
+    ],
+    { loop: true }
+  ),
+  assertions: [
+    {
+      name: "ls 不传路径列出根目录",
+      run: ({ agent }) => {
+        const output = bashListing(agent);
+        if (output === null) return null;
+        const pass = output === REFACTOR_SRC_FILES;
+        return { pass, message: pass ? "未传路径时递归列出全部文件" : output };
+      },
+    },
+  ],
+};
+
+/** ls -d 只列出目录本身 */
+export const bashLsDirectoryFlagCase: TestCase = {
+  id: "bash-ls-directory",
+  name: "bash: ls -d 只列出目录",
+  group: "Bash 文件操作",
+  description: "LLM 调用 bash ls -d，只返回目录本身，不展开内容。",
+  expectedBehavior: "ls -d src/components 的输出是 src/components/。",
+  initialTurns: [],
+  initialFiles: REFACTOR_FILES,
+  request: makeScriptedRequest(
+    [
+      {
+        type: "tool_calls",
+        calls: [
+          {
+            id: "c_ls_d",
+            name: BASH_TOOL_NAME,
+            args: { command: "ls -d src/components", description: "只确认组件目录本身" },
+          },
+        ],
+        delayMs: 300,
+      },
+      {
+        type: "content",
+        chunks: ["src/components 目录存在。"],
+        ttftMs: 200,
+        chunkDelayMs: 50,
+      },
+    ],
+    { loop: true }
+  ),
+  assertions: [
+    {
+      name: "ls -d 不展开目录",
+      run: ({ agent }) => {
+        const output = bashListing(agent);
+        if (output === null) return null;
+        const pass = output === "src/components/";
+        return { pass, message: pass ? "只列出目录本身" : output };
+      },
+    },
+  ],
+};
+
+/** ls -t 不报错，末尾说明暂不支持 */
+export const bashLsTimeFlagCase: TestCase = {
+  id: "bash-ls-time",
+  name: "bash: ls -t 暂不支持时间排序",
+  group: "Bash 文件操作",
+  description: "LLM 调用 bash ls -lt。沙箱没有修改时间，命令仍成功列出文件，并在末尾用英文说明 -t 暂不支持。",
+  expectedBehavior: "exitCode 为 0，输出包含 src 下的全部文件路径，最后一行是 -t is not supported in the sandbox environment。",
+  initialTurns: [],
+  initialFiles: REFACTOR_FILES,
+  request: makeScriptedRequest(
+    [
+      {
+        type: "tool_calls",
+        calls: [
+          {
+            id: "c_ls_t",
+            name: BASH_TOOL_NAME,
+            args: { command: "ls -lt src", description: "按时间列出 src" },
+          },
+        ],
+        delayMs: 300,
+      },
+      {
+        type: "content",
+        chunks: ["沙箱里不能按修改时间排序，已按名称列出 src。"],
+        ttftMs: 200,
+        chunkDelayMs: 50,
+      },
+    ],
+    { loop: true }
+  ),
+  assertions: [
+    {
+      name: "ls -t 成功并附带英文说明",
+      run: ({ agent }) => {
+        const lastTurn = (agent as any)?.turns?.at?.(-1);
+        if (!lastTurn || lastTurn.status !== "success") return null;
+        const toolCall = lastTurn.iterations
+          ?.flatMap((iter: any) => iter.toolCalls ?? [])
+          ?.find((tool: any) => tool.name === BASH_TOOL_NAME);
+        if (!toolCall || toolCall.status !== "success") return null;
+        const output = String(toolCall.result?.output ?? "");
+        const pass = toolCall.result?.metadata?.exitCode === 0
+          && output.startsWith("src/App.tsx\nsrc/components/Button.tsx")
+          && output.endsWith("-t is not supported in the sandbox environment");
+        return { pass, message: pass ? "列出文件并说明 -t 暂不支持" : output };
+      },
+    },
+  ],
+};
+
+/** ls -R 递归列出文件路径 */
+export const bashLsRecursiveCase: TestCase = {
+  id: "bash-ls-recursive",
+  name: "bash: ls -R 递归列出文件",
+  group: "Bash 文件操作",
+  description:
+    "LLM 调用 bash ls -R 递归列出 src/utils 下的文件路径。",
+  expectedBehavior:
+    "工具卡片绿色，输出为 src/utils/format.ts 和 src/utils/validate.ts。",
+  initialTurns: [],
+  initialFiles: REFACTOR_FILES,
+  request: makeScriptedRequest(
+    [
+      {
+        type: "tool_calls",
+        calls: [
+          {
+            id: "c_ls_recursive",
+            name: BASH_TOOL_NAME,
+            args: {
+              command: "ls -R src/utils",
+              description: "递归列出 utils 目录",
+            },
+          },
+        ],
+        delayMs: 300,
+      },
+      {
+        type: "content",
+        chunks: ["utils 目录下有 format.ts 和 validate.ts。"],
+        ttftMs: 200,
+        chunkDelayMs: 50,
+      },
+    ],
+    { loop: true }
+  ),
+  assertions: [
+    {
+      name: "ls -R 返回完整文件路径",
+      run: ({ agent }) => {
+        const output = bashListing(agent);
+        if (output === null) return null;
+        const pass = output === "src/utils/format.ts\nsrc/utils/validate.ts";
+        return { pass, message: pass ? "递归列出 utils 下的文件" : output };
+      },
+    },
+  ],
+};
+
+/** ls 路径不存在 */
+export const bashLsNotFoundCase: TestCase = {
+  id: "bash-ls-not-found",
+  name: "bash: ls 路径不存在（非 0 返回）",
+  group: "Bash 文件操作",
+  description:
+    "LLM 调用 bash ls 查看一个不存在的路径。工具返回非 0，并递归列出最近一层已存在目录下的文件。",
+  expectedBehavior:
+    "输出包含 'No such file or directory'、src 下的全部文件路径，以及 'Exit code: 1'。",
+  initialTurns: [],
+  initialFiles: REFACTOR_FILES,
+  request: makeScriptedRequest(
+    [
+      {
+        type: "tool_calls",
+        calls: [
+          {
+            id: "c_ls_missing",
+            name: BASH_TOOL_NAME,
+            args: {
+              command: "ls src/missing",
+              description: "查看不存在的目录",
+            },
+          },
+        ],
+        delayMs: 300,
+      },
+      {
+        type: "content",
+        chunks: ["src/missing 不存在。可以再用 ls 查看实际目录。"],
+        ttftMs: 200,
+        chunkDelayMs: 50,
+      },
+    ],
+    { loop: true }
+  ),
+  assertions: [
+    {
+      name: "ls 缺失路径返回非 0",
+      run: ({ agent }) => {
+        const lastTurn = (agent as any)?.turns?.at?.(-1);
+        if (!lastTurn || lastTurn.status !== "success") return null;
+        const toolCall = lastTurn.iterations
+          ?.flatMap((iter: any) => iter.toolCalls ?? [])
+          ?.find((tool: any) => tool.name === BASH_TOOL_NAME);
+        if (!toolCall || toolCall.status !== "success") return null;
+        const output = String(toolCall.result?.output ?? "");
+        const pass = toolCall.result?.metadata?.exitCode === 1
+          && output.includes("No such file or directory")
+          && output.includes(`src/:\n${REFACTOR_SRC_FILES}`)
+          && output.includes("Exit code: 1")
+          && !output.includes("read_file");
+        return { pass, message: pass ? "缺失路径附带父目录内容" : output };
+      },
+    },
+  ],
+};
+
 /** bash 错误：不支持的命令 */
 export const bashUnsupportedCommandCase: TestCase = {
   id: "bash-unsupported-command",
   name: "bash: 不支持的命令（非 0 返回）",
   group: "Bash 文件操作",
   description:
-    "LLM 调用 bash 工具传入 ls 命令，工具应像命令行一样返回不支持提示和非 0 exitCode。",
+    "LLM 调用 bash 工具传入 cat 命令，工具应像命令行一样返回不支持提示和非 0 exitCode。",
   expectedBehavior:
     "工具卡片显示错误图标，输出包含 'command not supported'、支持命令列表和 'Exit code: 1'。",
   initialTurns: [],
@@ -1230,8 +1576,8 @@ export const bashUnsupportedCommandCase: TestCase = {
             id: "c_unsupported",
             name: BASH_TOOL_NAME,
             args: {
-              command: "ls src/",
-              description: "尝试使用不支持的 ls 命令",
+              command: "cat src/App.tsx",
+              description: "尝试使用不支持的 cat 命令",
             },
           },
         ],
@@ -1239,7 +1585,7 @@ export const bashUnsupportedCommandCase: TestCase = {
       },
       {
         type: "content",
-        chunks: ["ls 命令不支持，请改用 glob_search 工具查询文件列表。"],
+        chunks: ["cat 命令不支持。读取文件内容用 read_file，列出文件用 ls。"],
         ttftMs: 200,
         chunkDelayMs: 50,
       },

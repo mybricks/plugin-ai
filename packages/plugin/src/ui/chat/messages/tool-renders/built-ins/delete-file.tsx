@@ -6,6 +6,7 @@ import {
   basename,
 } from "../shared";
 import css from "../render.less";
+import { lang } from "../../../../../i18n";
 
 export const DeleteFileRenderer = ({ tool }: { tool: ToolRecord }) => {
   const paths: string[] = Array.isArray(tool.args?.paths) ? tool.args.paths : [];
@@ -14,8 +15,8 @@ export const DeleteFileRenderer = ({ tool }: { tool: ToolRecord }) => {
   const missingPaths: string[] = Array.isArray(metadata?.missingPaths) ? metadata.missingPaths : [];
   const failedPaths: Array<{ path?: string; reason?: string }> = Array.isArray(metadata?.failedPaths) ? metadata.failedPaths : [];
   const title = deletedPaths.length === 1 && failedPaths.length === 0 && missingPaths.length === 0
-    ? `删除文件 ${basename(deletedPaths[0])}`
-    : `删除文件 ${deletedPaths.length}/${paths.length} 项`;
+    ? lang.tool.deleteFile(basename(deletedPaths[0]))
+    : lang.tool.deleteFiles(deletedPaths.length, paths.length);
   const content = [
     deletedPaths.length > 0 ? `Deleted:\n${deletedPaths.join("\n")}` : "",
     missingPaths.length > 0 ? `Missing:\n${missingPaths.join("\n")}` : "",

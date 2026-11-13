@@ -2,6 +2,7 @@ import React, { useRef, useState } from "react";
 import { Modal as AntModal } from "antd";
 import { About } from "./About";
 import { ModelService } from "./ModelService";
+import { lang } from "../../i18n";
 import css from "./index.less";
 
 export type ChannelType = "infra" | "mybricks" | "custom";
@@ -16,21 +17,23 @@ export function resolveChannel(saved: ChannelType | undefined, allowed?: Channel
 export function getChannelLabel(c: ChannelType): string {
   switch (c) {
     case "infra":
-      return "默认";
+      return lang.settings.defaultChannel();
     case "mybricks":
       return "MyBricks";
     case "custom":
-      return "自定义";
+      return lang.settings.customChannel();
     default:
-      return "默认";
+      return lang.settings.defaultChannel();
   }
 }
 
 export interface ModelConfig {
   id: string;
   name: string;
-  /** 模型简介，展示在下拉选择器中模型名后方（可选） */
+  /** 模型简介，展示在下拉选择器中模型名下方（可选） */
   description?: string;
+  /** 模型名右侧的展示文本，如「5.5x」（可选） */
+  suffix?: string;
 }
 
 export interface ProviderConfig {
@@ -106,8 +109,8 @@ export const SettingModal: React.FC<SettingModalProps> = ({
   };
 
   const tabs: Array<{ key: TabKey; label: string }> = [
-    { key: 'model', label: '模型服务' },
-    { key: 'about', label: '关于' },
+    { key: 'model', label: lang.settings.modelService() },
+    { key: 'about', label: lang.settings.about() },
   ];
 
   return (
@@ -125,7 +128,7 @@ export const SettingModal: React.FC<SettingModalProps> = ({
       className={css.settingModal}
     >
       <div className={css.modalHeader}>
-        <span className={css.modalTitle}>设置</span>
+        <span className={css.modalTitle}>{lang.settings.title()}</span>
         <div className={css.modalClose} onClick={handleClose}>
           <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="16" height="16">
             <path d="M557.312 513.248l265.28-263.904c12.544-12.48 12.608-32.704 0.128-45.248-12.512-12.576-32.704-12.608-45.248-0.128L512.128 467.904 246.944 203.936c-12.48-12.544-32.704-12.608-45.248-0.128-12.576 12.512-12.608 32.704-0.128 45.248l265.216 263.84L201.6 776.8c-12.544 12.48-12.608 32.704-0.128 45.248 6.24 6.272 14.464 9.44 22.688 9.44 8.16 0 16.32-3.104 22.56-9.312l265.216-263.872 265.152 263.872c6.24 6.208 14.4 9.312 22.56 9.312 8.224 0 16.448-3.168 22.688-9.44 12.48-12.544 12.416-32.768-0.128-45.248L557.312 513.248z" fill="currentColor" />

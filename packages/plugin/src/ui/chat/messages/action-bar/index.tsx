@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { getMchipPlainText, writeMchipClipboard } from "../../../components/sender/mchip-clipboard";
+import { lang } from "../../../../i18n";
 import css from "./index.less";
 
 // ─── Line-style Icons (stroke, rounded) ──────────────────────────────────────
@@ -62,19 +64,20 @@ const ActionBarButton = ({ onClick, title, disabled, children, active }: ActionB
 
 interface CopyProps {
   text: string;
+  meta?: Record<string, any>;
 }
 
-const Copy = ({ text }: CopyProps) => {
+const Copy = ({ text, meta }: CopyProps) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(text);
+      await writeMchipClipboard({ message: text, meta });
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
       const el = document.createElement("textarea");
-      el.value = text;
+      el.value = getMchipPlainText({ message: text, meta });
       el.style.position = "fixed";
       el.style.opacity = "0";
       document.body.appendChild(el);
@@ -87,7 +90,7 @@ const Copy = ({ text }: CopyProps) => {
   };
 
   return (
-    <ActionBarButton onClick={handleCopy} title={copied ? "已复制" : "复制"} active={copied}>
+    <ActionBarButton onClick={handleCopy} title={copied ? lang.common.copied() : lang.common.copy()} active={copied}>
       {copied ? <CopyDoneIcon /> : <CopyIcon />}
     </ActionBarButton>
   );
@@ -100,7 +103,7 @@ interface DeleteProps {
 }
 
 const DeleteBtn = ({ onDelete }: DeleteProps) => (
-  <ActionBarButton onClick={onDelete} title="删除">
+  <ActionBarButton onClick={onDelete} title={lang.common.delete()}>
     <DeleteIcon />
   </ActionBarButton>
 );
@@ -113,7 +116,7 @@ interface RetryProps {
 }
 
 const Retry = ({ onRetry, disabled }: RetryProps) => (
-  <ActionBarButton onClick={onRetry} title="重试" disabled={disabled}>
+  <ActionBarButton onClick={onRetry} title={lang.common.retry()} disabled={disabled}>
     <RetryIcon />
   </ActionBarButton>
 );

@@ -1,27 +1,44 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import classNames from "classnames";
 import { Popup } from "../popup";
+import { handleListNavigationKeyDown } from "../menu-keyboard";
 import { AgentModeEnum } from "../../../../../agent/src";
+import { lang } from "../../../i18n";
 import css from "./index.less";
 
-// build = 智能体（默认执行）| plan = 计划（先规划再执行）
-export type ChatModeType = typeof AgentModeEnum.Build | typeof AgentModeEnum.Plan | null;
+// build = 智能体（默认执行）| plan = 计划（先规划再执行）| ask = 询问（先澄清再决定）
+export type ChatModeType = typeof AgentModeEnum.Build | typeof AgentModeEnum.Plan | typeof AgentModeEnum.Ask | null;
+export type ChatModePresentation = { triggerTitle: string; title: string; description: string };
 
-const CHAT_MODE_MAP: Record<
+function getChatModeMap(): Record<
   NonNullable<ChatModeType>,
-  { triggerTitle: string; title: string; description: string }
-> = {
+  ChatModePresentation
+> {
+  return {
   [AgentModeEnum.Build]: {
-    triggerTitle: "智能体模式",
-    title: "智能体模式",
-    description: "模型智能执行，快速交付任务",
+    triggerTitle: lang.chatMode.agentTrigger(),
+    title: lang.chatMode.agentTitle(),
+    description: lang.chatMode.agentDescription(),
   },
   [AgentModeEnum.Plan]: {
-    triggerTitle: "计划",
-    title: "计划模式",
-    description: "执行前先制定方案，再决定是否执行",
+    triggerTitle: lang.chatMode.planTrigger(),
+    title: lang.chatMode.planTitle(),
+    description: lang.chatMode.planDescription(),
   },
-};
+  [AgentModeEnum.Ask]: {
+    triggerTitle: lang.chatMode.askTrigger(),
+    title: lang.chatMode.askTitle(),
+    description: lang.chatMode.askDescription(),
+  },
+  };
+}
+
+/** Localized UI copy for the mode picker and sender slash actions. */
+export function getChatModePresentation(mode: NonNullable<ChatModeType>): ChatModePresentation {
+  return getChatModeMap()[mode];
+}
+
+const ALL_CHAT_MODE_OPTIONS = Object.values(AgentModeEnum) as NonNullable<ChatModeType>[];
 
 /** 莫比乌斯环图标（∞，横着的8），线条流动动画 */
 const MobiusIcon = () => (
@@ -52,30 +69,80 @@ const PlanIcon = () => (
   </svg>
 );
 
-const ChatModeIcon = ({ mode }: { mode: NonNullable<ChatModeType> }) => (
-  mode === AgentModeEnum.Build ? <MobiusIcon /> : <PlanIcon />
+/** 询问模式图标（对话气泡） */
+const AskIcon = () => (
+  <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M3 3.5h10v7H7l-3 2v-2H3v-7Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+    <path d="M5.5 6.75h.01M8 6.75h.01M10.5 6.75h.01" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+  </svg>
+);
+
+export const ChatModeIcon = ({ mode }: { mode: NonNullable<ChatModeType> }) => (
+  mode === AgentModeEnum.Build ? <MobiusIcon /> : mode === AgentModeEnum.Plan ? <PlanIcon /> : <AskIcon />
 );
 
 interface ChatModeProps {
   disabled?: boolean;
   chatMode: ChatModeType;
+  /** 当前 agent 实际可用的模式集合；缺省时展示全部内置模式。 */
+  availableModes?: NonNullable<ChatModeType>[];
   onChange?: (chatMode: ChatModeType) => void;
 }
 
 const ChatMode = (props: ChatModeProps) => {
-  const { chatMode, disabled, onChange } = props;
+  const { chatMode, disabled, availableModes, onChange } = props;
+  const chatModeMap = getChatModeMap();
+  const options = availableModes && availableModes.length > 0
+    ? ALL_CHAT_MODE_OPTIONS.filter((mode) => availableModes.includes(mode))
+    : ALL_CHAT_MODE_OPTIONS;
   const [open, setOpen] = useState(false);
+  const [highlightedMode, setHighlightedMode] = useState<NonNullable<ChatModeType>>(chatMode ?? AgentModeEnum.Build);
+  const highlightedModeRef = useRef(highlightedMode);
+
+  const updateHighlightedMode = useCallback((mode: NonNullable<ChatModeType>) => {
+    highlightedModeRef.current = mode;
+    setHighlightedMode(mode);
+  }, []);
+
+  const selectMode = useCallback((mode: NonNullable<ChatModeType>) => {
+    onChange?.(mode);
+    setOpen(false);
+  }, [onChange]);
+
+  const handleOpenChange = useCallback((nextOpen: boolean) => {
+    if (nextOpen && chatMode) updateHighlightedMode(chatMode);
+    setOpen(nextOpen);
+  }, [chatMode, updateHighlightedMode]);
+
+  useEffect(() => {
+    if (!open || !chatMode) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      handleListNavigationKeyDown(event, {
+        open,
+        items: options,
+        highlightedIndex: highlightedModeRef.current,
+        onMoveHighlight: (step, itemCount) => {
+          const currentIndex = Math.max(0, options.indexOf(highlightedModeRef.current));
+          updateHighlightedMode(options[(currentIndex + step + itemCount) % itemCount]);
+        },
+        onSelect: selectMode,
+        onClose: () => setOpen(false),
+      });
+    };
+
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [chatMode, open, options, selectMode, updateHighlightedMode]);
 
   if (!chatMode) {
     return null;
   }
 
-  const current = CHAT_MODE_MAP[chatMode];
-
   return (
     <Popup
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={handleOpenChange}
       disabled={disabled}
       placement="top-start"
       trigger={
@@ -84,7 +151,8 @@ const ChatMode = (props: ChatModeProps) => {
             [css.disabled]: disabled,
             [css.triggerBuild]: chatMode === AgentModeEnum.Build,
           })}
-          title={current.triggerTitle}
+          data-mybricks-tip={lang.sender.selectMode()}
+          aria-label={lang.sender.selectMode()}
         >
           <span className={classNames(css.iconSlot, { [css.agentIconSlot]: chatMode === AgentModeEnum.Build })}>
             <ChatModeIcon mode={chatMode} />
@@ -95,18 +163,22 @@ const ChatMode = (props: ChatModeProps) => {
         </div>
       }
     >
-      <div className={css.menu}>
-        {(Object.keys(CHAT_MODE_MAP) as NonNullable<ChatModeType>[]).map((key) => {
-          const item = CHAT_MODE_MAP[key];
+      <div className={css.menu} role="listbox" aria-label={lang.chatMode.select()}>
+        {options.map((key) => {
+          const item = chatModeMap[key];
           const isSelected = chatMode === key;
           return (
-            <div
+            <button
               key={key}
-              className={classNames(css.item, { [css.selected]: isSelected })}
-              onClick={() => {
-                onChange?.(key);
-                setOpen(false);
-              }}
+              type="button"
+              role="option"
+              aria-selected={isSelected}
+              className={classNames(css.item, {
+                [css.selected]: isSelected,
+                [css.highlighted]: highlightedMode === key,
+              })}
+              onMouseMove={() => updateHighlightedMode(key)}
+              onClick={() => selectMode(key)}
             >
               <div className={css.itemContent}>
                 <div className={css.itemTitle}>
@@ -117,7 +189,7 @@ const ChatMode = (props: ChatModeProps) => {
                 </div>
                 <div className={css.itemDesc}>{item.description}</div>
               </div>
-            </div>
+            </button>
           );
         })}
       </div>

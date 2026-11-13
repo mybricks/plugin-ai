@@ -4,16 +4,17 @@ import type { ToolRecord } from "../index";
 import { StatusIcon, Duration, LineToolRenderer } from "../shared";
 import { useChatPanel } from "../../../chat-panel/context";
 import { TextShimmer } from "../../../../components/text-shimmer";
+import { lang } from "../../../../../i18n";
 import css from "../render.less";
 
 export const CheckStatusRenderer = ({ tool }: { tool: ToolRecord }) => {
   const { messagesRenderVariant } = useChatPanel();
-  const label = "查看当前状态";
+  const label = lang.tool.viewStatus();
 
   if (messagesRenderVariant === "line") {
     const detail = [
       tool.result?.output ? String(tool.result.output) : "",
-      tool.error ? `错误: ${tool.error}` : "",
+      tool.error ? `${lang.tool.error()}: ${tool.error}` : "",
     ].filter(Boolean).join("\n\n");
 
     return (

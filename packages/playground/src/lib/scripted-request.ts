@@ -26,6 +26,24 @@ export type MockStep =
       streamChunkDelayMs?: number;
     }
   | {
+      /**
+       * 同一轮 LLM 调用里，先输出一段文本，紧接着（不结束 turn）触发工具调用。
+       * 对应真实场景里"模型说明要做什么，然后紧接着调用工具"——
+       * 这种 iter 会同时携带 content 和 toolCalls。
+       * 注意：纯 "content" step 不会调用 onToolCalls，turn 会直接结束；
+       * 想让 ReAct 循环继续，必须用这个类型（或 "tool_calls"）。
+       */
+      type: "content_then_tool_calls";
+      chunks: string[];
+      calls: ToolCallSpec[];
+      chunkDelayMs?: number;
+      ttftMs?: number;
+      /** 文本输出完毕到开始触发工具调用之间的延迟（ms） */
+      toolDelayMs?: number;
+      streamChunkSize?: number;
+      streamChunkDelayMs?: number;
+    }
+  | {
       type: "error";
       error: Error | string;
       /** 报错前的延迟（ms），模拟网络超时后断开 */
@@ -117,6 +135,31 @@ export function makeScriptedRequest(
         params.emits.write(chunk);
       }
       params.emits.onFinishReason?.("stop");
+      params.emits.complete?.("");
+      return;
+    }
+
+    if (step.type === "content_then_tool_calls") {
+      await delay(step.ttftMs ?? 0);
+      for (const chunk of step.chunks) {
+        await delay(step.chunkDelayMs ?? 40);
+        params.emits.write(chunk);
+      }
+      await delay(step.toolDelayMs ?? 0);
+
+      const streamChunkSize = step.streamChunkSize ?? 4;
+      const streamChunkDelayMs = step.streamChunkDelayMs ?? 20;
+      for (const call of step.calls) {
+        const argsStr = JSON.stringify(call.args);
+        params.emits.onToolCallStream?.({ index: 0, id: call.id, name: call.name, argsChunk: "" });
+        for (let i = 0; i < argsStr.length; i += streamChunkSize) {
+          await delay(streamChunkDelayMs);
+          params.emits.onToolCallStream?.({ index: 0, argsChunk: argsStr.slice(i, i + streamChunkSize) });
+        }
+      }
+
+      params.emits.onToolCalls?.(step.calls);
+      params.emits.onFinishReason?.("tool_calls");
       params.emits.complete?.("");
       return;
     }

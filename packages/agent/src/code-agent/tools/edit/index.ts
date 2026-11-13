@@ -1,11 +1,15 @@
 import type { Tool, ToolResult } from "../../../types";
 import type { ToolExecutionContext } from "../../../types";
 import { ToolValidationError } from "../../../types";
-import type { Sandbox } from "../../index";
+import type { AgentSandbox } from "../../../agent-sandbox";
 import { checkEditFilePermission } from "../../../mode-manager";
-import { READ_TOOL_NAME } from "../read";
+import { fileNotFoundMessage, READ_TOOL_NAME } from "../read";
 import { WRITE_TOOL_NAME } from "../write";
-import { replaceInContent } from "./replace";
+import {
+  calculateLineChangeStats,
+  ENABLE_EDIT_CHANGE_STATS,
+  replaceInContent,
+} from "./replace";
 
 export const EDIT_TOOL_NAME = "edit_file";
 /** Used by countPrevFailures to identify multi_edit tool calls (avoids circular import) */
@@ -68,7 +72,7 @@ function appendActionHint(
   return `${message} Same old_str has failed ${prev + 1} time(s). Further edits may cause significant errors. Use \`${WRITE_TOOL_NAME}\` to rewrite the entire file instead.`;
 }
 
-export function createEditTool(adapter: Sandbox): Tool {
+export function createEditTool(sandbox: AgentSandbox): Tool {
   return {
     name: EDIT_TOOL_NAME,
     limits: { maxToken: false },
@@ -76,7 +80,7 @@ export function createEditTool(adapter: Sandbox): Tool {
 
 用法：
 - 优先编辑项目中已有的文件，除非明确需要，否则不要新建文件。
-- 禁止在文件中写入 emoji。
+- 除非用户明确要求，否则禁止在文件中写入 emoji。
 - 只包含需要更改的代码行，出于唯一性的考虑，需要包含一些周围的必要的行，一个old_str/new_str至少3行（除非源文件不够3行），避免出现误操作;
 - 如果 old_str 在文件中不唯一，编辑会失败。请提供包含更多上下文行的更大字符串使其唯一。
 - 使用 \`replace_all\` 批量替换和重命名文件中的字符串，例如重命名某个变量时非常有用。
@@ -119,12 +123,9 @@ export function createEditTool(adapter: Sandbox): Tool {
       params: { path: string; old_str: string; new_str: string; replace_all?: boolean },
       ctx?: ToolExecutionContext,
     ): Promise<ToolResult> {
-      const files = await adapter.getFiles();
-      const file = files.find((f) => f.path === params.path);
+      const file = await sandbox.files.read(params.path);
       if (!file) {
-        throw new ToolValidationError(
-          `File not found: ${params.path}. Use \`${READ_TOOL_NAME}\` to list available files.`
-        );
+        throw new ToolValidationError(fileNotFoundMessage(params.path));
       }
 
       const result = replaceInContent(file.content, params.old_str, params.new_str, params.replace_all ?? false);
@@ -135,7 +136,7 @@ export function createEditTool(adapter: Sandbox): Tool {
       }
 
       try {
-        await adapter.updateFiles([{ path: params.path, content: result.newContent! }]);
+        await sandbox.files.write({ path: params.path, content: result.newContent! });
       } catch (err) {
         throw new ToolValidationError(`Failed to edit ${params.path}: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -144,19 +145,36 @@ export function createEditTool(adapter: Sandbox): Tool {
       const fileLines = countLines(file.content);
       const oldStrLines = countLines(params.old_str);
       if (fileLines >= 3 && oldStrLines < 3 && params.old_str) {
+        // 短上下文替换更容易误命中；必须要求模型重新读取受影响文件核验，勿删除此提示。
         warnings.push(
-          `Warning: old_str has only ${oldStrLines} line(s) (recommended: 3+ lines). Make sure the replacement is accurate to avoid unintended changes.`
+          `Warning: old_str has only ${oldStrLines} line(s) (recommended: 3+ lines). Please read the affected file to verify changes.`
         );
       }
+      if (result.strategy === "insert") {
+        warnings.push("Warning: whole-file replacement was used. Please read the affected file to verify changes.");
+      } else if (result.strategy !== "exact") {
+        warnings.push("Warning: non-exact matching was used. Please read the affected file to verify changes.");
+      }
 
-      let output = `File edited: ${params.path} (strategy: ${result.strategy})`;
+      const replacementSummary = result.replacementCount && result.replacementCount > 1
+        ? ` (${result.replacementCount} replacements)`
+        : "";
+      const changeStats = calculateLineChangeStats(file.content, result.newContent!);
+      const changeSummary = ENABLE_EDIT_CHANGE_STATS
+        ? ` +${changeStats.added} -${changeStats.removed}`
+        : "";
+      let output = `Success. Updated file:\nM ${params.path}${changeSummary}${replacementSummary}`;
       if (warnings.length > 0) {
         output = `${output}\n${warnings.join("\n")}`;
       }
 
       return {
         output,
-        metadata: { path: params.path, strategy: result.strategy, replaceAll: params.replace_all ?? false },
+        metadata: {
+          path: params.path,
+          strategy: result.strategy,
+          replaceAll: params.replace_all ?? false,
+        },
       };
     },
   };

@@ -41,6 +41,33 @@
     > p { margin: 0; }
   }
 
+  // ── GitHub Alerts（> [!NOTE] 等），由 markdown/alerts.ts 注入 class ──────────
+  // class 来自运行时注入的 HTML 字符串，不参与 CSS Modules 哈希，必须用 :global
+
+  blockquote:global(.md-alert) {
+    opacity: 1;
+    background-color: var(--md-alert-bg, rgba(9, 105, 218, 0.06));
+    border-left-color: var(--md-alert-color, #0969DA);
+
+    :global(.md-alert-title) {
+      font-weight: 600;
+      line-height: 1.5;
+      color: var(--md-alert-color, #0969DA);
+    }
+
+    :global(.md-alert-title) + p { margin-top: 4px; }
+
+    > p:last-child { margin-bottom: 0; }
+  }
+
+  blockquote:global(.md-alert-note)      { --md-alert-color: #0969DA; --md-alert-bg: rgba(9, 105, 218, .06); }
+  blockquote:global(.md-alert-tip)       { --md-alert-color: #1A7F37; --md-alert-bg: rgba(26, 127, 55, .06); }
+  blockquote:global(.md-alert-important) { --md-alert-color: #8250DF; --md-alert-bg: rgba(130, 80, 223, .06); }
+  blockquote:global(.md-alert-warning)   { --md-alert-color: #9A6700; --md-alert-bg: rgba(154, 103, 0, .06); }
+  blockquote:global(.md-alert-caution)   { --md-alert-color: #CF222E; --md-alert-bg: rgba(207, 34, 46, .06); }
+
+
+
   table {
     border-spacing: 0;
     border-collapse: collapse;
@@ -153,7 +180,12 @@
 
   // ── Mermaid 图表（三套皮肤统一支持）───────────────────────────────────────
 
+  :global(.mermaid-diagram-clickable) {
+    cursor: pointer;
+  }
+
   :global(.mermaid-diagram) {
+    position: relative;
     margin-bottom: 6px;
     overflow-x: auto;
     background-color: var(--mybricks-bg-color-secondary, #F5F5F5);
@@ -164,5 +196,117 @@
       max-width: 100%;
       height: auto;
     }
+
+    :global(.mermaid-diagram-fullscreen-btn) {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 4px;
+      color: var(--mybricks-text-color-secondary, #888);
+      background-color: var(--mybricks-bg-color, #fff);
+      opacity: 0;
+      cursor: pointer;
+      transition: opacity 0.2s;
+
+      &:hover {
+        color: var(--mybricks-text-color, #333);
+      }
+    }
+
+    &:hover :global(.mermaid-diagram-fullscreen-btn) {
+      opacity: 0.85;
+    }
+  }
+}
+
+// ── Mermaid 全屏（纯 DOM 实现，视觉对齐 components/modal 的 Modal 组件）──────
+
+:global(.mermaid-fullscreen-mask) {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+:global(.mermaid-fullscreen-box) {
+  display: flex;
+  flex-direction: column;
+  width: min(80vw, 900px);
+  height: min(80vh, 620px);
+  background: var(--mybricks-bg-color-main, #fff);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+:global(.mermaid-fullscreen-header) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding: 10px 12px 10px 14px;
+  border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
+  background: var(--mybricks-bg-color-secondary, #F5F5F5);
+}
+
+:global(.mermaid-fullscreen-title) {
+  flex: 1;
+  min-width: 0;
+}
+
+:global(.mermaid-fullscreen-close) {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--mybricks-text-color-secondary, #888);
+  cursor: pointer;
+  transition: all 0.15s;
+
+  &:hover {
+    background: var(--mybricks-bg-color-main, #fff);
+    color: var(--mybricks-text-color-main, #333);
+  }
+}
+
+:global(.mermaid-fullscreen-body) {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  svg {
+    width: 100%;
+    height: auto;
+  }
+}
+
+:global(.mermaid-fullscreen-box-dark) {
+  background: #1a1a1a;
+
+  :global(.mermaid-fullscreen-header) {
+    background: #242424;
+    border-bottom-color: #333;
+  }
+
+  :global(.mermaid-fullscreen-title) {
+    color: #e0e0e0;
   }
 }

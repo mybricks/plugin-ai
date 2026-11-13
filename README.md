@@ -201,7 +201,34 @@ const provider: CustomProviderConfig = {
 };
 ```
 
+模型请求默认启用空响应重试和 3 分钟空闲超时。模型结束前若没有收到正文、思考、工具调用、用量或结束原因回调，将按重试配置重试；空闲超时使用相同的回调判断。两者都只判断回调是否触发，不检查参数是否为空。
+
+可在 Agent 配置中调整空闲超时时间：
+
+```ts
+const agent = new CodeAgent({
+  // ...其他配置
+  retry: {
+    timeoutMs: 60_000, // false 可关闭空闲超时
+    maxRetries: 3,
+  },
+});
+```
+
+底层请求需通过 `emits.cancel` 注册取消函数，Agent 才能主动终止其资源；未实现取消时，迟到的事件仍会被忽略。
+
 发起请求时也可指定单次使用的模型：`agent.requestAI({ message, providerId, modelId })`。
+
+模型选择器支持可选的 `description`（名称下方的简介）和 `suffix`（名称右侧的附加文本）：
+
+```ts
+models: [{
+  id: "auto",
+  name: "Auto",
+  suffix: "预计 3.5–5.5x",
+  description: "智能匹配最适合当前任务的模型，优先获得最佳生成效果",
+}]
+```
 
 ## 拓展
 

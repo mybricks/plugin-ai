@@ -1,6 +1,7 @@
 import React from "react";
 import type { ActivePlanFile } from "../../../../../agent/src/mode-manager";
 import { PlanActions } from "./plan-actions";
+import { lang } from "../../../i18n";
 import css from "./sender-active-plan-card.less";
 
 export interface SenderActivePlanCardProps {
@@ -21,7 +22,7 @@ export const SenderActivePlanCard = ({
   return (
     <div className={css["sender-plan-card"]}>
       <div className={css["sender-plan-card-left"]}>
-        <span className={css["sender-plan-card-label"]}>当前讨论的方案：</span>
+        <span className={css["sender-plan-card-label"]}>{lang.plan.currentPlan()}</span>
         <span className={css["sender-plan-card-title"]} title={displayTitle}>{displayTitle}</span>
         {plan.desc && <span className={css["sender-plan-card-desc"]} title={plan.desc}>{plan.desc}</span>}
       </div>

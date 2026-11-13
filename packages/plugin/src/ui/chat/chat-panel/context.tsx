@@ -1,6 +1,7 @@
 import React, { createContext, useContext } from "react";
 import type MarkdownIt from "markdown-it";
 import type { MessageRecord } from "../use-session";
+import type { SenderProps } from "../../components/sender";
 
 interface User {
   name?: string;
@@ -48,6 +49,8 @@ interface ChatPanelContextValue {
   disabled: boolean;
   /** 用户消息的自定义渲染函数 */
   renderUserMessage?: (record: MessageRecord) => React.ReactNode;
+  /** Active MBS template labels keyed by their durable marker name. */
+  mbsTemplateDisplayNames?: Record<string, string>;
   /**
    * Markdown 皮肤配置，允许外部覆盖消息 / plan 场景的皮肤 class。
    * 不传时使用内置默认皮肤。
@@ -57,6 +60,19 @@ interface ChatPanelContextValue {
   markdownit?: ChatMarkdownItConfig;
   /** 消息内工具调用的展示形态，默认 card。 */
   messagesRenderVariant: MessagesRenderVariant;
+  /**
+   * 是否把同一 turn 内「相邻、且中间没有被文本打断」的连续工具调用合并为一个可折叠分组。
+   * 与 messagesRenderVariant 正交：收起时只展示状态图标 + 最新工具名 + 聚合耗时；
+   * 展开后内部仍按 messagesRenderVariant 配置渲染每个工具。默认 false。
+   */
+  groupToolCalls?: boolean;
+  /** 多模型选择器数据；用于错误重试时切换模型。 */
+  modelSelector?: SenderProps["modelSelector"];
+  /** 阻塞式工具卡片在 Sender 区域的挂载点。 */
+  blockingToolSlot?: {
+    target: HTMLElement | null;
+    setActive: (callId: string, active: boolean) => void;
+  };
 }
 
 const ChatPanelContext = createContext<ChatPanelContextValue>({

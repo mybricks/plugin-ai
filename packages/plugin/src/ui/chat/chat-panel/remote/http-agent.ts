@@ -1,0 +1,2092 @@
+import type { BackgroundSubAgentInfo, SubAgentCreatedInfo } from "../../../../../../agent/src";
+import {
+  AgentEvents,
+  applyChildAgentEvent,
+  type SubAgentTurnRecord,
+  HistoryManager,
+  AgentModeEnum,
+  getAvailableAgentModes,
+  type AgentMode,
+  type AgentEventMap,
+  type AgentHooks,
+  type CompactRecord,
+  type CodeAgentPlugin,
+  type BoundHistory,
+  type Tool,
+  type ToolCallRecord,
+  type ToolUIChannel,
+  type TurnRecord,
+  type TurnSender,
+  type VersionFile,
+  type VersionRecord,
+} from "../../../../../../agent/src";
+import { composePluginHooks } from "../../../../../../agent/src/code-agent";
+import { collectPluginPromptTemplates, createMbsTemplates } from "../../../../../../agent/src/code-agent/mbs";
+import {
+  createAfterToolCallParams,
+  createBeforeToolCallParams,
+} from "../../../../../../agent/src/hooks";
+import type {
+  ActivePlanFile,
+  PlanFileInfo,
+} from "../../../../../../agent/src/mode-manager";
+import type { AgentRuntimeState } from "../../../../context/agent-runtime";
+import { context } from "../../../../context";
+import { lang } from "../../../../i18n";
+import { jsonStringifySafe } from "../../../../utils/json";
+import type { BrowserToolRequest } from "../workspace-bridge";
+import { WorkspaceBridge } from "../workspace-bridge";
+import { createRemoteSessionRecovery } from "./session-recovery";
+import { HTTP_AGENT_SESSION_STAGE } from "../session-status";
+import type { DisabledHandler } from "../../../../disabled-handler";
+import type {
+  RemoteFileSystem,
+  RemoteFsOperationsResult,
+} from "../../../../sandbox/connect-shared";
+
+export type {
+  BrowserToolRequest,
+  BrowserToolResult,
+} from "../workspace-bridge";
+
+type ApiResponse<T> = T | { code: number; message?: string; data: T };
+type VersionsPageResponse =
+  | { total?: number; list?: VersionRecord[]; versions?: VersionRecord[] }
+  | VersionRecord[];
+type VersionRecordResponse = { record?: VersionRecord } | VersionRecord | null;
+type VersionFilesResponse = { files?: VersionFile[] } | VersionFile[];
+type PlansPageResponse = {
+  items?: Array<PlanFileInfo & { content: string }>;
+  total?: number;
+  nextCursor?: string | null;
+};
+
+export interface RemoteAgentEvent {
+  event:
+    | keyof AgentEventMap
+    | "session:error"
+    | "session:preparing"
+    | "session:locked"
+    | "session:files-synced"
+    | "session:agent-configured"
+    | "session:start"
+    | "session:released"
+    | "workspace:file-change"
+    | "browser:task";
+  data: any;
+  createdAt: number;
+  turnId?: string;
+  /** LLM iter 的模式快照；服务端只在 llm:* 事件上提供。 */
+  mode?: AgentMode;
+  /** LLM iter 的模型快照；服务端只在 llm:* 事件上提供。 */
+  model?: string;
+}
+
+export interface TurnsPage {
+  turns?: TurnRecord[];
+  hasMore?: boolean;
+  oldestTurnId?: string | null;
+}
+
+export interface HttpAgentOptions {
+  /** 方舟测试环境默认值：http://localhost:3001/agents/api */
+  baseUrl?: string;
+  /** 服务端 workspaceId；当前对应平台 conversation id。 */
+  workspaceId: string;
+  /** 服务端 agentId。未传时使用 workspace 的 default agent。 */
+  agentId?: string;
+}
+
+interface HttpAgentRuntimeOptions {
+  /** plugin-ai 初始化时创建的统一 disabled handler。 */
+  disabledHandler?: DisabledHandler;
+  /** 禁用的运行模式；与本地 CodeAgent.disabledModes 语义一致。 */
+  disabledModes?: AgentMode[];
+  /** 注册到浏览器端执行的工具。服务端可通过 SSE browser:task 按 name 调用。 */
+  browserTools?: Tool[];
+  onVersionSaved?: (version: { turnId: string; versionId: string }) => Promise<void>;
+  /**
+   * 浏览器侧生命周期 hooks。远程 Agent 的实际推理在服务端执行，但 sandbox
+   * 仍需要这些 hooks 来维护 loading、锁和 undo/redo 等本地 UI 状态。
+   *
+   * beforeToolCall / afterToolCall 会随服务端 SSE 的工具事件通知浏览器；远端
+   * 调用和结果已由服务端决定，因此 hook 的返回值不会影响远端执行或结果。
+   */
+  hooks?: AgentHooks;
+  /** 与本地 CodeAgent 一致，插件 hooks 在顶层 hooks 之后执行。 */
+  plugins?: CodeAgentPlugin[];
+  pluginFactories?: import("../../../../../../agent/src").CodeAgentPluginFactory[];
+  pluginContext?: Parameters<import("../../../../../../agent/src").CodeAgentPluginFactory>[0];
+  /** 当前浏览器用户，写入每轮 /run 与本地 turn:start，对齐本地 CodeAgent。 */
+  sender?: TurnSender;
+}
+
+interface HttpAgentRequestAICommonParams {
+  turnId?: string;
+  attachments?: any[];
+  mode?: AgentMode;
+  meta?: Record<string, any>;
+  extra?: Record<string, any>;
+  sender?: TurnSender;
+  aiRole?: string;
+  providerId?: string;
+  modelId?: string;
+  signal?: AbortSignal;
+  onError?: (error: Event | Error) => void;
+  onClose?: () => void;
+}
+
+/** 单消息请求：同一文本用于展示与模型输入。 */
+export interface MessageHttpAgentRequestAIParams
+  extends HttpAgentRequestAICommonParams {
+  message: string;
+  displayMessage?: never;
+  modelMessage?: never;
+}
+
+/** 双消息请求：displayMessage 用于展示，modelMessage 用于模型输入。 */
+export interface DisplayModelHttpAgentRequestAIParams
+  extends HttpAgentRequestAICommonParams {
+  displayMessage: string;
+  modelMessage: string;
+  message?: never;
+}
+
+export type HttpAgentRequestAIParams =
+  | MessageHttpAgentRequestAIParams
+  | DisplayModelHttpAgentRequestAIParams;
+
+interface HttpAgentRetryOptions {
+  turnId: string;
+  providerId?: string;
+  modelId?: string;
+  signal?: AbortSignal;
+  onError?: (error: Event | Error) => void;
+  onClose?: () => void;
+}
+
+// aicode-agents 通过 Nest 的全局路由前缀暴露 API。
+const DEFAULT_BASE_URL = "http://localhost:3001/agents/api";
+const DEFAULT_AGENT_ID = "default";
+const DEFAULT_TURNS_PAGE_SIZE = 20;
+const TURN_INCOMPLETE_ERROR_CODE = "TURN_INCOMPLETE" as const;
+
+/** 旧版 error code 只用于兼容已持久化的历史记录和旧服务端。 */
+function normalizeTurnErrorCode(value: unknown): TurnRecord["errorCode"] | undefined {
+  switch (value) {
+    case "TURN_INCOMPLETE":
+    case "TURN_INTERRUPTED":
+      return "TURN_INCOMPLETE";
+    case "TURN_LOOP_DETECTED":
+    case "MODEL_AUTO_INTERRUPTED":
+      return "TURN_LOOP_DETECTED";
+    case "CONTEXT_COMPACTION_FAILED":
+    case "NETWORK_ERROR":
+    case "MODEL_ERROR":
+    case "SESSION_CONFLICT":
+    case "SERVER_ERROR":
+      return value;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * TODO: 服务端支持 Agent 探活和 turn 终态确认后，改用服务端状态判断任务是否结束。
+ * 当前仍保留客户端超时作为兜底，但需要容忍代理缓冲和服务端背压。
+ */
+const ENABLE_SSE_IDLE_WATCHDOG = true;
+const SSE_IDLE_TIMEOUT_MS = 5 * 60_000;
+
+export class HttpAgent {
+  readonly kind = "http";
+  readonly protocol = "agent-events";
+  readonly events = new AgentEvents();
+  readonly baseUrl: string;
+  readonly workspaceId: string;
+  /** 服务端 agentId；default 使用 workspace 直连路由。 */
+  readonly agentId: string;
+  readonly key: string;
+  readonly historyManager: HistoryManager;
+  private readonly disabledHandler?: DisabledHandler;
+  private readonly onVersionSaved?: HttpAgentRuntimeOptions["onVersionSaved"];
+  private readonly handledSavedVersions = new Set<string>();
+  private readonly disabledModes: AgentMode[];
+  private readonly hooks?: AgentHooks;
+  private readonly plugins: CodeAgentPlugin[];
+  private pluginInitialization?: Promise<void>;
+  private readonly pluginFactories: NonNullable<HttpAgentRuntimeOptions["pluginFactories"]>;
+  private readonly pluginContext?: HttpAgentRuntimeOptions["pluginContext"];
+  private readonly sender?: TurnSender;
+  private readonly workspaceBridge: WorkspaceBridge<HttpAgent>;
+  private mode: AgentMode = AgentModeEnum.Build;
+  private turns: TurnRecord[] = [];
+  private childTurns: SubAgentTurnRecord[] = [];
+  private readonly childAgentBuses = new Map<string, AgentEvents>();
+  private childListRequest?: Promise<Array<BackgroundSubAgentInfo & { turn?: SubAgentTurnRecord }>>;
+  private turnsPage: Required<Pick<TurnsPage, "hasMore">> &
+    Pick<TurnsPage, "oldestTurnId"> = {
+    hasMore: false,
+    oldestTurnId: null,
+  };
+  private compactRecord: CompactRecord | null = null;
+  private readonly childConnections = new Map<string, AbortController>();
+  private readonly completedChildTurns = new Set<string>();
+  private sessionState: AgentRuntimeState = { running: false };
+  private sessionStateListeners = new Set<
+    (state: AgentRuntimeState) => void
+  >();
+  private readonly remoteHistory: BoundHistory;
+  private readonly historyInitialization: Promise<void>;
+  private readonly sessionRecovery: ReturnType<typeof createRemoteSessionRecovery>;
+  /** 已进入浏览器侧 hook 生命周期的 turn，避免 /run 与 /connect 回放重复启动。 */
+  private readonly startedHookTurns = new Set<string>();
+  /** /connect 启动 hook 可能是异步的；终态必须在其完成后再触发 afterTurn。 */
+  private readonly replayStartHookTasks = new Map<string, Promise<void>>();
+  private readonly completedHookTurns = new Set<string>();
+  private readonly pendingTurnFinalizations = new Map<string, { task: Promise<void>; release: () => void }>();
+  /** 已消费的异步摘要，避免 run/connect 重放或重复摘要订阅触发两次。 */
+  private readonly completedSummaryHookTurns = new Set<string>();
+  /** 已消费的后台收口，避免 run/connect 重放触发两次。 */
+  private readonly completedSettledHookTurns = new Set<string>();
+  /** 已向浏览器侧派发过 beforeToolCall 的远端 tool:call，避免 SSE 重放重复通知。 */
+  private readonly dispatchedBeforeToolCalls = new Set<string>();
+  /** 已向浏览器侧派发过 afterToolCall 的远端终态工具事件，避免 SSE 重放重复通知。 */
+  private readonly dispatchedAfterToolCalls = new Set<string>();
+  /** 服务端工具定义不会随 SSE 下发；为 hook 提供稳定的最小 Tool 描述。 */
+  private readonly remoteHookTools = new Map<string, Tool>();
+
+  /** Browser-side template labels for rendering stored messages. */
+  getMbsTemplates() {
+    return createMbsTemplates(collectPluginPromptTemplates(this.plugins)).map((item) => item.descriptor);
+  }
+
+  constructor(options: HttpAgentOptions, runtime: HttpAgentRuntimeOptions = {}) {
+    this.baseUrl = trimRight(options.baseUrl ?? DEFAULT_BASE_URL, "/");
+    this.workspaceId = options.workspaceId;
+    this.agentId = options.agentId ?? DEFAULT_AGENT_ID;
+    this.key = `http:${this.baseUrl}:${this.workspaceId}:${this.agentId}`;
+    this.disabledHandler = runtime.disabledHandler;
+    this.onVersionSaved = runtime.onVersionSaved;
+    this.disabledModes = runtime.disabledModes ?? [];
+    this.plugins = runtime.plugins ?? [];
+    this.pluginFactories = runtime.pluginFactories ?? [];
+    this.pluginContext = runtime.pluginContext;
+    this.sender = runtime.sender;
+    this.hooks = composePluginHooks(runtime.hooks, this.plugins, this.pluginFactories.length > 0);
+    this.workspaceBridge = new WorkspaceBridge<HttpAgent>({
+      workspaceId: this.workspaceId,
+      requestJson: <T>(path: string, init?: RequestInit) =>
+        this.requestJson<T>(path, init),
+      agent: this,
+      tools: runtime.browserTools,
+      canHandleBrowserTasks: () => !this.isDisabled(),
+      getMode: () => this.getMode(),
+      setMode: (mode, reason) => this.setMode(mode, reason),
+    });
+    this.remoteHistory = this.createRemoteHistory();
+    this.historyManager = new HistoryManager({});
+    this.sessionRecovery = createRemoteSessionRecovery({
+      finalizeRejectedTurn: async (turnId) => {
+        const pending = this.pendingTurnFinalizations.get(turnId);
+        pending?.release();
+        await pending?.task;
+      },
+      loadHistory: () => this.initializeHistory(),
+      resetState: () => this.resetReplayState(),
+      waitInitialized: () => this.workspaceBridge.waitInitialized(),
+      subscribe: (callbacks) => this.session.subscribe(callbacks),
+      onEvent: (event) => this.handleReplayEvent(event),
+      onError: (error) => {
+        this.setSessionState({ running: false, error });
+        console.error("[plugin-ai] remote agent replay failed", error);
+      },
+      onClose: (terminalSeen, turnId) => {
+        if (turnId) this.pendingTurnFinalizations.get(turnId)?.release();
+        if (!terminalSeen && !this.sessionState.running) this.markLastUnfinishedTurnInterrupted();
+      },
+      onIdle: () => {
+        if (!this.sessionState.running) this.markLastUnfinishedTurnInterrupted();
+      },
+    });
+    this.historyInitialization = this.initializeHistory();
+    void this.historyInitialization
+      .then(() => this.workspaceBridge.waitInitialized())
+      .then(() => this.initializePlugins())
+      .then(() => this.restoreSubagents())
+      .then(() => this.sessionRecovery.startReplay())
+      .catch((error) => {
+        console.error("[plugin-ai] remote init failed", error);
+      });
+  }
+
+  getMode(): AgentMode {
+    return this.mode;
+  }
+
+  getPlugins(): CodeAgentPlugin[] {
+    return [...this.plugins];
+  }
+
+  initializePlugins(): Promise<void> {
+    if (!this.pluginInitialization) {
+      this.pluginInitialization = (async () => {
+        if (!this.pluginContext || !this.pluginFactories.length) return;
+        await this.workspaceBridge.waitInitialized();
+        const sandbox = await this.getFileSandbox();
+        for (const factory of this.pluginFactories) {
+          try {
+            this.plugins.push(await factory({ ...this.pluginContext, sandbox, isInRemoteMode: true }));
+          } catch (error) {
+            console.warn("[HttpAgent] plugin factory failed to initialize:", error);
+          }
+        }
+      })();
+    }
+    return this.pluginInitialization;
+  }
+
+  /** 获取远端文件视图；本地视图由 FileHmr 维护。 */
+  async getFileSandbox(): Promise<import("../../../../../../agent/src").AgentSandbox> {
+    if (!this.pluginContext) throw new Error("Remote sandbox is unavailable.");
+    await this.workspaceBridge.waitInitialized();
+    return this.createRemotePluginSandbox(this.pluginContext.sandbox);
+  }
+
+  /** 插件读写以 workspace 为准；FileHmr 使用独立的宿主 sandbox 更新界面。 */
+  private createRemotePluginSandbox(local: import("../../../../../../agent/src").AgentSandbox): import("../../../../../../agent/src").AgentSandbox {
+    const read = async (path: string) => {
+      const query = new URLSearchParams({ path });
+      return this.requestJson<{ path: string; content: string } | null>(
+        `${this.workspacePath("files/content")}?${query.toString()}`,
+      );
+    };
+    const apply = async (operations: Array<{ type: "write"; path: string; content: string } | { type: "delete"; path: string }>) => {
+      const result = await this.remoteFs.applyOperations(operations);
+      if (result.conflicts.length) {
+        throw new Error(`Remote file conflict: ${result.conflicts.map((conflict) => conflict.path).join(", ")}`);
+      }
+      await this.workspaceBridge.syncFileChangesToVersion(result.version);
+    };
+    return {
+      ...local,
+      files: {
+        ...local.files,
+        read,
+        readFiles: async (paths) => (await Promise.all(paths.map(read))).filter((file): file is NonNullable<typeof file> => file !== null),
+        write: (file) => apply([{ type: "write", ...file }]),
+        writeFiles: (files) => apply(files.map((file) => ({ type: "write" as const, ...file }))),
+        remove: (path) => apply([{ type: "delete", path }]),
+        removeFiles: (paths) => apply(paths.map((path) => ({ type: "delete" as const, path }))),
+      },
+    };
+  }
+
+  /** 远端 workspace 中当前 active 的计划文件。 */
+  async getPlanFile(): Promise<ActivePlanFile | null> {
+    const query = new URLSearchParams({ status: "active", limit: "1" });
+    const page = await this.requestJson<PlansPageResponse>(
+      `${this.workspacePath("plans")}?${query.toString()}`,
+    );
+    const plan = page.items?.[0];
+    return plan?.status === "active" ? plan as ActivePlanFile : null;
+  }
+
+  setMode(mode: AgentMode, reason?: string): void {
+    const previousMode = this.mode;
+    this.mode = mode;
+    if (previousMode !== mode) {
+      this.events.emit("mode:change", { mode, previousMode, reason });
+    }
+  }
+
+  getAvailableModes(): AgentMode[] {
+    return getAvailableAgentModes({ disabledModes: this.disabledModes });
+  }
+
+  getLLMProviders(): undefined {
+    return undefined;
+  }
+
+  getTools(): Tool[] {
+    return this.workspaceBridge.getTools();
+  }
+
+  /**
+   * 远端 Agent 的工具交互实际由浏览器 BrowserToolBridge 承接。
+   * 与 CodeAgent 的同名方法保持一致，让工具 renderer 能直接提交问答答案。
+   */
+  getToolUI(): ToolUIChannel {
+    return this.workspaceBridge.getToolUI();
+  }
+
+  getTurns(): TurnRecord[] {
+    return this.turns;
+  }
+
+  /** 从服务端 History 读取未经视图过滤的原始 turn 列表。 */
+  async getTurnsForExport(): Promise<TurnRecord[]> {
+    try {
+      return await this.requestJson<TurnRecord[]>(this.sessionPath("turns/export"));
+    } catch (error) {
+      // 旧服务端没有导出接口，沿用原来的导出行为。
+      if (!(error instanceof HttpResponseError && error.status === 404)) throw error;
+      return this.getTurns();
+    }
+  }
+
+  /** 读取指定子 Agent 的独立 turn，并合并本地事件流中的最新状态。 */
+  async getSubAgentTurns(agentKey: string): Promise<SubAgentTurnRecord[]> {
+    return (await this.getChildTurns()).filter(turn => turn.agentKey === agentKey);
+  }
+
+  /** 读取当前会话的子 turn；支持按父 turn 限定结果。 */
+  async getChildTurns(parentTurnId?: string): Promise<SubAgentTurnRecord[]> {
+    if (!this.childListRequest) {
+      const agentId = encodeURIComponent(this.agentId);
+      this.childListRequest = this.requestJson<Array<BackgroundSubAgentInfo & { turn?: SubAgentTurnRecord }>>(
+        this.workspacePath(`subagents?agentId=${agentId}`),
+      ).finally(() => { this.childListRequest = undefined; });
+    }
+    const children = await this.childListRequest;
+    const turns = new Map<string, SubAgentTurnRecord>();
+    for (const child of children) {
+      if (child.turn) turns.set(child.turn.id, child.turn);
+    }
+    for (const child of this.childTurns) {
+      const saved = turns.get(child.id);
+      if (!saved || child.endTime || !saved.endTime) turns.set(child.id, child);
+    }
+    return [...turns.values()]
+      .filter(turn => !parentTurnId || turn.parentTurnId === parentTurnId)
+      .sort((a, b) => a.startTime - b.startTime);
+  }
+
+  getTurnsPage(): Required<Pick<TurnsPage, "hasMore">> &
+    Pick<TurnsPage, "oldestTurnId"> {
+    return { ...this.turnsPage };
+  }
+
+  /**
+   * 远程场景下子 Agent 没有真实实例，这里返回一条本地总线：
+   * 子 SSE 收到原生事件后原样 emit 进来，订阅方与本地场景走同一套 on(...)。
+   */
+  childAgentEvents(turnId: string): AgentEvents | undefined {
+    return this.childAgentBuses.get(turnId);
+  }
+
+  async loadOlderTurns(limit = DEFAULT_TURNS_PAGE_SIZE): Promise<TurnsPage> {
+    await this.historyInitialization;
+    if (!this.turnsPage.hasMore || !this.turnsPage.oldestTurnId) {
+      return { turns: [], hasMore: false, oldestTurnId: null };
+    }
+    const page = await this.session.getTurns({
+      limit,
+      before: this.turnsPage.oldestTurnId,
+    });
+    this.turns = mergeTurnRecords(page.turns ?? [], this.turns);
+    this.turnsPage = {
+      hasMore: Boolean(page.hasMore),
+      oldestTurnId: page.oldestTurnId ?? null,
+    };
+    this.historyManager.markReady({ hasMore: this.turnsPage.hasMore });
+    return page;
+  }
+
+  getCompactRecord(): CompactRecord | null {
+    return this.compactRecord;
+  }
+
+  getHistory(): BoundHistory {
+    return this.remoteHistory;
+  }
+
+  getSessionState(): AgentRuntimeState {
+    return this.sessionState;
+  }
+
+  subscribeSessionState(
+    listener: (state: AgentRuntimeState) => void,
+  ): () => void {
+    this.sessionStateListeners.add(listener);
+    listener(this.sessionState);
+    return () => this.sessionStateListeners.delete(listener);
+  }
+
+  setBrowserTools(tools: Tool[]): void {
+    this.workspaceBridge.setTools(tools);
+  }
+
+  async requestAI(params: HttpAgentRequestAIParams): Promise<void> {
+    if (this.blockIfDisabled()) return;
+    const displayMessage = params.displayMessage ?? params.message!;
+    const modelMessage = params.modelMessage ?? params.message!;
+    const turnId = params.turnId ?? createTurnId();
+    const sender = params.sender ?? this.sender;
+    let recoveringConflict = false;
+    this.setSessionState({
+      running: true,
+      turnId,
+      stage: { key: HTTP_AGENT_SESSION_STAGE.PREPARING },
+    });
+    try {
+      await this.historyInitialization;
+      await this.initializePlugins();
+      await this.hooks?.beforeTurn?.({
+        message: displayMessage,
+        formattedMessage: modelMessage,
+        attachments: params.attachments ?? [],
+        ...(params.meta ? { meta: params.meta } : {}),
+        ...(params.extra ? { extra: params.extra } : {}),
+      });
+      await this.hooks?.beforeRequest?.({
+        ...(params.meta ? { meta: params.meta } : {}),
+        ...(params.extra ? { extra: params.extra } : {}),
+      });
+      if (this.isDisabled()) return;
+      // browser/connect 必须在 /run 取得 turn 锁前完成；否则服务端可能还没
+      // 把当前浏览器登记为 Browser Tool 执行端。登记失败仍允许纯模型请求继续。
+      await this.connectBrowserTools(params.signal).catch((error) => {
+        console.warn("[plugin-ai] browser tool connection failed", error);
+      });
+      // 正常 /run 已执行过启动 hooks。初始化时若 /connect 恰好重放同一 turn，
+      // 需要跳过它，避免重复上锁和重复触发 onStart。
+      this.startedHookTurns.add(turnId);
+      const { providerId, modelId } = this.resolveModelSelection(
+        params.providerId,
+        params.modelId,
+      );
+      const mode = params.mode ?? this.mode;
+      this.handleRemoteEvent(
+        {
+          event: "turn:start",
+          turnId,
+          createdAt: Date.now(),
+          data: {
+            turnId,
+            message: displayMessage,
+            attachments: params.attachments ?? [],
+            ...(params.meta ? { meta: params.meta } : {}),
+            ...(sender ? { sender } : {}),
+            mode,
+            ...(modelMessage !== displayMessage
+              ? { userFormattedText: modelMessage }
+              : {}),
+          },
+        },
+        // 本地合成 turn:start 只为立即渲染用户消息，不能跳过服务端的准备阶段。
+        { updateSessionState: false },
+      );
+      const submittedBody = {
+        turnId,
+        ...(params.message !== undefined
+          ? { message: params.message }
+          : {
+              displayMessage: params.displayMessage,
+              modelMessage: params.modelMessage,
+            }),
+        attachments: params.attachments,
+        mode,
+        ...(params.meta ? { meta: params.meta } : {}),
+        ...(params.extra ? { extra: params.extra } : {}),
+        ...(params.aiRole ? { aiRole: params.aiRole } : {}),
+        ...(providerId ? { providerId } : {}),
+        ...(modelId ? { modelId } : {}),
+        ...(sender ? { sender } : {}),
+      };
+      await this.consumeRunStream(
+        this.sessionPath("run"),
+        { method: "POST", body: jsonStringifySafe(submittedBody) },
+        { signal: params.signal, skipTurnStartId: turnId },
+      );
+    } catch (error) {
+      recoveringConflict = error instanceof HttpResponseError && error.status === 409 && !params.signal?.aborted;
+      await this.handleRequestFailure(error, turnId, params.signal, recoveringConflict);
+      if (recoveringConflict) return;
+      params.onError?.(error as Error);
+      throw error;
+    } finally {
+      await this.pendingTurnFinalizations.get(turnId)?.task;
+      if (!recoveringConflict && (!this.sessionState.running || this.sessionState.turnId === turnId)) this.setSessionState({ running: false });
+      if (turnId) params.onClose?.();
+    }
+  }
+
+  async retry(turnId: string): Promise<void>;
+  async retry(params: HttpAgentRetryOptions): Promise<void>;
+  async retry(turnIdOrOptions: string | HttpAgentRetryOptions): Promise<void> {
+    const params = typeof turnIdOrOptions === "string"
+      ? { turnId: turnIdOrOptions }
+      : turnIdOrOptions;
+    if (this.blockIfDisabled()) return;
+    const { turnId } = params;
+    let recoveringConflict = false;
+    this.setSessionState({
+      running: true,
+      turnId,
+      stage: { key: HTTP_AGENT_SESSION_STAGE.PREPARING },
+    });
+    try {
+      await this.historyInitialization;
+      await this.initializePlugins();
+      await this.calibrateLastTurn(turnId);
+      this.handleRemoteEvent({ event: "turn:resume", turnId, createdAt: Date.now(), data: { turnId } }, { updateSessionState: false });
+      const turn = this.findTurn(turnId);
+      await this.hooks?.beforeTurn?.({
+        message: turn?.userText ?? "",
+        formattedMessage: turn?.userFormattedText ?? turn?.userText ?? "",
+        attachments: (turn?.userAttachments as any[]) ?? [],
+      });
+      await this.hooks?.beforeRequest?.({});
+      // 禁用状态可能在异步 hooks 执行期间发生变化；这仍是用户主动触发
+      // 的 retry，必须走统一提示而不能静默返回。
+      if (this.blockIfDisabled()) return;
+      await this.connectBrowserTools(params.signal).catch((error) => {
+        console.warn("[plugin-ai] browser tool connection failed", error);
+      });
+      this.startedHookTurns.add(turnId);
+      const selection = this.resolveModelSelection(params.providerId, params.modelId);
+      const body = { turnId, ...selection };
+      await this.consumeRunStream(
+        this.sessionPath("retry"),
+        { method: "POST", body: jsonStringifySafe(body) },
+        {
+          signal: params.signal,
+          skipTurnStartId: turnId,
+          skipTurnResumeId: turnId,
+        },
+      );
+    } catch (error) {
+      recoveringConflict = error instanceof HttpResponseError && error.status === 409 && !params.signal?.aborted;
+      await this.handleRequestFailure(error, turnId, params.signal, recoveringConflict);
+      if (recoveringConflict) return;
+      params.onError?.(error as Error);
+      throw error;
+    } finally {
+      await this.pendingTurnFinalizations.get(turnId)?.task;
+      if (!recoveringConflict && (!this.sessionState.running || this.sessionState.turnId === turnId)) this.setSessionState({ running: false });
+      params.onClose?.();
+    }
+  }
+
+  async abort(): Promise<void> {
+    await this.requestJson(
+      this.sessionPath("abort"),
+      {
+        method: "POST",
+      },
+    );
+  }
+
+  async clearHistory(): Promise<void> {
+    if (this.blockIfDisabled()) return;
+    await this.requestJson(this.sessionPath("turns/clear"), {
+      method: "POST",
+    });
+    this.turns = [];
+    this.childTurns = [];
+    this.completedChildTurns.clear();
+    this.childAgentBuses.clear();
+    this.compactRecord = null;
+    this.turnsPage = {
+      hasMore: false,
+      oldestTurnId: null,
+    };
+    this.historyManager.markReady({ hasMore: this.turnsPage.hasMore });
+  }
+
+  async dismissSuggestions(turnId: string): Promise<void> {
+    if (this.blockIfDisabled()) return;
+    await this.requestJson(
+      this.sessionPath(`turns/${encodeURIComponent(turnId)}/suggestions/dismiss`),
+      { method: "POST" },
+    );
+    this.handleRemoteEvent({
+      event: "turn:suggestions:dismiss",
+      turnId,
+      createdAt: Date.now(),
+      data: { turnId },
+    });
+  }
+
+  readonly session = {
+    getTurns: async (params?: {
+      limit?: number;
+      before?: string;
+    }): Promise<TurnsPage> => {
+      const query = new URLSearchParams();
+      query.set("limit", String(params?.limit ?? 20));
+      if (params?.before) query.set("before", params.before);
+      return this.requestJson<TurnsPage>(
+        `${this.sessionPath("turns")}?${query.toString()}`,
+      );
+    },
+    subscribe: (params: {
+      onEvent: (event: RemoteAgentEvent) => void;
+      onError?: (error: Event | Error) => void;
+      onClose?: () => void;
+      /** 服务端关闭前给出的确定结论。 */
+      /** /connect 返回 204，表示服务端确认当前没有活跃 turn。 */
+      onIdle?: () => void;
+    }): (() => void) => {
+      const controller = new AbortController();
+      void this.requestEventStream(
+        this.sessionPath("connect"),
+        { method: "GET" },
+        {
+          signal: controller.signal,
+          onEvent: params.onEvent,
+          onError: params.onError,
+          onClose: params.onClose,
+          onNoContent: params.onIdle,
+        },
+      ).catch(() => {
+        // requestEventStream 已通过 onError 报告连接错误。
+      });
+      return () => controller.abort();
+    },
+  };
+
+  readonly files = {
+    syncSnapshot: async (sandbox: import("../../../../../../agent/src").AgentSandbox): Promise<void> => {
+      await this.workspaceBridge.syncSnapshot(sandbox);
+    },
+    bindSandbox: (sandbox: import("../../../../../../agent/src").AgentSandbox): Promise<void> => {
+      return this.workspaceBridge.bindSandbox(sandbox);
+    },
+    ensureBrowserConnected: async (): Promise<void> => {
+      await this.workspaceBridge.ensureConnected();
+    },
+    disconnect: (): void => {
+      this.childConnections.forEach(controller => controller.abort());
+      this.childConnections.clear();
+      this.childAgentBuses.clear();
+      this.workspaceBridge.disconnect();
+    },
+  };
+
+  /** 供宿主实时写入 remote workspace 的文件系统，不创建版本。 */
+  readonly remoteFs: RemoteFileSystem = {
+    applyOperations: async (operations) => {
+      if (this.blockIfDisabled()) {
+        throw new Error("Remote file system operations are disabled.");
+      }
+      return this.requestJson<RemoteFsOperationsResult>(
+        this.workspacePath("fs/operations"),
+        {
+          method: "POST",
+          body: JSON.stringify({ operations }),
+        },
+      );
+    },
+  };
+
+  private createRemoteHistory(): BoundHistory {
+    return {
+      listVersions: async (params) => {
+        const query = new URLSearchParams();
+        if (params?.pageSize != null) {
+          query.set("pageSize", String(params.pageSize));
+        }
+        if (params?.pageNum != null) {
+          query.set("pageNum", String(params.pageNum));
+        }
+        const suffix = query.toString() ? `?${query.toString()}` : "";
+        const response = await this.requestJson<VersionsPageResponse>(
+          `${this.workspacePath("versions")}${suffix}`,
+        );
+        return normalizeVersionsPage(response);
+      },
+      addVersion: async (record, files) => {
+        if (this.blockIfDisabled()) return;
+        await this.requestJson(this.workspacePath("versions"), {
+          method: "POST",
+          body: JSON.stringify({ record, files }),
+        });
+      },
+      getVersionFiles: async (versionId) => {
+        const response = await this.requestJson<VersionFilesResponse>(
+          this.workspacePath(
+            `versions/${encodeURIComponent(versionId)}/files`,
+          ),
+        );
+        return normalizeVersionFiles(response);
+      },
+      getVersion: async (versionId) => {
+        const response = await this.requestJson<VersionRecordResponse>(
+          this.workspacePath(`versions/${encodeURIComponent(versionId)}`),
+        );
+        return normalizeVersionRecord(response);
+      },
+      updateVersion: async (versionId, patch) => {
+        if (this.blockIfDisabled()) return;
+        await this.requestJson(
+          this.workspacePath(`versions/${encodeURIComponent(versionId)}`),
+          {
+            method: "PATCH",
+            body: JSON.stringify(patch),
+          },
+        );
+      },
+    };
+  }
+
+  private isDisabled(): boolean {
+    return this.disabledHandler?.isDisabled() ?? false;
+  }
+
+  /**
+   * 用户侧写操作入口：禁用时提示宿主并返回 true。
+   * 中途轮询 / Browser Tool 能力判断等静默路径请继续用 isDisabled()。
+   */
+  private blockIfDisabled(): boolean {
+    if (!this.isDisabled()) return false;
+    this.disabledHandler?.message(lang.common.noPermission());
+    return true;
+  }
+
+  /**
+   * 解析本次请求使用的模型，与本地 CodeAgent 保持相同的单次覆盖规则：
+   * 仅 modelId 会触发模型覆盖；providerId 未传时按当前 provider 优先、
+   * 再从其余 provider 中匹配。否则取该 agent key 保存的模型选择。
+   * 未配置 LLM providers 时返回空对象，不向服务端传模型参数。
+   */
+  private resolveModelSelection(providerId?: string, modelId?: string): {
+    providerId?: string;
+    modelId?: string;
+  } {
+    return context
+      .getModelSelection(this.key)
+      ?.resolveRequestSelection(providerId, modelId)
+      ?? {};
+  }
+
+  private async initializeHistory(): Promise<void> {
+    const page = await this.loadLatestTurns();
+    this.turns = page.turns ?? [];
+    this.turnsPage = {
+      hasMore: Boolean(page.hasMore),
+      oldestTurnId: page.oldestTurnId ?? null,
+    };
+    this.compactRecord = null;
+    this.historyManager.markReady({ hasMore: this.turnsPage.hasMore });
+  }
+
+  private async loadLatestTurns(
+    limit = DEFAULT_TURNS_PAGE_SIZE,
+  ): Promise<TurnsPage> {
+    return this.session.getTurns({ limit });
+  }
+
+  /** 409 后和重新打开页面一样，以远端历史和 connect 回放恢复会话。 */
+  private async handleRequestFailure(error: unknown, turnId: string, signal: AbortSignal | undefined, recover: boolean): Promise<void> {
+    if (signal?.aborted) return;
+    this.handleRemoteEvent({
+      event: "turn:error", turnId, createdAt: Date.now(),
+      data: { error: serializeError(error), errorCode: classifyHttpError(error) },
+    });
+    if (recover) await this.sessionRecovery.recover(turnId);
+  }
+
+  private resetReplayState(): void {
+    this.startedHookTurns.clear();
+    this.completedHookTurns.clear();
+    this.completedSummaryHookTurns.clear();
+    this.completedSettledHookTurns.clear();
+    this.dispatchedBeforeToolCalls.clear();
+    this.dispatchedAfterToolCalls.clear();
+    this.setSessionState({ running: false });
+  }
+
+  private async restoreSubagents(): Promise<void> {
+    try {
+      const agentId = encodeURIComponent(this.agentId);
+      const children = await this.requestJson<BackgroundSubAgentInfo[]>(this.workspacePath(`subagents?agentId=${agentId}`));
+      for (const child of children) if (child.status === "running" && child.async) this.announceChildAgent(child);
+    } catch (error) {
+      // 旧服务端没有子会话接口，主会话初始化仍可继续。
+      if (!(error instanceof HttpResponseError && error.status === 404)) console.warn("[HttpAgent] subagent recovery failed", error);
+    }
+  }
+
+  /**
+   * 统一的子 Agent 发现入口：先建总线再发通知，最后接子通道。
+   *
+   * 顺序不能变：订阅方收到 subagent:created 时会立刻调 childAgentEvents(turnId)，
+   * 此时总线必须已经存在。
+   */
+  private announceChildAgent(info: BackgroundSubAgentInfo): void {
+    if (!this.childAgentBuses.has(info.turnId)) {
+      this.childAgentBuses.set(info.turnId, new AgentEvents());
+    }
+    this.events.emit("subagent:created", {
+      turnId: info.turnId,
+      parentTurnId: info.parentTurnId,
+      parentAgentKey: info.parentAgentKey,
+      agentKey: info.agentKey,
+      callId: info.parentToolCallId,
+      subAgentType: info.type,
+      title: info.title,
+      async: info.async === true,
+      status: info.status,
+      createdAt: info.startedAt,
+    });
+    this.observeSubagent(info);
+  }
+
+  private observeSubagent(info: BackgroundSubAgentInfo): void {
+    if (info.status !== "running") return;
+    if (this.completedChildTurns.has(info.turnId) || this.childConnections.has(info.turnId)) return;
+    const bus = this.childAgentBuses.get(info.turnId) ?? (() => {
+      const b = new AgentEvents();
+      this.childAgentBuses.set(info.turnId, b);
+      return b;
+    })();
+    const controller = new AbortController();
+    this.childConnections.set(info.turnId, controller);
+    const identity: SubAgentCreatedInfo = {
+      turnId: info.turnId,
+      parentTurnId: info.parentTurnId,
+      parentAgentKey: info.parentAgentKey,
+      agentKey: info.agentKey,
+      callId: info.parentToolCallId,
+      subAgentType: info.type,
+      title: info.title,
+      async: info.async === true,
+      status: "running",
+      createdAt: info.startedAt,
+    };
+    void (async () => {
+      let finished = false;
+      for (let attempt = 0; !finished && !controller.signal.aborted && attempt < 4; attempt++) {
+        try {
+          await this.requestEventStream(this.workspacePath(`subagents/${encodeURIComponent(info.agentKey)}/connect?agentId=${encodeURIComponent(this.agentId)}&turnId=${encodeURIComponent(info.turnId)}`), {}, {
+            signal: controller.signal,
+            onEvent: event => {
+              if (event.event === "workspace:file-change") {
+                void this.workspaceBridge.syncFileChanges(event.data?.version).catch(error => console.warn("[HttpAgent] subagent file sync failed", error));
+                return;
+              }
+              bus.emit(event.event as keyof AgentEventMap, event.data as never);
+              applyChildAgentEvent(this.childTurns, identity, event.event as never, event.data as never);
+              if (event.event === "turn:complete" || event.event === "turn:error" || event.event === "turn:abort") {
+                finished = true;
+                this.completedChildTurns.add(info.turnId);
+                return;
+              }
+              if (event.event === "tool:result" || event.event === "tool:error") {
+                void this.workspaceBridge.syncFileChanges().catch(error => console.warn("[HttpAgent] subagent file sync failed", error));
+              }
+            },
+          });
+        } catch (error) {
+          if (attempt === 3) console.warn("[HttpAgent] subagent stream disconnected", error);
+        }
+        if (!finished && !controller.signal.aborted) await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+      }
+      if (!controller.signal.aborted) await this.workspaceBridge.syncFileChanges();
+    })().catch(error => console.warn("[HttpAgent] subagent sync failed", error))
+      .finally(() => {
+        this.childConnections.delete(info.turnId);
+        this.childAgentBuses.delete(info.turnId);
+      });
+  }
+
+  private handleReplayEvent(event: RemoteAgentEvent): void {
+    if (event.event === "session:error") {
+      this.setSessionState({ running: false, error: event.data?.message ?? event.data });
+      console.error("[plugin-ai] remote agent replay failed", event.data?.message ?? event.data);
+      return;
+    }
+    if (event.event === "session:locked") this.startReplayHookLifecycle(event);
+    this.handleRemoteEvent(event, { waitForRelease: true });
+  }
+
+  /**
+   * 历史中的 success + 无 endTime 表示该 turn 曾启动但没有正常落终态。
+   * /connect 返回 204 后才能确认它已不在其他实例执行；这里只派生本地错误 UI，
+   * 不回写远端 History，retry 仍可据无 endTime 判断为断点续跑。
+   */
+  private markLastUnfinishedTurnInterrupted(): void {
+    const turn = this.turns[this.turns.length - 1];
+    if (!turn || turn.status !== "success" || turn.endTime != null) return;
+
+    turn.status = "error";
+    turn.errorCode = TURN_INCOMPLETE_ERROR_CODE;
+    turn.endTime = Date.now();
+    this.setSessionState({ running: false });
+    // 即使初始化期间还没有事件订阅者，重新发布 History 快照也能刷新 UI。
+    this.historyManager.markReady({ hasMore: this.turnsPage.hasMore });
+    this.events.emit("turn:error", { error: new Error(TURN_INCOMPLETE_ERROR_CODE), errorCode: TURN_INCOMPLETE_ERROR_CODE });
+  }
+
+  /**
+   * Browser Tool 仅由直接消费 /run 的连接执行；/connect 只用于回放。
+   */
+  private handleRemoteEvent(
+    event: RemoteAgentEvent,
+    options: {
+      allowBrowserTasks?: boolean;
+      waitForRelease?: boolean;
+      /** 本地合成事件仅用于同步消息记录，不应覆盖服务端阶段状态。 */
+      updateSessionState?: boolean;
+    } = {},
+  ): void {
+    if (event.event === "subagent:created") {
+      const info = event.data as SubAgentCreatedInfo;
+      this.announceChildAgent({
+        agentKey: info.agentKey,
+        turnId: info.turnId,
+        parentAgentKey: info.parentAgentKey,
+        parentTurnId: info.parentTurnId,
+        parentToolCallId: info.callId,
+        type: info.subAgentType,
+        title: info.title ?? "",
+        status: info.status,
+        async: info.async,
+        startedAt: info.createdAt,
+      });
+      return;
+    }
+    if (event.event === "tool:result" && event.data?.name === "call-sub-agent") {
+      const metadata = event.data.result?.metadata;
+      if (metadata?.async === true && metadata.agentKey && metadata.turnId) {
+        this.announceChildAgent(metadata as BackgroundSubAgentInfo);
+      }
+    }
+    if (event.event === "session:released") {
+      const turnId = this.eventTurnId(event);
+      const version = event.data?.version;
+      if (options.allowBrowserTasks && turnId && this.onVersionSaved &&
+          typeof version?.id === "string" && Number.isSafeInteger(version.workspaceVersion) &&
+          !this.handledSavedVersions.has(version.id)) {
+        this.handledSavedVersions.add(version.id);
+        void this.workspaceBridge.runAtVersion(version.workspaceVersion, () => {
+          void Promise.resolve(this.onVersionSaved?.({ turnId, versionId: version.id }))
+            .catch((error) => console.error("[HttpAgent] version dump save failed", error));
+        }).catch((error) => console.error("[HttpAgent] version dump sync failed", error));
+      }
+      if (turnId) this.pendingTurnFinalizations.get(turnId)?.release();
+      return;
+    }
+    if (event.event === "workspace:file-change") {
+      void this.workspaceBridge
+        .syncFileChanges(Number(event.data?.version) || undefined)
+        .catch((error) => {
+          console.error("[plugin-ai] sync workspace file changes failed", error);
+        });
+      return;
+    }
+    if (event.event === "browser:task") {
+      // /connect 回放和文件同步在禁用态仍然可用，但不能接管 Browser Tool。
+      if (!options.allowBrowserTasks || this.isDisabled()) return;
+      const request = event.data as Omit<
+        BrowserToolRequest,
+        "workspaceId" | "browserId"
+      > &
+        Partial<Pick<BrowserToolRequest, "workspaceId" | "browserId">>;
+      void this.workspaceBridge
+        .handleBrowserTask({
+          ...request,
+          workspaceId: request.workspaceId ?? this.workspaceId,
+          browserId: request.browserId ?? "",
+        })
+        .catch((error) => {
+          console.error("[plugin-ai] browser task response failed", error);
+        });
+      return;
+    }
+    if (event.event === "session:error") {
+      if (options.allowBrowserTasks) this.workspaceBridge.clearPendingBrowserTools();
+      this.setSessionState({
+        running: false,
+        error: event.data?.message ?? event.data,
+      });
+      throw new RemoteSessionError(
+        String(event.data?.message ?? "Remote agent session failed"),
+      );
+    }
+    this.applyTurnEvent(event);
+    if (event.event === "tool:call") {
+      this.triggerBeforeToolCall(event);
+    }
+    if (event.event === "tool:result" || event.event === "tool:error") {
+      // 浏览器工具串行执行；工具终态清理同名的浏览器等待。
+      if (options.allowBrowserTasks) this.workspaceBridge.clearPendingBrowserTools(event.data?.name, event.data?.callId);
+      this.triggerAfterToolCall(event);
+    }
+    if (
+      event.event === "turn:summary" ||
+      event.event === "turn:summary:error"
+    ) {
+      this.triggerAfterTurnSummary(event);
+    }
+    if (event.event === "turn:settled") {
+      this.triggerAfterTurnSettled(event);
+    }
+    const shouldUpdateSessionState =
+      options.updateSessionState !== false &&
+      this.shouldUpdateSessionState(event);
+    const eventTurnId = this.eventTurnId(event);
+    if (
+      shouldUpdateSessionState &&
+      (event.event === "session:preparing" || event.event === "session:locked")
+    ) {
+      this.setSessionState({
+        running: true,
+        turnId: eventTurnId ?? this.sessionState.turnId,
+        stage: { key: HTTP_AGENT_SESSION_STAGE.PREPARING },
+      });
+      return;
+    }
+    if (shouldUpdateSessionState && event.event === "session:files-synced") {
+      this.setSessionState({
+        running: true,
+        turnId: eventTurnId ?? this.sessionState.turnId,
+        stage: { key: HTTP_AGENT_SESSION_STAGE.SYNCING_FILES },
+      });
+      return;
+    }
+    if (shouldUpdateSessionState && event.event === "session:agent-configured") {
+      this.setSessionState({
+        running: true,
+        turnId: eventTurnId ?? this.sessionState.turnId,
+        stage: { key: HTTP_AGENT_SESSION_STAGE.CONFIGURING },
+      });
+      return;
+    }
+    if (shouldUpdateSessionState && event.event === "session:start") {
+      this.setSessionState({
+        running: true,
+        turnId: eventTurnId ?? this.sessionState.turnId,
+        stage: { key: HTTP_AGENT_SESSION_STAGE.AWAITING_MODEL },
+      });
+      return;
+    }
+    if (
+      shouldUpdateSessionState &&
+      (event.event === "turn:start" || event.event === "turn:resume")
+    ) {
+      this.setSessionState({
+        running: true,
+        turnId: eventTurnId ?? this.sessionState.turnId,
+        stage: { key: HTTP_AGENT_SESSION_STAGE.AWAITING_MODEL },
+      });
+    } else if (
+      event.event === "turn:complete" ||
+      event.event === "turn:abort" ||
+      event.event === "turn:error"
+    ) {
+      if (options.allowBrowserTasks) this.workspaceBridge.clearPendingBrowserTools();
+      if (shouldUpdateSessionState && options.waitForRelease && eventTurnId) {
+        this.setSessionState({ running: true, turnId: eventTurnId, stage: { key: HTTP_AGENT_SESSION_STAGE.FINALIZING } });
+      }
+      this.finalizeAfterLock(event, options.waitForRelease);
+    } else if (shouldUpdateSessionState && event.event === "llm:start") {
+      this.setSessionState({
+        running: true,
+        turnId: eventTurnId ?? this.sessionState.turnId,
+        stage: { key: HTTP_AGENT_SESSION_STAGE.AWAITING_MODEL },
+      });
+    }
+    if (event.event === "mode:change" && event.data?.mode) {
+      this.mode = event.data.mode;
+    }
+    this.events.emit(event.event as keyof AgentEventMap, event.data as never);
+  }
+
+  /**
+   * 将 SSE 事件归并进 HttpAgent 的内存 turns，使 getTurns() 与本地 Agent
+   * 保持同一契约：在 llm:complete 前已经包含本轮完整快照。
+   */
+  private applyTurnEvent(event: RemoteAgentEvent): void {
+    const data = event.data || {};
+    const turnId = this.eventTurnId(event);
+    if (!turnId) return;
+
+    if (event.event === "turn:start") {
+      if (this.findTurn(turnId)) return;
+      let userText = "";
+      if (typeof data.message === "string") userText = data.message;
+      const turn: TurnRecord = {
+        id: turnId,
+        startTime: event.createdAt,
+        userText,
+        userAttachments: [],
+        iterations: [],
+        status: "success",
+      };
+      if (typeof data.userFormattedText === "string") {
+        turn.userFormattedText = data.userFormattedText;
+      }
+      if (data.meta) turn.meta = data.meta;
+      if (data.sender) turn.sender = data.sender;
+      if (data.mode === "build" || data.mode === "plan" || data.mode === "ask") {
+        turn.mode = data.mode;
+      }
+
+
+      if (Array.isArray(data.attachments)) {
+        for (const attachment of data.attachments) {
+          const userAttachment: Record<string, unknown> = {
+            type: attachment.type || "image",
+          };
+          if (attachment.content !== undefined) {
+            userAttachment.content = attachment.content;
+          }
+          if (attachment.url !== undefined) {
+            userAttachment.url = attachment.url;
+          }
+          if (attachment.filename || attachment.title) {
+            userAttachment.filename = attachment.filename || attachment.title;
+          }
+          if (attachment.mime) userAttachment.mime = attachment.mime;
+          if (attachment.mediaType) {
+            userAttachment.mediaType = attachment.mediaType;
+          }
+          turn.userAttachments.push(userAttachment as any);
+        }
+      }
+      this.turns.push(turn);
+      return;
+    }
+
+    const turn = this.findTurn(turnId);
+    if (!turn) return;
+
+    if (event.event === "turn:resume") {
+      if (turn.status === "success") return;
+      this.completedHookTurns.delete(turnId);
+      this.completedSummaryHookTurns.delete(turnId);
+      this.completedSettledHookTurns.delete(turnId);
+      turn.status = "success";
+      delete turn.error;
+      delete turn.errorCode;
+      delete turn.endTime;
+      return;
+    }
+
+    let iterId: string | undefined;
+    if (typeof data.iterId === "string") iterId = data.iterId;
+    if (event.event === "llm:start" && iterId) {
+      if (!this.findLLMIteration(turn, iterId)) {
+        turn.iterations.push({
+          iterId,
+          content: "",
+          toolCalls: [],
+          startTime: Number(data.startTime) || event.createdAt,
+          ...(event.mode ? { mode: event.mode } : {}),
+        });
+      }
+      return;
+    }
+
+    if (event.event === "llm:content" && iterId) {
+      const iter = this.findLLMIteration(turn, iterId);
+      if (!iter) return;
+      if (typeof data.content === "string") iter.content = data.content;
+      if (iter.responseTime === undefined) iter.responseTime = event.createdAt;
+      if (data.thinkingContent !== undefined) {
+        iter.thinkingContent = data.thinkingContent;
+      }
+      return;
+    }
+
+    if (event.event === "llm:complete" && iterId) {
+      const iter = this.findLLMIteration(turn, iterId);
+      if (!iter) return;
+      if (data.endTime !== undefined) iter.endTime = Number(data.endTime);
+      if (data.usage !== undefined) iter.usage = data.usage;
+      if (data.done) {
+        turn.status = "success";
+        turn.endTime = Number(data.endTime) || event.createdAt;
+      }
+      return;
+    }
+
+    if (event.event === "tool:args" && iterId) {
+      const iter = this.findLLMIteration(turn, iterId);
+      if (!iter || typeof data.callId !== "string") return;
+      const toolCalls = iter.toolCalls as ToolCallRecord[];
+      const existing = toolCalls.find((call) => call.callId === data.callId);
+      if (existing || typeof data.name !== "string") return;
+      const tool = this.getTools().find((item) => item.name === data.name);
+      const call = {
+        callId: data.callId,
+        name: data.name,
+        ...(tool?.title ? { title: tool.title } : {}),
+        args: {},
+        status: "pending",
+        execStartTime: event.createdAt,
+        execEndTime: 0,
+      };
+      toolCalls.push(call);
+      return;
+    }
+
+    if (event.event === "tool:call" && iterId) {
+      const iter = this.findLLMIteration(turn, iterId);
+      if (!iter || typeof data.callId !== "string") return;
+      const toolCalls = iter.toolCalls as ToolCallRecord[];
+      const call = toolCalls.find((item) => item.callId === data.callId);
+      if (call) {
+        if (data.args !== undefined) call.args = data.args;
+        call.execStartTime = Number(data.startTime) || event.createdAt;
+      } else if (typeof data.name === "string") {
+        const tool = this.getTools().find((item) => item.name === data.name);
+        toolCalls.push({
+          callId: data.callId,
+          name: data.name,
+          ...(tool?.title ? { title: tool.title } : {}),
+          args: data.args ?? {},
+          status: "pending",
+          execStartTime: Number(data.startTime) || event.createdAt,
+          execEndTime: 0,
+        });
+      }
+      return;
+    }
+
+    if ((event.event === "tool:result" || event.event === "tool:error") && iterId) {
+      const iter = this.findLLMIteration(turn, iterId);
+      if (!iter || typeof data.callId !== "string") return;
+      const call = iter.toolCalls.find((item) => item.callId === data.callId);
+      if (!call) return;
+      call.execEndTime = Number(data.endTime) || event.createdAt;
+      if (event.event === "tool:result") {
+        call.status = "success";
+        call.result = data.result;
+      } else {
+        call.status = "error";
+        call.error = data.error;
+        if (data.errorType) call.errorType = data.errorType;
+        if (data.result) call.result = data.result;
+      }
+      return;
+    }
+
+    if (event.event === "warmup:start" && iterId) {
+      if (!turn.iterations.some((iter) => iter.iterId === iterId)) {
+        turn.iterations.push({
+          type: "warmup",
+          iterId,
+          status: "loading",
+          operation: data.operation === "context_compaction" ? data.operation : "context_compaction",
+          ...(typeof data.content === "string" ? { content: data.content } : {}),
+          startTime: Number(data.startTime) || event.createdAt,
+          toolCalls: [],
+        });
+      }
+      return;
+    }
+
+    if (event.event === "warmup:content") {
+      let iter: Extract<TurnRecord["iterations"][number], { type: "warmup" }> | undefined;
+      for (let index = turn.iterations.length - 1; index >= 0; index--) {
+        const current = turn.iterations[index];
+        if ("type" in current && current.type === "warmup") {
+          iter = current;
+          break;
+        }
+      }
+      if (iter && typeof data.retryCount === "number") iter.retryCount = data.retryCount;
+      // 兼容尚未升级结构化 warmup 事件的服务端。
+      if (iter && typeof data.content === "string") iter.content = data.content;
+      return;
+    }
+
+    if (event.event === "warmup:complete" && iterId) {
+      const iter = turn.iterations.find(
+        (item) => "type" in item && item.type === "warmup" && item.iterId === iterId,
+      );
+      if (!iter) return;
+      iter.status = data.status === "error" || data.status === "abort" ? data.status : "success";
+      if (typeof data.errorCode === "string") iter.errorCode = normalizeTurnErrorCode(data.errorCode) ?? iter.errorCode;
+      if (typeof data.content === "string") iter.content = data.content;
+      iter.endTime = Number(data.endTime) || event.createdAt;
+      return;
+    }
+
+    if (event.event === "turn:complete") {
+      turn.status = "success";
+      if (turn.endTime === undefined) turn.endTime = event.createdAt;
+    } else if (event.event === "turn:abort") {
+      turn.status = "abort";
+      if (turn.endTime === undefined) turn.endTime = event.createdAt;
+    } else if (event.event === "turn:error") {
+      turn.status = "error";
+      const errorMessage = data.error && typeof data.error.message === "string"
+        ? data.error.message
+        : data.error !== undefined
+          ? String(data.error)
+          : undefined;
+      const knownErrorCode = normalizeTurnErrorCode(data.errorCode) ?? normalizeTurnErrorCode(errorMessage);
+      if (knownErrorCode) turn.errorCode = knownErrorCode;
+      if (data.error && typeof data.error.message === "string") {
+        turn.error = data.error.message;
+      } else if (data.error !== undefined) {
+        turn.error = String(data.error);
+      } else if (!turn.errorCode) {
+        turn.error = "Unknown error";
+      }
+      if (turn.endTime === undefined) turn.endTime = event.createdAt;
+    } else if (event.event === "turn:summary") {
+      if (typeof data.summary === "string" && data.summary) {
+        turn.summary = data.summary;
+      }
+    } else if (event.event === "turn:suggestions") {
+      turn.suggestions = data.suggestions;
+    } else if (event.event === "turn:suggestions:dismiss") {
+      turn.suggestionsDismissed = true;
+    } else if (event.event === "turn:delete") {
+      turn.deleted = true;
+    }
+  }
+
+  /**
+   * 远端工具已经由服务端开始执行后，才会通过 SSE 抵达浏览器。因此这里保证
+   * beforeToolCall 的观察能力与本地 Agent 一致，但不能采用其改写参数或拒绝
+   * 调用的返回值。后续若服务端提供 tool:before-call 请求/响应协议，再把该
+   * 返回值接入协议即可。
+   */
+  private triggerBeforeToolCall(event: RemoteAgentEvent): void {
+    if (!this.hooks?.beforeToolCall) return;
+
+    const data = event.data ?? {};
+    // tool:args 只是流式片段；只有 tool:call 携带完整、已解析的参数时才通知。
+    if (!Object.prototype.hasOwnProperty.call(data, "args")) return;
+    const turnId = this.eventTurnId(event);
+    const iterId = typeof data.iterId === "string" ? data.iterId : undefined;
+    const callId = typeof data.callId === "string" ? data.callId : undefined;
+    const name = typeof data.name === "string" ? data.name : undefined;
+    if (!turnId || !iterId || !callId || !name) return;
+
+    const turn = this.findTurn(turnId);
+    const iter = turn && this.findLLMIteration(turn, iterId);
+    const toolCall = iter?.toolCalls.find((call) => call.callId === callId);
+    if (!turn || !toolCall) return;
+
+    const dispatchKey = `${turnId}:${iterId}:${callId}`;
+    if (this.dispatchedBeforeToolCalls.has(dispatchKey)) return;
+    this.dispatchedBeforeToolCalls.add(dispatchKey);
+
+    try {
+      // Remote Agent 的取消状态不随 SSE 暴露；hook 执行期间提供一个独立的
+      // signal，以保持 AgentHooks 的统一参数形状。
+      const result = this.hooks.beforeToolCall(createBeforeToolCallParams({
+        turn,
+        step: Number(data.step) || 0,
+        iterId,
+        tool: this.getRemoteHookTool(name),
+        toolCall,
+        signal: new AbortController().signal,
+      }));
+      void Promise.resolve(result).catch((error) => {
+        console.warn("[HttpAgent] hooks.beforeToolCall failed:", error);
+      });
+    } catch (error) {
+      console.warn("[HttpAgent] hooks.beforeToolCall failed:", error);
+    }
+  }
+
+  /**
+   * 服务端的 tool:result / tool:error 已经是最终结果；afterToolCall 因此作为
+   * 浏览器侧观察回调触发，返回的 outcome 不会回写到远端。
+   */
+  private triggerAfterToolCall(event: RemoteAgentEvent): void {
+    if (!this.hooks?.afterToolCall) return;
+
+    const data = event.data ?? {};
+    // 与本地 Agent 一致：参数解析或 validate 失败不属于实际执行结果。
+    if (event.event === "tool:error" && data.errorType === "invalid_args") {
+      return;
+    }
+
+    const turnId = this.eventTurnId(event);
+    const iterId = typeof data.iterId === "string" ? data.iterId : undefined;
+    const callId = typeof data.callId === "string" ? data.callId : undefined;
+    if (!turnId || !iterId || !callId) return;
+
+    const turn = this.findTurn(turnId);
+    const iter = turn && this.findLLMIteration(turn, iterId);
+    const toolCall = iter?.toolCalls.find((call) => call.callId === callId);
+    if (!turn || !toolCall) return;
+
+    const dispatchKey = `${turnId}:${iterId}:${callId}`;
+    if (this.dispatchedAfterToolCalls.has(dispatchKey)) return;
+    this.dispatchedAfterToolCalls.add(dispatchKey);
+
+    try {
+      const result = this.hooks.afterToolCall(createAfterToolCallParams({
+        turn,
+        step: Number(data.step) || 0,
+        iterId,
+        tool: this.getRemoteHookTool(toolCall.name),
+        toolCall,
+        signal: new AbortController().signal,
+      }));
+      void Promise.resolve(result).catch((error) => {
+        console.warn("[HttpAgent] hooks.afterToolCall failed:", error);
+      });
+    } catch (error) {
+      console.warn("[HttpAgent] hooks.afterToolCall failed:", error);
+    }
+  }
+
+  private getRemoteHookTool(name: string): Tool {
+    const browserTool = this.getTools().find((tool) => tool.name === name);
+    if (browserTool) return browserTool;
+
+    let tool = this.remoteHookTools.get(name);
+    if (!tool) {
+      tool = {
+        name,
+        description: "Remote Agent tool; its definition is unavailable in this browser.",
+        execute: async () => {
+          throw new Error(`Remote tool ${name} cannot execute in the browser.`);
+        },
+      };
+      this.remoteHookTools.set(name, tool);
+    }
+    return tool;
+  }
+
+  private eventTurnId(event: RemoteAgentEvent): string | null {
+    let turnId = event.turnId;
+    if (event.data && typeof event.data.turnId === "string") {
+      turnId = event.data.turnId;
+    }
+    if (typeof turnId === "string" && turnId) return turnId;
+    return null;
+  }
+
+  /** /connect 回放不应把当前 /run 的状态切回其他 turn 的阶段文案。 */
+  private shouldUpdateSessionState(event: RemoteAgentEvent): boolean {
+    const eventTurnId = this.eventTurnId(event);
+    return (
+      !eventTurnId ||
+      !this.sessionState.running ||
+      !this.sessionState.turnId ||
+      this.sessionState.turnId === eventTurnId
+    );
+  }
+
+  private findTurn(turnId: string): TurnRecord | undefined {
+    return this.turns.find((turn) => turn.id === turnId);
+  }
+
+  /**
+   * 用服务端最新记录覆盖本地待重试的 turn。
+   * retry 的 SSE 不回放旧 attempt，一致性由这份快照保证。
+   */
+  private async calibrateLastTurn(turnId: string): Promise<void> {
+    try {
+      const page = await this.session.getTurns({ limit: 1 });
+      const remote = (page.turns ?? []).find((turn) => turn.id === turnId);
+      if (!remote) return;
+      this.turns = mergeTurnRecords(this.turns, [remote]);
+      this.historyManager.markReady({ hasMore: this.turnsPage.hasMore });
+    } catch (error) {
+      // 校准失败不阻塞 retry：服务端仍会校验 turnId 必须是最后一个 turn。
+      console.warn("[HttpAgent] calibrate turn before retry failed:", error);
+    }
+  }
+
+  private findLLMIteration(turn: TurnRecord, iterId: string) {
+    return turn.iterations.find(
+      (iter) => !("type" in iter) && iter.iterId === iterId,
+    );
+  }
+
+  /**
+   * 刷新后只有 /connect 回放，不会经过 requestAI，因此也不会自然触发
+   * beforeTurn / beforeRequest。收到 session:locked 时补齐一次浏览器侧
+   * 生命周期，以恢复 loading、设计器 lock 和 vibing 等 UI 状态。
+   *
+   * session:locked 发生在服务端完成 workspace 准备之前，尚无用户消息可用；
+   * 该 hook 仅用于恢复本地 UI，消息内容仍由后续的 turn:start 回放填充。
+   */
+  private startReplayHookLifecycle(event: RemoteAgentEvent): void {
+    const turnId = this.eventTurnId(event);
+    if (!turnId || this.startedHookTurns.has(turnId)) return;
+
+    this.startedHookTurns.add(turnId);
+    const task = (async () => {
+      await this.hooks?.beforeTurn?.({
+        message: "",
+        formattedMessage: "",
+        attachments: [],
+      });
+      await this.hooks?.beforeRequest?.({});
+    })();
+    this.replayStartHookTasks.set(turnId, task);
+    void task.catch((error) => {
+      console.warn("[HttpAgent] replay start hooks failed:", error);
+    });
+  }
+
+  private setSessionState(state: AgentRuntimeState): void {
+    if (
+      this.sessionState.running === state.running &&
+      this.sessionState.turnId === state.turnId &&
+      this.sessionState.error === state.error &&
+      this.sessionState.stage?.key === state.stage?.key
+    ) {
+      return;
+    }
+    this.sessionState = state;
+    for (const listener of this.sessionStateListeners) listener(state);
+  }
+
+  /** 同一 turn 可能经 SSE 重放，afterTurn 必须只执行一次。 */
+  private finalizeAfterLock(event: RemoteAgentEvent, waitForRelease = false): void {
+    const turnId = this.eventTurnId(event);
+    if (!turnId || this.pendingTurnFinalizations.has(turnId) || this.completedHookTurns.has(turnId)) return;
+    let release = () => {};
+    const released = waitForRelease ? new Promise<void>((resolve) => {
+      release = resolve;
+    }) : Promise.resolve();
+    const task = (async () => {
+      await released;
+      if (this.sessionState.turnId === turnId) {
+        this.setSessionState({ running: false, ...(event.event === "turn:error" ? { error: event.data?.error } : {}) });
+      }
+      await this.triggerAfterTurn(event);
+    })().finally(() => { this.pendingTurnFinalizations.delete(turnId); });
+    this.pendingTurnFinalizations.set(turnId, { task, release });
+  }
+
+  /** 同一 turn 可能经 SSE 重放，afterTurn 必须只执行一次。 */
+  private async triggerAfterTurn(event: RemoteAgentEvent): Promise<void> {
+    const turnId = event.data?.turnId ?? event.turnId;
+    if (typeof turnId !== "string" || !turnId || this.completedHookTurns.has(turnId)) {
+      return;
+    }
+    this.completedHookTurns.add(turnId);
+    const status =
+      event.event === "turn:complete"
+        ? "success"
+        : event.event === "turn:abort"
+          ? "abort"
+          : "error";
+    const replayStartTask = this.replayStartHookTasks.get(turnId);
+    const storedTurn = this.findTurn(turnId);
+    void Promise.resolve(replayStartTask)
+      // 启动 hook 的错误已单独记录；仍要运行 afterTurn，以清理已部分建立的 UI 状态。
+      .catch(() => undefined)
+      .then(() => this.hooks?.afterTurn?.({
+        ...(storedTurn ?? { id: turnId }),
+        status,
+        ...(event.event === "turn:error" ? { error: event.data?.error } : {}),
+      } as TurnRecord))
+      .catch((error) => {
+        console.warn("[HttpAgent] hooks.afterTurn failed:", error);
+      })
+      .finally(() => {
+        this.replayStartHookTasks.delete(turnId);
+        this.startedHookTurns.delete(turnId);
+      });
+  }
+
+  /** 服务端已结束的摘要任务；客户端仅触发 hook，不再写 history。 */
+  private triggerAfterTurnSummary(event: RemoteAgentEvent): void {
+    const turnId = this.eventTurnId(event);
+    const summary = event.data?.summary;
+    if (
+      !turnId ||
+      (event.event === "turn:summary" && typeof summary !== "string") ||
+      this.completedSummaryHookTurns.has(turnId)
+    ) {
+      return;
+    }
+    this.completedSummaryHookTurns.add(turnId);
+    const turn =
+      this.findTurn(turnId) ??
+      ({ id: turnId, status: "success" } as TurnRecord);
+    const result =
+      event.event === "turn:summary:error"
+        ? { status: "error" as const, error: event.data?.error }
+        : {
+            status: "success" as const,
+            ...(typeof event.data?.versionId === "string"
+              ? { versionId: event.data.versionId }
+              : {}),
+          };
+    void Promise.resolve(this.replayStartHookTasks.get(turnId))
+      .catch(() => undefined)
+      .then(() => this.hooks?.afterTurnSummary?.(turn, summary ?? "", result))
+      .catch((error) => {
+        console.warn("[HttpAgent] hooks.afterTurnSummary failed:", error);
+      });
+  }
+
+  /** 服务端后台任务已收口；不改变已由 turn:complete 结束的 UI loading。 */
+  private triggerAfterTurnSettled(event: RemoteAgentEvent): void {
+    const turnId = this.eventTurnId(event);
+    if (!turnId || this.completedSettledHookTurns.has(turnId)) return;
+    this.completedSettledHookTurns.add(turnId);
+    const turn =
+      this.findTurn(turnId) ??
+      ({ id: turnId, status: "success" } as TurnRecord);
+    void Promise.resolve().then(() => this.hooks?.afterTurnSettled?.(turn)).catch((error) => {
+      console.warn("[HttpAgent] hooks.afterTurnSettled failed:", error);
+    });
+  }
+
+  async requestJson<T = unknown>(path: string, init?: RequestInit): Promise<T> {
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      ...init,
+      headers: {
+        ...(init?.body ? { "content-type": "application/json" } : {}),
+        ...init?.headers,
+      },
+    });
+    if (!response.ok) {
+      throw new HttpResponseError(response.status, response.statusText);
+    }
+    if (response.status === 204) return undefined as T;
+    const text = await response.text();
+    if (!text.trim()) return undefined as T;
+    return unwrapApiResponse<T>(JSON.parse(text));
+  }
+
+  private sessionPath(action: string): string {
+    const workspace = encodeURIComponent(this.workspaceId);
+    if (this.agentId !== DEFAULT_AGENT_ID) {
+      return `/workspaces/${workspace}/agents/${encodeURIComponent(this.agentId)}/${action}`;
+    }
+    return `/workspaces/${workspace}/${action}`;
+  }
+
+  private workspacePath(action: string): string {
+    return `/workspaces/${encodeURIComponent(this.workspaceId)}/${action}`;
+  }
+
+  /**
+   * 在 run 前显式声明当前浏览器可执行 Browser Tool。服务端会把这项状态
+   * 与随后取得的 turn 锁绑定，并在 turn 结束时清理。
+   */
+  private async connectBrowserTools(signal?: AbortSignal): Promise<void> {
+    if (this.isDisabled()) return;
+    await this.workspaceBridge.connectBrowserTools(
+      this.agentId === DEFAULT_AGENT_ID ? undefined : this.agentId,
+      signal,
+    );
+  }
+
+  private async consumeRunStream(
+    path: string,
+    init: RequestInit,
+    options: {
+      signal?: AbortSignal;
+      skipTurnStartId?: string;
+      skipTurnResumeId?: string;
+      onOpen?: () => void;
+    } = {},
+  ): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      let terminalSeen = false;
+      void this.requestEventStream(path, init, {
+        signal: options.signal,
+        onOpen: options.onOpen,
+        onEvent: (event) => {
+          if (
+            options.skipTurnStartId &&
+            event.event === "turn:start" &&
+            (event.data?.turnId ?? event.turnId) === options.skipTurnStartId
+          ) {
+            return;
+          }
+          if (options.skipTurnResumeId && event.event === "turn:resume" &&
+              (event.data?.turnId ?? event.turnId) === options.skipTurnResumeId) return;
+          this.handleRemoteEvent(event, { allowBrowserTasks: true, waitForRelease: true });
+          if (!isTerminalRemoteEvent(event)) return;
+          terminalSeen = true;
+          const turnId = this.eventTurnId(event);
+          const pending = turnId ? this.pendingTurnFinalizations.get(turnId) : undefined;
+          if (pending) void pending.task.then(resolve);
+          else resolve();
+        },
+      })
+        .then(() => {
+          if (!terminalSeen) this.workspaceBridge.clearPendingBrowserTools();
+          if (terminalSeen || options.signal?.aborted) {
+            if (terminalSeen && this.sessionState.turnId) this.pendingTurnFinalizations.get(this.sessionState.turnId)?.release();
+            if (!terminalSeen) resolve();
+            return;
+          }
+          reject(new SseDisconnectedError(TURN_INCOMPLETE_ERROR_CODE));
+        })
+        .catch((error) => {
+          if (!terminalSeen) this.workspaceBridge.clearPendingBrowserTools();
+          if (options.signal?.aborted) { resolve(); return; }
+          if (!terminalSeen) { reject(error); return; }
+          if (this.sessionState.turnId) this.pendingTurnFinalizations.get(this.sessionState.turnId)?.release();
+          console.warn("[HttpAgent] post-turn SSE closed before release:", error);
+        });
+    });
+  }
+
+  private async requestEventStream(
+    path: string,
+    init: RequestInit,
+    params: {
+      signal?: AbortSignal;
+      onEvent?: (event: RemoteAgentEvent) => void;
+      onError?: (error: Event | Error) => void;
+      onOpen?: () => void;
+      onClose?: () => void;
+      onNoContent?: () => void;
+    } = {},
+  ): Promise<void> {
+    const watchdog = ENABLE_SSE_IDLE_WATCHDOG
+      ? createSseIdleWatchdog(SSE_IDLE_TIMEOUT_MS, params.signal)
+      : undefined;
+    try {
+      const response = await fetch(`${this.baseUrl}${path}`, {
+        ...init,
+        signal: watchdog?.signal ?? params.signal,
+        headers: {
+          accept: "text/event-stream",
+          ...(init.body ? { "content-type": "application/json" } : {}),
+          ...init.headers,
+        },
+      });
+      if (!response.ok) {
+        throw new HttpResponseError(
+          response.status,
+          await readHttpErrorMessage(response),
+        );
+      }
+      if (response.status === 204) {
+        params.onOpen?.();
+        params.onNoContent?.();
+        params.onClose?.();
+        return;
+      }
+      if (!response.body) {
+        throw new Error("SSE response body is not available");
+      }
+      params.onOpen?.();
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (value?.byteLength) watchdog?.touch();
+        buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+        let boundary = buffer.indexOf("\n\n");
+        while (boundary !== -1) {
+          const chunk = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          dispatchSseChunk(chunk, params.onEvent);
+          boundary = buffer.indexOf("\n\n");
+        }
+        if (done) break;
+      }
+      if (buffer.trim()) dispatchSseChunk(buffer, params.onEvent);
+      params.onClose?.();
+    } catch (error) {
+      if (watchdog?.didTimeout()) {
+        const disconnected = new SseDisconnectedError(TURN_INCOMPLETE_ERROR_CODE);
+        params.onError?.(disconnected);
+        throw disconnected;
+      }
+      if ((error as Error)?.name === "AbortError") {
+        params.onClose?.();
+        return;
+      }
+      params.onError?.(error as Error);
+      throw error;
+    } finally {
+      watchdog?.dispose();
+    }
+  }
+}
+
+export function isHttpAgent(agent: unknown): agent is HttpAgent {
+  return (
+    !!agent &&
+    typeof agent === "object" &&
+    (agent as any).kind === "http" &&
+    (agent as any).protocol === "agent-events"
+  );
+}
+
+function unwrapApiResponse<T>(response: ApiResponse<T>): T {
+  if (
+    response &&
+    typeof response === "object" &&
+    "code" in response &&
+    "data" in response
+  ) {
+    const wrapped = response as { code: number; message?: string; data: T };
+    if (wrapped.code !== 0) {
+      throw new Error(wrapped.message ?? `API error ${wrapped.code}`);
+    }
+    return wrapped.data;
+  }
+  return response as T;
+}
+
+function normalizeVersionsPage(
+  response: VersionsPageResponse | undefined,
+): { total: number; list: VersionRecord[] } {
+  if (Array.isArray(response)) {
+    return { total: response.length, list: response };
+  }
+  const list = response?.list ?? response?.versions ?? [];
+  return {
+    total: Number(response?.total ?? list.length) || 0,
+    list,
+  };
+}
+
+function normalizeVersionRecord(
+  response: VersionRecordResponse | undefined,
+): VersionRecord | null {
+  if (!response) return null;
+  if ("record" in response) return response.record ?? null;
+  return response;
+}
+
+function normalizeVersionFiles(
+  response: VersionFilesResponse | undefined,
+): VersionFile[] {
+  if (Array.isArray(response)) return response;
+  return response?.files ?? [];
+}
+
+function mergeTurnRecords(
+  olderTurns: TurnRecord[],
+  newerTurns: TurnRecord[],
+): TurnRecord[] {
+  const merged: TurnRecord[] = [];
+  const seen = new Set<string>();
+  for (const turn of [...olderTurns, ...newerTurns]) {
+    if (!turn?.id) {
+      merged.push(turn);
+      continue;
+    }
+    const index = merged.findIndex((item) => item.id === turn.id);
+    if (index >= 0) {
+      merged[index] = turn;
+      continue;
+    }
+    if (!seen.has(turn.id)) {
+      seen.add(turn.id);
+      merged.push(turn);
+    }
+  }
+  return merged;
+}
+
+function dispatchSseChunk(
+  chunk: string,
+  onEvent?: (event: RemoteAgentEvent) => void,
+) {
+  const data: string[] = [];
+  for (const line of chunk.split(/\r?\n/)) {
+    if (!line || line.startsWith(":")) continue;
+    if (line.startsWith("data:")) {
+      data.push(line.slice(5).trimStart());
+    }
+  }
+  if (!data.length || !onEvent) return;
+  try {
+    onEvent(JSON.parse(data.join("\n")) as RemoteAgentEvent);
+  } catch (error) {
+    console.warn("[HttpAgent] malformed SSE frame ignored:", error);
+  }
+}
+
+function trimRight(value: string, char: string): string {
+  let next = value;
+  while (next.endsWith(char)) next = next.slice(0, -char.length);
+  return next;
+}
+
+function createTurnId(): string {
+  return `turn-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function createSseIdleWatchdog(timeoutMs: number, external?: AbortSignal) {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let timedOut = false;
+  const abortFromExternal = () => controller.abort();
+
+  if (external?.aborted) controller.abort();
+  else external?.addEventListener("abort", abortFromExternal);
+
+  const touch = () => {
+    if (timer) clearTimeout(timer);
+    if (controller.signal.aborted) return;
+    timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+  };
+  touch();
+
+  return {
+    signal: controller.signal,
+    touch,
+    didTimeout: () => timedOut,
+    dispose: () => {
+      if (timer) clearTimeout(timer);
+      external?.removeEventListener("abort", abortFromExternal);
+    },
+  };
+}
+
+class RemoteSessionError extends Error {}
+
+class SseDisconnectedError extends Error {}
+
+class HttpResponseError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(`${status} ${message}`);
+  }
+}
+
+function classifyHttpError(error: unknown): TurnRecord["errorCode"] {
+  if (error instanceof HttpResponseError) return error.status === 409 ? "SESSION_CONFLICT" : "SERVER_ERROR";
+  if (error instanceof SseDisconnectedError ||
+      (error instanceof TypeError && /fetch|network|load failed/i.test(error.message))) return "NETWORK_ERROR";
+  return undefined;
+}
+
+function serializeError(error: unknown): { message: string; name?: string } {
+  if (error instanceof Error) {
+    return { message: error.message, name: error.name };
+  }
+  return { message: String(error) };
+}
+
+function isTerminalRemoteEvent(event: RemoteAgentEvent): boolean {
+  return (
+    event.event === "turn:complete" ||
+    event.event === "turn:abort" ||
+    event.event === "turn:error" ||
+    event.event === "session:error"
+  );
+}
+
+async function readHttpErrorMessage(response: Response): Promise<string> {
+  const fallback = response.statusText || "Request failed";
+  try {
+    const text = await response.text();
+    if (!text.trim()) return fallback;
+    const body = JSON.parse(text);
+    const message = body?.message ?? body?.error;
+    if (Array.isArray(message)) return message.join("; ");
+    return typeof message === "string" && message ? message : fallback;
+  } catch {
+    return fallback;
+  }
+}

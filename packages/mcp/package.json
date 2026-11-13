@@ -1,0 +1,14 @@
+{
+  "name": "@mybricks/plugin-ai-mcp",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "ws": "^8.22.1"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

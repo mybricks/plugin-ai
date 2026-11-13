@@ -12,6 +12,7 @@ import {
   SUPPORTED_IMAGE_ACCEPT,
   SUPPORTED_IMAGE_LABEL,
 } from "../../../content-limits";
+import { lang } from "../../../i18n";
 
 // FILE_CHIP_TYPE 和 FileChipData 已迁移到 agent 包，此处 re-export 保持向后兼容
 export { FILE_CHIP_TYPE } from "../../../../../agent/src";
@@ -273,16 +274,16 @@ function getBlockedFileReason(file: File): string | null {
   }
 
   if (type && BLOCKED_FILE_MIME_PREFIXES.some((prefix) => type.startsWith(prefix))) {
-    return "音视频/字体等二进制文件暂不支持";
+    return lang.sender.unsupportedMedia();
   }
   if (type && BLOCKED_FILE_MIME_TYPES.has(type)) {
-    return "压缩包/可执行文件等二进制文件暂不支持";
+    return lang.sender.unsupportedArchive();
   }
   if (BLOCKED_FILE_EXTENSIONS.has(ext)) {
-    return "压缩包、音视频、可执行文件等暂不支持";
+    return lang.sender.unsupportedBinary();
   }
   if (type.startsWith("image/") && !isSupportedImageFile(file)) {
-    return `图片仅支持${SUPPORTED_IMAGE_LABEL}`;
+    return lang.sender.unsupportedImage(SUPPORTED_IMAGE_LABEL);
   }
 
   return null;

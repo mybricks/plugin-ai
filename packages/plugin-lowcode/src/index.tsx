@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import { CodeAgent, IDBHistory, AgentModeEnum } from "../../agent/src";
-import type { AgentOptions, History, Sandbox, SkillFile, Tool, TurnSender } from "../../agent/src";
+import type { AgentOptions, AttachmentContextItem, History, Sandbox, SkillFile, Tool, TurnSender } from "../../agent/src";
 import { createRequestAsStream, createOnUpload } from "../../request/src";
 import type { ProviderConfig, RequestAsStreamFn } from "../../request/src";
 import { ChatPanel } from "../../plugin/src/ui/chat";
@@ -9,6 +9,7 @@ import type { ChatPanelRef } from "../../plugin/src/ui/chat/chat-panel";
 import { context as pluginContext } from "../../plugin/src/context";
 import { DisabledHandler, type DisabledRequestHandler } from "../../plugin/src/disabled-handler";
 import { chipRegistry } from "../../plugin/src/sandbox/setup";
+import { getPluginLocale } from "../../plugin/src/i18n";
 
 import type {
   LowCodeDesignerAPI,
@@ -231,13 +232,11 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
         const sections = [buildLowCodeStableContext(runtime)].filter(Boolean);
         return sections.length ? sections.join("\n\n") : null;
       },
-      getSandboxMetaSection: async () => {
-        return runtime.api ? "<canvas-info>\n当前在设计器画布中，只能通过 lowcode_generate_page、lowcode_clear_page 修改设计器画布中的内容。\n </canvas-info>" : null;
-      },
     };
 
     agentRef = new CodeAgent({
       key: agentKey,
+      locale: getPluginLocale(),
       history: history ?? new IDBHistory({ dbName: "@plugin-ai/plugin-lowcode/messages" }),
       request: requestAsStream,
       sandbox,
@@ -245,8 +244,13 @@ export default function pluginLowCodeAI(params: PluginLowCodeAIParams): PluginLo
       promptOptions: lowCodePromptOptions,
       system,
       getAttachmentContextMessages: async () => {
-        const sections = [await getUserContextMessage?.()].filter(Boolean) as string[];
-        return sections;
+        const items: AttachmentContextItem[] = [];
+        if (runtime.api) {
+          items.push({ key: "canvas", content: "<canvas-info>\n当前在设计器画布中，只能通过 lowcode_generate_page、lowcode_clear_page 修改设计器画布中的内容。\n </canvas-info>" });
+        }
+        const custom = await getUserContextMessage?.();
+        if (custom) items.push({ key: "custom", content: custom });
+        return items;
       },
       tools: [...createLowCodeTools({ runtime, onOperatorActions, enableRenderingOptimization }), ...(tools ?? [])],
       ...(skills?.length ? { skills } : {}),

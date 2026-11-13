@@ -1,12 +1,17 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from "react";
 import classNames from "classnames";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
+import { lang } from "../../../i18n";
 import { chipRegistry } from "../../../sandbox/setup";
+import { mentionRegistry } from "../../../sandbox/mention-registry";
 import type { AgentMode } from "../../../../../agent/src";
+import type { ToolUIChannel } from "../../../../../agent/src";
 import type { AttachProcessor } from "../../../content-limits";
 import type { MentionProvider } from "../../components/types";
+import { TodoArea } from "../../components/todo-area";
 import { MessageList } from "../messages";
+import "../messages/tool-renders/register";
 import type { ActionBarItem, HistoryCollapseConfig } from "../messages";
 import { useHistoryCollapse } from "./use-history-collapse";
 import { Header } from "./header";
@@ -23,6 +28,15 @@ interface User {
   avatar?: string;
 }
 
+type InputArea = "toolBlock" | "todoArea" | "sender";
+
+/** 工具交互优先；待办区仅在最近一轮成功且输入区可用时展示。 */
+function resolveInputArea(toolActive: boolean, loading: boolean, disabled: boolean, hasTodo: boolean, lastTurnSucceeded: boolean): InputArea {
+  if (toolActive) return "toolBlock";
+  if (!loading && !disabled && hasTodo && lastTurnSucceeded) return "todoArea";
+  return "sender";
+}
+
 export type ChatPanelSize = "small" | "medium" | "large";
 
 export interface ChatPanelProps {
@@ -32,6 +46,8 @@ export interface ChatPanelProps {
   header?: boolean | (() => React.ReactNode);
   /** agent 实例 */
   agent?: ChatAgent;
+  /** 覆盖消息列表使用的工具 UI 回传通道。 */
+  toolUI?: ToolUIChannel;
   /** 上传文件回调，不传时回退到 context.pluginParams.onUpload */
   onUpload?: (file: File) => Promise<string>;
   /** Header 标题，不传时读 context.name */
@@ -74,6 +90,11 @@ export interface ChatPanelProps {
   size?: ChatPanelSize;
   /** 消息内工具调用的展示形态，默认 card。 */
   messagesRenderVariant?: MessagesRenderVariant;
+  /**
+   * 是否把同一 turn 内连续的工具调用（中间没有被文本打断）合并为一个可折叠分组，
+   * 收起时只展示状态图标 + 最新工具名 + 聚合耗时，与 messagesRenderVariant 正交。默认 false。
+   */
+  groupToolCalls?: boolean;
   /**
    * 是否让消息滚动容器包含 Sender 区域。
    * 默认 false，保持 Sender 位于消息滚动容器外部的旧布局；
@@ -130,12 +151,36 @@ export interface ChatPanelProps {
    * 默认 true 展示；false 关闭；传对象可自定义标题。
    */
   runningBar?: boolean | { title?: string };
+  /**
+   * 在 Header 清空/导出按钮之前插入自定义内容（如宿主的状态图标+文案）。
+   * 入参 ctx.overlay 是一个覆盖层操作句柄：调用 overlay.open(node) 可以让该 node
+   * 覆盖在消息列表区域上方展示，overlay.close() 收起。展示什么、什么时候开关
+   * 完全由宿主自己决定（典型用法：图标点击时 open 一个操作日志/详情面板）；
+   * ChatPanel 只提供这一个开关能力和挂载位置，不关心里面渲染什么。
+   * 参数是对象而非直接传 overlay，方便后续扩展字段而不破坏签名。
+   * renderHeaderExtra 返回 null/false/undefined 时不展示图标本身。
+   */
+  renderHeaderExtra?: (ctx: ChatHeaderExtraContext) => React.ReactNode;
+}
+
+/** 覆盖消息列表区域的展示/隐藏句柄，见 {@link ChatPanelProps.renderHeaderExtra}。 */
+export interface ChatOverlayHandle {
+  open: (node: React.ReactNode) => void;
+  close: () => void;
+  isOpen: boolean;
+}
+
+/** {@link ChatPanelProps.renderHeaderExtra} 的入参，后续新增能力都加在这个对象上。 */
+export interface ChatHeaderExtraContext {
+  overlay: ChatOverlayHandle;
 }
 
 export interface ChatPanelRef {
   focus: () => void;
   /** 当前输入框是否可以被外部自动追加内容 */
   canAppendInput: () => boolean;
+  /** 当前输入框是否可同步默认 focus 内容（隐藏时也允许）。 */
+  canSyncFocusContent: () => boolean;
   appendInput: SenderRef["appendInput"];
   /** 获取输入框当前草稿内容 */
   getInput: SenderRef["getInput"];
@@ -152,6 +197,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   copilot,
   header = true,
   agent,
+  toolUI,
   onUpload,
   title,
   renderUserMessage,
@@ -165,6 +211,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   renderSenderFooter,
   size = "small",
   messagesRenderVariant = "line",
+  groupToolCalls = false,
   scrollWithSender = false,
   className,
   style,
@@ -174,17 +221,26 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   actionBar,
   selectorRenderInTop = false,
   attachProcessors,
-  mentions = (context.pluginParams.mentions ?? []) as MentionProvider[],
+  mentions: mentionsProp,
   mcpConnectors,
   resolveSessionStageText,
   runningBar = true,
+  renderHeaderExtra,
 }, ref) => {
   const senderRef = useRef<SenderRef>(null);
-
-  useEffect(() => {
-    mentions.forEach((mention) => chipRegistry.register(mention.chip));
-  }, [mentions]);
   const messageListRef = useRef<{ scrollToBottom: () => void }>(null);
+  const [blockingToolTarget, setBlockingToolTarget] = React.useState<HTMLDivElement | null>(null);
+  const [activeBlockingToolCallId, setActiveBlockingToolCallId] = React.useState<string | null>(null);
+  const [todoState, setTodoState] = React.useState<{ agent: unknown; component: unknown; active: boolean } | null>(null);
+  const setBlockingToolActive = useCallback((callId: string, active: boolean) => {
+    setActiveBlockingToolCallId((current) => active ? callId : current === callId ? null : current);
+  }, []);
+  const [overlayNode, setOverlayNode] = React.useState<React.ReactNode>(null);
+  const overlayHandle = useMemo<ChatOverlayHandle>(() => ({
+    open: (node: React.ReactNode) => setOverlayNode(node),
+    close: () => setOverlayNode(null),
+    isOpen: overlayNode != null,
+  }), [overlayNode]);
 
   const scrollToBottom = useCallback(() => {
     messageListRef.current?.scrollToBottom();
@@ -199,6 +255,17 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   });
   const chatAgent = localAgent;
 
+  const mentions = useMemo(() => {
+    if (mentionsProp) return mentionsProp;
+    const globalMentions = (context.pluginParams.mentions ?? []) as MentionProvider[];
+    const scopedMentions = mentionRegistry.get(chatAgent?.agent?.key);
+    return scopedMentions.length ? [...globalMentions, ...scopedMentions] : globalMentions;
+  }, [mentionsProp, chatAgent?.agent?.key]);
+
+  useEffect(() => {
+    mentions.forEach((mention) => chipRegistry.register(mention.chip));
+  }, [mentions]);
+
   const {
     messages,
     historyStatus,
@@ -208,9 +275,11 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     loading,
     loadingTip,
     loadingTurnId,
+    finalizing,
     pendingQueue,
     showChatMode,
     chatMode,
+    availableModes,
     modelSelector,
     isDisabled,
     canExecutePlan,
@@ -222,7 +291,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     onExpandHistory: onExpandHistoryBase,
   } = useHistoryCollapse(messages, maxHistoryIters);
 
-  const onExpandHistory = useCallback(async (type: "one" | "ten") => {
+  const onExpandHistory = useCallback(async (type: "one" | "all" | "ten") => {
     if (isLoadingMore) return;
     const collapsedCount = collapseCursor?.visibleStartIndex ?? 0;
 
@@ -240,6 +309,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       senderRef.current?.focus();
     },
     canAppendInput: () => senderRef.current?.canAppendInput() ?? false,
+    canSyncFocusContent: () => senderRef.current?.canSyncFocusContent() ?? false,
     appendInput: (params) => {
       senderRef.current?.appendInput(params);
     },
@@ -265,21 +335,31 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   const historyFailed = historyStatus === "error";
   const historyLoading = historyStatus === "idle" || historyStatus === "loading";
 
+  const headerExtraNode = renderHeaderExtra?.({ overlay: overlayHandle });
   const headerNode = typeof header === "function"
     ? header()
     : header
-      ? <Header title={title} onClear={chatAgent.clear} onExport={chatAgent.exportHistory} disabled={isDisabled} />
+      ? <Header title={title} onClear={chatAgent.clear} onExport={chatAgent.exportHistory} disabled={isDisabled} renderExtra={() => headerExtraNode} />
       : null;
 
+  const todoComponent = chatAgent.todoArea;
+  const setTodoActive = useCallback((active: boolean) => {
+    setTodoState({ agent: chatAgent.agent, component: todoComponent, active });
+  }, [chatAgent.agent, todoComponent]);
+  const hasTodo = !!todoComponent && !!todoState && todoState.agent === chatAgent.agent
+    && todoState.component === todoComponent && todoState.active;
+  const lastTurnSucceeded = messages.length > 0 && messages[messages.length - 1].status === "success";
+  const inputArea = resolveInputArea(!!activeBlockingToolCallId, loading, isDisabled, hasTodo, lastTurnSucceeded);
   const senderNode = (
     <Sender
       ref={senderRef}
       loading={loading}
-      placeholder={placeholder ?? `您好，我是${context.name}，请详细描述您的需求`}
+      placeholder={placeholder ?? lang.chat.defaultPlaceholder(context.name)}
       defaultFocusPlaceholder={defaultFocusPlaceholder}
       disabled={isDisabled}
       mode="mention"
       chatMode={showChatMode ? chatMode : null}
+      availableChatModes={availableModes}
       onSend={chatAgent.send}
       onChatModeChange={(nextMode: AgentMode | null) => {
         chatAgent.setChatMode(nextMode);
@@ -289,11 +369,13 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       pendingQueue={pendingQueue}
       onRemoveFromQueue={chatAgent.removeFromQueue}
       onSendNowFromQueue={chatAgent.sendNowFromQueue}
+      blocking={inputArea === "toolBlock"}
       renderFocus={renderFocus}
       renderAttachmentSuffix={renderAttachmentSuffix}
       modelSelector={modelSelector}
       selectorRenderInTop={selectorRenderInTop}
       chipTypes={chipRegistry.getAll()}
+      slashCommands={chatAgent.slashCommands}
       mentions={mentions}
       matchDefaultFocusContent={matchDefaultFocusContent}
       attachProcessors={attachProcessors}
@@ -302,12 +384,25 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
     />
   );
   const senderFooterNode = renderSenderFooter?.();
-  const senderBlockNode = senderFooterNode !== undefined && senderFooterNode !== null && senderFooterNode !== false ? (
+  const inputAreaNode = (
     <div className={css["sender-block"]}>
-      {senderNode}
-      <div className={css["sender-footer"]}>{senderFooterNode}</div>
+      <div
+        ref={setBlockingToolTarget}
+        className={css["blocking-tool-slot"]}
+        style={{ display: inputArea === "toolBlock" ? undefined : "none" }}
+      />
+      {/* 隐藏时保持挂载，保留待办区的暂存状态。 */}
+      <div style={{ display: inputArea === "todoArea" ? undefined : "none" }}>
+        {todoComponent && <TodoArea key={chatAgent.agent?.key} component={todoComponent} setActive={setTodoActive} />}
+      </div>
+      <div style={{ display: inputArea === "todoArea" ? "none" : undefined }}>{senderNode}</div>
+      {inputArea === "sender" && senderFooterNode !== undefined && senderFooterNode !== null && senderFooterNode !== false
+        ? <div className={css["sender-footer"]}>{senderFooterNode}</div>
+        : null}
     </div>
-  ) : senderNode;
+  );
+
+  const hasOverlayContent = overlayNode !== undefined && overlayNode !== null && overlayNode !== false;
 
   // 运行状态条：计时取当前 pending turn 的 startTime（记录层持久，跨 remount 准确）。
   const runningBarEnabled = runningBar !== false;
@@ -325,40 +420,63 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   ) : null;
 
   return (
-    <ChatPanelProvider value={{ user, copilot, disabled: isDisabled, renderUserMessage, markdownSkin, markdownit, messagesRenderVariant }}>
+    <ChatPanelProvider value={{
+      user,
+      copilot,
+      disabled: isDisabled,
+      renderUserMessage,
+      mbsTemplateDisplayNames: Object.fromEntries(
+        [
+          ...(isHttpAgent(chatAgent.agent) ? chatAgent.agent.getMbsTemplates() : []),
+          ...chatAgent.slashCommands,
+        ].map((command) => [command.name, command.displayName ?? command.name]),
+      ),
+      markdownSkin,
+      markdownit,
+      messagesRenderVariant,
+      groupToolCalls,
+      modelSelector,
+      blockingToolSlot: { target: blockingToolTarget, setActive: setBlockingToolActive },
+    }}>
       <div
         className={classNames(css["chat-panel"], css[`size-${size}`], className)}
         style={style}
       >
         {headerNode}
 
-        <div className={css["messages-area"]}>
-          {historyLoading ? (
-            <div className={css["history-status"]}>正在加载历史记录...</div>
+        <div className={css["body-area"]} data-chat-body>
+          <div className={css["messages-area"]}>
+            {historyLoading ? (
+              <div className={css["history-status"]}>{lang.chat.historyLoading()}</div>
+            ) : null}
+            {historyFailed ? (
+              <div className={css["history-status"]}>
+                {lang.chat.historyLoadFailed()}
+              </div>
+            ) : null}
+            <MessageList
+              ref={messageListRef}
+              messages={messages}
+              agent={chatAgent.agent}
+              toolUI={toolUI ?? chatAgent.agent?.getToolUI()}
+              activeStageText={loadingTip}
+              activeTurnId={loadingTurnId}
+              finalizing={finalizing}
+              actionBar={actionBar}
+              onRetry={chatAgent.retry}
+              onExecutePlan={chatAgent.executePlan}
+              canExecutePlan={canExecutePlan}
+              renderEmpty={historyStatus === "ready" ? renderEmpty : undefined}
+              renderFooter={scrollWithSender ? () => <>{runningBarNode}{inputAreaNode}</> : undefined}
+              collapseCursor={collapseCursor ? { ...collapseCursor, hasMore, isLoadingMore } : (hasMore ? { visibleStartIndex: 0, collapsedCount: 0, hasMore, isLoadingMore } : undefined)}
+              onExpandHistory={onExpandHistory}
+            />
+          </div>
+          {scrollWithSender ? null : <>{runningBarNode}{inputAreaNode}</>}
+          {hasOverlayContent ? (
+            <div className={css["overlay-panel"]}>{overlayNode}</div>
           ) : null}
-          {historyFailed ? (
-            <div className={css["history-status"]}>
-              历史记录加载失败，请刷新后重试
-            </div>
-          ) : null}
-          <MessageList
-            ref={messageListRef}
-            messages={messages}
-            agent={chatAgent.agent}
-            toolUI={chatAgent.agent?.getToolUI()}
-            activeStageText={loadingTip}
-            activeTurnId={loadingTurnId}
-            actionBar={actionBar}
-            onRetry={chatAgent.retry}
-            onExecutePlan={chatAgent.executePlan}
-            canExecutePlan={canExecutePlan}
-            renderEmpty={historyStatus === "ready" ? renderEmpty : undefined}
-            renderFooter={scrollWithSender ? () => <>{runningBarNode}{senderBlockNode}</> : undefined}
-            collapseCursor={collapseCursor ? { ...collapseCursor, hasMore, isLoadingMore } : (hasMore ? { visibleStartIndex: 0, collapsedCount: 0, hasMore, isLoadingMore } : undefined)}
-            onExpandHistory={onExpandHistory}
-          />
         </div>
-        {scrollWithSender ? null : <>{runningBarNode}{senderBlockNode}</>}
       </div>
     </ChatPanelProvider>
   );
@@ -374,7 +492,8 @@ export {
 export { useAgent } from "./use-agent";
 export { useSessionState } from "./use-session-state";
 export type { SessionState, UseSessionStateOptions } from "./use-session-state";
-export { HttpAgent, isHttpAgent } from "./http-agent";
+import { isHttpAgent } from "./remote/http-agent";
+export { HttpAgent, isHttpAgent } from "./remote/http-agent";
 export { WebSocketAgent, isWebSocketAgent } from "./websocket-agent";
 export type {
   WebSocketAgentOptions,
@@ -389,4 +508,4 @@ export type {
   HttpAgentRequestAIParams,
   MessageHttpAgentRequestAIParams,
   RemoteAgentEvent,
-} from "./http-agent";
+} from "./remote/http-agent";

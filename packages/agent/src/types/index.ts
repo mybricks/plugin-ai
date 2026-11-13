@@ -1,4 +1,5 @@
 import { formatHandoffMessageContent } from "../handoff";
+import { toolCallRecordToMessage } from "../message-utils";
 
 // ─── TokenUsage（通用 token 用量格式） ────────────────────────────────────────
 
@@ -15,6 +16,8 @@ export type TokenUsage = {
     cacheWriteTokens?: number;
   };
   model?: string;
+  /** 上游模型网关的请求 ID，供 Trace 回查日志。 */
+  requestId?: string;
 };
 
 export interface IterationTrace {
@@ -29,17 +32,18 @@ export interface IterationTrace {
 
 /**
  * Agent 运行模式。
- * - build：智能模式，允许直接修改，适合快速修改和简单直接的任务
+ * - build：智能体模式，允许直接修改，适合快速修改和简单直接的任务
  * - plan：计划模式，修改之前先制定方案，方案通过后再进行操作
+ * - ask：询问模式，只读地澄清和质询需求，不创建计划或修改项目
  */
-export type AgentMode = "build" | "plan";
+export type AgentMode = "build" | "plan" | "ask";
 
 // ─── Attachment（通用附件格式） ─────────────────────────────────────────────
 
 /**
  * 通用附件格式，贯穿整个附件数据流：
  *   requestAI({ attachments }) → TurnRecord.userAttachments
- *   → ToolCallRecord.attachments → Message.attachments
+ *   → ToolCallRecord.result.attachments → Message.attachments
  *
  * type    附件类型，如 "image"、"pdf"
  * content 可以是 data URL 或普通 URL；url 可显式传普通 URL。
@@ -139,23 +143,22 @@ export interface Message {
    */
   cache?: boolean;
   /**
-   * 工具调用结果状态（仅 role === "tool" 时有意义）。
-   * 供服务端感知工具执行是否成功，发送请求前由 sanitizeMessages 移除。
-   */
-  status?: "success" | "error";
-  /**
-   * 工具调用错误类型（仅 status === "error" 时出现）。
+   * 工具调用错误类型（仅工具调用失败时出现）。
    * - "invalid_args"：工具参数校验失败
    * - "normal"：工具执行过程中的普通错误
    */
   errorType?: "invalid_args" | "normal";
   /**
    * 工具调用结果携带的附件（仅 role === "tool" 时有意义）。
-   * 由 assembleMessages 从 ToolCallRecord.attachments 透传而来。
+   * 由 assembleMessages 从 ToolCallRecord.result.attachments 透传而来。
    * 在请求层按 model capabilities 预处理（内嵌或提取为合成 user 消息），
-   * sanitizeMessages 发送前会将此字段移除（不裸发到 API）。
+   * 不会作为原始工具消息字段发送到 API。
    */
   attachments?: Attachment[];
+  isAttachmentContext?: boolean;
+  /** 内部消息来源；发送到 request 前移除。 */
+  contextTurnId?: string;
+  contextEntries?: AttachmentContext;
 }
 
 // ─── WarmupIter（warmup 阶段特殊 iter） ──────────────────────────────────────
@@ -168,12 +171,22 @@ export interface Message {
 export interface WarmupIter {
   /** 固定为 "warmup"，用于区分普通 LLM iter */
   type: "warmup";
+  /** warmup 所执行的操作；用于调用方渲染，不包含展示文案。 */
+  operation: "context_compaction";
   /** 本次 warmup iter 的唯一 ID，与 warmup:start 事件中的 iterId 对应 */
   iterId?: string;
-  /** 当前状态 */
-  status: "loading" | "success" | "error";
-  /** 展示给用户的描述文本（streaming 更新，与 LLM iter.content 对齐） */
-  content: string;
+  /** 当前生命周期状态。 */
+  status: "loading" | "success" | "error" | "abort";
+  /** 压缩重试次数；未重试时省略。 */
+  retryCount?: number;
+  /** warmup 失败时的稳定业务错误码。 */
+  errorCode?: TurnErrorCode;
+  /**
+   * 旧版本持久化的展示文案。
+   *
+   * @deprecated 新记录不再写入；调用方应使用 operation/status/retryCount/errorCode 渲染。
+   */
+  content?: string;
   /** warmup 开始时间（Unix ms） */
   startTime: number;
   /** warmup 结束时间（Unix ms），进行中为 undefined */
@@ -184,6 +197,41 @@ export interface WarmupIter {
    */
   toolCalls: [];
 }
+
+// ─── AgentEffect（compact / summary 任务记录） ──────────────────────────────
+
+/**
+ * 存放在 TurnRecord.effects[]，用于记录 compact/summary 每次 fork 调用产生的完整 TurnRecord。
+ * 覆盖三种场景：前置/过程中（warmup 触发）的 compact attempt，以及 turn 结束后
+ * fire-and-forget 的后置 compact、summary。跟 ReAct 循环时间线无关，不混入 iterations。
+ */
+export interface AgentEffect {
+  /**
+   * 任务类型。"context_compaction" 是 warmup 触发的 compact，与对应 WarmupIter 用同一个
+   * iterId 关联；"post_compact" / "post_summary" 是 turn 结束后的后置任务。
+   */
+  operation: "context_compaction" | "post_compact" | "post_summary";
+  /** 本次任务的唯一 ID；"context_compaction" 场景下与对应 WarmupIter.iterId 相同。 */
+  iterId?: string;
+  /** 当前生命周期状态。 */
+  status: "loading" | "success" | "error" | "abort";
+  /** 开始时间（Unix ms） */
+  startTime: number;
+  /** 结束时间（Unix ms），进行中为 undefined */
+  endTime?: number;
+  /** 本次任务每次 fork 调用（含重试）产生的完整 TurnRecord。 */
+  turns?: TurnRecord[];
+}
+
+/** TurnRecord 上由 Agent 明确识别、可供调用方翻译或分支处理的错误码。 */
+export type TurnErrorCode =
+  | "TURN_INCOMPLETE"
+  | "TURN_LOOP_DETECTED"
+  | "CONTEXT_COMPACTION_FAILED"
+  | "NETWORK_ERROR"
+  | "MODEL_ERROR"
+  | "SESSION_CONFLICT"
+  | "SERVER_ERROR";
 
 // ─── TurnSender ───────────────────────────────────────────────────────────────
 
@@ -196,6 +244,20 @@ export interface TurnSender {
   name?: string;
   avatar?: string;
   [key: string]: any;
+}
+
+export interface AttachmentContextEntry {
+  content: string;
+  generatedAt: number;
+  dedupThreshold?: number | "always";
+}
+
+export type AttachmentContext = Record<string, AttachmentContextEntry>;
+
+export interface AttachmentContextItem {
+  key: string;
+  content?: string;
+  dedupThreshold?: number | "always";
 }
 
 // ─── TurnRecord（SSE 事件粒度的完整调用记录） ─────────────────────────────────
@@ -213,8 +275,8 @@ export interface ToolCallRecord {
   /** 工具标题（可选），用于 UI 展示。来源于 Tool.title。 */
   title?: string;
   args: any;
-  /** 工具执行结果（包含 output 和 metadata） */
-  result?: { output: string; metadata?: any };
+  /** 工具执行结果（包含 output、metadata 和附件） */
+  result?: ToolResult;
   error?: any;
   status: "pending" | "success" | "error";
   /**
@@ -227,13 +289,6 @@ export interface ToolCallRecord {
   execStartTime: number;
   /** 工具执行完成的时间（Unix ms），执行中为 0 */
   execEndTime: number;
-  /**
-   * 工具执行产出的附件（图片、PDF 等）。
-   * Agent 层只做数据透传，不做任何能力判断。
-   * assembleMessages 时携带到 Message.attachments，
-   * 由请求层按 model capabilities 做分流处理。
-   */
-  attachments?: Attachment[];
 }
 
 /**
@@ -253,6 +308,19 @@ export interface TurnRecord {
   startTime: number;
   /** 本轮结束时间（Unix ms），abort/error 时也记录 */
   endTime?: number;
+
+  /**
+   * 本轮运行模式。空轮次（尚未产生 LLM iter）时由它决定 retry 使用的模式。
+   * 已有 LLM iter 时，iter 上的 mode 优先。
+   */
+  mode?: AgentMode;
+
+  /** 本轮 LLM 请求路由参数。retry 和普通 fork 默认沿用；summary fork 仅使用 aiRole=flash。不代表最终选中的模型。 */
+  llmOptions?: {
+    aiRole?: string;
+    providerId?: string;
+    modelId?: string;
+  };
 
   /** 用户输入文本（原始，用于 UI 展示） */
   userText: string;
@@ -281,6 +349,9 @@ export interface TurnRecord {
    */
   sender?: TurnSender;
 
+  /** 本轮至少一次成功的模型请求携带过的上下文，每个 key 保存一份。 */
+  attachmentContext?: AttachmentContext;
+
   /**
    * ReAct 迭代记录：每次 LLM 响应对应一个 iteration，warmup 阶段插入特殊 WarmupIter。
    * WarmupIter 由 type: "warmup" 区分，不参与 LLM context 构建。
@@ -307,14 +378,18 @@ export interface TurnRecord {
         endTime?: number;
         /** 本次 LLM 思考内容 */
         thinkingContent?: string;
-        /** 本 step 实际使用的 aiRole；未显式指定时为 "default"。 */
+        /** 本 step 传给请求层的 aiRole，可能由图片路由规则推导，默认值为 "default"。 */
         aiRole?: string;
         /** 本 step 实际运行的 Agent 模式 */
         mode?: AgentMode;
         /** 本次 LLM 请求的 token 用量 */
         usage?: TokenUsage;
+        /** 本次请求实际追加的 attachmentContext key，内容存于所属 turn。 */
+        attachmentContextKeys?: string[];
         /** 本次 LLM 请求构建时记录的上下文追踪信息 */
         trace?: IterationTrace;
+        /** @deprecated 旧版同步子 Agent 记录位于此处；新子 turn 独立保存在 History 中。 */
+        turns?: SubAgentTurnRecord[];
       }
   >;
 
@@ -322,6 +397,8 @@ export interface TurnRecord {
   status: "success" | "abort" | "error";
   /** 错误信息（status === 'error' 时有值） */
   error?: string;
+  /** Agent 明确识别的稳定业务错误码；未知异常仅保留 error 原文。 */
+  errorCode?: TurnErrorCode;
   /**
    * 是否已被 retry 替代（仅对 iterations 为空的 error turn 有效）。
    * 标记后该 turn 不再参与 LLM 上下文构建，但保留在历史记录中供 UI 展示。
@@ -354,6 +431,9 @@ export interface TurnRecord {
   /** 用户是否主动关闭了本轮建议展示。 */
   suggestionsDismissed?: boolean;
 
+  /** compact/summary 相关的任务记录。 */
+  effects?: AgentEffect[];
+
   /**
    * 是否已被用户删除（软删除）。
    * 标记后该 turn 不进入 LLM 上下文构建，也不在 UI 中展示。
@@ -363,6 +443,34 @@ export interface TurnRecord {
 }
 
 export type LLMIteration = Exclude<TurnRecord["iterations"][number], WarmupIter>;
+
+// ─── SubAgentTurnRecord ────────────────────────────────────────────────────────
+
+/**
+ * 子 Agent（call-sub-agent / init-project）执行产生的 TurnRecord。
+ *
+ * 结构上仍然是一个完整的 TurnRecord（可复用所有现有的历史重建 / UI 渲染逻辑），
+ * 只是额外补充了几个用于和父级 toolCall、父子 Agent 关联的显式字段，
+ * 避免把这类结构性信息塞进 `extra`（extra 仅用于业务方透传的裸数据）。
+ */
+export interface SubAgentTurnRecord extends TurnRecord {
+  /** 父 Agent 发起此次子 turn 的轮次。 */
+  parentTurnId: string;
+  /** 后台执行；无 endTime 表示尚未结束。 */
+  async?: boolean;
+  title?: string;
+  /** 本次子 Agent 的唯一标识（ForkAgent.key，由 createFork 分配） */
+  agentKey: string;
+  /** 子 Agent 类型，对应 SubAgentConfig.name；init-project 为工具名 */
+  subAgentType: string;
+  /** 关联的父级 toolCall（call-sub-agent / init-project 那条 ToolCallRecord 的 callId），与同一 iteration 下的 toolCalls 一一对应 */
+  callId: string;
+  /**
+   * 父级 Agent 的 agentKey；顶层 Agent 发起的子 Agent 为 undefined。
+   * 多级嵌套时用于快速定位，不是关联关系的唯一来源（树形嵌套位置本身已经体现父子关系）。
+   */
+  parentAgentKey?: string;
+}
 
 // ─── VersionRecord ───────────────────────────────────────────────────────────
 
@@ -474,10 +582,10 @@ export interface History {
    */
   loadCompact(key: string): Promise<CompactRecord | null>;
   /**
-   * 保存（覆盖写）该 agentKey 的 compact 记录。
+   * 保存（覆盖写）该 agentKey 的 compact 记录；传入 null 时清除已有记录。
    * 一个 agent 只保留一条最新的 compact 记录。
    */
-  saveCompact(key: string, record: CompactRecord): Promise<void>;
+  saveCompact(key: string, record: CompactRecord | null): Promise<void>;
 
   // ── 版本快照 ──────────────────────────────────────────────────────────────
   //
@@ -569,10 +677,12 @@ export class ToolValidationError extends Error {
  *   - title    工具卡片展示标题（简短，如文件名）
  *   - output   发给 LLM 的文本内容（function call result）
  *   - metadata 持久化元数据，前端渲染可用（如路径、行数、策略等）
+ *   - attachments 工具产出的媒体附件，由 Agent 写入 tool message 后交给请求层按模型能力发送
  */
 export interface ToolResult {
   output: string;
   metadata?: Record<string, any>;
+  attachments?: Attachment[];
 }
 
 /**
@@ -616,6 +726,13 @@ export interface Tool {
    * 注意：ToolRecord 类型在 UI 包中定义（@plugin-ai/plugin），此处用 any 避免循环依赖。
    */
   render?: (tool: any) => any;
+  /**
+   * 摘要渲染函数（可选）。用于「连续工具调用聚合折叠」场景下，折叠行里展示的一句话摘要。
+   * 与 render 是两个独立的函数：不传表示该工具不支持被聚合展示（聚合时会单独成一段，
+   * 不会影响相邻工具的聚合判断），传了就返回一段纯文本摘要（不支持返回 React 节点）。
+   * 注意：ToolRecord 类型在 UI 包中定义（@plugin-ai/plugin），此处用 any 避免循环依赖。
+   */
+  summaryRender?: (tool: any) => string | null;
 }
 
 /**
@@ -669,6 +786,26 @@ export function hasNoToolCalls(iterations: TurnRecord["iterations"]): boolean {
 
 // ─── 从 TurnRecord[] 重建 LLM messages ───────────────────────────────────────
 
+export function attachmentContextToText(attachmentContext?: AttachmentContext): string {
+  if (!attachmentContext) return "";
+  return Object.keys(attachmentContext)
+    .sort((a, b) => Number(attachmentContext[a]?.dedupThreshold === "always") - Number(attachmentContext[b]?.dedupThreshold === "always") || a.localeCompare(b))
+    .map((key) => attachmentContext[key]?.content)
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** 获取最后一次成功 iter 实际携带的上下文；旧记录无选择信息时保留原内容。 */
+export function getTurnAttachmentContext(turn: TurnRecord): AttachmentContext | undefined {
+  if (!turn.attachmentContext) return undefined;
+  const iters = getLLMIterations(turn.iterations);
+  const last = iters[iters.length - 1];
+  const keys = last?.attachmentContextKeys;
+  if (!Array.isArray(keys)) return turn.attachmentContext;
+  return Object.fromEntries(keys.filter(key => typeof key === "string" && turn.attachmentContext?.[key])
+    .map(key => [key, turn.attachmentContext![key]]));
+}
+
 /**
  * 将历史 TurnRecord[] 展开为 LLM 可直接使用的 messages 列表。
  * 包含所有状态的轮次（success / error / abort）——由调用方决定是否过滤。
@@ -712,19 +849,25 @@ export function turnsToMessages(
 
     // ── Handoff 模式：整个 turn 替换为 user + assistant(handoff summary) ──────
     if (handoffTurnIds?.has(turn.id)) {
-      messages.push({ role: "user", content: userText });
+      messages.push({ role: "user", content: userText, contextTurnId: turn.id });
       messages.push({ role: "assistant", content: formatHandoffMessageContent(turn.handoff ?? "") });
       continue;
     }
 
     // ── 普通模式 ──────────────────────────────────────────────────────────────
-    const userContent: Message["content"] = turn.userAttachments.length
+    const userContent: Message["content"] = turn.userAttachments?.length
       ? [
           { type: "text", text: userText },
           ...turn.userAttachments.map(attachmentToMessagePart),
         ]
       : userText;
-    messages.push({ role: "user", content: userContent });
+    // 以最后一次成功 iter 的选择重建该轮上下文，兼容旧记录。
+    const visibleContext = getTurnAttachmentContext(turn);
+    const attachmentContextText = attachmentContextToText(visibleContext);
+    if (attachmentContextText) {
+      messages.push({ role: "user", content: attachmentContextText, isAttachmentContext: true, contextTurnId: turn.id, contextEntries: visibleContext });
+    }
+    messages.push({ role: "user", content: userContent, contextTurnId: turn.id });
 
     // ── abort 且无工具调用：插入中断提示，让 LLM 知道该轮被用户取消 ──
     if (turn.status === "abort" && hasNoToolCalls(turn.iterations)) {
@@ -735,7 +878,7 @@ export function turnsToMessages(
     // 用 iterations 重建 ReAct 序列（向后兼容：无 iterations 时降级到简单 assistant 消息）
     if (turn.iterations?.length) {
       for (const iter of getLLMIterations(turn.iterations)) {
-        const completedToolCalls = iter.toolCalls.filter((tc) => tc.status !== "pending");
+        const completedToolCalls = (iter.toolCalls ?? []).filter((tc) => tc.status !== "pending");
         if (completedToolCalls.length > 0) {
           // assistant 消息带 tool_calls
           const assistantMsg: Message = {
@@ -754,18 +897,7 @@ export function turnsToMessages(
           messages.push(assistantMsg);
           // 每个工具调用对应一条 tool 消息
           for (const tc of completedToolCalls) {
-            const toolResult = tc.status === "error"
-              ? `Error: ${tc.error}`
-              : tc.result?.output ?? "";
-            messages.push({
-              role: "tool",
-              content: toolResult,
-              tool_call_id: tc.callId,
-              ...(tc.status !== "pending" ? { status: tc.status } : {}),
-              ...(tc.errorType ? { errorType: tc.errorType } : {}),
-              // 透传附件，由请求层按 capabilities 预处理
-              ...(tc.attachments?.length ? { attachments: tc.attachments } : {}),
-            });
+            messages.push(toolCallRecordToMessage(tc, { isCancelled: turn.status === "abort" }));
           }
         } else {
           // 纯文本回复（最后一轮或无工具调用的迭代）
@@ -787,8 +919,6 @@ export function turnsToMessages(
 export type {
   AgentHooks,
   AgentOptions,
-  AgentsMdConfig,
-  AgentsMdConfigResolver,
   ForkAgentOptions,
   ForkOptions,
   FormatUserMessageResult,
@@ -800,6 +930,8 @@ export type {
   MessageRequestAIOptions,
   DisplayModelRequestAIOptions,
   ToolExecutionContext,
+  ToolExecutionParams,
+  ToolExecutor,
   TurnMessageSnapshot,
   TurnPersistMode,
 } from "./agent";

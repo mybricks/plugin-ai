@@ -1,4 +1,4 @@
-import type { Sandbox, UnifiedFile } from "../../../agent/src";
+import type { AgentSandbox, UnifiedFile } from "../../../agent/src";
 
 export type InitialFile = Pick<UnifiedFile, "path" | "content">;
 
@@ -25,7 +25,7 @@ export function getSyncableInitialFiles(
 }
 
 /** 判断一组已读取文件是否命中某些应用产生的 App 空文件组合脏数据。 */
-export function hasDirtyAppSnapshot(files: InitialFile[]): boolean {
+function hasDirtyAppSnapshot(files: InitialFile[]): boolean {
   return hasDirtyAppPaths(
     files.filter((file) => file.content === "").map((file) => file.path),
   );
@@ -37,7 +37,7 @@ export function hasDirtyAppPaths(paths: Iterable<string>): boolean {
 }
 
 /** 返回路径集合中命中某些应用产生的空文件组合的 App 目录。 */
-export function getDirtyAppDirectories(paths: Iterable<string>): Set<string> {
+function getDirtyAppDirectories(paths: Iterable<string>): Set<string> {
   const normalizedPaths = new Set(Array.from(paths, normalizePath));
   return new Set(Array.from(normalizedPaths).flatMap((path) => {
     const appDirectory = path.match(/^(App\d*)\/index\.jsx$/)?.[1];
@@ -54,10 +54,11 @@ export function getDirtyAppDirectories(paths: Iterable<string>): Set<string> {
  * 只读虚拟文件由权限字段保护，不会被删除。
  */
 export async function syncInitialFiles(
-  sandbox: Sandbox,
+  sandbox: AgentSandbox,
   initialFiles: InitialFile[],
 ): Promise<void> {
-  const currentFiles = await sandbox.getFiles();
+  const entries = await sandbox.files.list("", { recursive: true });
+  const currentFiles = await sandbox.files.readFiles(entries.filter((entry) => entry.type !== "directory").map((entry) => entry.path));
   const desiredByPath = new Map<string, InitialFile>();
 
   for (const file of initialFiles) {
@@ -76,36 +77,28 @@ export async function syncInitialFiles(
     })
     .map((file) => file.path);
 
-  if (filesToUpdate.length) await sandbox.updateFiles(filesToUpdate);
-  if (pathsToDelete.length) await sandbox.deleteFiles(pathsToDelete);
+  if (filesToUpdate.length) await sandbox.files.writeFiles(filesToUpdate);
+  if (pathsToDelete.length) await sandbox.files.removeFiles(pathsToDelete);
 }
 
 export interface AttachFilesOptions {
-  sandbox: Sandbox;
+  sandbox: AgentSandbox;
   initialFiles?: InitialFile[];
-  /** remoteAgent 传入 workspace 快照同步；成功时优先使用其结果。 */
-  syncWorkspace?: () => Promise<void>;
 }
 
 /**
  * 统一挂载文件初始化，并将其作为请求和 workspaceReady 的共同前置条件。
- * - 本地 CodeAgent：仅配置 initialFiles 时 patch；否则直接就绪。
- * - remoteAgent：优先同步 workspace；失败后有 initialFiles 才回退 patch，否则保持失败。
+ * 本地 CodeAgent 在提供 initialFiles 时同步，否则直接就绪。
  */
 export function attachFiles<T extends { requestAI: (params: any) => Promise<void> }>(
   agent: T,
-  { sandbox, initialFiles, syncWorkspace }: AttachFilesOptions,
+  { sandbox, initialFiles }: AttachFilesOptions,
 ): Promise<void> {
   const patchInitialFiles = () => {
     if (!hasInitialFiles(initialFiles)) return Promise.resolve();
     return syncInitialFiles(sandbox, initialFiles);
   };
-  const ready = syncWorkspace
-    ? syncWorkspace().catch(async (error) => {
-      if (!hasInitialFiles(initialFiles)) throw error;
-      await syncInitialFiles(sandbox, initialFiles);
-    })
-    : patchInitialFiles();
+  const ready = patchInitialFiles();
   // 首个请求或宿主读取 workspaceReady 前失败时，避免触发未处理 rejection；原 Promise 仍保持 reject 状态。
   void ready.catch(() => undefined);
   const requestAI = agent.requestAI.bind(agent);

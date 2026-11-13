@@ -7,6 +7,25 @@ const pluginSrc = path.resolve(__dirname, "../plugin/src");
 const agentSrc = path.resolve(__dirname, "../agent/src");
 
 /**
+ * Playground runs source packages directly. Some kit presets import Markdown
+ * prompt sections as modules, so turn those files into string exports before
+ * Vite's import analysis attempts to parse their Markdown as JavaScript.
+ */
+function markdownAsRawTextPlugin(): Plugin {
+  return {
+    name: "markdown-as-raw-text",
+    enforce: "pre",
+    transform(code, id) {
+      if (!id.split("?", 1)[0].endsWith(".md")) return;
+      return {
+        code: `export default ${JSON.stringify(code)};`,
+        map: null,
+      };
+    },
+  };
+}
+
+/**
  * 将主工程源码中的 `.less` 导入重定向到同名的虚拟 `.module.less` 文件，
  * 让 Vite 内置 CSS Module 管道生效（它通过文件名后缀 .module.less 判断）。
  *
@@ -69,7 +88,7 @@ function lessAsCssModulesPlugin(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [lessAsCssModulesPlugin(), react()],
+  plugins: [markdownAsRawTextPlugin(), lessAsCssModulesPlugin(), react()],
   resolve: {
     alias: {
       "@agent": path.resolve(__dirname, "../agent/src"),

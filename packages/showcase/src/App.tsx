@@ -1,0 +1,395 @@
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import pluginAI from "@plugin/index";
+import type { PluginAIParams } from "@plugin/index";
+import { IDBHistory, Tools } from "@agent/index";
+import { loadDesigner, type DesignerComponent, type DesignerInstance } from "./designer-runtime";
+import { deleteDump, listDumps, loadDump, saveDump, deleteFileDump, listFileDumps, loadFileDump, saveFileDump, type DumpSummary, type StorageSource } from "./storage";
+import { mybricksConfig } from "./config";
+import { createTestAIPluginParams } from "./test-ai";
+import { applyShowcaseLocale, getShowcaseLocale, type ShowcaseLocale } from "./locale";
+import "./styles.css";
+import { createDomainAuditPlugin, createTaskFirstPlugin } from "../../kit/src";
+
+function getWorkspaceId() {
+  const pathId = window.location.pathname.match(/^\/app\/([^/]+)/)?.[1];
+  const queryId = new URLSearchParams(window.location.search).get("id");
+  return pathId ? decodeURIComponent(pathId) : queryId ?? "";
+}
+
+type Scenario = "local" | "task" | "task-overview" | "audit" | "remote" | "mcp";
+function getScenario(): Scenario {
+  const value = new URLSearchParams(window.location.search).get("scene");
+  return value === "task" || value === "task-overview" || value === "audit" || value === "remote" || value === "mcp" ? value : "local";
+}
+
+function workspaceUrl(id: string, scenario: Scenario, source: StorageSource = "indexeddb") {
+  return `/app/${encodeURIComponent(id)}?scene=${scenario}&source=${source}`;
+}
+
+function promptFileName(id: string, source: StorageSource): string | null {
+  const name = window.prompt("请输入本地 .ui 文件名", source === "file" ? `${id}-副本` : id);
+  if (name === null) return null;
+  const fileId = name.trim().replace(/\.ui$/i, "").trim();
+  if (!fileId) {
+    window.alert("文件名不能为空");
+    return null;
+  }
+  return fileId;
+}
+
+function Landing() {
+  const [dumps, setDumps] = useState<DumpSummary[]>([]);
+  const [files, setFiles] = useState<DumpSummary[]>([]);
+  const [source, setSource] = useState<StorageSource>("indexeddb");
+  const [id, setId] = useState("");
+  const [scene, setScene] = useState<Scenario>("local");
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let active = true;
+    setDumps([]);
+    setFiles([]);
+    setError("");
+    if (scene !== "remote") {
+      listDumps(scene).then((items) => { if (active) setDumps(items); }).catch(() => { if (active) setError("读取本地工作区失败"); });
+      listFileDumps(scene).then((items) => { if (active) setFiles(items); }).catch(() => { if (active) setError("读取 .ui 文件失败，请使用 showcase 开发服务"); });
+    }
+    return () => { active = false; };
+  }, [scene]);
+  const open = (workspaceId: string, selectedSource = source) => {
+    if (workspaceId.trim()) window.location.assign(workspaceUrl(workspaceId.trim(), scene, selectedSource));
+  };
+  const transfer = async (workspaceId: string, selectedSource: StorageSource) => {
+    if (scene === "remote") return;
+    const fileId = promptFileName(workspaceId, selectedSource);
+    if (fileId === null) return;
+    try {
+      const dump = selectedSource === "file" ? await loadFileDump(workspaceId, scene) : await loadDump(workspaceId, scene);
+      if (dump === null) throw new Error(selectedSource === "file" ? "本地文件不存在" : "IndexedDB 中找不到工作区");
+      await saveFileDump(fileId, dump, scene, false);
+      setFiles(await listFileDumps(scene));
+      setError("");
+    } catch (err) { setError(err instanceof Error ? err.message : "转存失败"); }
+  };
+  const removeFile = async (workspaceId: string) => {
+    if (scene === "remote" || !window.confirm(`确定删除本地文件“${workspaceId}.ui”？`)) return;
+    try {
+      await deleteFileDump(workspaceId, scene);
+      setFiles(await listFileDumps(scene));
+      setError("");
+    } catch (err) { setError(err instanceof Error ? err.message : "删除失败"); }
+  };
+  return <main className="landing"><div className="landing-content">
+    <p className="eyebrow">PLUGIN AI / SHOWCASE</p>
+    <h1>选择一个场景</h1><p className="landing-lead">选择运行方式，然后打开已有工作区或输入 ID。</p>
+    <div className="scene-grid">{([
+      ["local", "本地 Agent", "在浏览器中运行 Agent"],
+      ["task", "任务视图", "本地 Agent 与任务视图"],
+      ["task-overview", "任务总览", "生成任务并维护模块、页面与组件的关联"],
+      ["audit", "领域审计", "开启 audit-domain 插件，测试领域审计工具"],
+      ["remote", "服务端 Agent", "连接本地 aicode-agents"],
+      ["mcp", "MCP 测试", "通过本地 MCP 连接设计器和虚拟文件"],
+    ] as const).map(([value, title, description]) => <button key={value} className={`scene-card ${scene === value ? "selected" : ""}`} onClick={() => setScene(value)} aria-pressed={scene === value}><strong>{title}</strong><span>{description}</span></button>)}</div>
+    <form className="open-workspace" onSubmit={(event) => { event.preventDefault(); open(id); }}>
+      <label htmlFor="workspace-id">{scene === "remote" ? "服务端 Workspace ID" : "工作区 ID"}</label>
+      {scene !== "remote" && <label className="source-picker">保存位置 <select value={source} onChange={(event) => setSource(event.target.value as StorageSource)}><option value="indexeddb">IndexedDB</option><option value="file">本地 .ui 文件</option></select></label>}
+      <div><input id="workspace-id" value={id} onChange={(event) => setId(event.target.value)} placeholder={scene === "remote" ? "输入已有的服务端 workspace ID" : "输入或新建工作区 ID"} /><button disabled={!id.trim()}>打开工作区 →</button></div>
+    </form>
+    {scene !== "remote" && <section className="saved-workspaces"><h2>IndexedDB 工作区 <span>{dumps.length}</span></h2><p>保存在当前浏览器中，可转存到本地文件。</p>
+      {error && <p className="landing-error">{error}</p>}
+      {dumps.length === 0 ? <p className="empty-workspaces">暂无已保存的工作区</p> : dumps.map((item) => <div className="workspace-row" key={item.id}><strong>{item.id}</strong><time>{new Date(item.updatedAt).toLocaleString()}</time><button type="button" onClick={() => void transfer(item.id, "indexeddb")}>转存 .ui</button><button type="button" onClick={() => open(item.id, "indexeddb")}>打开 →</button></div>)}
+      <h2>本地 .ui 文件 <span>{files.length}</span></h2><p>存放于 packages/showcase/ui-files/{scene}/。</p>
+      {files.length === 0 ? <p className="empty-workspaces">暂无本地文件</p> : files.map((item) => <div className="workspace-row" key={item.id}><strong>{item.id}</strong><time>{new Date(item.updatedAt).toLocaleString()}</time><button type="button" onClick={() => void transfer(item.id, "file")}>转存 .ui</button><button type="button" onClick={() => void removeFile(item.id)}>删除</button><button type="button" onClick={() => open(item.id, "file")}>打开 →</button></div>)}
+    </section>}
+  </div></main>;
+}
+
+function FaultControl() {
+  const [mode, setMode] = useState("off");
+  const [status, setStatus] = useState("");
+  const read = async () => {
+    try { const response = await fetch("/__llm_fault/status"); if (!response.ok) throw new Error(); const data = await response.json(); setMode(data.mode); setStatus(""); }
+    catch { setStatus("故障代理未连接，请先启动 aicode-agents 测试代理。"); }
+  };
+  useEffect(() => { void read(); }, []);
+  const change = async (next: string) => {
+    try {
+      const response = await fetch("/__llm_fault/mode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: next }) });
+      if (!response.ok) throw new Error();
+      setMode((await response.json()).mode); setStatus("");
+    } catch { setStatus("设置失败，请确认故障代理已启动。"); }
+  };
+  return <div className="fault-control"><strong>模型故障注入</strong><select aria-label="模型故障注入" value={mode} onChange={(event) => void change(event.target.value)}><option value="off">正常透传</option><option value="http503">HTTP 503</option><option value="disconnect">连接断开</option></select><span>{status || (mode === "off" ? "模型请求透传" : "持续生效，重试前切回正常透传")}</span></div>;
+}
+
+function createConfig(dump: unknown, aiPlugin: unknown) {
+  console.log('mybricksConfig.aiComLib.url', mybricksConfig.aiComLib.url)
+  return {
+    vibeCoding: { useIframe: false },
+    comLibLoader: async () => mybricksConfig.aiComLib.url ? [mybricksConfig.aiComLib.url] : [],
+    pageContentLoader: () => dump || "{}",
+    toplView: {},
+    editView: {
+      items: (_props: unknown, category: { title?: string; items?: unknown[] }) => {
+        category.title = "";
+        category.items = [];
+      }
+    },
+    geoView: {
+      scenes: {
+        adder: [{
+          type: "normal",
+          title: "AI 页面",
+          template: { namespace: "mybricks.basic-comlib.ai-mix", deletable: false, asRoot: true },
+          widthAuto: true
+        }]
+      }
+    },
+    plugins: [aiPlugin],
+    promptSections: {
+      documentGuide: {
+        firstOfAll: '',
+        requirementGuide: '',
+      }
+    },
+    componentRuntime: {
+      eslint: {
+        rules: {
+          'requirement-check': 'off',
+          'jsdoc-check': 'off',
+        },
+      },
+    },
+  };
+}
+
+function readProjectFile(text: string): Record<string, unknown> {
+  const project: unknown = JSON.parse(text);
+
+  if (
+    !project
+    || typeof project !== "object"
+    || Array.isArray(project)
+    || !("content" in project)
+    || !(project as { content?: unknown }).content
+  ) {
+    throw new Error("数据格式不正确，请导入从 MyBricks 导出的 .ui 或 dumpJson（.json）文件。");
+  }
+
+  return project as Record<string, unknown>;
+}
+
+export default function App() {
+  const id = useMemo(getWorkspaceId, []);
+  const scenario = useMemo(getScenario, []);
+  const source: StorageSource = useMemo(() => new URLSearchParams(window.location.search).get("source") === "file" ? "file" : "indexeddb", []);
+  const [locale] = useState(() => {
+    const initialLocale = getShowcaseLocale();
+    applyShowcaseLocale(initialLocale);
+    return initialLocale;
+  });
+  const designerRef = useRef<DesignerInstance | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+  const [Designer, setDesigner] = useState<DesignerComponent | null>(null);
+  const [initialDump, setInitialDump] = useState<unknown | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [isLocaleOpen, setIsLocaleOpen] = useState(false);
+  const [mcpStatus, setMcpStatus] = useState<"connecting" | "connected" | "disconnected">("disconnected");
+  const [mcpEntered, setMcpEntered] = useState(false);
+  const [mcpActivity, setMcpActivity] = useState("");
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    if (!id) return;
+    let active = true;
+    Promise.all([loadDesigner(), scenario === "remote" ? Promise.resolve(null) : source === "file" ? loadFileDump(id, scenario) : loadDump(id, scenario)])
+      .then(([designer, dump]) => {
+        if (!active) return;
+        setDesigner(() => designer);
+        setInitialDump(dump);
+      })
+      .catch((error) => { if (active) setLoadError(error instanceof Error ? error.message : "加载工作区失败"); })
+      .finally(() => active && setIsLoading(false));
+    return () => { active = false; };
+  }, [id, scenario, source]);
+
+  const aiPlugin = useMemo(() => {
+    if (!id) return null;
+    let namespace = "showcase";
+    let localHistory = true;
+    let sceneParams: Partial<PluginAIParams> = {};
+
+    switch (true) {
+      case scenario === "task":
+        namespace = "showcase-task";
+        sceneParams = { plugins: [createTaskFirstPlugin()] };
+        break;
+      case scenario === "task-overview":
+        namespace = "showcase-task-overview";
+        sceneParams = { plugins: [createTaskFirstPlugin({ overview: true })] };
+        break;
+      case scenario === "audit":
+        namespace = "showcase-audit";
+        sceneParams = { plugins: [createDomainAuditPlugin()] };
+        break;
+      case scenario === "remote":
+        namespace = "showcase-remote";
+        localHistory = false;
+        sceneParams = {
+          remoteAgent: { baseUrl: "http://localhost:3001/agents/api", workspaceId: id },
+          tools: [Tools.createAskQuestions()],
+        };
+        break;
+      case scenario === "mcp":
+        sceneParams = {
+          mcp: {
+            bridgeUrl: "/__plugin-ai/bridge",
+            workspaceId: id,
+            onStatus: setMcpStatus,
+            onWorkspaceChange: setMcpEntered,
+            onActivity: setMcpActivity,
+            tools: ["read_file", "write_file", "edit_file", "multi_edit", "delete_file", "grep_search", "check-status"],
+          },
+        };
+        break;
+    }
+
+    const params: PluginAIParams = {
+      ...createTestAIPluginParams(),
+      key: `@mybricks/plugin-ai/${namespace}/${id}`,
+      codingConfig: { availableLibraries: [] },
+      plugins: [],
+      ...sceneParams,
+    };
+    if (localHistory) {
+      params.history = new IDBHistory({ dbName: `@mybricks/plugin-ai/${namespace}/history/${id}` });
+    }
+    return pluginAI(params);
+  }, [id, scenario]);
+
+  const config = useMemo(
+    () => (Designer && aiPlugin ? createConfig(initialDump, aiPlugin) : null),
+    [Designer, aiPlugin, initialDump]
+  );
+
+  const save = async () => {
+    if (!designerRef.current) return;
+    setIsSaving(true);
+    try {
+      if (scenario !== "remote") await (source === "file" ? saveFileDump(id, designerRef.current.dump(), scenario) : saveDump(id, designerRef.current.dump(), scenario));
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "保存失败");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const clear = async () => {
+    if (!window.confirm("清空当前设计器文件？已保存的 dump 会被删除。")) return;
+    setIsClearing(true);
+    try {
+      if (scenario !== "remote") await (source === "file" ? deleteFileDump(id, scenario) : deleteDump(id, scenario));
+      window.location.reload();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "清空失败");
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
+  const importProject = async (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    // 允许用户连续选择同一份文件。
+    input.value = "";
+    if (!file) return;
+
+    setIsImporting(true);
+    try {
+      const project = readProjectFile(await file.text());
+      if (!window.confirm("导入会覆盖当前工作区中已保存的设计器数据，是否继续？")) return;
+      if (scenario !== "remote") await (source === "file" ? saveFileDump(id, project, scenario) : saveDump(id, project, scenario));
+      window.location.reload();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "导入失败");
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const importRxAI = async () => {
+    const importHistory = (window as typeof window & {
+      __importRxAIJson__?: () => Promise<boolean>;
+    }).__importRxAIJson__;
+    if (await importHistory?.()) window.location.reload();
+  };
+
+  const transferToFile = async () => {
+    if (scenario === "remote" || !designerRef.current) return;
+    const fileId = promptFileName(id, source);
+    if (fileId === null) return;
+    try {
+      await saveFileDump(fileId, designerRef.current.dump(), scenario, false);
+      window.alert(`已转存 .ui 文件：${fileId}`);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "转存失败");
+    }
+  };
+
+  const changeLocale = (nextLocale: ShowcaseLocale) => {
+    if (nextLocale === locale) return;
+    applyShowcaseLocale(nextLocale);
+    window.location.reload();
+  };
+
+  const selectLocale = (nextLocale: ShowcaseLocale) => {
+    setIsLocaleOpen(false);
+    changeLocale(nextLocale);
+  };
+
+  if (!id) return <Landing />;
+  if (isLoading) return <main className="status">正在载入设计器…</main>;
+  if (loadError) return <main className="status error">{loadError} <a href="/">返回场景入口</a></main>;
+  if (!Designer || !config) return <main className="status error">设计器配置不可用。</main>;
+
+  return (
+    <main className="designer-page">
+      {scenario === "remote" && <FaultControl />}
+      {scenario === "mcp" && <div className="fault-control"><strong>MCP 测试 · {mcpStatus === "connected" ? "已连接" : mcpStatus === "connecting" ? "连接中" : "未连接"}</strong><span>工作区 {id} · {mcpEntered ? "Codex 已进入" : "未进入"}{mcpActivity ? ` · 最近操作：${mcpActivity}` : ""}</span><details><summary>本地 Codex 连接信息</summary><p>MCP 地址：{window.location.origin}/__plugin-ai/mcp</p><p>无需令牌。完整配置步骤见 packages/mcp/README.md。</p></details></div>}
+      <div className="designer-content">
+      <div className="locale-switcher">
+        <button
+          className="text-button"
+          aria-expanded={isLocaleOpen}
+          aria-haspopup="menu"
+          onClick={() => setIsLocaleOpen((open) => !open)}
+        >
+          {locale === "zh" ? "中文" : "EN"} <span aria-hidden="true">⌄</span>
+        </button>
+        {isLocaleOpen && (
+          <div className="locale-menu" role="menu">
+            <button role="menuitem" disabled={locale === "zh"} onClick={() => selectLocale("zh")}>中文</button>
+            <button role="menuitem" disabled={locale === "en"} onClick={() => selectLocale("en")}>EN</button>
+          </div>
+        )}
+      </div>
+      <Designer
+        ref={designerRef}
+        config={config}
+        toolbar={() => (
+          <div className="toolbar">
+            <a className="text-button" href="/">场景入口</a>
+            {scenario !== "remote" && <><span>{source === "file" ? "本地 .ui" : "IndexedDB"}</span><button className="text-button" disabled={isSaving} onClick={() => void save()}>{isSaving ? "保存中…" : "保存"}</button>
+            <button className="text-button" onClick={() => void transferToFile()}>转存 .ui</button>
+            <button className="text-button" disabled={isImporting} onClick={() => importInputRef.current?.click()}>{isImporting ? "导入中…" : "导入 .ui / JSON"}</button>
+            <button className="text-button" onClick={() => void importRxAI()}>导入 .rxai</button>
+            <button className="text-button" disabled={isClearing} onClick={() => void clear()}>{isClearing ? "清空中…" : "清空"}</button></>}
+          </div>
+        )}
+      /></div>
+      <input ref={importInputRef} className="file-input" type="file" accept=".ui,.json,application/json" onChange={(event) => void importProject(event)} />
+    </main>
+  );
+}

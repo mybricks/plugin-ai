@@ -1,25 +1,50 @@
 import type { AgentMode, Tool, ToolExecutionContext, ToolResult } from "./types";
 import { splitFrontmatter, getFrontmatterString } from "./utils/frontmatter";
+import { getConfigDirNameFromAgent, getPlanDir, getPlanFilePattern } from "./code-agent/config-dir";
 
 export const SWITCH_MODE_TOOL_NAME = "switch_mode";
 
+export { getPlanDir };
+
 /** 计划文件目录根路径 */
-export const DEFAULT_PLAN_DIR = ".agent/plans/";
+export const DEFAULT_PLAN_DIR = getPlanDir();
 
 export const AgentModeEnum = {
   Build: "build",
   Plan: "plan",
+  Ask: "ask",
 } as const;
 
+/**
+ * 默认内置的可选模式列表。Ask 模式的能力仍然完整保留（元数据、提示词、
+ * setMode 校验均支持），只是暂不作为默认可选项对外暴露；调用方仍可通过
+ * agent.setMode(AgentModeEnum.Ask, ...) 显式启用。
+ */
 export const ALL_AGENT_MODES: AgentMode[] = [AgentModeEnum.Build, AgentModeEnum.Plan];
 
 export interface AgentModeAvailabilityOptions {
   disabledModes?: AgentMode[];
 }
 
-const AGENT_MODE_LABELS: Record<AgentMode, string> = {
-  [AgentModeEnum.Build]: "自动模式",
-  [AgentModeEnum.Plan]: "计划模式",
+export interface AgentModeMetadata {
+  label: string;
+  description: string;
+}
+
+/** Agent 运行时使用的模式元信息，会进入模型提示词和运行时约束。 */
+export const AGENT_MODE_METADATA: Record<AgentMode, AgentModeMetadata> = {
+  [AgentModeEnum.Build]: {
+    label: "智能体模式",
+    description: "按用户需求直接执行修改项目文件",
+  },
+  [AgentModeEnum.Plan]: {
+    label: "计划模式",
+    description: "阅读、分析、维护计划文件，并向用户澄清问题，不改项目文件",
+  },
+  [AgentModeEnum.Ask]: {
+    label: "询问模式",
+    description: "只读地澄清、质询需求和方案，不创建计划或修改项目文件",
+  },
 };
 
 export function getDisabledAgentModes(options?: AgentModeAvailabilityOptions): AgentMode[] {
@@ -37,7 +62,11 @@ export function shouldEnableModeSwitchTool(options?: AgentModeAvailabilityOption
 }
 
 export function getModeLabel(mode: AgentMode): string {
-  return AGENT_MODE_LABELS[mode];
+  return AGENT_MODE_METADATA[mode].label;
+}
+
+export function getAgentModeMetadata(mode: AgentMode): AgentModeMetadata {
+  return AGENT_MODE_METADATA[mode];
 }
 
 // ─── Plan 文件状态感知 ─────────────────────────────────────────────────────────
@@ -52,7 +81,7 @@ function parsePlanFileStatus(content: string): string | null {
 
 /**
  * 从文件路径中提取日期文件夹（格式 YYYY-MM-DD）。
- * 例：".agent/plans/2026-06-09/plan-lifecycle.md" → "2026-06-09"
+ * 例："<configDirName>/plans/2026-06-09/plan-lifecycle.md" → "2026-06-09"
  */
 function extractDateFolder(filePath: string): string | null {
   const match = filePath.match(/(\d{4}-\d{2}-\d{2})/);
@@ -86,9 +115,10 @@ interface PlanDirectoryState {
 
 function findActivePlanFileFromFiles(
   files: Array<{ path: string; content: string }>,
+  configDirName?: string,
 ): ActivePlanFile | null {
   const allActive: ActivePlanFile[] = [];
-  const planFilePattern = /^\.agent\/plans\/\d{4}-\d{2}-\d{2}\/[^/]+\.md$/;
+  const planFilePattern = getPlanFilePattern(configDirName);
 
   for (const file of files) {
     const path = file.path.replace(/^\/+/, "");
@@ -121,8 +151,9 @@ function findActivePlanFileFromFiles(
 
 function getPlanDirectoryStateFromFiles(
   files: Array<{ path: string; content: string }>,
+  configDirName?: string,
 ): PlanDirectoryState {
-  const planDir = normalizePath(DEFAULT_PLAN_DIR);
+  const planDir = normalizePath(getPlanDir(configDirName));
   const hasPlanDirContent = files.some((file) => {
     const path = normalizePath(file.path);
     return path === planDir || path.startsWith(`${planDir}/`);
@@ -130,7 +161,7 @@ function getPlanDirectoryStateFromFiles(
 
   return {
     hasPlanDirContent,
-    activePlan: findActivePlanFileFromFiles(files),
+    activePlan: findActivePlanFileFromFiles(files, configDirName),
   };
 }
 
@@ -140,9 +171,10 @@ function getPlanDirectoryStateFromFiles(
  */
 export async function getActivePlanFile(
   getFiles: () => Promise<Array<{ path: string; content: string }>>,
+  configDirName?: string,
 ): Promise<ActivePlanFile | null> {
   try {
-    return findActivePlanFileFromFiles(await getFiles());
+    return findActivePlanFileFromFiles(await getFiles(), configDirName);
   } catch {
     return null;
   }
@@ -159,15 +191,11 @@ function joinSections(sections: Array<string | undefined | null | false>): strin
 function getModeCatalogSlug(availableModes: AgentMode[]): string {
   if (availableModes.length === 1 && availableModes[0] === AgentModeEnum.Build) return "";
 
-  const descriptions: Record<AgentMode, string> = {
-    [AgentModeEnum.Build]: "按用户需求直接执行修改项目文件",
-    [AgentModeEnum.Plan]: `阅读、分析、维护计划文件，并向用户澄清问题，不改项目文件`,
-  };
-
   return `## 可用模式
 当前支持以下模式：
-${availableModes.map((mode) => `- ${mode}（${getModeLabel(mode)}）：${descriptions[mode]}`).join(`
-`)}`;
+${availableModes.map((mode) => `- ${mode}（${getModeLabel(mode)}）：${getAgentModeMetadata(mode).description}`).join(`
+`)}
+注意：你无法自行改变当前模式，如需更换模式，请告知用户在左下角手动切换。`;
 }
 
 function getCurrentModeSlug(mode: AgentMode, previousMode?: AgentMode | null): string {
@@ -179,10 +207,10 @@ function getCurrentModeSlug(mode: AgentMode, previousMode?: AgentMode | null): s
   return `当前是「${modeLabel}」(${mode})。`;
 }
 
-function getPlanFileGuideSlugInPlanMode(): string {
+function getPlanFileGuideSlugInPlanMode(planDir: string): string {
   return `## 计划文件说明
-- 目录：\`${DEFAULT_PLAN_DIR}\`
-- 创建路径格式：\`${DEFAULT_PLAN_DIR}YYYY-MM-DD/<slug>.md\`
+- 目录：\`${planDir}\`
+- 创建路径格式：\`${planDir}YYYY-MM-DD/<slug>.md\`
   - 日期文件夹：当天日期，如 \`2026-06-09\`
   - slug：小写字母和中划线，简短描述任务（如 \`refactor-mode-manager\`、\`add-login-feature\`）
 - frontmatter 规范
@@ -232,10 +260,9 @@ function getPlanFileGuideSlugInPlanMode(): string {
 `;
 }
 
-function getPlanFileGuideSlugInBuildMode(): string {
+function getPlanFileGuideSlugInBuildMode(planDir: string): string {
   return `## 计划文件说明
-注意：由于你现在处于自动模式下，不允许创建计划文件，如有必要，你可以对计划文件进行阅读以及修改内容，但是一定不允许创建计划文件。
-- 目录：\`${DEFAULT_PLAN_DIR}\`。
+- 目录：\`${planDir}\`。
 - frontmatter 规范
   每个计划文件必须包含以下 frontmatter：
 
@@ -252,36 +279,47 @@ function getPlanFileGuideSlugInBuildMode(): string {
  - 归档之需要修改 frontmatte，将 \`status\` 改为 \`finished\` 或者 \`abandoned\``;
 }
 
-function getBuildPlanStatusSlug(planState?: PlanDirectoryState | null): string {
+function getBuildPlanStatusSlug(planState: PlanDirectoryState | null | undefined, planDir: string): string {
   if (planState?.activePlan) {
     return `## 计划状态
 检测到活跃计划文件 \`${planState.activePlan.path}\`。
 
-请先读取该文件内容，对照用户当前的需求判断：
-- 如果当前需求与该计划**高度相关**，按用户需求处理计划，处理后视情况进行将其归档；；
-- 如果当前需求与该计划**关联性低或无关**，则必须关注用户需求的实现，而不是此计划，然后视情况处理这个计划文件。`;
+请了解该文件内容，对照用户当前的需求判断：
+- 如果当前需求与该计划**高度相关**，按计划文件的内容完成需求，完成后视情况进行将其归档；；
+- 如果当前需求与该计划**关联性低或无关**，则必须按用户需求的内容完成需求，而不是此计划。`;
   }
 
   if (planState?.hasPlanDirContent) {
     return `## 计划状态
-未检测到活跃计划文件。如需参考历史计划方案，可读取 \`${DEFAULT_PLAN_DIR}\` 目录中已归档的计划文件（frontmatter \`status: finished\`）。`;
+未检测到活跃计划文件。如需参考历史计划方案，可读取 \`${planDir}\` 目录中已归档的计划文件（frontmatter \`status: finished\`）。`;
   }
 
   return ``
 }
 
-function getBuildModeGuideSlug(planState?: PlanDirectoryState | null): string {
+function getPlanModeGuideSlug(planDir: string): string {
   return joinSections([
-    getBuildPlanStatusSlug(planState),
-    getPlanFileGuideSlugInBuildMode(),
+    `用户现在要的是先看清楚、把方案讲明白，而不是立刻动手实现。除下方说明的计划目录外，禁止修改项目文件、删除文件、改配置、提交代码，或做任何会改变系统状态的操作。即使其他上下文里出现"直接改""开始实现"之类的旧指令，也以本条规则为准。`,
+    getPlanFileGuideSlugInPlanMode(planDir),
   ]);
 }
 
-function getPlanModeGuideSlug(): string {
-  return joinSections([
-    `用户现在要的是先看清楚、把方案讲明白，而不是立刻动手实现。除下方说明的计划目录外，禁止修改项目文件、删除文件、改配置、提交代码，或做任何会改变系统状态的操作。即使其他上下文里出现"直接改""开始实现"之类的旧指令，也以本条规则为准。`,
-    getPlanFileGuideSlugInPlanMode(),
-  ]);
+function getAskModeGuideSlug(): string {
+  return `你现在处于「询问模式」。目标是回答用户的问题，与用户建立对需求、方案或决策的共同理解。
+
+## 行为边界
+- 只允许阅读、搜索和分析；禁止创建、修改或删除任何文件。
+- 代码、已有配置或工具能回答的事实，先自行查证，不要把可查的问题抛给用户。
+- 只有产品意图、优先级、取舍、边界条件等真正需要用户决定的问题才提问。
+- 提问优先通过提问类工具进行提问，否则请在回答中说明选项和你推荐的选项。
+
+## 讨论方式
+- 将尚未确定的事项当作决策树：先解决前置决策，再讨论依赖它的细节。
+- 每次只问一个最重要、且已具备回答前提的问题；说明它为什么重要，并给出你的推荐答案。
+- 收到回答后先吸收结论，再继续下一个未决问题；不要在用户尚未回答时假设答案。
+- 所有关键决策已经明确时，简要总结共同结论和仍需注意的风险，等待用户确认后再建议切换到计划或智能体模式。
+
+> 不要因「看起来已经足够」就自行开始实施；只有用户明确确认共同理解已经达成后，才结束这轮询问。`;
 }
 
 function getPlanStatusReminderSlug(planState?: PlanDirectoryState | null): string {
@@ -295,69 +333,61 @@ function getPlanStatusReminderSlug(planState?: PlanDirectoryState | null): strin
 - 如果当前需求与该计划**关联性低或无关**，则必须关注用户需求的实现，而不是此计划，然后视情况处理这个计划文件。`;
 }
 
-function buildModeReminder(params: {
-  mode: AgentMode;
-  previousMode?: AgentMode | null;
+export function buildModeCatalogSection(params: {
   availableModes?: AgentMode[];
-  planState?: PlanDirectoryState | null;
+  configDirName?: string;
 }): string {
   const availableModes = params.availableModes ?? ALL_AGENT_MODES;
+  if (availableModes.length === 1 && availableModes[0] === AgentModeEnum.Build) return "";
+
+  return `<system-reminder>
+${getModeCatalogSlug(availableModes)}
+</system-reminder>`;
+}
+
+export async function buildModeStatusSection(params: {
+  mode: AgentMode;
+  previousMode?: AgentMode | null;
+  disabledModes?: AgentMode[];
+  getFiles?: () => Promise<Array<{ path: string; content: string }>>;
+  configDirName?: string;
+}): Promise<string> {
+  const availableModes = getAvailableAgentModes(params);
+  if (availableModes.length === 1 && availableModes[0] === AgentModeEnum.Build) return "";
+
+  let planState: PlanDirectoryState | null = null;
+  try {
+    const files = await (params.getFiles ?? (async () => []))();
+    planState = getPlanDirectoryStateFromFiles(files, params.configDirName);
+  } catch {
+    planState = null;
+  }
+
   const modeSlug = `## 当前模式
 ${getCurrentModeSlug(params.mode, params.previousMode)}`;
+  const planDir = getPlanDir(params.configDirName);
 
   if (params.mode === AgentModeEnum.Build) {
     return `<system-reminder>
 ${joinSections([
-  getModeCatalogSlug(availableModes),
-  modeSlug,
-  getBuildModeGuideSlug(params.planState),
+  `${modeSlug}\n由于你现在处于智能体模式下，你的目标是帮助用户完成需求，而不是创建和维护计划文件。如有必要，你可以对计划文件进行阅读以及归档。但是一定不允许创建、修改计划，那是计划模式的事。`,
+  getBuildPlanStatusSlug(planState, planDir),
+  getPlanFileGuideSlugInBuildMode(planDir),
 ])}
 </system-reminder>`;
   }
 
-  if (params.mode === AgentModeEnum.Plan) {
+  if (params.mode === AgentModeEnum.Plan || params.mode === AgentModeEnum.Ask) {
     return `<system-reminder>
 ${joinSections([
-  getModeCatalogSlug(availableModes),
   modeSlug,
-  getPlanModeGuideSlug(),
-  getPlanStatusReminderSlug(params.planState),
+  params.mode === AgentModeEnum.Plan ? getPlanModeGuideSlug(planDir) : getAskModeGuideSlug(),
+  getPlanStatusReminderSlug(planState),
 ])}
 </system-reminder>`;
   }
 
   return "";
-}
-
-/**
- * 生成每轮注入的模式提示词段落（静态规则 + 动态活跃计划文件感知）。
- *
- * @param getFiles 获取全量文件列表（如 sandbox.getFiles）
- */
-export async function buildModeSection(params: {
-  mode: AgentMode;
-  previousMode?: AgentMode | null;
-  disabledModes?: AgentMode[];
-  getFiles: () => Promise<Array<{ path: string; content: string }>>;
-}): Promise<string> {
-  const availableModes = getAvailableAgentModes(params);
-  const hasPlanMode = availableModes.includes(AgentModeEnum.Plan);
-  if (!hasPlanMode) return "";
-  try {
-    const files = await params.getFiles();
-    return buildModeReminder({
-      mode: params.mode,
-      previousMode: params.previousMode,
-      availableModes,
-      planState: getPlanDirectoryStateFromFiles(files),
-    });
-  } catch {
-    return buildModeReminder({
-      mode: params.mode,
-      previousMode: params.previousMode,
-      availableModes,
-    });
-  }
 }
 // ─── 路径校验 ─────────────────────────────────────────────────────────────────
 
@@ -382,9 +412,13 @@ function getContextMode(ctx?: ToolExecutionContext): AgentMode {
   return ctx?.getMode?.() ?? ctx?.mode ?? AgentModeEnum.Build;
 }
 
-function isPlanDirPath(path: string): boolean {
+function getContextConfigDirName(ctx?: ToolExecutionContext): string {
+  return getConfigDirNameFromAgent(ctx?.getAgent?.());
+}
+
+function isPlanDirPath(path: string, configDirName?: string): boolean {
   const normalized = normalizePath(path);
-  const planDir = normalizePath(DEFAULT_PLAN_DIR);
+  const planDir = normalizePath(getPlanDir(configDirName));
   return normalized === planDir || normalized.startsWith(`${planDir}/`);
 }
 
@@ -393,11 +427,21 @@ function assertPlanModeCanMutatePaths(
   paths: string[],
   action: string,
 ): void {
-  if (getContextMode(ctx) !== AgentModeEnum.Plan) return;
-  const invalidPaths = paths.filter((path) => !isPlanDirPath(path));
+  const mode = getContextMode(ctx);
+  if (mode === AgentModeEnum.Build) return;
+  if (mode === AgentModeEnum.Ask) {
+    throw new Error(
+      `当前是「${getModeLabel(AgentModeEnum.Ask)}」，不允许${action}。` +
+      ` 如需创建计划，请切换到 ${AgentModeEnum.Plan}（${getModeLabel(AgentModeEnum.Plan)}）；` +
+      ` 如需修改项目文件，请切换到 ${AgentModeEnum.Build}（${getModeLabel(AgentModeEnum.Build)}）。`
+    );
+  }
+  const configDirName = getContextConfigDirName(ctx);
+  const planDir = getPlanDir(configDirName);
+  const invalidPaths = paths.filter((path) => !isPlanDirPath(path, configDirName));
   if (invalidPaths.length === 0) return;
   throw new Error(
-    `当前是「${getModeLabel(AgentModeEnum.Plan)}」，${action}只能操作 ${DEFAULT_PLAN_DIR} 目录下的计划文件。` +
+    `当前是「${getModeLabel(AgentModeEnum.Plan)}」，${action}只能操作 ${planDir} 目录下的计划文件。` +
     ` 如需修改项目文件，请先等待用户确认方案并切换到 ${AgentModeEnum.Build}（${getModeLabel(AgentModeEnum.Build)}）。` +
     ` 非法路径：${invalidPaths.join(", ")}`
   );
@@ -438,6 +482,15 @@ export function checkDeleteFilePermission(
   assertPlanModeCanMutatePaths(ctx, params.paths ?? [], "delete_file");
 }
 
+/** 询问模式不执行 bash，避免宿主命令绕过只读边界。 */
+export function checkBashPermission(ctx?: ToolExecutionContext): void {
+  if (getContextMode(ctx) !== AgentModeEnum.Ask) return;
+  throw new Error(
+    `当前是「${getModeLabel(AgentModeEnum.Ask)}」，不允许执行 bash。` +
+    ` 请使用 read、grep 等只读工具查证代码；如需执行命令，请先切换模式。`
+  );
+}
+
 // ─── switch_mode 工具 ─────────────────────────────────────────────────────────
 
 export function createSwitchModeTool(options?: AgentModeAvailabilityOptions): Tool {
@@ -445,14 +498,16 @@ export function createSwitchModeTool(options?: AgentModeAvailabilityOptions): To
   return {
     name: SWITCH_MODE_TOOL_NAME,
     title: "切换模式",
-    description: `在「计划模式(plan)」和「自动模式(build)」之间切换当前 Agent 的运行模式。
+    description: `在「询问模式(ask)」「计划模式(plan)」和「智能体模式(build)」之间切换当前 Agent 的运行模式。
 
 模式说明：
+- ask（询问模式）：只读地澄清和质询需求，不创建计划或修改项目。
 - plan（计划模式）：先阅读、分析、维护计划文件，不改项目；适合用户要求"先讨论/先规划/别直接改"。
-- build（自动模式）：按已确认目标直接执行修改；适合快速修改、简单直接任务，或用户已经批准方案。
+- build（智能体模式）：按已确认目标直接执行修改；适合快速修改、简单直接任务，或用户已经批准方案。
 
 使用时机：
-- 当用户要求进入计划、规划、评审方案，切到 plan。
+- 当用户要求先深入讨论、澄清或质询方案，切到 ask。
+- 当用户要求进入计划、规划，切到 plan。
 - 当用户确认方案或要求开始实现，切到 build。
 - 这个工具只改变后续行为；不会代替实际文件修改。`,
     parameters: {
@@ -461,7 +516,7 @@ export function createSwitchModeTool(options?: AgentModeAvailabilityOptions): To
         mode: {
           type: "string",
           enum: availableModes,
-          description: "目标模式。build=自动模式，plan=计划模式",
+          description: "目标模式。build=智能体模式，plan=计划模式，ask=询问模式",
         },
       },
       required: ["mode"],

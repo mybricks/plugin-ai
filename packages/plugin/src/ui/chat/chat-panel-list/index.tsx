@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import classNames from "classnames";
 import { context } from "../../../context";
+import { lang } from "../../../i18n";
 import { ChatPanel } from "../chat-panel";
 import type { ChatPanelProps, ChatPanelRef } from "../chat-panel";
 import type { SendToAgentParams } from "../../../sandbox";
@@ -39,6 +40,8 @@ export interface ChatPanelListProps {
     | Array<{ id: string; name: string; description?: string }>;
   /** Agent 运行状态条配置，透传给内部 ChatPanel；默认展示 */
   runningBar?: ChatPanelProps["runningBar"];
+  /** 透传给内部 ChatPanel 的 Header 自定义内容渲染函数，不传时读取 context.pluginParams.renderHeaderExtra */
+  renderHeaderExtra?: ChatPanelProps["renderHeaderExtra"];
 }
 
 interface ComInstance {
@@ -60,7 +63,7 @@ function isLastSegmentSameDomChip(message: string, chips: ChatChipInstance[] | u
 // 监听 focus 事件，每个 comId 对应一个独立 ChatPanel 实例（display:none 切换）。
 // 各 ChatPanel 持有独立的 useSession，agent 事件 re-render 完全隔离。
 
-const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", className, style, mcpConnectors, runningBar }: ChatPanelListProps) => {
+const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", className, style, mcpConnectors, runningBar, renderHeaderExtra }: ChatPanelListProps) => {
   useAIPanelReady();
 
   // 连接器选中态：数组形态内部维护；对象形态透传。
@@ -135,7 +138,9 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
 
     appendFocusChipTimerRef.current = setTimeout(() => {
       const panel = panelRefs.current.get(comId);
-      if (!panel?.canAppendInput()) return;
+      // 默认 focus 内容需要在面板隐藏时也保持最新；普通外部 append
+      // 则仍沿用 canAppendInput 的可见性限制。
+      if (!panel?.canSyncFocusContent()) return;
 
       const input = panel?.getInput();
       const message = input?.message ?? "";
@@ -156,11 +161,15 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
       if (canReplace) {
         const chip = createDomChip(focus);
         panel.replaceFocusContent({
-          message: `对于[[chip:${chip.id}]]`,
+          message: lang.chat.focusReference(`[[chip:${chip.id}]]`),
           meta: { chips: [chip] },
         });
         return;
       }
+
+      // editor 有用户内容时，仅在可见状态追加普通 dom chip。隐藏期间保留草稿，
+      // 不因 focus 在末尾累计 chip。
+      if (!panel.canAppendInput()) return;
 
       // editor 有内容：走原有逻辑，追加普通 dom chip（不重复追加相同元素）
       if (isLastSegmentSameDomChip(message, input?.chips, ele)) return;
@@ -260,11 +269,13 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
               disabled={contextDisabled}
               size={size}
               matchDefaultFocusContent={matchDefaultDomFocusContent}
-              defaultFocusPlaceholder="您可以描述对于此区域的需求"
+              defaultFocusPlaceholder={lang.chat.defaultFocusPlaceholder()}
               renderAttachmentSuffix={context.pluginParams.renderAttachmentSuffix}
               mentions={context.pluginParams.mentions}
               mcpConnectors={connectorConfig}
               runningBar={runningBar}
+              attachProcessors={context.pluginParams.attachProcessors}
+              renderHeaderExtra={renderHeaderExtra ?? context.pluginParams.renderHeaderExtra}
             />
           </div>
         );

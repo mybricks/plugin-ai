@@ -1,5 +1,5 @@
 import type { RequestAsStreamFn } from "@request/types";
-import type { CustomProviderConfig } from "@request/providers";
+import type { CustomProviderConfig } from "@request";
 import type { TestCase } from "./types";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

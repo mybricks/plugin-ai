@@ -1,42 +1,47 @@
 import React from "react";
-import { AGENT_INTERNAL_FILE_EXCLUDE, CodeAgent, IDBHistory, isFileExcluded, SessionHTTPHistory, MergedHistory } from "../../../agent/src";
-import { DisabledHandler, type DisabledRequestHandler } from "../disabled-handler";
-import { ChipRegistry } from "../../../agent/src";
-import { splitFrontmatter, getFrontmatterString, getFrontmatterStringArray } from "../../../agent/src/utils/frontmatter";
+import { createMcpAttach } from "../mcp/attach";
+import type { McpBridgeOptions } from "../mcp/browser-bridge";
 import {
-  GLOB_TOOL_NAME,
-  INIT_PROJECT_TOOL_NAME,
-  createInitProjectTool,
-  createReadTool,
-  createWriteTool,
-  createMultiWriteTool,
-  createEditTool,
-  createMultiEditTool,
-  createDeleteTool,
-  createGrepTool,
-  createBashTool,
-  createSkillTool,
-} from "../../../agent/src/code-agent/tools";
-import { buildEnvironmentSection, buildAlwaysLoadedSkillsSection } from "../../../agent/src/code-agent";
-import { buildModeSection } from "../../../agent/src/mode-manager";
-import { AgentModeEnum } from "../../../agent/src";
-import { getCodeAgentSystemPrompt } from "../../../agent/src/code-agent/prompt";
-import type { Tool, Sandbox, CodeAgentPlugin, History, BoundHistory, TurnSender, AdditionalDirectory, AgentsMdConfig, SkillFile, UnifiedFile, AgentOptions, AgentMode, ChatChipInstance, AgentHooks, TurnRecord } from "../../../agent/src";
+  createAgentSandboxFromV1,
+  DEFAULT_CONFIG_DIR_NAME,
+} from "../../../agent/src";
+import type { AgentSandbox, CreateAgentSandboxFromV1Options, SandboxV1 } from "../../../agent/src";
+import { DisabledHandler, type DisabledRequestHandler } from "../disabled-handler";
+import type { Tool, CodeAgentPluginInput, History, TurnSender, SkillFile, UnifiedFile, AgentOptions, AgentMode, ChatChipInstance } from "../../../agent/src";
 import type { PromptSections } from "../../../kit/src";
-import { buildDevelopmentGuideContext, buildExtraProjectInfoSection, buildProjectInfoSection, promptSectionsAdaptToPromptOption } from "../../../kit/src";
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { Designer, RegistSandBoxConfig, SandboxChipConfig, SandboxChipsConfig } from "./types";
-import { createCheckStatusTool } from "./tools/check-status";
 import { LoadingView, type ComChatStartViewProps, type LoadingViewProps } from "../ui/chat";
-import { HttpAgent } from "../ui/chat/chat-panel/http-agent";
-import { WebSocketAgent } from "../ui/chat/chat-panel/websocket-agent";
 import type { PrdRenderProps } from "../ui/renders/prd-render";
-import { LoadingViewWithStyles, ComChatStartViewWithStyles, PrdRenderWithStyles } from "../ui/renders/register";
+import type { ReviewRenderProps } from "../ui/renders/review-render";
+import { LoadingViewWithStyles, ComChatStartViewWithStyles, PrdRenderWithStyles, ReviewRenderWithStyles } from "../ui/renders/register";
 import { context } from "../context";
+import { lang } from "../i18n";
 import { ensureAIPanelOpen, ensureFocusComId } from "../utils/ensure-ai-panel-open";
 import { createDomChip } from "../utils/dom-info";
-import { registerChipRemoveHandlers } from "./chip-remove";
-import { attachFiles, getSyncableInitialFiles, hasInitialFiles } from "./initial-files";
+import { getSyncableInitialFiles } from "./initial-files";
+import { chipRegistry } from "./chip-registry";
+import { referRegistry, type ReferResolver } from "./refer-registry";
+export { referRegistry } from "./refer-registry";
+export type { ReferResolver, ReferData } from "./refer-registry";
+import { connectToRemoteAI } from "./connect-remote";
+import { isHttpAgent } from "../ui/chat/chat-panel/remote/http-agent";
+import { createFileCommands } from "./file-commands";
+import { connectToLocalSandbox } from "./connect-sandbox";
+import type {
+  ConnectToAIResult,
+  AgentRuntimeConfig,
+  AgentRuntimeRef,
+  RemoteAgentConfig,
+  VirtualFilesRuntimeContext,
+  PluginGetUserContextMessage,
+  ProjectContext,
+  PluginParams,
+} from "./connect-shared";
+
+export { chipRegistry };
+export type { ConnectToAIResult, AgentRuntimeConfig, RemoteAgentConfig, VirtualFilesRuntimeContext, PluginGetUserContextMessage, ProjectContext };
+
 // ─── 类型定义 ─────────────────────────────────────────────────────────────────
 
 /**
@@ -44,82 +49,23 @@ import { attachFiles, getSyncableInitialFiles, hasInitialFiles } from "./initial
  * 在 setup.ts 初始化时创建，供 chat-focus-view 等 UI 层注册 chip 类型。
  * 创建 CodeAgent 时会把当前已注册 chip 同步到 Agent 实例的 chipRegistry。
  */
-export const chipRegistry = new ChipRegistry();
 // fileChipDef 已内置到 ChipRegistry 构造函数中，无需手动注册
 
-function normalizeChipConfigs(chips?: SandboxChipsConfig): SandboxChipConfig[] {
-  if (!chips) return [];
-  if (Array.isArray(chips)) return chips;
+function withMentionFocus(params: SendToAgentParams): SendToAgentParams {
+  if (!params.mentionFocus) return params;
 
-  return Object.entries(chips).map(([type, config]) => ({
-    ...config,
-    type: config.type ?? type,
-  }));
-}
+  const focus = context.currentFocus;
+  if (!focus?.focusArea?.ele) return params;
 
-const BACKEND_COMPLETE_KEYWORDS = ["已完成", "全部完成", "是"];
-const BACKEND_INCOMPLETE_KEYWORDS = [
-  "未完成",
-  "未建成",
-  "未开发",
-  "未发布",
-  "未就绪",
-  "未通过",
-  "暂缓",
-  "失败",
-  "异常",
-  "中断",
-  "阻塞",
-  "平台侧问题",
-];
-
-function isBackendComplete(answer: string, keywords: string[] = BACKEND_COMPLETE_KEYWORDS): boolean {
-  const normalized = answer.toLowerCase();
-  const hasIncomplete = BACKEND_INCOMPLETE_KEYWORDS.some((keyword) =>
-    normalized.includes(keyword.toLowerCase())
-  );
-  if (hasIncomplete) return false;
-  return keywords.some((keyword) => normalized.includes(keyword.toLowerCase()));
-}
-
-function getTurnAnswer(turn: TurnRecord): string {
-  return turn.iterations
-    .filter((iter: any): iter is Exclude<typeof iter, { type: "warmup" }> => !("type" in iter))
-    .map((iter: any) => iter.content)
-    .join("")
-    .trim();
-}
-
-function createBackendCompleteHook(existingHooks?: AgentHooks): NonNullable<AgentHooks["afterTurn"]> {
-  return async (turn) => {
-    await existingHooks?.afterTurn?.(turn);
-
-    if (turn.status !== "success") return;
-
-    const onBackendComplete = context.pluginParams.onBackendComplete as
-      | ((complete: boolean, answer: string) => void)
-      | undefined;
-    if (!onBackendComplete) return;
-
-    const answer = getTurnAnswer(turn);
-    try {
-      onBackendComplete(isBackendComplete(answer), answer);
-    } catch (error) {
-      console.error("[plugin-ai] onBackendComplete callback failed:", error);
-    }
+  const chip = createDomChip(focus);
+  return {
+    ...params,
+    message: lang.chat.focusReference(`[[chip:${chip.id}]]`, params.message),
+    meta: {
+      ...params.meta,
+      chips: [...(params.meta?.chips ?? []), chip],
+    },
   };
-}
-
-function registerChips(agentKey: string, chips?: SandboxChipsConfig): void {
-  const configs = normalizeChipConfigs(chips);
-  if (!configs.length) return;
-
-  for (const config of configs) {
-    if (config.def) {
-      chipRegistry.register(config.def);
-    }
-  }
-  registerChipRemoveHandlers(agentKey, configs);
 }
 
 export interface SendToAgentParams {
@@ -138,11 +84,31 @@ export interface SendToAgentParams {
   mentionFocus?: boolean;
 }
 
+/** 只更新 Sender 当前可见选项，不发送消息。 */
+export type SenderOptions = Pick<
+  SendToAgentParams,
+  "mode" | "providerId" | "modelId"
+>;
+
 export interface SandboxHelpers {
+  /** 获取当前 Agent 的文件视图；远端操作返回独立的冲突基线。 */
+  getAgentSandbox: (comId: string) => Promise<AgentSandbox>;
+  /** 基于宿主文件接口实现常用文件命令。 */
+  createFileCommands: typeof createFileCommands;
+  /**
+   * Creates the default AgentSandbox implementation from a V1-compatible file
+   * source. Its command transport provides structured grep out of the box.
+   */
+  createAgentSandboxFromV1: (sandbox: SandboxV1, options?: CreateAgentSandboxFromV1Options) => AgentSandbox;
   /**
    * 向当前 focus 的 Agent 发送消息（供 sandbox 组件运行时调用）。
    */
   sendToAgent: (comId: string, params: SendToAgentParams) => void;
+  /**
+   * 更新指定 comId 的 Sender 模式和模型选择，不触发请求。
+   * 用于外部 pending message 在发送前同步一次 UI 选项。
+   */
+  setSenderOptions: (comId: string, options: SenderOptions) => void;
   /**
    * 向指定 comId 的底部 Sender 草稿区追加内容，不触发发送。
    * 参数与 sendToAgent / controller.appendInput 保持一致：
@@ -157,28 +123,16 @@ export interface SandboxHelpers {
   renders: {
     renderStartView: (props: ComChatStartViewProps) => React.ReactElement;
     renderPrdView: (props?: PrdRenderProps) => React.ReactElement;
+    renderReviewView: (props?: ReviewRenderProps) => React.ReactElement;
     renderLoadingView: (props: LoadingViewProps) => React.ReactElement;
   };
 }
 
-function withMentionFocus(params: SendToAgentParams): SendToAgentParams {
-  if (!params.mentionFocus) return params;
-
-  const focus = context.currentFocus;
-  if (!focus?.focusArea?.ele) return params;
-
-  const chip = createDomChip(focus);
-  return {
-    ...params,
-    message: `对于[[chip:${chip.id}]]${params.message}`,
-    meta: {
-      ...params.meta,
-      chips: [...(params.meta?.chips ?? []), chip],
-    },
-  };
-}
-
 export interface SandboxConfig {
+  /** 任务、计划等文档所使用的配置目录。 */
+  configDirName?: string;
+  /** 已配置插件的名称；延迟工厂须声明 pluginName 才能在初始化前识别。 */
+  pluginNames?: string[];
   /**
    * 系统提示词各节配置，由 Plugin 合并后下发给 sandbox。
    */
@@ -205,12 +159,6 @@ export interface SandboxConfig {
 
 type MaybePromise<T> = T | Promise<T>;
 
-export type PluginGetUserContextMessage = () => MaybePromise<string | null | undefined>;
-
-export interface VirtualFilesRuntimeContext {
-  getEffectiveLibrariesSection: (options?: { path?: string; moduleKey?: string }) => Promise<string>;
-}
-
 /**
  * ⚠️ 试验性 API。
  *
@@ -218,46 +166,14 @@ export interface VirtualFilesRuntimeContext {
  * agentKey 和 history 保持不变；建议在 Agent 空闲时调用。
  * @experimental
  */
-export interface AgentRuntimeConfig {
-  promptSections?: PromptSections;
-  tools?: Tool[];
-  skills?: SkillFile[];
-  virtualFiles?: (context: VirtualFilesRuntimeContext) => Promise<UnifiedFile[]>;
-  componentRuntime?: any;
-}
-
-/** 服务端 Agent 的初始化配置。传给 pluginAI 的 remoteAgent 时会创建 HTTP Agent 或 WebSocket Agent。 */
-export interface RemoteAgentConfig {
-  /** Agent 类型：'http' 使用现有 HTTP/SSE 方式，'websocket' 使用新的 WebSocket + MCP 方式 */
-  type?: 'http' | 'websocket';
-  /** 方舟测试环境默认值：http://localhost:3001/agents/api（http 类型）或 http://112.17.139.222:8106（websocket 类型） */
-  baseUrl?: string;
-  /** 服务端 workspaceId；通常对应平台 conversation id。 */
-  workspaceId: string;
-  /** 服务端 agentId。未传时使用 workspace 的 default agent（仅 http 类型）。 */
-  agentId?: string;
-  /** 平台网关鉴权 token，必填；以 "token" header 发送，WS 握手以 "authToken" 参数发送。支持传函数按请求实时取值（仅 websocket 类型）。 */
-  token: string | (() => string | undefined | null);
-  /** 平台网关会话标识，必填；以 "session" header 发送，WS 握手以 "authSession" 参数发送。支持传函数按请求实时取值（仅 websocket 类型）。 */
-  session: string | (() => string | undefined | null);
-  /** 智能体代码（仅 websocket 类型）。 */
-  agentCode?: string;
-  /** 项目 ID（仅 websocket 类型），随 /chat/stream 的 variables 发送。 */
-  projectId?: string | number;
-  /** 应用类型（仅 websocket 类型），随 /chat/stream 的 variables 发送。 */
-  appType?: string | number;
-  /** 客户端类型标识（仅 websocket 类型）。 */
-  clientType?: string;
-  /** 业务元数据（仅 websocket 类型）。 */
-  meta?: Record<string, any>;
-  /** 服务端 sessionId（仅 websocket 类型）；传入时复用该会话。 */
-  sessionId?: string;
-  /**
-   * 本地会话被重置/清除时触发；调用方可在此通知后端清理其保存的 sessionId。
-   * 入参为被重置前的 sessionId。
-   */
-  onSessionReset?: (sessionId: string) => void | Promise<void>;
-}
+/**
+ * ⚠️ 试验性 API。
+ *
+ * 为当前聚焦的 CodeAgent 覆盖运行配置。配置会更新到当前 CodeAgent 实例，
+ * agentKey 和 history 保持不变；建议在 Agent 空闲时调用。
+ * @experimental
+ */
+// AgentRuntimeConfig is re-exported from connect-shared
 
 /** @internal 由 pluginAI controller 使用的运行配置管理器。 */
 export interface AgentRuntimeController {
@@ -265,32 +181,15 @@ export interface AgentRuntimeController {
   clearAgentRuntime: () => void;
 }
 
-interface AgentRuntimeRef {
-  current: AgentRuntimeConfig | undefined;
-  apply?: (config: AgentRuntimeConfig | undefined) => void;
-}
-
 /**
  * connectToAI 的返回值。
  * sandbox 可通过此对象访问该 comId 对应的 History 实例，用于版本管理。
  */
-export interface ConnectToAIResult {
-  /**
-   * 该 comId 对应的、已绑定 agentKey 的 History 视图。
-   * 总是从 agent 实例上取，保证与 Agent 内部共享同一个引用。
-   * 若 Agent 未配置 history 则为 null（正常情况下不会出现）。
-   */
-  history: BoundHistory | null;
-  /** 统一的 disabled 判断与消息处理。 */
-  disabledHandler: DisabledHandler;
-  /** 当前 History 是否由 remote Agent 的 workspace API 提供。 */
-  isRemoteAgent: boolean;
-  /**
-   * 文件初始化完成后兑现，是 Runtime 和首个 Agent 请求的共同前置条件。
-   * remote Agent 优先同步服务端 workspace，失败后可回退 initialFiles；本地 Agent 按 initialFiles 同步。
-   */
-  workspaceReady?: Promise<void>;
-}
+/**
+ * connectToAI 的返回值。
+ * sandbox 可通过此对象访问该 comId 对应的 History 实例，用于版本管理。
+ */
+// ConnectToAIResult is re-exported from connect-shared
 
 export interface SandboxAPI {
   /**
@@ -299,6 +198,13 @@ export interface SandboxAPI {
    * 返回 ConnectToAIResult，包含 history 引用供 sandbox 做版本管理。
    */
   connectToAI: (comId: string, config: RegistSandBoxConfig) => ConnectToAIResult;
+  /**
+   * 注册一个全局引用解析器（`refer://<scheme>/<id>`），供消息中的引用渲染 hover 卡片。
+   * 与 comId / agent 无关，按 scheme 全局唯一，后注册覆盖先注册。
+   */
+  registerRefer: (resolver: ReferResolver) => void;
+  /** 注销指定 scheme 的引用解析器。 */
+  unregisterRefer: (scheme: string) => void;
   /**
    * Plugin 提供给 sandbox 读取的运行时工具和方法。
    */
@@ -317,6 +223,7 @@ declare global {
      * Sandbox 与 Plugin 的统一交互 API。
      *
      * - `_sandbox_.connectToAI(comId, config)`：sandbox 注册自身能力给 Plugin
+     * - `_sandbox_.registerRefer(resolver)`：注册全局引用解析器（refer://scheme/id）
      * - `_sandbox_.helpers`：Plugin 提供给 sandbox 的工具方法（sendToAgent、renders）
      * - `_sandbox_.config`：Plugin 提供给 sandbox 的初始化配置（availableLibraries、themes）
      */
@@ -327,19 +234,22 @@ declare global {
 // ─── setupSandbox 入参 ────────────────────────────────────────────────────────
 
 export interface SetupSandboxParams {
+  mcp?: McpBridgeOptions;
   requestAsStream: RequestAsStreamFn;
   /** 该 plugin 实例的模型路由命名空间；模型选择按 agentKey 在其内部隔离。 */
   llmPluginKey?: string;
   /**
    * 注入到根工程虚拟 FS 的文件（每个 turn 调用一次）。
-   * 典型用途：在根工程放 `.agent/agent.md` 提供项目规范。
-   * 同路径下 virtualFiles 优先级高于 designer.getFiles() 返回的真实文件。
+   * 典型用途：在根工程放 `<configDirName>/agent.md` 提供项目规范。
+   * 同路径下 virtualFiles 优先级高于 AgentSandbox 返回的真实文件。
    */
   virtualFiles?: (context: VirtualFilesRuntimeContext) => Promise<UnifiedFile[]>;
+  /** Directory passed to local CodeAgent instances; defaults to `.agent`. */
+  configDirName?: string;
   /** 本地 CodeAgent 的初始化文件快照；首次请求前会执行 diff/update/delete。 */
   initialFiles?: Array<Pick<UnifiedFile, "path" | "content">>;
   skills?: SkillFile[];
-  plugins?: CodeAgentPlugin[];
+  plugins?: CodeAgentPluginInput[];
   promptSections?: PromptSections;
   tools?: Tool[];
   availableLibraries?: any[];
@@ -353,6 +263,7 @@ export interface SetupSandboxParams {
    * 并拼接到内置项目空间上下文后一起注入给 CodeAgent。
    */
   getUserContextMessage?: PluginGetUserContextMessage;
+  projectContext?: ProjectContext;
   /**
    * 外部自定义用户消息格式化函数。入参是经过 plugin sandbox 标准处理后的参数
    * （例如已追加 focus 信息、focus meta、sender），返回值会作为最终发给 CodeAgent 的用户消息。
@@ -361,6 +272,7 @@ export interface SetupSandboxParams {
   formatUserMessage?: AgentOptions["formatUserMessage"];
   /** 禁用的 Agent 运行模式；当只剩一种可用模式时隐藏模式切换器且不注册切换工具。 */
   disabledModes?: AgentOptions["disabledModes"];
+  mask?: AgentOptions["mask"];
   /**
    * 插件处于 disabled 时若仍尝试 requestAI / retry / 手动保存版本，会调用此回调。
    * 典型用途：由宿主弹出 toast / message 提示用户当前不可发送。
@@ -382,7 +294,8 @@ export interface SetupSandboxParams {
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
 export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController {
-  const { requestAsStream, llmPluginKey, virtualFiles, initialFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, onDisabledRequest, history, remoteAgent, sender } = params;
+  const { requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, mask, onDisabledRequest, history, remoteAgent, sender } = params;
+  const resolvedConfigDirName = configDirName ?? DEFAULT_CONFIG_DIR_NAME;
   // 空数组与某些应用产生的 App 空文件组合都视为无效快照，本地与远程 Agent 均不读取。
   const syncableInitialFiles = getSyncableInitialFiles(initialFiles);
   const disabledHandler = new DisabledHandler({
@@ -391,13 +304,86 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
   });
   const agentRuntimeRefs = new Map<string, AgentRuntimeRef>();
 
+  const pluginParams: PluginParams = {
+    requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles: syncableInitialFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, mask, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs,
+  };
+
+  let attachMcp: ReturnType<typeof createMcpAttach> | undefined;
+
   window._sandbox_ = {
     connectToAI(comId: string, config: RegistSandBoxConfig): ConnectToAIResult {
-      return connectToAI(comId, config, { requestAsStream, llmPluginKey, virtualFiles, initialFiles: syncableInitialFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs });
+      let result: ConnectToAIResult;
+      if (config.understandAnyUI) {
+        context.understandAnyUI.set(context.getAgentKey(comId), config.understandAnyUI);
+        context.events.emit("understandAnyUI", comId);
+      }
+      if (!config.agentSandbox) throw new Error("connectToAI requires agentSandbox");
+      if (remoteAgent) {
+        result = connectToRemoteAI(comId, {
+          agentSandbox: config.agentSandbox,
+          pageAnalysis: config.pageAnalysis,
+          designer: config.designer,
+          domainAudit: config.domainAudit,
+          hooks: config.hooks,
+          chips: config.chips,
+          mentions: config.mentions,
+          tasksManager: config.tasksManager,
+        }, { ...pluginParams, remoteAgent });
+      } else {
+        result = connectToLocalSandbox(comId, {
+          agentSandbox: config.agentSandbox,
+          designer: config.designer,
+          domainAudit: config.domainAudit,
+          pageAnalysis: config.pageAnalysis,
+          hooks: config.hooks,
+          chips: config.chips,
+          mentions: config.mentions,
+          tasksManager: config.tasksManager,
+        }, pluginParams);
+      }
+      if (params.mcp) {
+        attachMcp ??= createMcpAttach(params.mcp, pluginParams);
+        attachMcp(comId, config, result);
+      }
+      return result;
+    },
+
+    registerRefer(resolver: ReferResolver) {
+      referRegistry.register(resolver);
+    },
+    unregisterRefer(scheme: string) {
+      referRegistry.unregister(scheme);
     },
 
     // ── Plugin → sandbox（方法/渲染工具）──────────────────────────────────────
     helpers: {
+      async getAgentSandbox(comId: string) {
+        const key = context.getAgentKey(comId);
+        const agent = context.agentMap.get(key);
+        if (isHttpAgent(agent)) return agent.getFileSandbox();
+        const sandbox = context.sandboxMap.get(key);
+        if (!sandbox) throw new Error("Agent sandbox is unavailable.");
+        return sandbox;
+      },
+      createFileCommands,
+      createAgentSandboxFromV1(sandbox: SandboxV1, options?: CreateAgentSandboxFromV1Options) {
+        return createAgentSandboxFromV1(sandbox, options);
+      },
+      setSenderOptions(comId: string, options: SenderOptions) {
+        const agentKey = context.getAgentKey(comId);
+        const agent = context.agentMap.get(agentKey);
+        if (
+          options.mode &&
+          agent?.getAvailableModes?.().includes(options.mode)
+        ) {
+          agent.setMode(options.mode, "pending-message");
+        }
+        if (options.modelId) {
+          context
+            .getModelSelection(agent?.key ?? agentKey)
+            ?.setSelected(options.providerId, options.modelId);
+        }
+      },
       sendToAgent(comId: string, params: SendToAgentParams) {
         const agentKey = context.getAgentKey(comId);
         const agent = context.agentMap.get(agentKey);
@@ -434,6 +420,8 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
           React.createElement(ComChatStartViewWithStyles, props),
         renderPrdView: (props?: PrdRenderProps): React.ReactElement =>
           React.createElement(PrdRenderWithStyles, props ?? { content: "" }),
+        renderReviewView: (props?: ReviewRenderProps): React.ReactElement =>
+          React.createElement(ReviewRenderWithStyles, props ?? { content: "" }),
         renderLoadingView: (props: LoadingViewProps): React.ReactElement =>
           React.createElement(LoadingViewWithStyles, props),
       },
@@ -441,6 +429,10 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
 
     // ── Plugin → sandbox（静态配置）──────────────────────────────────────────
     config: {
+      configDirName: resolvedConfigDirName,
+      pluginNames: [...new Set((plugins ?? [])
+        .map((plugin) => typeof plugin === "function" ? plugin.pluginName : plugin.name)
+        .filter((name): name is string => typeof name === "string" && name.length > 0))],
       availableLibraries: availableLibraries ?? [],
       themes: themes ?? [],
       componentRuntime,
@@ -466,561 +458,4 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
       window._sandbox_.config.componentRuntime = componentRuntime;
     },
   };
-}
-
-// ─── 内部：注册单个 sandbox ───────────────────────────────────────────────────
-
-interface PluginParams {
-  requestAsStream: RequestAsStreamFn;
-  llmPluginKey?: string;
-  /** 注入到根工程虚拟 FS 的文件（每个 turn 调用一次） */
-  virtualFiles?: (context: VirtualFilesRuntimeContext) => Promise<UnifiedFile[]>;
-  /** 本地 CodeAgent 的初始化文件快照；首次请求前会执行 diff/update/delete。 */
-  initialFiles?: Array<Pick<UnifiedFile, "path" | "content">>;
-  skills?: SkillFile[];
-  plugins?: CodeAgentPlugin[];
-  promptSections?: PromptSections;
-  tools?: Tool[];
-  codeRules?: string;
-  designRules?: string;
-  getUserContextMessage?: PluginGetUserContextMessage;
-  formatUserMessage?: AgentOptions["formatUserMessage"];
-  disabledModes?: AgentOptions["disabledModes"];
-  disabledHandler: DisabledHandler;
-  history?: History;
-  remoteAgent?: RemoteAgentConfig;
-  sender?: TurnSender;
-  agentRuntimeRefs: Map<string, AgentRuntimeRef>;
-}
-
-interface SkillRuntimeContext {
-  designer?: Designer;
-  codeRules?: string;
-  designRules?: string;
-}
-
-function injectSkillRuntimeContext(
-  skill: SkillFile,
-  runtimeContext: SkillRuntimeContext
-): SkillFile {
-  const clonedSkill: SkillFile = {
-    ...skill,
-    files: skill.files.map((file) => ({ ...file })),
-  };
-
-  if (skill.updateContent) {
-    const updateContent = skill.updateContent;
-    clonedSkill.updateContent = () => updateContent.call(clonedSkill, runtimeContext);
-  }
-
-  return clonedSkill;
-}
-
-function injectPluginRuntimeContext(
-  plugin: CodeAgentPlugin,
-  runtimeContext: SkillRuntimeContext
-): CodeAgentPlugin {
-  if (!plugin.skills?.length) return plugin;
-
-  return {
-    ...plugin,
-    skills: plugin.skills.map((skill) => injectSkillRuntimeContext(skill, runtimeContext)),
-  };
-}
-
-function prefixPluginBrowserToolName(pluginName: string, tool: Tool): Tool {
-  return {
-    ...tool,
-    name: `${pluginName}_${tool.name}`,
-  };
-}
-
-function collectBrowserTools(params: {
-  baseTools: Tool[];
-  plugins?: CodeAgentPlugin[];
-}): Tool[] {
-  const enabledPlugins = params.plugins?.filter((plugin) => plugin.enabled !== false) ?? [];
-  return [
-    ...params.baseTools,
-    ...enabledPlugins.flatMap((plugin) =>
-      (plugin.tools ?? []).map((tool) => prefixPluginBrowserToolName(plugin.name, tool))
-    ),
-  ];
-}
-
-function formatLibraryDocs(libraries: Array<{ name: string; version?: string; usage: string }>): string {
-  return libraries
-    .map((library) => `---\nname: ${library.name}\nversion: ${library.version ?? ""}\n---\n${library.usage}`)
-    .join("\n\n");
-}
-
-function connectToAI(
-  comId: string,
-  { designer, hooks, chips }: RegistSandBoxConfig,
-  { requestAsStream, llmPluginKey, virtualFiles, initialFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, formatUserMessage, disabledModes, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs }: PluginParams
-): ConnectToAIResult {
-  const agentKey = context.getAgentKey(comId);
-  registerChips(agentKey, chips);
-  const runtimeRef = agentRuntimeRefs.get(agentKey) ?? { current: undefined };
-  agentRuntimeRefs.set(agentKey, runtimeRef);
-  const runtime = runtimeRef.current;
-  const getRuntimePromptSections = (config = runtimeRef.current) => config?.promptSections ?? promptSections;
-  const getRuntimeTools = (config = runtimeRef.current) => config?.tools ?? tools;
-  const activePromptSections = getRuntimePromptSections(runtime);
-  const activeTools = getRuntimeTools(runtime);
-  const promptOptions = promptSectionsAdaptToPromptOption(activePromptSections);
-  const runtimeContext: SkillRuntimeContext = {
-    designer,
-    codeRules,
-    designRules,
-  };
-  const getRuntimeSkills = (config = runtimeRef.current) =>
-    (config?.skills ?? skills)?.map((skill) => injectSkillRuntimeContext(skill, runtimeContext));
-  const getRuntimeVirtualFiles = () => runtimeRef.current?.virtualFiles ?? virtualFiles;
-  const runtimeSkills = getRuntimeSkills(runtime);
-  const runtimePlugins = plugins?.map((plugin) => injectPluginRuntimeContext(plugin, runtimeContext));
-  const effectivePlugins = context.applyPluginEnabledOverrides(runtimePlugins);
-  const requestGuard = {
-    disabledHandler,
-  };
-
-  if (context.agentMap.has(agentKey)) {
-    // 已注册：直接从现有 agent 实例上取 history 返回，不重复初始化
-    const existingAgent = context.agentMap.get(agentKey)!;
-    context.aiQueue.setRequestGuard(existingAgent, requestGuard);
-    return { history: existingAgent.getHistory(), disabledHandler, isRemoteAgent: !!remoteAgent };
-  }
-
-  let agentRef: CodeAgent | undefined;
-
-  const getEnabledAdditionalDirectories = async (): Promise<AdditionalDirectory[]> => {
-    const enabledPlugins = agentRef?.getEnabledPlugins()
-      ?? effectivePlugins?.filter((p) => p.enabled !== false)
-      ?? [];
-    const results = await Promise.all(
-      enabledPlugins.map(async (p) => {
-        const fn = p.additionalDirectories;
-        if (!fn) return [];
-        return await fn();
-      })
-    );
-    return results.flat();
-  };
-  const buildAgentsMdConfig = async (): Promise<AgentsMdConfig[]> => {
-    const config: AgentsMdConfig[] = [];
-    // 从 sandbox.getFiles() 中收集所有 .agent/agent.md 文件
-    const allFiles = await sandbox.getFiles();
-    for (const vf of allFiles) {
-      const normalizedPath = vf.path.replace(/^\/+/, '');
-      // 根工程：.agent/agent.md
-      // 扩展工程：<dir.path>.agent/agent.md（如 sub-project/.agent/agent.md）
-      if (normalizedPath === '.agent/agent.md' || normalizedPath.endsWith('/.agent/agent.md')) {
-        const { body } = splitFrontmatter(vf.content);
-        const bodyContent = body.trim();
-        if (!bodyContent) continue;
-        config.push({ path: normalizedPath, content: bodyContent });
-      }
-    }
-    return config;
-  };
-  const findAdditionalDirectory = (path: string, dirs: AdditionalDirectory[]) => {
-    return dirs
-      .filter((dir) => path.startsWith(dir.path))
-      .sort((a, b) => b.path.length - a.path.length)[0];
-  };
-
-  const sandbox: Sandbox = {
-    // ── getFiles：主空间 + 扩展目录真实文件 + 顶层只读文件 + 扩展目录只读文件 ──
-    getFiles: async (options?) => {
-      // 1. 主工程真实文件（可读可写可删）
-      const mainFiles = await designer.getFiles();
-      const realMainFiles: UnifiedFile[] = mainFiles.map(f => ({
-        path: f.path,
-        content: f.content,
-        permissions: { read: true, write: true, delete: true },
-      }));
-
-      // 2. 扩展目录真实文件（可读，write/delete 取决于是否有对应方法）
-      const additionalDirectories = await getEnabledAdditionalDirectories();
-      const realExtraFiles: UnifiedFile[] = (await Promise.all(
-        additionalDirectories.map(async (dir) => {
-          const files = await dir.getFiles();
-          return files.map(f => ({
-            path: f.path.startsWith(dir.path) ? f.path : `${dir.path}${f.path}`,
-            content: f.content,
-            permissions: {
-              read: true,
-              write: !!dir.updateFiles,
-              delete: !!dir.deleteFiles,
-            },
-          }));
-        })
-      )).flat();
-
-      // 3. 顶层只读文件（如 .agent/agent.md 项目规范）
-      const promptVirtualFiles = (await getRuntimeVirtualFiles()?.({
-        getEffectiveLibrariesSection: async (_options) => {
-          const libraries = await designerRef.current?.getEffectiveLibraries() ?? [];
-          return formatLibraryDocs(libraries);
-        },
-      })) ?? [];
-      const readonlyTopFiles: UnifiedFile[] = promptVirtualFiles.map(f => ({
-        path: f.path,
-        content: f.content,
-        permissions: { read: true, write: false, delete: false },
-      }));
-
-      // 4. 扩展目录只读文件（由各 additionalDirectory.virtualFiles 提供）
-      const readonlyExtraFiles: UnifiedFile[] = (await Promise.all(
-        additionalDirectories.map(async (dir) => {
-          const files = (await dir.virtualFiles?.()) ?? [];
-          return files.map(f => ({
-            path: f.path.startsWith(dir.path) ? f.path : `${dir.path}${f.path}`,
-            content: f.content,
-            permissions: { read: true, write: false, delete: false },
-          }));
-        })
-      )).flat();
-
-      // 合并：只读文件覆盖同路径真实文件
-      const normPath = (p: string) => p.replace(/^\/+/, '');
-      const merged = new Map<string, UnifiedFile>(
-        [...realMainFiles, ...realExtraFiles].map(f => [normPath(f.path), f])
-      );
-      [...readonlyTopFiles, ...readonlyExtraFiles].forEach(f => {
-        merged.set(normPath(f.path), f);
-      });
-
-      const all = Array.from(merged.values());
-      return options?.exclude ? all.filter(f => !isFileExcluded(f, options.exclude)) : all;
-    },
-
-    // ── updateFiles：按路径前缀分组分发 ──────────────────────────────────────
-    updateFiles: async (files) => {
-      const additionalDirectories = await getEnabledAdditionalDirectories();
-      if (!additionalDirectories.length) {
-        return designer.updateFiles(files)
-      };
-      const mainFiles: typeof files = [];
-      const extraGroups = new Map<AdditionalDirectory, typeof files>();
-      for (const file of files) {
-        const dir = findAdditionalDirectory(file.path, additionalDirectories);
-        if (dir) {
-          if (!extraGroups.has(dir)) extraGroups.set(dir, []);
-          extraGroups.get(dir)!.push(file);
-        } else {
-          mainFiles.push(file);
-        }
-      }
-      const tasks: Promise<void>[] = [];
-      if (mainFiles.length) tasks.push(designer.updateFiles(mainFiles));
-      for (const [dir, dirFiles] of extraGroups) {
-        if (!dir.updateFiles) {
-          throw new Error(`AdditionalDirectory "${dir.path}" is read-only (no updateFiles provided)`);
-        }
-        tasks.push(dir.updateFiles(dirFiles));
-      }
-      await Promise.all(tasks);
-    },
-
-    // ── deleteFiles：按路径前缀分组分发 ──────────────────────────────────────
-    deleteFiles: async (paths) => {
-      const additionalDirectories = await getEnabledAdditionalDirectories();
-      if (!additionalDirectories.length) return designer.deleteFiles(paths);
-      const mainPaths: string[] = [];
-      const extraGroups = new Map<AdditionalDirectory, string[]>();
-      for (const p of paths) {
-        const dir = findAdditionalDirectory(p, additionalDirectories);
-        if (dir) {
-          if (!extraGroups.has(dir)) extraGroups.set(dir, []);
-          extraGroups.get(dir)!.push(p);
-        } else {
-          mainPaths.push(p);
-        }
-      }
-      const tasks: Promise<void>[] = [];
-      if (mainPaths.length) tasks.push(designer.deleteFiles(mainPaths));
-      for (const [dir, dirPaths] of extraGroups) {
-        if (!dir.deleteFiles) {
-          throw new Error(`AdditionalDirectory "${dir.path}" does not support deleteFiles`);
-        }
-        tasks.push(dir.deleteFiles(dirPaths));
-      }
-      await Promise.all(tasks);
-    },
-
-    getContext: async () => {
-      const designer = designerRef.current;
-      if (!designer) return null;
-
-      const libraries = await designer.getEffectiveLibraries();
-      return buildDevelopmentGuideContext({
-        // promptSections 的开发/设计/文档规范通过稳定上下文注入。
-        // 这里必须按每个 turn 读取当前 runtime，才能与 agent system、tools、skills 一起切换。
-        promptSections: getRuntimePromptSections(),
-        codeRules,
-        designRules,
-        libraries,
-      });
-    },
-
-    // ── getSandboxMetaSection：主项目空间与扩展工程分别产出独立标签 ────────────────
-    getSandboxMetaSection: async () => {
-      const additionalDirectories = await getEnabledAdditionalDirectories();
-      // 获取全量文件（含只读文件），用于扩展工程的 agent.md；过滤 .agent/ 后用于展示。
-      const [allFiles, displayFiles, extraDirectoryInfos] = await Promise.all([
-        sandbox.getFiles(),
-        sandbox.getFiles({ exclude: AGENT_INTERNAL_FILE_EXCLUDE }),
-        Promise.all(additionalDirectories.map(async (dir) => ({
-          dir,
-          files: (await dir.getFiles()).filter((file) => !isFileExcluded(file, AGENT_INTERNAL_FILE_EXCLUDE)),
-        }))),
-      ]);
-
-      // project-info 默认只描述主工程；扩展工程另行生成 extra-project-info。
-      const mainFiles = displayFiles.filter(f => {
-        const p = f.path.replace(/^\/+/, '');
-        return !additionalDirectories.some(d => p.startsWith(d.path));
-      });
-      const projectInfo = buildProjectInfoSection(mainFiles);
-      const extraProjectInfo = buildExtraProjectInfoSection({
-        directories: extraDirectoryInfos.map(({ dir, files }) => ({ path: dir.path, files })),
-        files: allFiles,
-        globToolName: GLOB_TOOL_NAME,
-      });
-      return [projectInfo, extraProjectInfo].filter(Boolean).join("\n\n");
-    },
-  };
-
-  const designerRef: { current: Designer | undefined } = { current: designer };
-  const checkStatusTool = createCheckStatusTool(designerRef);
-  const initProjectTool = createInitProjectTool(sandbox);
-  const browserTools = collectBrowserTools({
-    baseTools: [checkStatusTool, initProjectTool, ...(activeTools ?? [])],
-    plugins: effectivePlugins,
-  });
-
-  if (remoteAgent) {
-    const agentType = remoteAgent.type ?? 'http';
-    const autoFollowUpHook = createBackendCompleteHook(hooks);
-
-    if (agentType === 'websocket') {
-      const agentRef: { current?: WebSocketAgent } = {};
-      // 创建 WebSocket Agent（新的 MCP 方式）
-      if (!remoteAgent.token) {
-        throw new Error('[plugin-ai] WebSocket agent requires token');
-      }
-
-      // 远程智能体通过 WS 通道调用的工具由本插件在本地 sandbox 上执行。
-      // 与 CodeAgent 一致，用当前 sandbox 现造文件工具集，使 write_file/read_file/... 落到本地虚拟 FS。
-      const skillTool = runtimeSkills?.length ? createSkillTool(runtimeSkills) : null;
-      // WS 无本地推理循环，本地 init-project（依赖 createFork）不可用；
-      // 从 browserTools 里剔除本地 init-project，稍后换成走平台子智能体的远程版。
-      const browserToolsWithoutInit = browserTools.filter(
-        (tool) => tool.name !== INIT_PROJECT_TOOL_NAME,
-      );
-      const localExecTools: Tool[] = [
-        createReadTool(sandbox),
-        createWriteTool(sandbox),
-        createMultiWriteTool(sandbox),
-        createEditTool(sandbox),
-        createMultiEditTool(sandbox),
-        createDeleteTool(sandbox),
-        createGrepTool(sandbox),
-        createBashTool(sandbox),
-        ...(skillTool ? [skillTool] : []),
-        ...browserToolsWithoutInit,
-      ];
-
-      const sessionHistory = new SessionHTTPHistory({
-        baseUrl: remoteAgent.baseUrl ?? 'http://112.17.139.222:8106',
-        token: remoteAgent.token,
-        session: remoteAgent.session,
-        getSessionId: () => agentRef.current?.sessionId,
-      });
-      // 历史附件 blob 下载完成后重新 emit ready，让 use-session 的订阅回调
-      // 重新 getTurns + commit，把 uploading 占位刷新为图片
-      sessionHistory.onAttachmentsResolved = () => {
-        agentRef.current?.historyManager.markReady();
-      };
-      const wsHistory = history
-        ? new MergedHistory(sessionHistory, history)
-        : sessionHistory;
-      // seed 对应 prompt.js 中 system 之后、用户输入之前的两条动态 user 内容（系统提示词由平台侧固定配置，不重复注入）：
-      //   user[1] = 前端开发指南（getContext），本地 CodeAgent 由 getStableContextMessages 注入；
-      //   user[2] = 环境信息(skills/日期/模式) + 项目空间元信息，本地由 getAttachmentContextMessages 注入。
-      // 这里在无 history 的新会话首轮之前，用同一套 builder 复刻这两条并追加到远程会话。
-      const buildSeedMessages = async (): Promise<string[]> => {
-        const messages: string[] = [];
-        // 第一条：开发指南
-        try {
-          const guide = await sandbox.getContext?.();
-          if (guide) messages.push(guide);
-        } catch (error) {
-          console.warn("[plugin-ai] build dev guide seed failed", error);
-        }
-        // 第二条：环境信息 + 项目空间元信息，拼接顺序与本地 CodeAgent 的 getAttachmentContextMessages 对齐。
-        try {
-          const sections: string[] = [];
-          const seedSkills = getRuntimeSkills() ?? [];
-          const seedSubAgents = effectivePlugins?.flatMap((p) => (p.enabled !== false ? p.agents ?? [] : [])) ?? [];
-          const envSection = buildEnvironmentSection(
-            seedSkills.length ? seedSkills : undefined,
-            seedSubAgents.length ? seedSubAgents : undefined,
-          );
-          const alwaysSkillsSection = await buildAlwaysLoadedSkillsSection(seedSkills);
-          const modeSection = await buildModeSection({
-            mode: AgentModeEnum.Build,
-            disabledModes,
-            getFiles: () => sandbox.getFiles(),
-          });
-          const envText = [envSection, alwaysSkillsSection, modeSection].filter(Boolean).join("\n\n");
-          if (envText) sections.push(envText);
-          const meta = await sandbox.getSandboxMetaSection?.();
-          if (meta) sections.push(meta);
-          if (sections.length) messages.push(sections.join("\n\n"));
-        } catch (error) {
-          console.warn("[plugin-ai] build project info seed failed", error);
-        }
-        return messages;
-      };
-      const agent = new WebSocketAgent({
-        baseUrl: remoteAgent.baseUrl ?? 'http://112.17.139.222:8106',
-        token: remoteAgent.token,
-        session: remoteAgent.session,
-        workspaceId: remoteAgent.workspaceId,
-        agentCode: remoteAgent.agentCode,
-        projectId: remoteAgent.projectId,
-        appType: remoteAgent.appType,
-        clientType: remoteAgent.clientType,
-        meta: remoteAgent.meta,
-        sessionId: remoteAgent.sessionId,
-      }, {
-        // disabled 状态由统一的 DisabledHandler 判断，与 HttpAgent / CodeAgent 保持一致。
-        disabled: () => disabledHandler.isDisabled(),
-        onDisabledRequest: () => disabledHandler.message("当前没有操作权限"),
-        ...(disabledModes ? { disabledModes } : {}),
-        tools: localExecTools,
-        // 计划模式下 getPlanFile / abandonPlan 需要读写本地 sandbox 的 .agent/plans/
-        sandbox,
-        hooks: {
-          ...hooks,
-          afterTurn: autoFollowUpHook,
-        },
-        history: wsHistory,
-        historyKey: agentKey,
-        getSeedMessages: buildSeedMessages,
-        onSessionReset: remoteAgent.onSessionReset,
-      });
-      agentRef.current = agent;
-      agent.start(); // 依赖绑定完成后再触发历史加载
-
-      if (llmPluginKey) {
-        context.createLLMRequest(llmPluginKey, agent.key);
-      }
-      context.aiQueue.setRequestGuard(agent, requestGuard);
-      context.agentMap.set(agentKey, agent);
-      context.registerAgentComId(comId);
-      return { history: agent.getHistory(), disabledHandler, isRemoteAgent: true };
-    }
-
-    // 创建 HTTP Agent（原有方式）
-    const agent = new HttpAgent({
-      baseUrl: remoteAgent.baseUrl,
-      workspaceId: remoteAgent.workspaceId,
-      agentId: remoteAgent.agentId,
-    }, {
-      disabledHandler,
-      ...(disabledModes ? { disabledModes } : {}),
-      browserTools,
-      hooks: {
-        ...hooks,
-        afterTurn: autoFollowUpHook,
-      },
-    });
-    // 与本地 CodeAgent 一致：存在 llmPluginKey 时把 HttpAgent.key 关联到 LLM runtime，
-    // 使模型选择 UI 与 requestAI 能解析出当前选中模型。返回值 request 函数仅本地 Agent 使用。
-    if (llmPluginKey) {
-      context.createLLMRequest(llmPluginKey, agent.key);
-    }
-    context.aiQueue.setRequestGuard(agent, requestGuard);
-    // 只有非空 initialFiles 才可作为 workspace 快照失败时的回退。
-    const workspaceReady = !hasInitialFiles(initialFiles)
-      ? agent.files.bindSandbox(sandbox)
-      : attachFiles(agent, {
-        sandbox,
-        initialFiles,
-        syncWorkspace: () => agent.files.bindSandbox(sandbox),
-      });
-    context.agentMap.set(agentKey, agent);
-    context.registerAgentComId(comId);
-    return { history: agent.getHistory(), disabledHandler, isRemoteAgent: true, workspaceReady };
-  }
-
-  const agent = new CodeAgent({
-    key: agentKey,
-    history: history ?? new IDBHistory({ dbName: "@plugin-ai/plugin/messages" }),
-    request: (llmPluginKey ? context.createLLMRequest(llmPluginKey, agentKey) : undefined) ?? requestAsStream,
-    sandbox,
-    tools: [checkStatusTool, initProjectTool, ...(activeTools ?? [])],
-    promptOptions,
-    hooks,
-    agentsMdConfig: buildAgentsMdConfig,
-    skills: runtimeSkills,
-    plugins: effectivePlugins,
-    subAgents: [],
-    disabledModes,
-    getAttachmentContextMessages: async () => {
-      const sections: string[] = [];
-      const custom = await getUserContextMessage?.();
-      if (custom) sections.push(custom);
-      return sections;
-    },
-    formatUserMessage: async (params) => {
-      const sandboxFormattedParams = {
-        message: params.message,
-        attachments: params.attachments,
-        ...(params.meta ? { meta: params.meta } : {}),
-        ...(params.extra ? { extra: params.extra } : {}),
-        ...(sender ? { sender } : {}),
-      };
-      if (!formatUserMessage) return sandboxFormattedParams;
-
-      const userFormattedParams = await formatUserMessage(sandboxFormattedParams);
-      return {
-        ...sandboxFormattedParams,
-        // TODO: 这里需要再考虑 formatUserMessage 的扩展语义。
-        // 目前 pluginAI 侧只让返回值中的 message 生效，attachments/meta/sender 暂不接管。
-        message: userFormattedParams.message,
-      };
-    },
-  });
-  const workspaceReady = attachFiles(agent, { sandbox, initialFiles });
-  context.aiQueue.setRequestGuard(agent, requestGuard);
-  agentRef = agent;
-
-  // MVP：复用同一个 CodeAgent 实例，仅替换其运行时资源。
-  // _base / _rebuildDynamicTools 是当前 CodeAgent 的私有实现细节，因此本能力标记为试验性。
-  const baseTools = (agent as any)._base.tools as Tool[];
-  const builtinTools = baseTools.slice(0, baseTools.length - 2 - (activeTools?.length ?? 0));
-  runtimeRef.apply = (config) => {
-    const nextTools = getRuntimeTools(config) ?? [];
-    const nextSkills = getRuntimeSkills(config) ?? [];
-    (agent as any)._base.skills = nextSkills;
-    (agent as any)._base.tools = [
-      ...builtinTools,
-      checkStatusTool,
-      initProjectTool,
-      ...nextTools,
-    ];
-    (agent as any)._rebuildDynamicTools();
-    agent.options.system = getCodeAgentSystemPrompt(
-      promptSectionsAdaptToPromptOption(getRuntimePromptSections(config))
-    );
-  };
-
-  context.agentMap.set(agentKey, agent);
-  context.registerAgentComId(comId);
-
-  return { history: agent.getHistory(), disabledHandler, isRemoteAgent: false, workspaceReady };
 }

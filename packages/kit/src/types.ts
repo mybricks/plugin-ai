@@ -3,6 +3,8 @@ import type { PromptSections } from "./prompts";
 
 export interface PluginAIPresetVirtualFilesContext {
   getEffectiveLibrariesSection(): Promise<string>;
+  /** The normalized CodeAgent configuration directory for this plugin instance. */
+  configDirName: string;
 }
 
 export interface PluginAIPreset {

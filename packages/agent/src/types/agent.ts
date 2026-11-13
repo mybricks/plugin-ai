@@ -3,30 +3,24 @@ import type { Agent } from "../agent";
 import type { HandoffOptions } from "../handoff";
 import type { MaskOptions } from "../mask";
 import type { RetryOptions } from "../retry";
+import type { AgentHooks } from "../hooks";
 import type {
   AgentMode,
+  AttachmentContextItem,
   BoundHistory,
   CompactRecord,
   History,
   Message,
+  AttachmentContext,
+  SubAgentTurnRecord,
   TokenUsage,
   Tool,
   ToolCallRecord,
+  ToolResult,
   TurnRecord,
   TurnSender,
   WarmupIter,
 } from "./index";
-
-type MaybePromise<T> = T | Promise<T>;
-
-export interface AgentsMdConfig {
-  /** agents.md 虚拟路径，用于多份规则合并展示时区分来源 */
-  path: string;
-  /** agents.md 文件内容 */
-  content: string;
-}
-
-export type AgentsMdConfigResolver = () => MaybePromise<AgentsMdConfig[]>;
 
 // ─── ToolExecutionContext ─────────────────────────────────────────────────────
 
@@ -37,6 +31,8 @@ export type AgentsMdConfigResolver = () => MaybePromise<AgentsMdConfig[]>;
 export interface ToolExecutionContext {
   /** 当前 turn 的唯一 ID */
   turnId: string;
+  /** 本次工具调用的唯一 ID，对应 ToolCallRecord.callId */
+  callId: string;
   /**
    * 当前 turn 到此刻为止的迭代记录（只读快照）。
    * 供工具自行做重试/重复调用检测等策略判断。
@@ -46,15 +42,10 @@ export interface ToolExecutionContext {
   getUserMessage: () => { message: string; attachments?: any[] };
   /** 获取当前 Agent 实例 */
   getAgent: () => Agent;
-  /** 读取当前 turn 后续 step 显式设置的 aiRole；未设置时请求层会兜底为 "default"。 */
-  getAiRole: () => string | undefined;
-  /**
-   * 设置后续 step 使用的 aiRole（仅当前 turn 生效）。
-   * 传空字符串或 undefined 可清空，恢复默认路由。
-   */
-  setAiRole: (aiRole?: string) => void;
   /** 当前工具执行时的 Agent 模式 */
   mode: AgentMode;
+  /** 当前 turn 的取消信号；可传给可取消的外部操作。 */
+  signal: AbortSignal;
   /** 读取 Agent 当前模式 */
   getMode: () => AgentMode;
   /** 切换 Agent 当前模式 */
@@ -72,59 +63,23 @@ export interface ToolExecutionContext {
   waitUIRender?: <T>() => Promise<T | null>;
 }
 
-// ─── AgentHooks ──────────────────────────────────────────────────────────────
-
-/** 自动摘要任务的最终结果。 */
-export type TurnSummaryResult =
-  | { status: "success"; versionId?: string }
-  | { status: "error"; error: unknown };
-
-export interface AgentHooks {
-  /**
-   * 用户发送消息后、一轮 turn 开始时的钩子，在构建 turn 级消息快照之前调用。
-   * 可用于初始化快照、收集日志等准备工作。
-   */
-  beforeTurn?: (params: {
-    /** 原始用户输入，用于 UI 展示和历史记录 */
-    message: string;
-    /** 经过 chip format / formatUserMessage 后，实际发送给 LLM 的用户文本 */
-    formattedMessage: string;
-    attachments: any[];
-    meta?: any;
-    extra?: Record<string, any>;
-  }) => Promise<void> | void;
-  /**
-   * 每次 LLM 请求前触发（每个 step 都会调用）。
-   * 可用于动态修改请求参数、注入上下文等。
-   * 返回 `additionalMessages` 时，这些消息会在本次 LLM 请求前追加到 tail。
-   */
-  beforeRequest?: (params: { meta?: any; extra?: Record<string, any> }) => Promise<{
-    additionalMessages?: Message[];
-  } | void> | { additionalMessages?: Message[] } | void;
-  /**
-   * 每轮 turn 结束后的钩子（无论成功、取消还是错误）。
-   * 在 turn:complete / turn:abort / turn:error 事件触发后同步调用。
-   * 可用于记录日志、上报埋点等收尾工作。
-   */
-  afterTurn?: (turn: TurnRecord) => Promise<void> | void;
-  /**
-   * 本轮 turn 的 summary 任务结束后的钩子（仅 summary.enabled=true 时触发）。
-   *
-   * 前两个参数保持既有兼容性：成功但无可解析摘要时 summary 为空字符串。
-   * 第三个参数用于区分成功与失败；远端成功事件可额外携带 versionId。
-   * 失败时 summary 为空字符串。
-   */
-  afterTurnSummary?: (
-    turn: TurnRecord,
-    summary: string,
-    result?: TurnSummaryResult,
-  ) => Promise<void> | void;
-  /**
-   * 成功 turn 的全部后台后处理结束后的钩子。
-   * 此时 summary / compact 均已完成（无论 summary 成功或失败）。
-   */
-  afterTurnSettled?: (turn: TurnRecord) => Promise<void> | void;
+/** 工具已完成参数校验、即将执行时的上下文。 */
+export interface ToolExecutionParams {
+  tool: Tool;
+  args: unknown;
+  context: ToolExecutionContext;
 }
+
+/**
+ * 工具执行中间件。调用 next() 执行工具原始实现；也可直接返回结果以接管执行。
+ * 该配置属于 AgentOptions，因此会随 fork / SubAgent 继承。
+ */
+export type ToolExecutor = (
+  params: ToolExecutionParams,
+  next: () => Promise<ToolResult>,
+) => Promise<ToolResult>;
+
+export type { AgentHooks } from "../hooks";
 
 // ─── MessageSection ───────────────────────────────────────────────────────────
 
@@ -141,45 +96,43 @@ export interface AgentOptions {
   /** 系统 prompt */
   system?: string;
   /**
+   * Agent 的语言环境，用于解析本地化资源和声明输出语言。默认 `zh`。
+   * Agent 本身不读取浏览器或宿主全局变量；调用方在创建实例时传入。
+   */
+  locale?: string;
+  /**
    * 初始运行模式。
-   * - build：智能模式，允许直接修改
+   * - build：智能体模式，允许直接修改
    * - plan：计划模式，先制定方案，方案通过后再操作
+   * - ask：询问模式，只读地澄清和质询需求
    */
   mode?: AgentMode;
   /** 禁用的运行模式；当只剩一种可用模式时不会注册模式切换工具。 */
   disabledModes?: AgentMode[];
-  /**
-   * agents.md：项目规范/规则文档。
-   *
-   * 对标 claude-code 的 CLAUDE.md 机制：
-   *   - claude-code 从文件系统遍历加载 CLAUDE.md，通过 prependUserContext 以
-   *     第一条 user 消息（包裹在 <system-reminder> 中）注入到每轮对话。
-   *   - 此处采用相同方式：agentsMd 不追加到 system prompt，而是作为独立的
-   *     user 消息插在历史记录之前，LLM 会将其视为背景上下文而非强制指令。
-   *
-   * 由调用方传入带路径和内容的 agents.md 配置。
-   */
-  agentsMdConfig?: AgentsMdConfigResolver;
   /**
    * 静态背景上下文注入（异步）。
    * 每个 turn 开始时获取一次，返回的消息列表插入到历史对话之前（静态前缀层），
    * 适合注入几乎不变的背景信息（如开发规范、设计风格）。
    * 享受 prompt cache 断点，命中率较高。
    */
-  getStableContextMessages?: () => Promise<Message[]>;
+  getStableContextMessages?: (options?: { includeSandboxContext?: boolean }) => Promise<Message[]>;
   /**
-   * 随消息携带的动态上下文注入（异步，带模式上下文）。
-   * 每个 turn 开始时获取一次，返回的字符串数组会拼接为一条 user 消息插在用户消息正前方，
-   * 适合注入每轮可能变化的上下文（如当前项目文件快照、模式提示词、skills 列表等）。
-   *
-   * ctx 提供当前模式信息，调用方可在此自行组装模式提示词、skill 列表等所有环境内容。
+   * 每个 turn 开始时获取随消息携带的最新动态上下文。
+   * 每轮生成一次候选快照，正常续跑时即使 compact 也不重新读取，保持与用户消息的时间关系。
+   * 每次请求在 compact、handoff、mask 后按 key 和 dedupThreshold
+   * 筛选本轮内容，保留可见历史；仅持久化实际发送的内容及每次 iter 的 key。
+   * 兼容旧的 string[] 回调：合并后每轮始终携带，不参与去重。
    */
   getAttachmentContextMessages?: (ctx: {
     mode: AgentMode;
     previousMode: AgentMode | null;
-  }) => MessageSection[] | Promise<MessageSection[]>;
+    turnStartTime: number;
+    previousAttachmentContext: AttachmentContext | null;
+  }) => (AttachmentContextItem | string)[] | Promise<(AttachmentContextItem | string)[]>;
   /** 工具列表（plugin 初始化时注册额外工具） */
   tools?: Tool[];
+  /** 在 validate 后、工具原始 execute 前运行的执行中间件。 */
+  toolExecutor?: ToolExecutor;
   /** 历史记录实现 */
   history?: History;
   /** 流式请求函数 */
@@ -202,7 +155,7 @@ export interface AgentOptions {
    * 历史消息遮蔽配置。
    * 满足轮次或时间条件的历史 turn，其工具调用结果消息会被替换为占位符，
    * 用户附件也会被替换为文字占位符，以减少发给 LLM 的 token 量。
-   * 不传则不遮蔽。
+   * 不传则使用默认遮蔽配置；传 false 才关闭遮蔽。
    */
   mask?: MaskOptions | false;
   /**
@@ -233,6 +186,10 @@ export interface AgentOptions {
   };
   /**
    * compact 配置。
+   * mask 会遮蔽旧工具结果，handoff 可用逐轮摘要替代历史；两者先降低常规请求的
+   * 上下文占用，compact 则在达到下方阈值时继续作为兜底压缩手段。
+   * compact 与 summary 一样会发起独立的模型请求，使用 flash 路由，
+   * 不继承触发它的父 turn 显式选择的模型。
    * 触发条件：优先通过 token 阈值判断（需 usage 字段有值）；usage 缺失时降级为轮次判断。
    * 触发时机：双时机策略——
    *   1. turn 结束后异步（fire-and-forget），尽早完成压缩
@@ -329,7 +286,7 @@ export interface ForkOptions {
   /**
    * 覆盖运行模式。
    * - 不传：继承父 Agent 当前模式
-   * - build：智能模式，允许直接修改
+   * - build：智能体模式，允许直接修改
    * - plan：计划模式，先制定方案，方案通过后再操作
    */
   mode?: AgentMode;
@@ -338,6 +295,14 @@ export interface ForkOptions {
    * 目前主要用于 SubAgent 场景，通过 beforeRequest 在每次请求前注入动态上下文。
    */
   hooks?: AgentHooks;
+  /**
+   * 是否保留宿主 sandbox 通过 getContext 注入的开发指南上下文。
+   * 不传时继承父 Agent；SubAgent 默认关闭，避免携带主工程的开发规范。
+   *
+   * 这是当前 fork 基础设施下的临时隔离措施。只有支持该参数的
+   * getStableContextMessages provider 会据此移除 sandbox context。
+   */
+  includeSandboxContext?: boolean;
 }
 
 // ─── ForkAgent ────────────────────────────────────────────────────────────────
@@ -395,14 +360,14 @@ export type TurnPersistMode = "append" | "update";
 export interface TurnMessageSnapshot {
   /** 当前 turn 可见的历史 turns 快照 */
   historyTurns: TurnRecord[];
-  /** 项目级 agents.md 规则文档，每轮开始时获取一次 */
-  agentsMdMessage: Message | null;
   /** 静态背景上下文：每轮开始时获取一次，后续 iter 复用（位于历史对话之前的静态前缀层） */
   stableContextMessages: Message[];
-  /** 随消息携带的动态上下文：每轮开始时获取一次，拼接为一条 user 消息插在当前用户消息之前 */
-  attachmentContextMessages: MessageSection[];
+  /** 当前执行开始时计算的 mask 集合，仅在内存中复用，retry 时重新计算。 */
+  maskedTurnIds: ReadonlySet<string>;
   /** 当前 turn 开始时的运行模式 */
   mode: AgentMode;
+  /** 本轮附件上下文拼接为一条 user 消息，位于当前用户消息之前；无内容时为 null。 */
+  attachmentContextMessage: Message | null;
 }
 
 // ─── 单次 LLM 请求结果 ─────────────────────────────────────────────────────────

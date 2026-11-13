@@ -54,6 +54,11 @@ export interface ChatChipDef {
 /** 内置文件 chip 的类型标识 */
 export const FILE_CHIP_TYPE = "file";
 
+const VISUAL_EDIT_REMINDER = [
+  'All DOM operations come from visual drag-and-drop actions. Prefer making the changes directly so the user can see the result. If there is a clear risk, you may consult the user or recommend how to proceed.',
+  'Do not refer to nodes as Dom1 or Dom2 when speaking to the user; use more intuitive descriptions such as “the Save button” instead.',
+].join('\n');
+
 /**
  * 文件 chip 的数据结构（存入 ChatChipInstance.data）。
  * 由 Sender 上传文件时填充，format 时展开为 <file> 代码块或引用文本。
@@ -118,7 +123,7 @@ export const fileChipDef: ChatChipDef = {
 
         // 截断说明放在标签外作为正文提示，模型更容易注意到
         const header = data.truncated
-          ? `<file name="${nameAttr}">（内容过长已截断，仅展示前 ${lineCount} 行）`
+          ? `<file name="${nameAttr}"> (content truncated; showing the first ${lineCount} lines)`
           : `<file name="${nameAttr}">`;
 
         fileBlocks.push(
@@ -128,7 +133,7 @@ export const fileChipDef: ChatChipDef = {
     }
 
     if (fileBlocks.length > 0) {
-      resolved = `${resolved}\n\n以下是上方通过 @文件名 引用的文件内容：\n${fileBlocks.join("\n\n")}`;
+      resolved = `${resolved}\n\nFile contents referenced by @filename above:\n${fileBlocks.join("\n\n")}`;
     }
 
     return resolved;
@@ -193,17 +198,19 @@ export class ChipRegistry {
    *
    * 不修改原对象。
    */
-  formatRequestParams<T extends { message: string; meta?: Record<string, any> }>(params: T): Omit<T, "message"> & { displayMessage: string; modelMessage: string } {
+  formatRequestParams<T extends { message: string; extra?: Record<string, any>; meta?: Record<string, any> }>(params: T): Omit<T, "message"> & { displayMessage: string; modelMessage: string } {
     const { message: displayMessage, ...rest } = params;
     const chips = params.meta?.chips as ChatChipInstance[] | undefined;
-    if (!this._hasFormattableChips(chips)) {
+    const reminder = params.extra?.from === '@commitUserActions' ? VISUAL_EDIT_REMINDER : '';
+    if (!this._hasFormattableChips(chips) && !reminder) {
       return { ...rest, displayMessage, modelMessage: displayMessage };
     }
 
-    const wrappedMessage = `<user_query>\n${displayMessage}\n</user_query>`;
+    const reminderSection = reminder ? `\n\n<reminder>\n${reminder}\n</reminder>` : "";
+    const wrappedMessage = `<user_query>\n${displayMessage}${reminderSection}\n</user_query>`;
 
     const typeGroups = new Map<string, ChatChipInstance[]>();
-    for (const chip of chips!) {
+    for (const chip of chips ?? []) {
       if (!typeGroups.has(chip.type)) typeGroups.set(chip.type, []);
       typeGroups.get(chip.type)!.push(chip);
     }

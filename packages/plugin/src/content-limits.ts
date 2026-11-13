@@ -141,10 +141,11 @@ export type AttachProcessor =
        * 入参为原始 File。
        * 返回 File 时继续交给内置主处理器；
        * 返回 FileContent 时表示已转换为文本内容，发送前仍会按内置策略决定内联或写入引用；
-       * 返回 FileReference 时直接作为最终引用文本。
+       * 返回 FileReference 时直接作为最终引用文本；
+       * 不返回时由调用方自行处置文件，不会添加 file chip。
        * 可 throw Error，框架弹错误提示。
        */
-      process: (file: File) => Promise<File | FileContent | FileReference>;
+      process: (file: File) => Promise<File | FileContent | FileReference | void>;
     }
   | {
       type: "link";

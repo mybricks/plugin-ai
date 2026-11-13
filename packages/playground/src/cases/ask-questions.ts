@@ -7,8 +7,8 @@ export const askQuestionsCase: TestCase = {
   name: "询问用户（UI 回填）",
   group: "工具调用",
   priority: "P0",
-  description: "调用 ask_questions，验证工具卡片收集选项后将答案作为同一 turn 的 tool result 返回给模型。",
-  expectedBehavior: "先显示两道可交互问题；选择后点击提交，卡片显示答案，随后模型继续输出确认文案。点击取消会中止当前 turn。",
+  description: "调用 ask_questions，验证工具卡片收集选项，以及 AI 已提供“其它”选项时的自定义输入兼容。",
+  expectedBehavior: "待回答卡片显示在 Sender 位置，Sender 草稿保留；第一题的“其它”输入框默认显示且仅显示一次，填写后即可提交并回传输入文本。点击「跳过」只跳过当前题并进入下一题；所有题目结束后卡片结果留在消息历史中，当前 turn 继续执行。",
   initialTurns: [],
   tools: [Tools.createAskQuestions()],
   request: makeScriptedRequest([
@@ -26,6 +26,7 @@ export const askQuestionsCase: TestCase = {
               options: [
                 { label: "CSS Modules (Recommended)", description: "样式局部隔离，适合当前项目。" },
                 { label: "Tailwind", description: "使用原子类快速组合界面。" },
+                { label: "其它", description: "填写未列出的样式方案。" },
               ],
             },
             {

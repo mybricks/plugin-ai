@@ -6,19 +6,20 @@ import {
 } from "../shared";
 import { PlanToolCard } from "../../action-cards/plan-card";
 import { isPlanFilePath, renderPlanMarkdownHtml } from "../../../../components/plan";
+import { lang } from "../../../../../i18n";
 
-export const WriteFileRenderer = ({ tool }: { tool: ToolRecord }) => {
+export const WriteFileRenderer = ({ tool, configDirName }: { tool: ToolRecord; configDirName?: string }) => {
   const path: string = tool.args?.path ?? "";
   const content: string = tool.args?.content ?? "";
 
-  if (isPlanFilePath(path)) {
+  if (isPlanFilePath(path, configDirName)) {
     const isPending = tool.status === "pending";
     return (
       <PlanToolCard
         path={path}
         content={content || undefined}
         pending={isPending}
-        verb="方案制定"
+        verb={lang.tool.planDrafting()}
         renderContent={(body) => (
           <div
             dangerouslySetInnerHTML={{ __html: renderPlanMarkdownHtml(body) }}
@@ -28,7 +29,7 @@ export const WriteFileRenderer = ({ tool }: { tool: ToolRecord }) => {
     );
   }
 
-  const title = path ? `写文件 ${path}` : "写文件";
+  const title = lang.tool.writeFile(path || undefined);
 
   if (tool.status === "pending") {
     if (content) {

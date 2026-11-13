@@ -22,3 +22,4 @@ packages/request/rollup.cdzd.mjs
 pnpm-lock.yaml
 
 .todos/
+packages/showcase/ui-files/

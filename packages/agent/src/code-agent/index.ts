@@ -1,5 +1,11 @@
-import { Agent, type AgentOptions } from "../agent";
-import type { Message, Tool } from "../types";
+import { Agent, normalizeAgentLocale, type AgentHooks, type AgentOptions } from "../agent";
+import type { AgentMode, AttachmentContextItem, Message, Tool } from "../types";
+import {
+  createAfterToolCallParams,
+  createBeforeToolCallParams,
+  getToolCallOutcome,
+  withToolCallOutcome,
+} from "../hooks";
 import {
   createReadTool,
   createWriteTool,
@@ -8,6 +14,7 @@ import {
   createDeleteTool,
   createGrepTool,
   createBashTool,
+  createHistoryReadTool,
   createSkillTool,
   READ_TOOL_NAME,
   WRITE_TOOL_NAME,
@@ -16,31 +23,68 @@ import {
   DELETE_TOOL_NAME,
   GREP_TOOL_NAME,
   BASH_TOOL_NAME,
+  HISTORY_READ_TOOL_NAME,
   USE_SKILL_TOOL_NAME,
 } from "./tools";
-import { buildModeSection, getActivePlanFile, type ActivePlanFile } from "../mode-manager";
+import { createAgentSandboxOverlay, createAgentSandboxRuntime } from "../agent-sandbox";
+import type { BashToolOptions } from "./tools/bash";
+import {
+  createAgentSandboxFromV1,
+  isAgentSandbox,
+  type AgentSandbox,
+  type AgentSandboxFileEntry,
+  type AgentSandboxFindResult,
+} from "../agent-sandbox";
+import { buildModeCatalogSection, buildModeStatusSection, getActivePlanFile, getAvailableAgentModes, type ActivePlanFile } from "../mode-manager";
 import { splitFrontmatter } from "../utils/frontmatter";
 import { getCodeAgentSystemPrompt, type CodeAgentPromptOptions } from "./prompt";
+import { createAgentsMdContextMessage } from "./agents-md";
+import { getAgentInternalFileExclude, getPlanDir, getSkillsDir, normalizeConfigDirName } from "./config-dir";
 export type { CodeAgentPromptOptions };
+export type { BashToolOptions } from "./tools/bash";
 import {
   type SkillFile,
   type SkillActivation,
   type SkillMeta,
   resolveSkillMeta,
+  resolveLocalizedSkill,
   renderSkillContent,
   shouldAlwaysLoadSkill,
   shouldExposeSkillToModel,
 } from "./skills";
+import type { PromptTemplateFile } from "./prompt-templates";
+import { collectPluginPromptTemplates, createMbsTemplates, expandMbsTemplateMessage } from "./mbs";
+import type { MbsTemplateDescriptor } from "./mbs";
 import {
   createSubAgentTool,
-  resolveSubAgentMeta,
   type SubAgentConfig,
   CALL_SUB_AGENT_TOOL_NAME,
 } from "../sub-agent";
-export type { SubAgentConfig };
+export type { SubAgentConfig } from "../sub-agent";
 
 export type { SkillActivation, SkillFile, SkillMeta };
+export type { PromptTemplateFile } from "./prompt-templates";
+export { parseMbsTemplateRecord } from "./mbs";
+export type { MbsTemplateRecord } from "./mbs";
+export {
+  DEFAULT_CONFIG_DIR_NAME,
+  getAgentInternalFileExclude,
+  getAgentMdPath,
+  getConfigDirNameFromAgent,
+  getConfigDirPath,
+  getConfigDirPattern,
+  getPlanDir,
+  getSkillDir,
+  getSkillsDir,
+  normalizeConfigDirName,
+} from "./config-dir";
 export { resolveSkillMeta, USE_SKILL_TOOL_NAME };
+
+/** 默认配置目录名，供兼容导出使用。 */
+import { DEFAULT_CONFIG_DIR_NAME } from "./config-dir";
+
+/** @deprecated Use getAgentInternalFileExclude(configDirName) for custom directories. */
+export const AGENT_INTERNAL_FILE_EXCLUDE = getAgentInternalFileExclude();
 
 // ─── UnifiedFile ────────────────────────────────────────────────────────────
 
@@ -78,8 +122,6 @@ export interface GetFilesOptions {
   exclude?: FileExclude | FileExclude[];
 }
 
-export const AGENT_INTERNAL_FILE_EXCLUDE = /(^|\/)\.(agent|tmp)(\/|$)/;
-
 const normalizeFilePath = (path: string) => path.replace(/\\/g, '/').replace(/^\/+/, '');
 
 export const isFileExcluded = (file: UnifiedFile, exclude?: GetFilesOptions["exclude"]): boolean => {
@@ -104,55 +146,13 @@ export const isFileExcluded = (file: UnifiedFile, exclude?: GetFilesOptions["exc
 // ─── Plugin 配置 ─────────────────────────────────────────────────────────────
 
 /**
- * CodeAgent 插件挂载的额外目录。
- *
- * 目录通过虚拟路径前缀暴露给 CodeAgent 的文件工具；读写删除仍由宿主侧
- * sandbox 适配层路由到对应 API。
- */
-export interface AdditionalDirectory {
-  /**
-   * 虚拟路径前缀，末尾必须带斜杠，例如 ".specs/" 或 "knowledge/"。
-   * 所有 path.startsWith(dir.path) 的文件操作都会路由到此目录。
-   */
-  path: string;
-  /**
-   * 该目录的虚拟文件（路径相对 dir.path）。
-   *
-   * 典型用途：在此目录下放一个 `.agent/agent.md`，作为 LLM 可读的规则文档：
-   * ```ts
-   * virtualFiles: async () => [{
-   *   path: ".agent/agent.md",
-   *   content: "该工程的开发规范...",
-   * }]
-   * ```
-   *
-   * - 路径会被自动拼接 dir.path 前缀（setup 层负责）
-   * - 同路径下 virtualFiles 优先级高于 getFiles 返回的真实文件
-   * - 未填 permissions 时默认只读（write/delete 必须显式开启）
-   */
-  virtualFiles?: () => Promise<UnifiedFile[]>;
-  /** 读取该目录下的文件列表（返回带权限的统一文件模型） */
-  getFiles: () => Promise<UnifiedFile[]>;
-  /**
-   * 写入文件（可选）。
-   * 不传则视为只读目录，LLM 尝试写入时框架抛出错误。
-   */
-  updateFiles?: (files: Array<{ path: string; content: string }>) => Promise<void>;
-  /**
-   * 删除文件（可选）。
-   * 不传则视为不支持删除，操作时框架抛出错误。
-   */
-  deleteFiles?: (paths: string[]) => Promise<void>;
-}
-
-/**
  * CodeAgent 插件配置。
  *
  * 对标 Claude Code plugin 的组件聚合语义：
  *   - skills 使用 SkillFile 声明
- *   - agents 使用 SubAgentConfig 声明（md 文件驱动），合并到顶层 subAgents
+ *   - agents 使用 SubAgentConfig 声明，合并到顶层 subAgents
  *   - tools 使用 Tool 声明，并合并到顶层 tools
- *   - additionalDirectories 使用 AdditionalDirectory 声明，挂载额外文件目录
+ *   - hooks 使用 AgentHooks 声明
  *
  * name 命名规范：
  *   - 仅允许小写英文字母、数字、中划线、下划线
@@ -163,36 +163,72 @@ export interface AdditionalDirectory {
 export interface CodeAgentPlugin {
   /**
    * 插件唯一标识（必填）。
-   * 用作 enablePlugin / disablePlugin 的查找键，以及工具命名空间前缀。
    * 命名规范：[a-z0-9][a-z0-9_-]*
    */
   name: string;
+  /** Resolve locale-dependent plugin resources for the owning Agent. */
+  forLocale?: (locale: string) => CodeAgentPlugin;
   /** 插件版本号（可选，展示用） */
   version?: string;
   /** 插件描述（可选，展示/调试用） */
   description?: string;
-  /**
-   * 初始启用状态，默认 true（全部启用）。
-   * 设为 false 可让插件以禁用状态注册，需调用 enablePlugin(name) 后才会在 turn 中生效。
-   */
-  enabled?: boolean;
   /** 插件内置 Skills，合并到顶层 skills */
   skills?: SkillFile[];
+  /** 插件级 Prompt Templates。 */
+  promptTemplates?: PromptTemplateFile[];
+  /** 固定工作流程提示词，进入 system。 */
+  promptSections?: Pick<CodeAgentPromptOptions, "workflowSection">;
+  getAttachmentContextMessages?: (context: {
+    sandbox: AgentSandbox;
+    configDirName: string;
+    mode: Parameters<NonNullable<AgentOptions["getAttachmentContextMessages"]>>[0]["mode"];
+    previousMode: Parameters<NonNullable<AgentOptions["getAttachmentContextMessages"]>>[0]["previousMode"];
+    turnStartTime: Parameters<NonNullable<AgentOptions["getAttachmentContextMessages"]>>[0]["turnStartTime"];
+  }) => (AttachmentContextItem | string)[] | Promise<(AttachmentContextItem | string)[]>;
   /**
    * 插件内置 SubAgents，合并到顶层 subAgents。
-   * 每个 SubAgentConfig 通过 `${name}.md` 文件定义配置和系统提示词。
+   * 每个 SubAgentConfig 直接定义描述、工具和可选 system prompt。
    */
   agents?: SubAgentConfig[];
-  /** 插件内置工具，合并到顶层 tools（工具名自动加 pluginName_ 前缀） */
+  /** 插件内置工具；按注册顺序合并到顶层 tools，同名时保留最先注册的实现。 */
   tools?: Tool[];
   /**
-   * 插件额外挂载目录（异步工厂函数）。
-   * 仅在插件启用时参与文件读取、写入、删除和 user context 注入。
-   *
-   * 每个 turn 开始时调用，可根据运行时状态动态决定挂载哪些目录。
-   * 返回空数组表示本轮不挂载任何额外目录。
+   * 插件生命周期 hooks，与 AgentOptions.hooks 的定义和行为一致。
+   * 多个插件按 plugins 数组顺序依次执行。
    */
-  additionalDirectories?: () => Promise<AdditionalDirectory[]>;
+  hooks?: AgentHooks;
+  /** 客户端可选渲染扩展；宿主决定是否展示。 */
+  ui?: { todoArea?: (props: { setActive: (active: boolean) => void }) => any };
+}
+
+/**
+ * 延迟创建插件。适合依赖 sandbox 状态的能力（例如 Git 探测）：工厂只执行一次，
+ * 返回的仍是普通静态插件，不会在每个 turn 中重复求值。
+ */
+export type CodeAgentPluginFactory = ((context: {
+  sandbox: AgentSandbox;
+  configDirName: string;
+  /** 由远端代理的浏览器侧设置，插件可据此避免重复执行服务端逻辑。 */
+  isInRemoteMode?: boolean;
+}) => CodeAgentPlugin | Promise<CodeAgentPlugin>) & {
+  /** 插件初始化前可供宿主读取的名称，应与工厂返回的插件名称一致。 */
+  pluginName?: string;
+};
+
+export type CodeAgentPluginInput = CodeAgentPlugin | CodeAgentPluginFactory;
+
+interface PluginRuntimeState {
+  /** 已可用的静态插件；factory 解析成功后追加到此数组。 */
+  plugins: CodeAgentPlugin[];
+  /** 尚未执行的一次性插件工厂。 */
+  factories: CodeAgentPluginFactory[];
+  /** 并发调用 initializePlugins 时复用同一个初始化任务。 */
+  initializing?: Promise<void>;
+}
+
+interface SystemPromptState {
+  options: CodeAgentPromptOptions | false | undefined;
+  customSystem: string | undefined;
 }
 
 export type CodeAgentBuiltinToolName =
@@ -202,7 +238,8 @@ export type CodeAgentBuiltinToolName =
   | typeof MULTI_EDIT_TOOL_NAME
   | typeof DELETE_TOOL_NAME
   | typeof GREP_TOOL_NAME
-  | typeof BASH_TOOL_NAME;
+  | typeof BASH_TOOL_NAME
+  | typeof HISTORY_READ_TOOL_NAME;
 
 const DEFAULT_BUILTIN_TOOLS: CodeAgentBuiltinToolName[] = [
   READ_TOOL_NAME,
@@ -214,18 +251,38 @@ const DEFAULT_BUILTIN_TOOLS: CodeAgentBuiltinToolName[] = [
   BASH_TOOL_NAME,
 ];
 
-// ─── 沙箱接口 ─────────────────────────────────────────────────────────────────
+/**
+ * 工具按注册顺序稳定去重：同名时保留最先注册的实现。
+ *
+ * 这既避免将重复 function definition 发送给模型，也让调用方可以通过
+ * 更靠前的来源（例如 AgentOptions.tools）显式覆盖后续插件的默认工具。
+ */
+function deduplicateTools(tools: Tool[]): Tool[] {
+  const names = new Set<string>();
+  return tools.filter((tool) => {
+    if (names.has(tool.name)) return false;
+    names.add(tool.name);
+    return true;
+  });
+}
+
+// ─── Sandbox V1 兼容接口 ──────────────────────────────────────────────────────
 
 /**
- * 沙箱接口，由调用方通过 window._registSandBox_ 注入。
- * CodeAgent 通过此接口操作文件系统（读取、写入文件）。
- * 额外的设计器状态、日志等能力通过 tools 参数注入，CodeAgent 本身不感知。
+ * 旧版 Sandbox V1 兼容接口。
+ *
+ * 新宿主应直接提供 `AgentSandbox`（原子 `files` + `commands`）；CodeAgent
+ * 在入口将此 V1 接口转换为 AgentSandbox，因此保留它不会影响旧调用方。
+ * V1 的 `getFiles()` 会返回全部文件内容，仅作为兼容层实现；新工具不直接依赖它。
+ * 额外的设计器状态、日志等能力仍应通过 tools 参数注入。
+ *
+ * @deprecated 请改为提供 `AgentSandbox`。
  */
 export interface Sandbox {
   /**
-   * 获取文件列表（统一文件模型，包含所有来源的文件）。
+   * 旧版：获取全部文件及其内容。
    * @param options.exclude 可选过滤规则，命中的文件会被排除。
-   *   典型用途：`exclude: /(^|\/)\.agent(\/|$)/` 过滤任意层级内部文件，用于向用户展示的文件列表。
+   *   典型用途：`exclude: getAgentInternalFileExclude(configDirName)` 过滤任意层级内部文件，用于向用户展示的文件列表。
    */
   getFiles(options?: GetFilesOptions): Promise<UnifiedFile[]>;
   /**
@@ -241,22 +298,25 @@ export interface Sandbox {
    * 返回的文本内容会通过 getStableContextMessages 注入到 LLM 上下文中。
    */
   getContext?: () => Promise<string | null>;
-  /**
-   * 获取项目空间元信息（主工程文件列表、扩展工程说明等）。
-   * 返回的文本会通过 getAttachmentContextMessages 注入到 LLM 上下文中，
-   * 放置在用户消息之前。
-   */
-  getSandboxMetaSection?: () => Promise<string | null>;
 }
 
 // ─── CodeAgentOptions ────────────────────────────────────────────────────────
 
-export interface CodeAgentOptions extends Omit<AgentOptions, "system"> {
+export interface CodeAgentOptions extends Omit<AgentOptions, "system" | "getAttachmentContextMessages"> {
   /**
-   * 沙箱，提供文件读写工具的底层实现。
-   * 通常由 plugin 侧通过 window._registSandBox_ 注入。
+   * 推荐传入 AgentSandbox。为兼容既有宿主也接受 Sandbox V1，并在入口适配。
+   * CodeAgent 内部只使用 AgentSandbox：文件工具走 files，grep 等结构化工具走 commands。
+   * plugin 集成可通过 window._registSandBox_ 注入任一种契约。
    */
-  sandbox: Sandbox;
+  sandbox: Sandbox | AgentSandbox;
+  /**
+   * Directory used for CodeAgent-owned project resources. Defaults to `.agent`.
+   * Skills are exposed at `<configDirName>/skills/`, rules are read from
+   * `<configDirName>/agent.md`, and plans live in `<configDirName>/plans/`.
+   */
+  configDirName?: string;
+  /** Restrict the bash tool to a host-approved command set. */
+  bash?: BashToolOptions;
   /**
    * 系统提示词定制选项（可覆盖内置默认值）。
    * 传 false 则跳过所有内置段落，由 system 字段完全掌控系统提示词。
@@ -266,11 +326,11 @@ export interface CodeAgentOptions extends Omit<AgentOptions, "system"> {
    * 技能文件列表（Skills）。
    *
    * 对标 claude-code 的 .claude/skills/ 目录机制：
-   *   - 每个 SkillFile.name 作为虚拟目录名（.agent/skills/<name>/）
+   *   - 每个 SkillFile.name 作为虚拟目录名（<configDirName>/skills/<name>/）
    *   - SKILL.md 为必填入口文件
    *   - 技能目录（name + description）列出在环境消息中，随每轮 user 消息注入
    *   - LLM 通过 use_skill 工具按需加载 SKILL.md 内容
-   *   - 支持文件可通过 read_file 工具读取（.agent/skills/<name>/<path>）
+   *   - 支持文件可通过 read_file 工具读取（<configDirName>/skills/<name>/<path>）
    *   - 不全量注入，避免 token 浪费
    */
   skills?: SkillFile[];
@@ -279,6 +339,11 @@ export interface CodeAgentOptions extends Omit<AgentOptions, "system"> {
    * 可用于注入项目特定规范、约束或上下文。
    */
   system?: string;
+  getAttachmentContextMessages?: (ctx: {
+    mode: AgentMode;
+    previousMode: AgentMode | null;
+    turnStartTime: number;
+  }) => (AttachmentContextItem | string)[] | Promise<(AttachmentContextItem | string)[]>;
   /**
    * 子 Agent 配置列表。
    * 配置后会自动注册一个 `call-sub-agent` 工具，LLM 可通过工具调用来发起子 Agent 任务。
@@ -288,17 +353,15 @@ export interface CodeAgentOptions extends Omit<AgentOptions, "system"> {
   /**
    * 插件配置列表。
    *
-   * 每个插件的 skills / agents / tools 会在每次 turn 开始时，根据当前启用状态
-   * 动态合并到顶层 skills / subAgents / tools 中，而非构造期固化。
-   *
-   * 插件启用状态通过 enablePlugin / disablePlugin 控制，初始状态由 plugin.enabled 字段决定（默认 true）。
+   * 普通对象会立即生效；函数工厂在首次使用前基于已初始化的 sandbox 执行一次，
+   * 适合在 Git 等工作区状态已可读取后决定模板与工作流。
    */
-  plugins?: CodeAgentPlugin[];
+  plugins?: CodeAgentPluginInput[];
   /**
-   * 控制 CodeAgent 内置文件工具。
+   * 控制 CodeAgent 内置工具。
    *
-   * - undefined：启用默认内置工具
-   * - false / []：不启用任何内置文件工具
+   * - undefined：启用默认内置工具（不包含 history_read）
+   * - false / []：不启用任何内置工具
    * - 指定工具名数组：只启用这些内置文件工具
    *
    * `tools` 仍然表示额外追加的自定义工具，不承担禁用内置工具的语义。
@@ -306,42 +369,176 @@ export interface CodeAgentOptions extends Omit<AgentOptions, "system"> {
   builtinTools?: false | CodeAgentBuiltinToolName[];
 }
 
-/** 虚拟 agent 资源路径前缀 */
-const AGENT_PREFIX = ".agent/";
-/** 虚拟 skills 路径前缀 */
-const SKILLS_PREFIX = `${AGENT_PREFIX}skills/`;
-
 /** 插件 name 命名规范校验 */
 const PLUGIN_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
-function prefixPluginToolName(pluginName: string, tool: Tool): Tool {
-  return {
-    ...tool,
-    name: `${pluginName}_${tool.name}`,
+function collectPluginTemplates(plugins: CodeAgentPlugin[]) {
+  return collectPluginPromptTemplates(plugins);
+}
+
+function composeSystemPrompt(
+  promptOptions: CodeAgentPromptOptions | false | undefined,
+  customSystem: string | undefined,
+  plugins: CodeAgentPlugin[],
+  locale: string,
+): string {
+  const workflowSections = [
+    promptOptions === false ? undefined : promptOptions?.workflowSection,
+    ...plugins.map((plugin) => plugin.promptSections?.workflowSection),
+  ].filter((section): section is string => Boolean(section?.trim()));
+  const builtin = promptOptions === false
+    ? workflowSections.join("\n\n")
+    : getCodeAgentSystemPrompt({
+      ...promptOptions,
+      workflowSection: workflowSections.join("\n\n") || undefined,
+    }, locale);
+  return [builtin, customSystem].filter(Boolean).join("\n\n");
+}
+
+export function composePluginHooks(
+  baseHooks: AgentHooks | undefined,
+  plugins: CodeAgentPlugin[],
+  hasPendingFactories = false,
+): AgentHooks | undefined {
+  const hasPluginHooks = plugins.some((plugin) => plugin.hooks);
+  if (!baseHooks && !hasPluginHooks && !hasPendingFactories) return undefined;
+
+  const getActiveHooks = (): Array<{ source: string; hooks: AgentHooks }> => [
+    ...(baseHooks ? [{ source: "AgentOptions", hooks: baseHooks }] : []),
+    ...plugins.flatMap((plugin) => plugin.hooks
+        ? [{ source: `plugin "${plugin.name}"`, hooks: plugin.hooks }]
+        : []),
+  ];
+
+  const runHook = async <T>(
+    source: string,
+    hookName: keyof AgentHooks,
+    callback: () => T | Promise<T>,
+  ): Promise<T | undefined> => {
+    try {
+      return await callback();
+    } catch (error) {
+      console.warn(`[CodeAgent] ${source}.hooks.${hookName} failed:`, error);
+      return undefined;
+    }
   };
+
+  const hooks: AgentHooks = {
+    async beforeTurn(params) {
+      for (const { source, hooks: activeHooks } of getActiveHooks()) {
+        if (activeHooks.beforeTurn) {
+          await runHook(source, "beforeTurn", () => activeHooks.beforeTurn!(params));
+        }
+      }
+    },
+    async beforeRequest(params) {
+      const additionalMessages: Message[] = [];
+      for (const { source, hooks: activeHooks } of getActiveHooks()) {
+        if (!activeHooks.beforeRequest) continue;
+        const result = await runHook(
+          source,
+          "beforeRequest",
+          () => activeHooks.beforeRequest!(params),
+        );
+        if (result?.additionalMessages?.length) {
+          additionalMessages.push(...result.additionalMessages);
+        }
+      }
+      return additionalMessages.length ? { additionalMessages } : undefined;
+    },
+    async beforeToolCall(params) {
+      let args = params.toolCall.args;
+      let changed = false;
+      for (const { source, hooks: activeHooks } of getActiveHooks()) {
+        if (!activeHooks.beforeToolCall) continue;
+        const result = await runHook(
+          source,
+          "beforeToolCall",
+          () => activeHooks.beforeToolCall!(createBeforeToolCallParams({
+            ...params,
+            toolCall: { ...params.toolCall, args },
+          })),
+        );
+        if (!result) continue;
+        // 任一插件 deny 即短路，后续插件不再有机会改写参数。
+        if (result.decision === "deny") return result;
+        if (Object.prototype.hasOwnProperty.call(result, "args")) {
+          args = result.args;
+          changed = true;
+        }
+      }
+      return changed ? { args } : undefined;
+    },
+    async afterToolCall(params) {
+      // 逐个插件串联改写：后一个插件看到的是前一个插件改写后的结果。
+      let toolCall = params.toolCall;
+      let changed = false;
+      for (const { source, hooks: activeHooks } of getActiveHooks()) {
+        if (!activeHooks.afterToolCall) continue;
+        const result = await runHook(
+          source,
+          "afterToolCall",
+          () => activeHooks.afterToolCall!(createAfterToolCallParams({ ...params, toolCall })),
+        );
+        if (!result) continue;
+        toolCall = withToolCallOutcome(toolCall, result);
+        changed = true;
+      }
+      return changed ? getToolCallOutcome(toolCall) : undefined;
+    },
+    async beforeTurnStop(params) {
+      const additionalMessages: Message[] = [];
+      for (const { source, hooks: activeHooks } of getActiveHooks()) {
+        if (!activeHooks.beforeTurnStop) continue;
+        const result = await runHook(
+          source,
+          "beforeTurnStop",
+          () => activeHooks.beforeTurnStop!(params),
+        );
+        if (result?.additionalMessages?.length) {
+          additionalMessages.push(...result.additionalMessages);
+        }
+      }
+      return additionalMessages.length ? { additionalMessages } : undefined;
+    },
+    async afterTurn(turn) {
+      for (const { source, hooks: activeHooks } of getActiveHooks()) {
+        if (activeHooks.afterTurn) {
+          await runHook(source, "afterTurn", () => activeHooks.afterTurn!(turn));
+        }
+      }
+    },
+    async afterTurnSummary(turn, summary, result) {
+      for (const { source, hooks: activeHooks } of getActiveHooks()) {
+        if (activeHooks.afterTurnSummary) {
+          await runHook(
+            source,
+            "afterTurnSummary",
+            () => activeHooks.afterTurnSummary!(turn, summary, result),
+          );
+        }
+      }
+    },
+    async afterTurnSettled(turn) {
+      for (const { source, hooks: activeHooks } of getActiveHooks()) {
+        if (activeHooks.afterTurnSettled) {
+          await runHook(
+            source,
+            "afterTurnSettled",
+            () => activeHooks.afterTurnSettled!(turn),
+          );
+        }
+      }
+    },
+  };
+
+  return hooks;
 }
 
 // ─── 构建环境信息 ──────────────────────────────────────────────────────────────
 
-/**
- * 构建环境信息文本（每次 turn 开始时动态求值）。
- *
- * 包含 skills 目录信息和可用 sub-agents 类型信息，
- * 用 <system-reminder>环境信息</system-reminder> 包裹，返回字符串。
- * 如果无任何内容则返回空字符串。
- */
-export function buildEnvironmentSection(skills?: SkillFile[], subAgents?: SubAgentConfig[]): string {
+function buildCapabilityCatalogSection(skills?: SkillFile[], subAgents?: SubAgentConfig[], locale = "zh"): string {
   const sections: string[] = [];
-
-  // ── 当前日期 ──────────────────────────────────────────────────────────────
-  const now = new Date();
-  const dateStr = now.toLocaleDateString("zh-CN", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    weekday: "long",
-  });
-  sections.push(`当前日期：${dateStr}`);
 
   // ── Skills 目录 ───────────────────────────────────────────────────────────
   if (skills?.length) {
@@ -350,7 +547,7 @@ export function buildEnvironmentSection(skills?: SkillFile[], subAgents?: SubAge
       const lines = modelSkills.map((s) => {
         const skillMd = s.files.find((f) => f.path === "SKILL.md");
         if (!skillMd) return `  ${s.name}`;
-        const { description, whenToUse } = resolveSkillMeta(skillMd.content, s.name);
+        const { description, whenToUse } = resolveLocalizedSkill(s, locale);
         let line = `  ${s.name}: ${description}`;
         if (whenToUse) line += `（适用场景：${whenToUse}）`;
         return line;
@@ -364,15 +561,10 @@ export function buildEnvironmentSection(skills?: SkillFile[], subAgents?: SubAge
     }
   }
 
-  // ── SubAgent 目录 ─────────────────────────────────────────────────────────
+  // ── SubAgent 列表 ─────────────────────────────────────────────────────────
   if (subAgents?.length) {
     const lines = subAgents
-      .map((c) => {
-        const mainFile = c.files.find((f) => f.path === `${c.name}.md`);
-        if (!mainFile) return `  ${c.name}`;
-        const { description } = resolveSubAgentMeta(mainFile.content, c.name);
-        return `  ${c.name}: ${description}`;
-      })
+      .map((c) => `  ${c.name}: ${c.description}`)
       .join("\n");
 
     sections.push(
@@ -386,16 +578,54 @@ export function buildEnvironmentSection(skills?: SkillFile[], subAgents?: SubAge
   return `<system-reminder>\n${sections.join("\n\n")}\n</system-reminder>`;
 }
 
-export async function buildAlwaysLoadedSkillsSection(skills: SkillFile[]): Promise<string> {
+/**
+ * 构建环境信息文本（兼容导出，供 plugin 侧 WebSocket Agent 种子消息构建使用）。
+ * 内部复用 buildCapabilityCatalogSection，locale 缺省为 zh。
+ */
+export function buildEnvironmentSection(skills?: SkillFile[], subAgents?: SubAgentConfig[]): string {
+  return buildCapabilityCatalogSection(skills, subAgents);
+}
+
+function buildCurrentTimeSection(referenceTime: number, locale: string): string {
+  const now = new Date(referenceTime);
+  const english = /^en(?:-|$)/i.test(locale);
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const dateTime = new Intl.DateTimeFormat(english ? "en-US" : "zh-CN", {
+    timeZone: tz, year: "numeric", month: "long", day: "numeric", weekday: "long",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+    timeZoneName: "shortOffset",
+  }).format(now);
+  const content = english
+    ? `Current time: ${dateTime} (${tz}).`
+    : `当前时间：${dateTime}（${tz}）。`;
+  return `<system-reminder>\n${content}\n</system-reminder>`;
+}
+
+function buildLocaleSection(locale: string): string {
+  const content = /^en(?:-|$)/i.test(locale)
+    ? "Always use English to communicate with the user, write code and comments, and generate code assets and other content."
+    : "建议使用中文与用户交流、写代码、写注释、生成代码资产等各类内容";
+  return `<system-reminder>\n${content}\n</system-reminder>`;
+}
+
+async function buildAlwaysLoadedSkillsContent(skills: SkillFile[], configDirName: string, locale: string): Promise<string> {
   const alwaysSkills = skills.filter(shouldAlwaysLoadSkill);
   if (!alwaysSkills.length) return "";
 
   const blocks: string[] = [];
   for (const skill of alwaysSkills) {
-    blocks.push((await renderSkillContent(skill)).output);
+    blocks.push((await renderSkillContent(skill, configDirName, locale)).output);
   }
 
-  return `<system-reminder>\n以下 Skill 已默认打开，请直接遵照执行，无需再调用 ${USE_SKILL_TOOL_NAME} 工具：\n\n${blocks.join("\n\n---\n\n")}\n</system-reminder>`;
+  return `以下 Skill 已默认打开，请直接遵照执行，无需再调用 ${USE_SKILL_TOOL_NAME} 工具：\n\n${blocks.join("\n\n---\n\n")}`;
+}
+
+/**
+ * 构建默认加载 Skill 文本（兼容导出，供 plugin 侧 WebSocket Agent 种子消息构建使用）。
+ * 使用默认 configDirName 与 zh locale。
+ */
+export async function buildAlwaysLoadedSkillsSection(skills: SkillFile[]): Promise<string> {
+  return buildAlwaysLoadedSkillsContent(skills, DEFAULT_CONFIG_DIR_NAME, "zh");
 }
 
 // ─── CodeAgent ────────────────────────────────────────────────────────────────
@@ -412,22 +642,29 @@ export async function buildAlwaysLoadedSkillsSection(skills: SkillFile[]): Promi
  * 初始化时可传入：
  *   - `sandbox`   — 沙箱（文件读写）
  *   - `tools`     — 额外自定义工具（如 check_design_status）
- *   - `virtualFiles` — 只读文件（如根工程 `.agent/agent.md` 规则文档），由 Sandbox.virtualFiles 承载，合并进统一文件模型
- *   - `skills`    — 技能文件列表，挂载为 .agent/skills/ 目录（只读），LLM 按需读取
+ *   - `virtualFiles` — 只读文件（如根工程 `<configDirName>/agent.md` 规则文档），由 Sandbox.virtualFiles 承载，合并进统一文件模型
+ *   - `skills`    — 技能文件列表，挂载为 `<configDirName>/skills/` 目录（只读），LLM 按需读取
  *   - `subAgents` — 子 Agent 配置列表，注册 call-sub-agent 工具
- *   - `plugins`   — 插件列表（仅支持 skills / agents / tools / additionalDirectories）
+ *   - `plugins`   — 插件列表（仅支持 skills / agents / tools / hooks）
  */
+
+async function fetchPlanFiles(
+  sandbox: AgentSandbox,
+  configDirName: string,
+): Promise<Array<{ path: string; content: string }>> {
+  const result = await sandbox.commands.execute({ name: "find", input: { path: getPlanDir(configDirName).slice(0, -1) } });
+  const entries = ((result.structured as AgentSandboxFindResult<AgentSandboxFileEntry> | undefined)?.entries ?? [])
+    .filter((e) => e.type !== "directory");
+  return sandbox.files.readFiles(entries.map((e) => e.path));
+}
+
 export class CodeAgent extends Agent {
-  /** 全量插件列表（构造时传入，不变） */
-  private _plugins: CodeAgentPlugin[];
-  /**
-   * 当前已启用的插件名集合。
-   * 由 plugin.enabled 字段（默认 true）初始化。
-   * enablePlugin / disablePlugin 调用时即时更新，下一个 turn 生效。
-   */
-  private _enabledPluginNames: Set<string>;
-  /** sandbox 实例，供 getPlanFile 等实例方法使用 */
-  private _sandbox: Sandbox;
+  private _pluginRuntime: PluginRuntimeState;
+  private _systemPrompt: SystemPromptState;
+  /** CodeAgent 内部只使用归一化后的 AgentSandbox。 */
+  private _sandbox: AgentSandbox;
+  /** Normalized directory used by this CodeAgent for its virtual resources. */
+  readonly configDirName: string;
   /**
    * 顶层基础资源（来自 options.skills / options.subAgents / options.tools，不含 plugin 部分）。
    * 不参与动态重算，始终全量参与每次 turn 的资源合并。
@@ -437,14 +674,28 @@ export class CodeAgent extends Agent {
   constructor(options: CodeAgentOptions) {
     const {
       sandbox,
+      configDirName: configDirNameOption,
       skills,
       system,
       subAgents,
-      plugins = [],
+      plugins: pluginInputs = [],
       builtinTools,
+      bash,
       ...agentOptions
     } = options;
+    const locale = normalizeAgentLocale(options.locale);
+    const configDirName = normalizeConfigDirName(configDirNameOption);
+    const skillsPrefix = getSkillsDir(configDirName);
 
+    const agentSandbox: AgentSandbox = isAgentSandbox(sandbox)
+      ? sandbox
+      : createAgentSandboxFromV1(sandbox, { allowedCommands: bash?.allowedCommands });
+
+    const pluginRuntime: PluginRuntimeState = {
+      plugins: pluginInputs.filter((plugin): plugin is CodeAgentPlugin => typeof plugin !== "function").map(plugin => plugin.forLocale?.(locale) ?? plugin),
+      factories: pluginInputs.filter((plugin): plugin is CodeAgentPluginFactory => typeof plugin === "function"),
+    };
+    const { plugins, factories: pluginFactories } = pluginRuntime;
     for (const plugin of plugins) {
       if (!PLUGIN_NAME_PATTERN.test(plugin.name)) {
         console.warn(
@@ -457,184 +708,187 @@ export class CodeAgent extends Agent {
     const baseSkills = skills ?? [];
     const baseSubAgents = subAgents ?? [];
     const baseUserTools = agentOptions.tools ?? [];
+    const hooks = composePluginHooks(agentOptions.hooks, plugins, pluginFactories.length > 0);
 
-    // super() 调用前 this 不可用，先用 enabledNamesRef 供 wrappedSandbox 闭包读取。
-    // super() 之后再把它同步到真实的 this._enabledPluginNames 引用。
-    const enabledNamesRef = { current: new Set<string>() };
+    const getPluginSkills = (): SkillFile[] => plugins.flatMap((plugin) => plugin.skills ?? []);
 
-    // 虚拟路径判断辅助
-    const normPath = (p: string) => p.replace(/^\/+/, '');
+    const formatUserMessage = async (params: Parameters<NonNullable<AgentOptions["formatUserMessage"]>>[0]) => {
+      const mbsMessage = expandMbsTemplateMessage(
+        params.message,
+        createMbsTemplates(collectPluginTemplates(plugins), locale),
+      );
+      const formattedParams = { ...params, message: mbsMessage ?? params.message };
+      return agentOptions.formatUserMessage
+        ? agentOptions.formatUserMessage(formattedParams)
+        : { message: formattedParams.message };
+    };
 
     // 收集 skills 文件（只读，不可列出）
     const collectSkillFiles = (): UnifiedFile[] => {
-      const enabledPluginSkills = plugins
-        .filter((p) => enabledNamesRef.current.has(p.name))
-        .flatMap((p) => p.skills ?? []);
-      const allSkills = [...baseSkills, ...enabledPluginSkills];
+      const allSkills = [...baseSkills, ...getPluginSkills()];
       return allSkills.flatMap((s) =>
         s.files.map((f) => ({
-          path: `${SKILLS_PREFIX}${s.name}/${f.path}`,
+          path: `${skillsPrefix}${s.name}/${f.path}`,
           content: f.content,
           permissions: { read: true, write: false, delete: false },
         }))
       );
     };
 
-    // 全量文件（sandbox.getFiles 已包含真实文件 + 只读文件）+ skills 文件并入一张 map
-    // 覆盖顺序：sandbox.getFiles 结果 < skills（skills 最优先）
-    const getAllFiles = async (): Promise<UnifiedFile[]> => {
-      const baseFiles = await sandbox.getFiles();
-      const skillFiles = collectSkillFiles();
-      if (!skillFiles.length) return baseFiles;
-      const merged = new Map<string, UnifiedFile>(
-        baseFiles.map(f => [normPath(f.path), f])
-      );
-      skillFiles.forEach(f => {
-        merged.set(normPath(f.path), f);
-      });
-      return Array.from(merged.values());
-    };
-
-    const wrappedSandbox: Sandbox = {
-      getFiles: async (options?) => {
-        const all = await getAllFiles();
-        return options?.exclude ? all.filter(f => !isFileExcluded(f, options.exclude)) : all;
-      },
-
-      updateFiles: async (files) => {
-        const allFiles = await getAllFiles();
-        const fileMap = new Map<string, UnifiedFile>(
-          allFiles.map(f => [normPath(f.path), f])
-        );
-        for (const file of files) {
-          const existing = fileMap.get(normPath(file.path));
-          if (existing?.permissions && !existing.permissions.write) {
-            throw new Error(`${file.path} is read-only`);
-          }
-        }
-        return sandbox.updateFiles(files);
-      },
-
-      deleteFiles: async (paths) => {
-        const allFiles = await getAllFiles();
-        const fileMap = new Map<string, UnifiedFile>(
-          allFiles.map(f => [normPath(f.path), f])
-        );
-        for (const p of paths) {
-          const existing = fileMap.get(normPath(p));
-          if (existing?.permissions && !existing.permissions.delete) {
-            throw new Error(`${p} cannot be deleted`);
-          }
-        }
-        return sandbox.deleteFiles(paths);
-      },
-
-      ...(sandbox.getContext ? { getContext: sandbox.getContext.bind(sandbox) } : {}),
-      ...(sandbox.getSandboxMetaSection ? { getSandboxMetaSection: sandbox.getSandboxMetaSection.bind(sandbox) } : {}),
-    };
-
     const enabledBuiltinToolNames = builtinTools === false
       ? []
       : builtinTools ?? DEFAULT_BUILTIN_TOOLS;
     const enabledBuiltinToolNameSet = new Set(enabledBuiltinToolNames);
-    const allSandboxTools: Array<[CodeAgentBuiltinToolName, Tool]> = [
-      [READ_TOOL_NAME, createReadTool(wrappedSandbox)],
-      [WRITE_TOOL_NAME, createWriteTool(wrappedSandbox)],
-      [EDIT_TOOL_NAME, createEditTool(wrappedSandbox)],
-      [MULTI_EDIT_TOOL_NAME, createMultiEditTool(wrappedSandbox)],
-      [DELETE_TOOL_NAME, createDeleteTool(wrappedSandbox)],
-      [GREP_TOOL_NAME, createGrepTool(wrappedSandbox)],
-      [BASH_TOOL_NAME, createBashTool(wrappedSandbox)],
+    const runtimeSandbox = createAgentSandboxRuntime(agentSandbox);
+    const { sandbox: toolSandbox } = createAgentSandboxOverlay(
+      runtimeSandbox,
+      collectSkillFiles,
+    );
+    const getPlanFiles = () => fetchPlanFiles(toolSandbox, configDirName);
+    const allBuiltinTools: Array<[CodeAgentBuiltinToolName, Tool]> = [
+      [READ_TOOL_NAME, createReadTool(toolSandbox)],
+      [WRITE_TOOL_NAME, createWriteTool(toolSandbox)],
+      [EDIT_TOOL_NAME, createEditTool(toolSandbox)],
+      [MULTI_EDIT_TOOL_NAME, createMultiEditTool(toolSandbox)],
+      [DELETE_TOOL_NAME, createDeleteTool(toolSandbox)],
+      [GREP_TOOL_NAME, createGrepTool(toolSandbox)],
+      [BASH_TOOL_NAME, createBashTool(toolSandbox.commands, {
+        ...bash,
+        allowedCommands: bash?.allowedCommands ?? agentSandbox.commands.allowedCommands,
+      })],
+      [HISTORY_READ_TOOL_NAME, createHistoryReadTool()],
     ];
-    const sandboxTools: Tool[] = allSandboxTools
+    const builtinToolInstances: Tool[] = allBuiltinTools
       .filter(([name]) => enabledBuiltinToolNameSet.has(name))
       .map(([, tool]) => tool);
 
     const base = {
       skills: baseSkills,
       subAgents: baseSubAgents,
-      tools: [...sandboxTools, ...baseUserTools],
+      tools: [...builtinToolInstances, ...baseUserTools],
     };
 
-    const getStableContextMessages = async (): Promise<Message[]> => {
-      const ctx = (await wrappedSandbox?.getContext?.()) ?? null;
-      if (!ctx) return [];
-      return [{ role: "user", content: ctx }];
+    const getStableContextMessages = async (
+      { includeSandboxContext = true }: { includeSandboxContext?: boolean } = {},
+    ): Promise<Message[]> => {
+      const skills = [...baseSkills, ...getPluginSkills()];
+      const [agentsMdMessage, alwaysLoadedSkillsContent, ctx] = await Promise.all([
+        createAgentsMdContextMessage(toolSandbox, configDirName),
+        buildAlwaysLoadedSkillsContent(skills, configDirName, locale),
+        includeSandboxContext ? (toolSandbox.getContext?.() ?? null) : null,
+      ]);
+
+      const { skills: allSkills, subAgents: allSubAgents } = this._getPluginResources();
+      const capabilityCatalog = buildCapabilityCatalogSection(
+        allSkills.length ? allSkills : undefined,
+        allSubAgents.length ? allSubAgents : undefined,
+        locale,
+      );
+      const modeCatalog = buildModeCatalogSection({
+        availableModes: getAvailableAgentModes({ disabledModes: agentOptions.disabledModes }),
+        configDirName,
+      });
+
+      return [
+        ...(agentsMdMessage ? [agentsMdMessage] : []),
+        ...(alwaysLoadedSkillsContent ? [{
+          role: "user" as const,
+          content: `<system-reminder>\n${alwaysLoadedSkillsContent}\n</system-reminder>`,
+        }] : []),
+        ...(ctx ? [{ role: "user" as const, content: ctx }] : []),
+        ...(capabilityCatalog ? [{ role: "user" as const, content: capabilityCatalog }] : []),
+        ...(modeCatalog ? [{ role: "user" as const, content: modeCatalog }] : []),
+      ];
     };
 
-    const builtinSystem = options.promptOptions === false
-      ? ""
-      : getCodeAgentSystemPrompt(agentOptions.promptOptions || undefined);
-    const finalSystem = system ? `${builtinSystem}
-
-${system}` : builtinSystem;
+    const finalSystem = composeSystemPrompt(
+      options.promptOptions,
+      system,
+      plugins,
+      locale,
+    );
 
     super({
       ...agentOptions,
+      locale,
+      hooks,
+      formatUserMessage,
       system: finalSystem,
       getStableContextMessages,
       getAttachmentContextMessages: async (ctx) => {
-        const sections: string[] = [];
+        const items: AttachmentContextItem[] = [];
 
-        // 1. 环境信息：skills/subAgents/日期 + 模式提示词
-        const { skills, subAgents } = this._getEnabledResources();
-        const baseSection = buildEnvironmentSection(
-          skills.length ? skills : undefined,
-          subAgents.length ? subAgents : undefined,
-        );
-        const alwaysSkillsSection = await buildAlwaysLoadedSkillsSection(skills);
-        const modeSection = await buildModeSection({
+        const customSections: string[] = [];
+        const extra = await agentOptions.getAttachmentContextMessages?.(ctx);
+        for (const item of extra ?? []) {
+          if (typeof item === "string") { if (item) customSections.push(item); continue; }
+          if (!item?.content) continue;
+          if (item.key) items.push(item);
+          else customSections.push(item.content);
+        }
+
+        for (const plugin of plugins) {
+          if (!plugin.getAttachmentContextMessages) continue;
+          try {
+            const pluginItems = await plugin.getAttachmentContextMessages({
+              ...ctx,
+              sandbox: toolSandbox,
+              configDirName,
+            });
+            for (const item of pluginItems ?? []) {
+              if (typeof item === "string") { if (item) customSections.push(item); continue; }
+              if (!item?.content) continue;
+              if (item.key) items.push(item);
+              else customSections.push(item.content);
+            }
+          } catch (error) {
+            console.warn(`[CodeAgent] plugin "${plugin.name}" attachment context failed:`, error);
+          }
+        }
+        if (customSections.length) items.push({ key: "__legacy_attachment_context__", content: customSections.join("\n\n"), dedupThreshold: "always" });
+
+        const modeStatus = await buildModeStatusSection({
           mode: ctx.mode,
           previousMode: ctx.previousMode,
           disabledModes: agentOptions.disabledModes,
-          getFiles: wrappedSandbox.getFiles.bind(wrappedSandbox),
+          getFiles: getPlanFiles,
+          configDirName,
         });
-        const envText = [baseSection, alwaysSkillsSection, modeSection].filter(Boolean).join("\n\n");
-        if (envText) sections.push(envText);
+        if (modeStatus) items.push({ key: "mode", content: modeStatus });
 
-        // 2. 项目空间元信息（文件列表等）
-        const meta = await wrappedSandbox?.getSandboxMetaSection?.();
-        if (meta) sections.push(meta);
+        items.push({ key: "locale", content: buildLocaleSection(locale) });
+        items.push({ key: "time", content: buildCurrentTimeSection(ctx.turnStartTime, locale), dedupThreshold: "always" });
 
-        // 3. 外部传入的扩展内容（CodeAgentOptions.getAttachmentContextMessages）
-        const extra = await agentOptions.getAttachmentContextMessages?.(ctx);
-        if (extra?.length) sections.push(...extra);
-
-        return sections;
+        return items;
       },
       tools: base.tools,
     });
 
-    this._plugins = plugins;
+    this._pluginRuntime = pluginRuntime;
+    this._systemPrompt = { options: options.promptOptions, customSystem: system };
     this._base = base;
-    this._sandbox = sandbox;
-    this._enabledPluginNames = new Set(
-      plugins.filter((p) => p.enabled !== false).map((p) => p.name)
-    );
-    enabledNamesRef.current = this._enabledPluginNames;
-
+    this._sandbox = toolSandbox;
+    this.configDirName = configDirName;
     this._rebuildDynamicTools();
   }
 
   /**
    * 获取当前活跃的计划文件（status: active）。
-   * 扫描 .agent/plans/ 目录，取日期最新的活跃计划文件。
+   * 扫描 `<configDirName>/plans/` 目录，取日期最新的活跃计划文件。
    * 若不存在活跃计划则返回 null。
    */
   async getPlanFile(): Promise<ActivePlanFile | null> {
-    return getActivePlanFile(this._sandbox.getFiles.bind(this._sandbox));
+    return getActivePlanFile(() => fetchPlanFiles(this._sandbox, this.configDirName), this.configDirName);
   }
 
-  /**
-   * 获取当前 CodeAgent 使用的沙箱实例。
-   */
-  getSandbox(): Sandbox {
-    return this._sandbox;
+  /** Active MBS templates. UI may present these through any interaction it owns. */
+  getMbsTemplates(): MbsTemplateDescriptor[] {
+    return createMbsTemplates(collectPluginTemplates(this._pluginRuntime.plugins), this.locale).map((item) => item.descriptor);
   }
 
   /**
    * 将指定计划文件的 status 改为 abandoned（废弃）。
-   * 修改 frontmatter 中的 status 字段后，通过 sandbox.updateFiles 写回。
+   * 修改 frontmatter 中的 status 字段后，通过 AgentSandbox.files.write 写回。
    */
   async abandonPlan(path: string, content: string): Promise<void> {
     const { fmText, body } = splitFrontmatter(content);
@@ -649,43 +903,36 @@ ${system}` : builtinSystem;
     }
 
     const newContent = `---\n${newFmText}\n---\n${body}`;
-    await this._sandbox.updateFiles([{ path, content: newContent }]);
+    await this._sandbox.files.write({ path, content: newContent });
   }
 
-  private _getEnabledResources(): {
+  private _getPluginResources(): {
     skills: SkillFile[];
     subAgents: SubAgentConfig[];
     tools: Tool[];
   } {
-    const enabledPlugins = this._plugins.filter((p) =>
-      this._enabledPluginNames.has(p.name)
-    );
-
     const skills = [
       ...this._base.skills,
-      ...enabledPlugins.flatMap((p) => p.skills ?? []),
+      ...this._pluginRuntime.plugins.flatMap((p) => p.skills ?? []),
     ];
     const subAgents = [
       ...this._base.subAgents,
-      ...enabledPlugins.flatMap((p) => p.agents ?? []),
+      ...this._pluginRuntime.plugins.flatMap((p) => p.agents ?? []),
     ];
-    const pluginTools = enabledPlugins.flatMap((p) =>
-      (p.tools ?? []).map((t) => prefixPluginToolName(p.name, t))
-    );
-    const tools = [...this._base.tools, ...pluginTools];
+    const pluginTools = this._pluginRuntime.plugins.flatMap((p) => p.tools ?? []);
+    const tools = deduplicateTools([...this._base.tools, ...pluginTools]);
 
     return { skills, subAgents, tools };
   }
 
   /**
-   * 根据当前启用插件状态，重建 use_skill、call-sub-agent 工具以及 plugin tools。
-   * 每次 requestAI 前调用，确保工具列表与启用状态一致。
+   * 重建 use_skill、call-sub-agent 工具以及 plugin tools。
    */
   private _rebuildDynamicTools(): void {
-    const { skills, subAgents, tools } = this._getEnabledResources();
+    const { skills, subAgents, tools } = this._getPluginResources();
 
     const modelSkills = skills.filter(shouldExposeSkillToModel);
-    const skillTool = modelSkills.length ? createSkillTool(modelSkills) : null;
+    const skillTool = modelSkills.length ? createSkillTool(modelSkills, this.configDirName, this.locale) : null;
     const subAgentTool = subAgents.length
       ? createSubAgentTool(
           () => this,
@@ -694,38 +941,78 @@ ${system}` : builtinSystem;
         )
       : null;
 
-    this.options.tools = [
+    this.options.tools = deduplicateTools([
       ...tools,
       ...(skillTool ? [skillTool] : []),
       ...(subAgentTool ? [subAgentTool] : []),
-    ];
+    ]);
   }
 
   override async requestAI(params: Parameters<Agent["requestAI"]>[0]): Promise<void> {
+    await this.initializePlugins();
     this._rebuildDynamicTools();
     return super.requestAI(params);
   }
 
-  /**
-   * 启用指定插件（仅影响当前实例）。
-   * 下一个 turn 开始时生效（skills / tools / agents 会重新合并）。
-   */
-  enablePlugin(name: string): void {
-    this._enabledPluginNames.add(name);
+  override async retry(params: Parameters<Agent["retry"]>[0]): Promise<void> {
+    await this.initializePlugins();
+    return super.retry(params);
   }
 
-  /**
-   * 禁用指定插件（仅影响当前实例）。
-   * 下一个 turn 开始时生效（skills / tools / agents 会重新合并）。
-   */
-  disablePlugin(name: string): void {
-    this._enabledPluginNames.delete(name);
+  /** 仅执行一次延迟插件工厂；工厂产物随后等同于普通静态插件。 */
+  initializePlugins(): Promise<void> {
+    const runtime = this._pluginRuntime;
+    if (runtime.initializing) return runtime.initializing;
+    if (!runtime.factories.length) return Promise.resolve();
+    const factories = runtime.factories.splice(0);
+    const initialize = async () => {
+      for (const factory of factories) {
+        try {
+          const resolved = await factory({
+            sandbox: this._sandbox,
+            configDirName: this.configDirName,
+          });
+          const plugin = resolved.forLocale?.(this.locale) ?? resolved;
+          if (!PLUGIN_NAME_PATTERN.test(plugin.name)) {
+            console.warn(`[CodeAgent] Plugin name "${plugin.name}" 不符合命名规范 [a-z0-9][a-z0-9_-]。`);
+          }
+          runtime.plugins.push(plugin);
+        } catch (error) {
+          console.warn("[CodeAgent] plugin factory failed to initialize:", error);
+        }
+      }
+      this._refreshSystemPrompt();
+      this._rebuildDynamicTools();
+    };
+    runtime.initializing = initialize().finally(() => {
+      runtime.initializing = undefined;
+    });
+    return runtime.initializing;
   }
 
-  /**
-   * 获取当前已启用的插件列表（快照，不影响内部状态）。
-   */
-  getEnabledPlugins(): CodeAgentPlugin[] {
-    return this._plugins.filter((p) => this._enabledPluginNames.has(p.name));
+  private _refreshSystemPrompt(): void {
+    this.options.system = composeSystemPrompt(
+      this._systemPrompt.options,
+      this._systemPrompt.customSystem,
+      this._pluginRuntime.plugins,
+      this.locale,
+    );
+  }
+
+  /** 更新基础提示词并重组 system。 */
+  setPromptOptions(promptOptions: CodeAgentPromptOptions | false | undefined): void {
+    this._systemPrompt.options = promptOptions;
+    this._refreshSystemPrompt();
+  }
+
+  /** Resolve a skill's display name by its stable identifier. */
+  getSkillDisplayName(name: string): string | undefined {
+    const skill = this._getPluginResources().skills.find(item => item.name === name);
+    return skill?.files.some(file => file.path === "SKILL.md") ? resolveLocalizedSkill(skill, this.locale).displayName : undefined;
+  }
+
+  /** 已初始化插件的快照。 */
+  getPlugins(): CodeAgentPlugin[] {
+    return [...this._pluginRuntime.plugins];
   }
 }

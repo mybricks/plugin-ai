@@ -2,14 +2,11 @@ export type { MybricksPromptSections } from "./mybricks";
 
 export {
   buildDevelopmentGuideContext,
-  buildExtraProjectInfoSection,
+  buildDirectoryInfoSection,
   buildProjectInfoSection,
-  parseAgentMdFrontmatter,
-  type AgentMdFrontmatter,
   type BuildDevelopmentGuideContextOptions,
-  type BuildExtraProjectInfoSectionOptions,
+  type BuildProjectInfoSectionOptions,
   type DevelopmentGuideLibrary,
-  type ExtraProjectInfo,
   type ProjectInfoFile,
 } from "./sections";
 
@@ -22,6 +19,8 @@ export interface PromptSectionsAgent {
   identitySection?: string;
   /** 工具使用规范，描述何时、如何调用各类工具 */
   usingToolsSection?: string;
+  /** 固定工作流程；无配置时不注入。 */
+  workflowSection?: string;
 }
 
 /**

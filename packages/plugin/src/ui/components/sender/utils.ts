@@ -3,7 +3,7 @@
  * 浏览器可能会在编辑器开头补一个 <br> 作为光标占位，形成：
  *   <br><span data-chip-id="..." contenteditable="false">...</span>
  *
- * 这个 <br> 不属于用户输入，也不会被 serializeEditorContent 识别，
+ * 这个 <br> 不属于用户输入，也不会被 Sender 的序列化逻辑识别，
  * 但会真实参与排版，导致 chip 前方出现一行空白。
  *
  * 只移除 editor 开头且紧挨 chip 的占位换行，避免影响用户在中间主动输入的换行。

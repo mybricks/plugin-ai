@@ -1,5 +1,6 @@
 import React from "react";
 import classNames from "classnames";
+import { lang } from "../../../i18n";
 
 export interface PlanActionClasses {
   root: string;
@@ -23,8 +24,8 @@ export const PlanActions = ({
   onExecute,
   onAbandon,
   classes,
-  executeLabel = "执行方案",
-  abandonLabel = "废弃方案",
+  executeLabel = lang.plan.execute(),
+  abandonLabel = lang.plan.abandon(),
   stopPropagation = true,
 }: PlanActionsProps) => {
   if (!onExecute && !onAbandon) return null;
@@ -41,7 +42,7 @@ export const PlanActions = ({
       {onAbandon && (
         <div
           className={classes.abandon}
-          title="废弃此方案"
+          title={lang.plan.abandon()}
           onClick={onAbandon}
         >
           {abandonLabel}
@@ -50,7 +51,7 @@ export const PlanActions = ({
       {onExecute && (
         <div
           className={classNames(classes.execute, { [classes.executeDisabled]: executeDisabled })}
-          title={executeDisabled ? "当前无法执行方案" : "按当前方案进入执行模式"}
+          title={executeDisabled ? lang.plan.executeDisabled() : lang.plan.executeTip()}
           onClick={() => {
             if (!executeDisabled) onExecute();
           }}

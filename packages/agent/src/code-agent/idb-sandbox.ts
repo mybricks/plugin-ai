@@ -15,8 +15,6 @@ export interface IDBSandboxOptions {
   initialFiles?: UnifiedFile[];
   /** 静态背景上下文，透传给 CodeAgent。 */
   getContext?: () => MaybePromise<string | null>;
-  /** 项目空间元信息，透传给 CodeAgent。 */
-  getSandboxMetaSection?: () => MaybePromise<string | null>;
 }
 
 export interface IDBSandboxFileRecord {
@@ -91,7 +89,6 @@ export class IDBSandbox implements Sandbox {
   private readonly dbName: string;
   private readonly initialFiles: UnifiedFile[];
   private readonly resolveContext?: IDBSandboxOptions["getContext"];
-  private readonly resolveSandboxMetaSection?: IDBSandboxOptions["getSandboxMetaSection"];
   private db: IDBDatabase | null = null;
 
   constructor(options: IDBSandboxOptions) {
@@ -102,7 +99,6 @@ export class IDBSandbox implements Sandbox {
     this.dbName = options.dbName ?? DEFAULT_DB_NAME;
     this.initialFiles = options.initialFiles ?? [];
     this.resolveContext = options.getContext;
-    this.resolveSandboxMetaSection = options.getSandboxMetaSection;
   }
 
   private openDB(): Promise<IDBDatabase> {
@@ -228,10 +224,6 @@ export class IDBSandbox implements Sandbox {
 
   async getContext(): Promise<string | null> {
     return (await this.resolveContext?.()) ?? null;
-  }
-
-  async getSandboxMetaSection(): Promise<string | null> {
-    return (await this.resolveSandboxMetaSection?.()) ?? null;
   }
 
   async importFiles(files: UnifiedFile[], options: { clear?: boolean } = {}): Promise<void> {

@@ -1,3 +1,4 @@
+import type React from "react";
 import type { SendToAgentParams } from "../sandbox";
 import { AgentQueue } from "./queue";
 import { LLMProvider } from "../../../request/src";
@@ -5,6 +6,7 @@ import type { ProviderConfig, RequestAsStreamFn } from "../../../request/src";
 import type { SenderRef } from "../ui/components/sender";
 import { PluginAIKVStore } from "./kv";
 import { ModelSelectionController } from "../model-selection";
+import { lang } from "../i18n";
 
 type SenderInputValue = ReturnType<SenderRef["getInput"]>;
 
@@ -15,8 +17,16 @@ export interface SettingValue {
 }
 
 class Context {
-  /** UI 显示名称 */
-  name: string = "智能助手";
+  private _name?: string;
+
+  /** UI 显示名称；宿主未覆盖时跟随当前语言。 */
+  get name(): string {
+    return this._name ?? lang.common.assistant();
+  }
+
+  set name(value: string) {
+    this._name = value;
+  }
 
   /** 插件命名空间 key，用于 agentKey 拼接 */
   private _pluginKey: string = "";
@@ -80,6 +90,9 @@ class Context {
    * agent 在 plugin 侧统一管理，保证按 comId 复用
    */
   agentMap = new Map<string, any>();
+  /** Host-owned V1 sandbox façades used by plugin UI integrations. */
+  sandboxMap = new Map<string, any>();
+  understandAnyUI = new Map<string, (React.ComponentType<{ bindingTo?: string; disabled?: boolean; Sender?: React.ComponentType<any>; Modal?: React.ComponentType<any>; setTitle?: (title: string) => void }> & { getInfo?: (params: { id?: string }) => Promise<{ title?: string; description?: string } | undefined> })>();
 
   /** 已注册过 Agent 的 comId，用于无画布 focus 时兜底打开对话面板。 */
   private _agentComIds: string[] = [];
@@ -181,36 +194,6 @@ class Context {
     return this._inputGetter?.(comId);
   }
 
-  /** 插件启停覆盖值，用于影响后续新建的 CodeAgent 实例。 */
-  private _pluginEnabledOverrides = new Map<string, boolean>();
-
-  applyPluginEnabledOverrides<T extends { name: string; enabled?: boolean }>(plugins?: T[]): T[] | undefined {
-    if (!plugins?.length || this._pluginEnabledOverrides.size === 0) return plugins;
-    return plugins.map((plugin) => {
-      const enabled = this._pluginEnabledOverrides.get(plugin.name);
-      return enabled === undefined ? plugin : { ...plugin, enabled };
-    });
-  }
-
-  /**
-   * 启用插件：更新全局集合，并广播到所有已存在的 CodeAgent 实例。
-   */
-  enablePlugin(name: string) {
-    this._pluginEnabledOverrides.set(name, true);
-    for (const agent of this.agentMap.values()) {
-      agent.enablePlugin?.(name);
-    }
-  }
-
-  /**
-   * 禁用插件：更新全局集合，并广播到所有已存在的 CodeAgent 实例。
-   */
-  disablePlugin(name: string) {
-    this._pluginEnabledOverrides.set(name, false);
-    for (const agent of this.agentMap.values()) {
-      agent.disablePlugin?.(name);
-    }
-  }
 }
 
 export const context = new Context();

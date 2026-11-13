@@ -1,4 +1,5 @@
 import type { CompactRecord, History, TurnRecord, VersionFile, VersionRecord } from "../types";
+import { historySnapshot } from "./snapshot";
 
 /** 基于 IndexedDB 的调用历史持久化（存储 TurnRecord[]） */
 export class IDBHistory implements History {
@@ -95,13 +96,7 @@ export class IDBHistory implements History {
 
   async append(key: string, record: TurnRecord): Promise<void> {
     const existing = await this.load(key);
-    let safeRecord: TurnRecord;
-    try {
-      safeRecord = JSON.parse(JSON.stringify(record));
-    } catch {
-      console.warn("[IDBHistory] record contains non-serializable data, skipping append");
-      return;
-    }
+    const safeRecord = historySnapshot(record);
     const turns = [...existing, safeRecord];
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
@@ -116,7 +111,7 @@ export class IDBHistory implements History {
     const existing = await this.load(key);
     const idx = existing.findIndex((t) => t.id === turnId);
     if (idx === -1) return;
-    existing[idx] = { ...existing[idx], ...patch };
+    existing[idx] = { ...existing[idx], ...historySnapshot(patch) };
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(this.storeName, "readwrite");
@@ -160,11 +155,12 @@ export class IDBHistory implements History {
     });
   }
 
-  async saveCompact(key: string, record: CompactRecord): Promise<void> {
+  async saveCompact(key: string, record: CompactRecord | null): Promise<void> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(this.compactStoreName, "readwrite");
-      const req = tx.objectStore(this.compactStoreName).put({ key, record });
+      const store = tx.objectStore(this.compactStoreName);
+      const req = record === null ? store.delete(key) : store.put({ key, record });
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
     });

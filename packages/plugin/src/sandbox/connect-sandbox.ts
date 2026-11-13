@@ -1,0 +1,286 @@
+import { CodeAgent, DEFAULT_CONFIG_DIR_NAME, IDBHistory, isFileExcluded } from "../../../agent/src";
+import type { AgentSandbox, AgentSandboxFileEntry, AgentSandboxListOptions, Tool, History, TurnSender, SkillFile, UnifiedFile, AgentOptions, AttachmentContextItem } from "../../../agent/src";
+import type { AuditPowerImplementation, DomainAuditImplementation, PromptSections } from "../../../kit/src";
+import { buildDevelopmentGuideContext, buildDirectoryInfoSection, buildProjectInfoSection, promptSectionsAdaptToPromptOption, readGitBranchInfoFromSandbox } from "../../../kit/src";
+import type { RequestAsStreamFn } from "../../../request/src";
+import type { Hooks, SandboxChipsConfig, MentionProvider } from "./types";
+import { context } from "../context";
+import { getPluginLocale } from "../i18n";
+import { createBuiltInSandboxPlugins } from "./plugins";
+import { createInitProjectTool } from "../../../agent/src/code-agent/tools";
+import { createCheckStatusTool } from "./tools/check-status";
+import { attachFiles } from "./initial-files";
+import type { Designer } from "./types";
+import {
+  type ConnectToAIResult,
+  type PluginParams,
+  type AgentRuntimeRef,
+  type SkillRuntimeContext,
+  injectSkillRuntimeContext,
+  injectPluginRuntimeContext,
+  getProjectContextExclude,
+  formatLibraryDocs,
+  registerChips,
+  registerMentions,
+} from "./connect-shared";
+
+function normalizePath(path: string): string {
+  return path.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+}
+
+function createReadonlyVirtualEntry(file: UnifiedFile): AgentSandboxFileEntry {
+  return {
+    path: normalizePath(file.path),
+    type: "file",
+    permissions: { read: true, write: false, delete: false },
+    lineCount: file.content ? file.content.split(/\r\n|\r|\n/).length : 0,
+  };
+}
+
+function mergeVirtualFileEntries(
+  realEntries: AgentSandboxFileEntry[],
+  virtualFiles: UnifiedFile[],
+  directory = "",
+  options: AgentSandboxListOptions = {},
+): AgentSandboxFileEntry[] {
+  const normalizedDirectory = normalizePath(directory);
+  const entries = new Map(realEntries.map((entry) => [normalizePath(entry.path), entry]));
+
+  for (const virtualFile of virtualFiles) {
+    const virtualPath = normalizePath(virtualFile.path);
+    const relativePath = normalizedDirectory
+      ? virtualPath.startsWith(`${normalizedDirectory}/`) ? virtualPath.slice(normalizedDirectory.length + 1) : ""
+      : virtualPath;
+    if (!relativePath) continue;
+
+    const segments = relativePath.split("/");
+    const visibleSegments = options.recursive ? segments : segments.slice(0, 1);
+    for (let index = 1; index < visibleSegments.length; index++) {
+      const relativeDirectory = visibleSegments.slice(0, index).join("/");
+      const path = normalizedDirectory ? `${normalizedDirectory}/${relativeDirectory}` : relativeDirectory;
+      entries.set(path, {
+        path,
+        type: "directory",
+        permissions: { read: true, write: false, delete: false },
+      });
+    }
+
+    if (options.recursive || segments.length === 1) {
+      entries.set(virtualPath, createReadonlyVirtualEntry(virtualFile));
+    } else {
+      const path = normalizedDirectory ? `${normalizedDirectory}/${segments[0]}` : segments[0];
+      entries.set(path, {
+        path,
+        type: "directory",
+        permissions: { read: true, write: false, delete: false },
+      });
+    }
+  }
+
+  return Array.from(entries.values()).sort((a, b) => normalizePath(a.path).localeCompare(normalizePath(b.path)));
+}
+
+/** 本地 CodeAgent：宿主直接提供 AgentSandbox。 */
+export function connectToLocalSandbox(
+  comId: string,
+  { agentSandbox, designer, pageAnalysis, hooks, chips, mentions, tasksManager, domainAudit }: { agentSandbox: AgentSandbox; designer?: Designer; pageAnalysis?: AuditPowerImplementation; hooks?: Hooks; chips?: SandboxChipsConfig; mentions?: MentionProvider[]; tasksManager?: any; domainAudit?: DomainAuditImplementation },
+  {
+    requestAsStream, llmPluginKey, virtualFiles, configDirName, skills, plugins, promptSections, tools,
+    getUserContextMessage, projectContext, formatUserMessage, disabledModes, codeRules, designRules, initialFiles,
+    disabledHandler, history, sender, agentRuntimeRefs, mask,
+  }: PluginParams
+): ConnectToAIResult {
+  const resolvedConfigDirName = configDirName ?? DEFAULT_CONFIG_DIR_NAME;
+  const agentKey = context.getAgentKey(comId);
+  registerChips(agentKey, chips);
+  registerMentions(agentKey, mentions);
+  const runtimeRef: AgentRuntimeRef = agentRuntimeRefs.get(agentKey) ?? { current: undefined };
+  agentRuntimeRefs.set(agentKey, runtimeRef);
+  const runtime = runtimeRef.current;
+  const getRuntimePromptSections = (config = runtimeRef.current) => config?.promptSections ?? promptSections;
+  const getRuntimeTools = (config = runtimeRef.current) => config?.tools ?? tools;
+  const activeTools = getRuntimeTools(runtime);
+  const promptOptions = promptSectionsAdaptToPromptOption(getRuntimePromptSections(runtime));
+  const runtimeContext: SkillRuntimeContext = { agentSandbox, designer, codeRules, designRules };
+  const getRuntimeSkills = (config = runtimeRef.current) =>
+    (config?.skills ?? skills)?.map((skill) => injectSkillRuntimeContext(skill, runtimeContext));
+  const getRuntimeVirtualFiles = () => runtimeRef.current?.virtualFiles ?? virtualFiles;
+  const runtimeSkills = getRuntimeSkills(runtime);
+  // Keep plugin-ai built-ins available for the AgentSandbox contract as well
+  // as the legacy Designer sandbox.
+  const runtimePlugins = [...createBuiltInSandboxPlugins({
+    configDirName: resolvedConfigDirName,
+    pageAnalysis,
+  }), ...(plugins ?? [])]
+    .map((plugin) => {
+      const withSandbox = typeof plugin === "function" && (tasksManager || domainAudit)
+        ? ((ctx: Parameters<typeof plugin>[0]) => plugin({ ...ctx, sandbox: Object.assign({}, ctx.sandbox, { tasksManager, domainAudit }) }))
+        : plugin;
+      return injectPluginRuntimeContext(withSandbox, runtimeContext);
+    });
+  const requestGuard = { disabledHandler };
+
+  if (context.agentMap.has(agentKey)) {
+    const existingAgent = context.agentMap.get(agentKey)!;
+    context.aiQueue.setRequestGuard(existingAgent, requestGuard);
+    return { history: existingAgent.getHistory(), disabledHandler, isRemoteAgent: false };
+  }
+
+  const getProjectContextFiles = async (): Promise<{
+    files: UnifiedFile[];
+    directEntries: AgentSandboxFileEntry[];
+  }> => {
+    const scope = projectContext?.type ?? "project";
+    const entries: AgentSandboxFileEntry[] = [];
+    const directEntries: AgentSandboxFileEntry[] = [];
+    const visit = async (path = ""): Promise<void> => {
+      const children = await agentSandbox.files.list(path);
+      for (const entry of children) {
+        if (isFileExcluded({ path: entry.path, content: "" }, getProjectContextExclude(resolvedConfigDirName))) continue;
+        if (!path) directEntries.push(entry);
+        if (entry.type === "directory") {
+          if (scope === "project") await visit(entry.path);
+        } else {
+          entries.push(entry);
+        }
+      }
+    };
+    await visit();
+    return {
+      files: entries.map((entry) => ({
+        path: entry.path,
+        content: entry.lineCount && entry.lineCount > 1 ? "\n".repeat(entry.lineCount - 1) : "",
+      })),
+      directEntries,
+    };
+  };
+
+  const getVirtualFiles = async (): Promise<UnifiedFile[]> => {
+    const fn = getRuntimeVirtualFiles();
+    if (!fn) return [];
+    return fn({ configDirName: resolvedConfigDirName, getEffectiveLibrariesSection: async () => formatLibraryDocs(await designer?.getEffectiveLibraries() ?? []) });
+  };
+  let virtualFilesSnapshot: Promise<UnifiedFile[]> | undefined;
+  const getVirtualFilesSnapshot = () => virtualFilesSnapshot ??= getVirtualFiles();
+  const refreshVirtualFilesSnapshot = async () => {
+    virtualFilesSnapshot = getVirtualFiles();
+    await virtualFilesSnapshot;
+  };
+
+  const sandboxHooks: Hooks = {
+    ...hooks,
+    async beforeTurn(params) {
+      await refreshVirtualFilesSnapshot();
+      await hooks?.beforeTurn?.(params);
+    },
+  };
+
+  const codeAgentSandbox: AgentSandbox = {
+    files: {
+      list: async (path = "", options = {}) => mergeVirtualFileEntries(
+        await agentSandbox.files.list(path, options),
+        await getVirtualFilesSnapshot(),
+        path,
+        options,
+      ),
+      read: async (path) => {
+        const normalizedPath = path.replace(/^\/+/, "");
+        const vfs = await getVirtualFilesSnapshot();
+        const vf = vfs.find((f) => f.path.replace(/^\/+/, "") === normalizedPath);
+        if (vf) return { ...vf, permissions: { read: true, write: false, delete: false } };
+        return agentSandbox.files.read(path);
+      },
+      readFiles: async (paths) => {
+        const vfs = await getVirtualFilesSnapshot();
+        const vfMap = new Map(vfs.map((f) => [f.path.replace(/^\/+/, ""), f]));
+        const realPaths = paths.filter((path) => !vfMap.has(path.replace(/^\/+/, "")));
+        // Preserve the host's bulk-read contract. Calling read(path) here
+        // turns one grep/files request into one HTTP request per file.
+        const realFiles = await agentSandbox.files.readFiles(realPaths);
+        const realFileMap = new Map(realFiles.map((file) => [file.path.replace(/^\/+/, ""), file]));
+        return paths.flatMap((path) => {
+          const normalizedPath = path.replace(/^\/+/, "");
+          const vf = vfMap.get(normalizedPath);
+          if (vf) return [{ ...vf, permissions: { read: true, write: false, delete: false } } as UnifiedFile];
+          const realFile = realFileMap.get(normalizedPath);
+          return realFile ? [realFile] : [];
+        });
+      },
+      write: agentSandbox.files.write.bind(agentSandbox.files),
+      writeFiles: agentSandbox.files.writeFiles.bind(agentSandbox.files),
+      remove: agentSandbox.files.remove.bind(agentSandbox.files),
+      removeFiles: agentSandbox.files.removeFiles.bind(agentSandbox.files),
+    },
+    commands: agentSandbox.commands,
+    getContext: designer ? async () => buildDevelopmentGuideContext({
+      promptSections: getRuntimePromptSections(), codeRules, designRules,
+      libraries: await designer.getEffectiveLibraries(),
+    }) : agentSandbox.getContext?.bind(agentSandbox),
+  };
+
+  const hostTools = designer ? [createCheckStatusTool({ current: designer }), createInitProjectTool(codeAgentSandbox)] : [];
+
+  const agent = new CodeAgent({
+    key: agentKey,
+    locale: getPluginLocale(),
+    history: history ?? new IDBHistory({ dbName: "@plugin-ai/plugin/messages" }),
+    request: (llmPluginKey ? context.createLLMRequest(llmPluginKey, agentKey) : undefined) ?? requestAsStream,
+    sandbox: codeAgentSandbox,
+    configDirName: resolvedConfigDirName,
+    tools: [...hostTools, ...(activeTools ?? [])],
+    promptOptions,
+    hooks: sandboxHooks,
+    skills: runtimeSkills,
+    plugins: runtimePlugins,
+    subAgents: [],
+    disabledModes,
+    mask,
+    getAttachmentContextMessages: async () => {
+      const items: AttachmentContextItem[] = [];
+      const { files, directEntries } = await getProjectContextFiles();
+      const projectInfo = projectContext?.type === "directory"
+        ? buildDirectoryInfoSection({
+          workingDirectory: projectContext.directory,
+          branchInfo: await readGitBranchInfoFromSandbox(codeAgentSandbox),
+          entries: directEntries.map((entry) => `${entry.path}${entry.type === "directory" ? "/" : ""}`),
+        })
+        : buildProjectInfoSection(files, { ignoredDirectories: [resolvedConfigDirName] });
+      if (projectInfo) items.push({ key: "project", content: projectInfo, dedupThreshold: 0.5 });
+      const custom = await getUserContextMessage?.();
+      if (custom) items.push({ key: "custom", content: custom });
+      return items;
+    },
+    formatUserMessage: async (params) => {
+      const sandboxFormattedParams = {
+        message: params.message,
+        attachments: params.attachments,
+        ...(params.meta ? { meta: params.meta } : {}),
+        ...(params.extra ? { extra: params.extra } : {}),
+        ...(sender ? { sender } : {}),
+      };
+      if (!formatUserMessage) return sandboxFormattedParams;
+      const userFormattedParams = await formatUserMessage(sandboxFormattedParams);
+      return { ...sandboxFormattedParams, message: userFormattedParams.message };
+    },
+  });
+
+  const workspaceReady = attachFiles(agent, { sandbox: agentSandbox, initialFiles });
+  context.aiQueue.setRequestGuard(agent, requestGuard);
+
+  const baseTools = (agent as any)._base.tools as Tool[];
+  const builtinTools = baseTools.slice(0, baseTools.length - (activeTools?.length ?? 0));
+  runtimeRef.apply = (config) => {
+    const nextTools = getRuntimeTools(config) ?? [];
+    const nextSkills = getRuntimeSkills(config) ?? [];
+    (agent as any)._base.skills = nextSkills;
+    (agent as any)._base.tools = [...builtinTools, ...nextTools];
+    (agent as any)._rebuildDynamicTools();
+    agent.setPromptOptions(promptSectionsAdaptToPromptOption(getRuntimePromptSections(config)));
+  };
+
+  context.agentMap.set(agentKey, agent);
+  context.sandboxMap.set(agentKey, codeAgentSandbox);
+  context.registerAgentComId(comId);
+
+  return { history: agent.getHistory(), disabledHandler, isRemoteAgent: false, workspaceReady };
+}

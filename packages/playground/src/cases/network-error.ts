@@ -197,14 +197,64 @@ export const toolCallArgsMidErrorCase: TestCase = {
 
 // ─── 带重试的网络中断场景 ─────────────────────────────────────────────────────
 
-/**
- * 首次请求失败，自动重试后成功
- *
- * 流程：
- *  1. 第一次请求立即报错（模拟瞬时故障）
- *  2. 自动重试（触发 llm:retry 事件）
- *  3. 第二次请求正常返回内容
- */
+/** 模型直接结束但没有响应回调，自动重试后成功。 */
+export const emptyResponseRetryCase: TestCase = {
+  id: "empty-response-retry",
+  name: "无响应回调后重试",
+  group: "网络中断",
+  description: "首次模型请求直接完成且没有任何响应回调，自动重试后正常回复。",
+  expectedBehavior: "发送消息后显示重试 1/1，随后收到重试成功的回复；再次发送可重复测试。",
+  initialTurns: [],
+  request: (() => {
+    let attempts = 0;
+    return async ({ emits }) => {
+      if (attempts++ % 2 === 1) emits.write("无响应回调后已自动重试，请求成功。");
+      emits.complete("");
+    };
+  })(),
+  agentOptions: { retry: { maxRetries: 1, baseDelayMs: 500 } },
+};
+
+/** 首次请求挂起，空闲超时后自动重试。 */
+export const requestIdleTimeoutRetryCase: TestCase = {
+  id: "request-idle-timeout-retry",
+  name: "请求空闲超时后重试",
+  group: "网络中断",
+  description: "首次模型请求一直挂起；为方便测试，将空闲超时设为 2 秒，之后自动重试并成功。",
+  expectedBehavior: "发送消息后先等待约 2 秒，显示重试进度，然后收到重试成功的回复。再次发送消息可重复测试。",
+  initialTurns: [],
+  request: makeScriptedRequest([
+    { type: "pending" },
+    { type: "content", chunks: ["空闲超时后已自动重试，", "模型请求恢复成功。"], chunkDelayMs: 150 },
+  ], { loop: true }),
+  agentOptions: { retry: { timeoutMs: 2000, maxRetries: 1, baseDelayMs: 500 } },
+};
+
+/** 每次请求均挂起，直到超时并耗尽重试。 */
+export const requestIdleTimeoutExhaustedCase: TestCase = {
+  id: "request-idle-timeout-exhausted",
+  name: "请求空闲超时，重试耗尽",
+  group: "网络中断",
+  description: "超时模型的首次请求和全部重试均持续挂起；可切换到正常模型继续。每次空闲超时为 2 秒，最多重试 3 次。",
+  expectedBehavior: "选择超时模型并发送消息，依次显示重试 1/3、2/3、3/3；第四次超时后显示错误。点击用其他模型重试并选择正常模型，应收到成功回复。",
+  initialTurns: [],
+  llm: { providers: [{
+    providerId: "timeout-test",
+    models: [
+      { id: "timeout", name: "超时模型", description: "所有请求均挂起" },
+      { id: "working", name: "正常模型", description: "切换后正常回复" },
+    ],
+    request: async (params) => {
+      if (params.model?.modelId !== "working") return new Promise<void>(() => {});
+      params.emits.write("已切换到正常模型，请求成功。");
+      params.emits.complete("");
+    },
+  }] },
+  request: makeScriptedRequest([{ type: "pending" }]),
+  agentOptions: { retry: { timeoutMs: 2000, maxRetries: 3, baseDelayMs: 300, maxDelayMs: 500 } },
+};
+
+/** 首次请求报错，自动重试后成功。 */
 export const networkErrorRetrySuccessCase: TestCase = {
   id: "network-error-retry-success",
   name: "失败后重试成功",
@@ -428,8 +478,8 @@ export const networkErrorBeforeToolRetryCase: TestCase = {
         return;
       }
 
-      // 第三次请求：工具执行后的最后内容
-      await delay(200);
+      // 第三次请求：工具执行后的最后内容。故意停留较久，便于观察重试提示是否错误地延续到下一轮。
+      await delay(10_000);
       const chunks = ["文件已成功创建！", "重试机制确保了可靠性。"];
       for (const chunk of chunks) {
         params.emits.write?.(chunk);

@@ -6,6 +6,9 @@ import {
   networkErrorAfterStreamCase,
   networkErrorAfterToolCallNoHistoryCase,
   toolCallArgsMidErrorCase,
+  emptyResponseRetryCase,
+  requestIdleTimeoutRetryCase,
+  requestIdleTimeoutExhaustedCase,
   networkErrorRetrySuccessCase,
   networkErrorMultiRetrySuccessCase,
   networkErrorRetryExhaustedCase,
@@ -13,6 +16,7 @@ import {
   networkErrorBeforeToolRetryCase,
   networkErrorLongRetryCase,
 } from "./network-error";
+import { retrySwitchModelCase } from "./retry-switch-model";
 import {
   toolSuccessCase,
   toolWriteCase,
@@ -36,6 +40,12 @@ import {
   customToolValidationErrorThenSlowStreamCase,
 } from "./custom-tool";
 import { askQuestionsCase } from "./ask-questions";
+import { askQuestionsInputCase } from "./ask-questions-input";
+import { askQuestionsDelayedBrowserTaskCase } from "./ask-questions-delayed-browser-task";
+import { askQuestionsQueueCase } from "./ask-questions-queue";
+import { senderQueueCase } from "./sender-queue";
+import { taskVerifySenderBlockCase } from "./task-verify-sender-block";
+import { taskVerifyHandoffNoCriteriaCase } from "./task-verify-handoff-no-criteria";
 import {
   handoffDisabledCase,
   handoffWithMaskCase,
@@ -74,6 +84,7 @@ import {
   compactMidTurnErrorRetryCase,
 } from "./compact";
 import { markdownRichCase, userMessageWithLinksCase, userMessageWithTenImagesCase, oversizedUserMessageWithTenImagesCase, assistantMessageWithMarkdownImageCase, streamingMarkdownCase, toolThenEmptyContentCase, assistantMessageWithLinksCase, assistantMessageLinkOpenCase } from "./ui-render";
+import { toolCallGroupingCase } from "./tool-call-grouping";
 import { renderEmptyAboveCase } from "./ui-render-empty-above";
 import { selectorRenderInTopCase } from "./ui-selector-render-in-top";
 import { multiEditSameFileCase, multiEditPartialSuccessCase } from "./multi-edit";
@@ -91,15 +102,19 @@ import { settingCase } from "./setting";
 import { modelSwitchCase } from "./model-switch";
 import { requestAIButtonsCase } from "./request-ai-buttons";
 import { disabledModesPlanCase } from "./disabled-modes";
+import { slashModeCase } from "./slash-mode";
 import { planWriteGeneratedFileCase } from "./plan-write-file";
+import { toolContractCase } from "./tool-contract";
 import {
   grepDefaultFilesCase,
+  grepCommandsCase,
   grepContentGlobCase,
   grepCountPaginationCase,
   grepNoMatchCase,
   grepValidationCase,
 } from "./grep-search";
 import { skillUseThenContinueCase } from "./skill";
+import { promptTemplateMbsCase } from "./prompt-template";
 import {
   initProjectSubAgentErrorCase,
   initProjectSubAgentImmediateErrorCase,
@@ -107,6 +122,8 @@ import {
   initProjectPartialUpdateFailureCase,
   initProjectSubAgentLengthContinueCase,
   initProjectThirdCallWarnLargeCase,
+  initProjectIgnoreOutOfScopeFilesCase,
+  initProjectSlowAbortCase,
 } from "./init-project-error";
 import { chatPanelSkinHistoryCase, chatPanelDefaultSkinCase, chatPanelSkinEmptyCase } from "./chat-panel-skin";
 import { historyCollapseRestoreCase, historyCollapseGrowingCase, historyCollapseCustomMaxItersCase } from "./ui-history-collapse";
@@ -125,7 +142,7 @@ import {
   fileUploadProcessorContentCase,
   fileUploadSlowProcessorCase,
 } from "./file-upload";
-import { mentionCustomCase } from "./mention";
+import { mentionCustomCase, referMentionCase } from "./mention";
 import { longChipCase } from "./long-chip";
 import { renderAttachmentSuffixCase } from "./attachment-suffix";
 import { renderFocusCase } from "./render-focus";
@@ -149,6 +166,12 @@ import {
   bashRenameComponentCase,
   bashMkdirCase,
   bashTouchCase,
+  bashLsCase,
+  bashLsNoArgCase,
+  bashLsDirectoryFlagCase,
+  bashLsTimeFlagCase,
+  bashLsRecursiveCase,
+  bashLsNotFoundCase,
   bashSedImportCase,
   bashSedMultiExpressionCase,
   bashSedMultiGlobCase,
@@ -167,18 +190,28 @@ export const ALL_CASES: TestCase[] = [
   compactMidTurnErrorRetryCase,
   multiEditPartialSuccessCase,
   skillUseThenContinueCase,
+  promptTemplateMbsCase,
   planWriteGeneratedFileCase,
+  toolContractCase,
   initProjectSubAgentErrorCase,
   initProjectSubAgentImmediateErrorCase,
   initProjectMissingClosingFenceCase,
   initProjectPartialUpdateFailureCase,
   initProjectSubAgentLengthContinueCase,
   initProjectThirdCallWarnLargeCase,
+  initProjectIgnoreOutOfScopeFilesCase,
+  initProjectSlowAbortCase,
   suggestionsDisplayCase,
   abortThenNextTurnAwarenessCase,
   interruptedTurnRetryCase,
   customToolRendererErrorBoundaryCase,
   askQuestionsCase,
+  askQuestionsInputCase,
+  askQuestionsDelayedBrowserTaskCase,
+  askQuestionsQueueCase,
+  senderQueueCase,
+  taskVerifySenderBlockCase,
+  taskVerifyHandoffNoCriteriaCase,
   historyCollapseRestoreCase,
   historyCollapseGrowingCase,
   historySlowLoadCase,
@@ -194,12 +227,16 @@ export const ALL_CASES: TestCase[] = [
   networkErrorDelayedCase,
   toolCallArgsMidErrorCase,
   // 网络中断（带重试）
+  emptyResponseRetryCase,
+  requestIdleTimeoutRetryCase,
+  requestIdleTimeoutExhaustedCase,
   networkErrorRetrySuccessCase,
   networkErrorMultiRetrySuccessCase,
   networkErrorRetryExhaustedCase,
   networkErrorStreamInterruptRetryCase,
   networkErrorBeforeToolRetryCase,
   networkErrorLongRetryCase,
+  retrySwitchModelCase,
   // 工具调用（真实 MemFS）
   toolSuccessCase,
   toolWriteCase,
@@ -272,12 +309,14 @@ export const ALL_CASES: TestCase[] = [
   streamingMarkdownCase,
   assistantMessageWithLinksCase,
   assistantMessageLinkOpenCase,
+  toolCallGroupingCase,
   renderEmptyAboveCase,
   selectorRenderInTopCase,
   renderAttachmentSuffixCase,
   renderFocusCase,
   customActionBarCase,
   mentionCustomCase,
+  referMentionCase,
   longChipCase,
   // 异常检测—工具后空 content
   toolThenEmptyContentCase,
@@ -293,8 +332,10 @@ export const ALL_CASES: TestCase[] = [
   modelSwitchCase,
   requestAIButtonsCase,
   disabledModesPlanCase,
+  slashModeCase,
   // Grep 搜索
   grepDefaultFilesCase,
+  grepCommandsCase,
   grepContentGlobCase,
   grepCountPaginationCase,
   grepNoMatchCase,
@@ -323,20 +364,15 @@ export const ALL_CASES: TestCase[] = [
   bashRenameComponentCase,
   bashMkdirCase,
   bashTouchCase,
+  bashLsCase,
+  bashLsNoArgCase,
+  bashLsDirectoryFlagCase,
+  bashLsTimeFlagCase,
+  bashLsRecursiveCase,
+  bashLsNotFoundCase,
   bashSedImportCase,
   bashSedMultiExpressionCase,
   bashSedMultiGlobCase,
   bashMvNotFoundCase,
   bashUnsupportedCommandCase,
 ];
-
-/** 按 group 分组 */
-export function groupCases(cases: TestCase[]): Record<string, TestCase[]> {
-  return cases.reduce(
-    (acc, c) => {
-      (acc[c.group] ??= []).push(c);
-      return acc;
-    },
-    {} as Record<string, TestCase[]>
-  );
-}

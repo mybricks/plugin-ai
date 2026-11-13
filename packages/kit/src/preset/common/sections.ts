@@ -53,7 +53,7 @@ permissions:
 | \`process.env.POPUP_VISIBLE\` | \`boolean\` | true | false | **只能在 \`popupRef\` 包裹的组件内部使用**，否则会导致运行时报错。控制浮层（弹窗/抽屉等）的默认显示状态。设计态下为 true 使浮层保持展开，方便设计者选中浮层内元素进行编辑；运行态下为 false，由业务逻辑控制显隐。浮层组件必须将此变量与业务状态做 || 合并使用，例如：visible={process.env.POPUP_VISIBLE || visible} |
 | \`process.env.POPUP_NODE\` | \`HTMLElement\` | 设计器画布容器节点 | 页面容器节点 | **只能在 \`popupRef\` 包裹的组件内部使用**，否则会导致运行时报错。浮层的挂载容器。设计、运行态下均指向设计器画布，确保浮层渲染在画布内部。例如一些三方库的指定挂载节点：getContainer={() => process.env.POPUP_NODE} |`,
   assetsUsageSection: `- 对于图标：为了保证视觉的统一与专业性，我们的共识是统一使用图标组件。
-  - 如果没有图标组件，则使用色块+文本占位，禁止使用 Emoji 或特殊字符。
+  - 如果没有图标组件，则使用色块+文本占位；除非用户明确要求，否则禁止使用 Emoji 或特殊字符。
 - 对于图片：图片是传递信息与氛围的关键。我们建议根据其用途选择合适的来源：
   - https://ai.mybricks.world/image-search?term=searchWord&w=20&h=20，可以配置一个高质量的写实图片（比如摄影、人文等）；
   具体来说
@@ -213,4 +213,3 @@ todoRoutes.get("/", async (c) => {
 export default todoRoutes;
 \`\`\``,
 }
-

@@ -221,6 +221,27 @@
   gap: 8px;
 }
 
+.pg-locale-toggle select {
+  height: 26px;
+  padding: 0 22px 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-0);
+  color: var(--text-1);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+
+.pg-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
 .pg-setting-btn {
   height: 26px;
   padding: 0 10px;
@@ -436,6 +457,21 @@
   flex-wrap: wrap;
   gap: 4px;
 }
+
+.tool-contract-lab { width: 100%; padding: 20px; overflow: auto; }
+.tool-contract-controls { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+.tool-contract-controls label { display: flex; gap: 6px; align-items: center; font-size: 12px; }
+.tool-contract-controls select, .tool-contract-controls button, .tool-contract-controls textarea { font: inherit; }
+.tool-contract-controls button { padding: 5px 10px; cursor: pointer; }
+.tool-contract-suite { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 16px; font-size: 12px; }
+.tool-contract-suite button { border: 0; background: transparent; cursor: pointer; }
+.tool-contract-grid { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(260px, 1fr) minmax(320px, 1.2fr); gap: 12px; }
+.tool-contract-grid section { min-width: 0; border: 1px solid var(--border-color, #e5e7eb); border-radius: 8px; padding: 10px; }
+.tool-contract-grid h3 { margin: 0 0 8px; font-size: 13px; }
+.tool-contract-grid textarea { width: 100%; min-height: 280px; resize: vertical; font: 12px/1.5 monospace; }
+.tool-contract-grid pre { margin: 0; max-height: 420px; overflow: auto; font: 11px/1.5 monospace; white-space: pre-wrap; }
+.contract-pass, .contract-fail { margin-left: 8px; font-size: 11px; }
+.contract-pass { color: #16a34a; }.contract-fail { color: #dc2626; }
 .pg-assertion {
   display: inline-flex;
   align-items: center;
@@ -969,3 +1005,7 @@
   border: 1px solid #d6e4ff;
   font-size: 11px;
 }
+
+/* Suite selection uses the existing playground layout. */
+.pg-suite-select { display: flex; align-items: center; gap: 8px; padding: 8px 12px; color: var(--text-1); font-size: 12px; }
+.pg-suite-select select { min-width: 0; flex: 1; padding: 5px; color: var(--text-0); background: var(--bg-0); border: 1px solid var(--border); border-radius: 4px; }

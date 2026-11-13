@@ -1,3 +1,5 @@
+import { startBackgroundSubAgent, type BackgroundSubAgentRequest, type BackgroundSubAgentInfo } from "./sub-agent";
+import { getTurnsManager, isTurnsView, type TurnsManager } from "./history/turns";
 import { randomUUID } from "./uuid";
 import type { ToolDescriptor } from "./types/request";
 import { AgentEvents } from "./events";
@@ -6,7 +8,6 @@ import type {
   AgentMode,
   FormatUserMessageParams,
   AgentOptions,
-  AgentsMdConfig,
   BoundHistory,
   CompactRecord,
   ForkAgentOptions,
@@ -15,34 +16,36 @@ import type {
   HistoryPersistMode,
   LLMCallResult,
   Message,
-  MessageSection,
   RequestAIOptions,
+  AttachmentContext,
+  AgentEffect,
+  SubAgentTurnRecord,
   TokenUsage,
   Tool,
   ToolCallRecord,
-  ToolExecutionContext,
+  TurnErrorCode,
   TurnMessageSnapshot,
   TurnPersistMode,
   TurnRecord,
   WarmupIter,
 } from "./types";
 import { createToolUIChannel, type ToolUIChannel } from "./tool-ui";
-import { turnsToMessages, getLLMIterations, hasNoToolCalls, serializeToolCallArgumentsFromIter, serializeToolCallArgumentsFromLLMResult, attachmentToMessagePart } from "./types";
-import { computeHandoffTurnIds } from "./handoff";
-import { maskMessages, buildProtectedAttachmentTurnIds, type MaskOptions } from "./mask";
+import { attachmentContextToText, getTurnAttachmentContext, getLLMIterations, hasNoToolCalls, serializeToolCallArgumentsFromIter, serializeToolCallArgumentsFromLLMResult } from "./types";
+import { buildRequestMessages } from "./message-pipeline";
+import { computeMaskedTurnIds, type MaskOptions } from "./mask";
 import { wrapRequestWithRetry, type RetryOptions } from "./retry";
 import { CALL_SUB_AGENT_TOOL_NAME } from "./sub-agent";
 import { getTurnMode } from "./utils/core";
 import { getAvailableAgentModes, AgentModeEnum } from "./mode-manager";
-import { TOOL_OUTPUT_MAX_TOKENS } from "./content-limits";
+import { roughTokenCountEstimation } from "./content-limits";
 import { kv } from "./kv";
+import { executeToolCall, prepareToolCall, type PreparedToolCall } from "./tool-call";
+import { toolCallRecordToMessage } from "./message-utils";
 
 export { AgentEvents };
-export type { AgentMode, Message, History, HistoryPersistMode, Tool, TurnRecord, ToolCallRecord, WarmupIter };
+export type { AgentMode, Message, History, HistoryPersistMode, Tool, TurnErrorCode, TurnRecord, ToolCallRecord, WarmupIter, AgentEffect };
 export type {
   AgentOptions,
-  AgentsMdConfig,
-  AgentsMdConfigResolver,
   AgentHooks,
   CompactRecord,
   ForkAgentOptions,
@@ -54,6 +57,8 @@ export type {
   DisplayModelRequestAIOptions,
   RequestAIOptions,
   ToolExecutionContext,
+  ToolExecutionParams,
+  ToolExecutor,
   BoundHistory,
 } from "./types";
 export type { MaskOptions } from "./mask";
@@ -69,7 +74,7 @@ const COMPACT_RESERVE_OUTPUT = 20_000;
 /** 缓冲区大小（防止精确边界触发） */
 const COMPACT_BUFFER = 13_000;
 /** 默认重试配置 */
-const DEFAULT_RETRY: Required<RetryOptions> = {
+const DEFAULT_RETRY: RetryOptions = {
   maxRetries: 3,
   baseDelayMs: 1000,
   maxDelayMs: 10000,
@@ -80,21 +85,35 @@ const DEFAULT_SUMMARY = { enabled: true as const };
 const DEFAULT_HANDOFF = { enabled: false as const };
 /** 默认 compact 配置 */
 const DEFAULT_COMPACT = { enabled: true as const, maxTurns: 15 };
-const INTERRUPTED_TURN_MESSAGE = "任务异常中断，可点击重试继续";
+export const DEFAULT_AGENT_LOCALE = "zh";
+/** 自动摘要和压缩使用的 flash 路由角色。 */
+const FLASH_AI_ROLE = "flash";
+const TURN_INCOMPLETE_ERROR_CODE = "TURN_INCOMPLETE" as const;
+
+/**
+ * beforeTurnStop 返回的补充文本用于阻止本轮结束、要求模型继续处理，
+ * 因此按系统提醒而非普通用户输入传递。非 user/text 消息保持原样，
+ * 以兼容现有 Hook 的完整 Message 能力。
+ */
+function wrapStopHookAdditionalMessages(messages: Message[]): Message[] {
+  return messages.map((message) => {
+    if (message.role !== "user" || typeof message.content !== "string") return message;
+    return {
+      ...message,
+      content: `<system-reminder>\n${message.content}\n</system-reminder>`,
+    };
+  });
+}
 
 /**
  * 工具输出内容的粗略 token 上限（所有工具统一限制，包含自定义工具）。
  *
  * 超限时将工具结果替换为错误提示，引导模型缩小查询范围或换用更精准的工具，
  * 而非把大量内容直接塞入上下文。
+ *
+ * 实现已下沉到 content-limits，此处再导出以保持既有引用路径。
  */
-
-export function roughTokenCountEstimation(
-  content: string,
-  bytesPerToken: number = 4,
-): number {
-  return Math.round(content.length / bytesPerToken);
-}
+export { roughTokenCountEstimation };
 
 type InternalAgentOptions = AgentOptions & { request: NonNullable<AgentOptions["request"]> };
 
@@ -105,7 +124,8 @@ interface AgentTemporaryState {
 const AGENT_TEMPORARY_STATE_KEY_PREFIX = "plugin-ai:agent-temporary:";
 
 function normalizeAgentMode(mode: any): AgentMode {
-  return mode === AgentModeEnum.Plan ? AgentModeEnum.Plan : AgentModeEnum.Build;
+  if (mode === AgentModeEnum.Plan || mode === AgentModeEnum.Ask) return mode;
+  return AgentModeEnum.Build;
 }
 
 function normalizeAllowedAgentMode(mode: any, options: AgentOptions): AgentMode {
@@ -114,218 +134,46 @@ function normalizeAllowedAgentMode(mode: any, options: AgentOptions): AgentMode 
   return availableModes.includes(normalized) ? normalized : availableModes[0];
 }
 
+export function normalizeAgentLocale(locale: unknown): string {
+  if (typeof locale !== "string") return DEFAULT_AGENT_LOCALE;
+  const normalized = locale.trim().replace(/_/g, "-");
+  return normalized || DEFAULT_AGENT_LOCALE;
+}
+
 /**
  * 构建 turn 级消息快照（在 turn 开始时调用一次）：
  *   [snapshot.historyTurns]              历史 turns 快照
- *   [snapshot.agentsMdMessage]           agents.md 上下文（仅获取一次）
- *   [snapshot.stableContextMessages]     静态背景上下文（getStableContextMessages，仅获取一次）
- *   [snapshot.attachmentContextMessages] 随消息携带的动态上下文（getAttachmentContextMessages，仅获取一次）
+ *   [snapshot.stableContextMessages]     静态背景上下文
+ *   [snapshot.attachmentContextMessage]  本轮 attachmentContext 候选拼接出的 user 消息
  *
- * 注意：compact 摘要和历史 messages 不在此处固化。
- * 它们依赖 compactRecord，必须在每个 iter 请求前用最新 compactRecord 重新构建。
+ * 消息分层：system → stableContext/compact → 历史对话 → attachmentContext
+ *   → 当前用户消息 → 本轮 tail（assistant/tool）。
+ * attachmentContext 候选在本轮内存中复用，每次请求在历史机制处理后筛选本轮内容。
+ * compact 摘要和历史 messages 在每个 iter 请求前用最新 compactRecord 重新构建。
  */
 async function buildTurnMessageSnapshot(
   options: AgentOptions,
   historyTurns: TurnRecord[],
   mode: AgentMode,
-  previousMode?: AgentMode | null
+  attachmentContext: AttachmentContext | undefined,
+  maskedTurnIds: ReadonlySet<string>,
 ): Promise<TurnMessageSnapshot> {
-  const agentsMdMessage = await buildAgentsMdMessage(options.agentsMdConfig);
-
   const stableContextMessages: Message[] = options.getStableContextMessages
     ? await options.getStableContextMessages()
     : [];
 
-  const attachmentContextMessages: MessageSection[] = options.getAttachmentContextMessages
-    ? await options.getAttachmentContextMessages({ mode, previousMode: previousMode ?? null })
-    : [];
+  const attachmentContextText = attachmentContextToText(attachmentContext);
+  const attachmentContextMessage: Message | null = attachmentContextText
+    ? { role: "user", content: attachmentContextText, isAttachmentContext: true, contextEntries: attachmentContext }
+    : null;
 
   return {
     historyTurns,
-    agentsMdMessage,
     stableContextMessages,
-    attachmentContextMessages,
     mode,
+    maskedTurnIds,
+    attachmentContextMessage,
   };
-}
-
-function formatAgentsMdEntry(entry: AgentsMdConfig): string {
-  const escapeAttr = (value: string) => value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-  return `<agents-md path="${escapeAttr(entry.path)}">\n${entry.content}\n</agents-md>`;
-}
-
-async function buildAgentsMdMessage(
-  agentsMdConfig: AgentOptions["agentsMdConfig"]
-): Promise<Message | null> {
-  const entries = (agentsMdConfig ? await agentsMdConfig() : [])
-    .map((entry) => ({
-      ...entry,
-      content: entry.content?.trim() ?? "",
-    }))
-    .filter((entry) => entry.content);
-
-  if (!entries.length) return null;
-
-  const content = `# agents.md\n\n${entries.map(formatAgentsMdEntry).join("\n\n")}\n\n`;
-
-  return {
-    role: "user",
-    content:
-      `<system-reminder>\n` +
-      `As you answer the user's questions, you can use the following context:\n` +
-      content +
-      `IMPORTANT: this context may or may not be relevant to your tasks. You should not respond to this context unless it is highly relevant to your task.\n` +
-      `</system-reminder>`,
-  };
-}
-
-/**
- * 构建单次 iter 请求的基础 messages（每个 iter 请求前调用一次）：
- *   [0]       system message（仅包含内置系统提示词）
- *   [1]       agentsMd user message（仅当 agentsMd 非空时存在）
- *   [2..A]    turn 级动态上下文（snapshot.contextMessages）
- *   [A..B]    compact 摘要消息（仅当当前 compactRecord 非空时存在）
- *   [B..N]    历史对话（从 snapshot.historyTurns 重建，compact 游标后的部分）
- *
- * 每个 iter 会在这些基础上追加：
- *   [N+1..C]  用户自定义上下文（snapshot.userContextMessages）
- *   [C+1]     当前用户消息
- *   [C+2..D]  本轮已积累的 tail（assistant/tool）
- */
-function buildIterationBaseMessages(
-  options: AgentOptions,
-  snapshot: TurnMessageSnapshot,
-  compactRecord?: CompactRecord | null
-): { baseMessages: Message[]; historyStartIndex: number } {
-  const { system } = options;
-  const { historyTurns, agentsMdMessage, stableContextMessages } = snapshot;
-
-  const systemMessage: Message | null = system
-    ? { role: "system", content: system }
-    : null;
-
-  // compact 摘要消息对（放在历史对话之前，游标后的 turns 正常展开）
-  const compactMessages: Message[] = compactRecord
-    ? [
-        {
-          role: "user",
-          content: `<system-reminder>\nThe following is a summary of the conversation history that has been compacted:\n${compactRecord.content}\n</system-reminder>`,
-        },
-      ]
-    : [];
-
-  // 计算命中 handoff 条件的 turn id 集合（未启用或 turn 无 handoff 内容时不加入）
-  const handoffTurnIds = computeHandoffTurnIds(historyTurns, options.handoff);
-
-  const historyMessages = turnsToMessages(historyTurns, compactRecord, handoffTurnIds);
-
-  // ── prompt cache 断点 ────────────────────────────────────────────────────
-  // 断点 1：system message 单独打 cache（几乎不变，命中率最高）
-  const cachedSystemMessage: Message | null = systemMessage
-    ? { ...systemMessage, cache: true }
-    : null;
-
-  // 断点 2：agentsMd + stableContext + compact 最后一条打 cache
-  const staticRest: Message[] = [
-    ...(agentsMdMessage ? [agentsMdMessage] : []),
-    ...stableContextMessages,
-    ...compactMessages,
-  ];
-  if (staticRest.length > 0) {
-    staticRest[staticRest.length - 1] = {
-      ...staticRest[staticRest.length - 1],
-      cache: true,
-    };
-  }
-
-  const staticPrefix: Message[] = [
-    ...(cachedSystemMessage ? [cachedSystemMessage] : []),
-    ...staticRest,
-  ];
-
-  const baseMessages = [
-    ...staticPrefix,
-    ...historyMessages,
-  ];
-
-  // historyStartIndex：assembled 数组中，静态前缀（system/agentsMd/stableContext/compact）之后的起始索引
-  // mask 时只对 index >= historyStartIndex 的消息做遮蔽，前缀不受影响
-  const historyStartIndex = (systemMessage ? 1 : 0) + (agentsMdMessage ? 1 : 0) + stableContextMessages.length + compactMessages.length;
-
-  return { baseMessages, historyStartIndex };
-}
-
-/**
- * 每次 LLM 请求前组装完整 messages 列表：
- *   baseMessages（静态前缀 + 静态背景上下文 + 历史）
- *   + 前置上下文消息（attachmentContextMessages 合并为一条 user 消息，可选）
- *   + 用户消息
- *   + 本轮已积累的对话尾部
- *
- * @param baseMessages                buildIterationBaseMessages 返回的基础部分
- * @param historyStartIndex           assembled 数组中历史消息的起始索引（mask 时跳过静态前缀）
- * @param options                     AgentOptions
- * @param turns                       当前 turns 快照（用于 mask）
- * @param params                      本轮用户请求参数
- * @param tail                        本轮已积累的 assistant + tool 消息（step > 1 时非空）
- * @param attachmentContextMessages   随消息携带的动态上下文段落（MessageSection[]，join 后插在用户消息正前方）
- */
-function assembleMessages(
-  baseMessages: Message[],
-  historyStartIndex: number,
-  options: AgentOptions,
-  turns: TurnRecord[],
-  params: FormatUserMessageParams,
-  tail: Message[],
-  attachmentContextMessages: MessageSection[]
-): Message[] {
-  const { message, attachments } = params;
-
-  let userContent: Message["content"] = message;
-  if (attachments?.length) {
-    userContent = [
-      { type: "text", text: message },
-      ...attachments.map(attachmentToMessagePart),
-    ];
-  }
-  const userMessage: Message = { role: "user", content: userContent };
-
-  // attachmentContextMessages（string[]）拼接为一条前置 user 消息（为空则不插入）
-  const prefixText = attachmentContextMessages.filter(Boolean).join("\n\n");
-  const prefixMessage: Message | null = prefixText
-    ? { role: "user", content: prefixText }
-    : null;
-
-  const assembled = [
-    ...baseMessages,
-    ...(prefixMessage ? [prefixMessage] : []),
-    userMessage,
-    ...tail,
-  ];
-
-  // ── prompt cache 断点 3：当前请求尾部最后一条消息 ──────────────
-  // tail 非空时取 tail 的最后一条，空时为 userMessage (role: "user")
-  // role: "assistant" 不加 cache（工具调用响应消息不是断点）
-  const cacheTargetIndex = baseMessages.length + (prefixMessage ? 1 : 0) + tail.length;
-  // 等价于 userMessage 在 assembled 中的索引 + tail.length（tail 为空则指向 userMessage 自身）
-  const cacheTarget = assembled[cacheTargetIndex];
-  if (cacheTarget && (cacheTarget.role === "user" || cacheTarget.role === "tool")) {
-    assembled[cacheTargetIndex] = { ...cacheTarget, cache: true };
-  }
-
-  // 应用遮蔽（默认开启，可通过 mask: false 显式关闭）
-  // 遮蔽时跳过前缀（system/agentsMd/context/compact，不在 turns 中，不应被遮蔽）
-  if (options.mask !== false) {
-    const maskOpts: MaskOptions = options.mask && typeof options.mask === "object" ? options.mask : {};
-    const prefix = assembled.slice(0, historyStartIndex);
-    const rest = assembled.slice(historyStartIndex);
-    // 计算附件保护集合：尾部连续 plan 轮的 user 附件不参与遮蔽
-    const protectedTurnIds = buildProtectedAttachmentTurnIds(turns);
-    const maskedRest = maskMessages(rest, turns, maskOpts, protectedTurnIds);
-    return [...prefix, ...maskedRest];
-  }
-
-  return assembled;
 }
 
 // ─── 构建工具描述列表 ──────────────────────────────────────────────────────────
@@ -489,11 +337,55 @@ function getLastRecordedMode(turns: TurnRecord[]): AgentMode | null {
   return null;
 }
 
+function getLastTurnAttachmentContext(turns: TurnRecord[]): AttachmentContext | null {
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const t = turns[i];
+    if (t.retried || t.deleted) continue;
+    const context = getTurnAttachmentContext(t);
+    if (context) return context;
+  }
+  return null;
+}
+
+async function buildTurnAttachmentContext(
+  options: AgentOptions,
+  ctx: {
+    mode: AgentMode;
+    previousMode: AgentMode | null;
+    turnStartTime: number;
+    previousAttachmentContext: AttachmentContext | null;
+  },
+): Promise<AttachmentContext> {
+  if (!options.getAttachmentContextMessages) return {};
+  const items = await options.getAttachmentContextMessages(ctx);
+  if (!items?.length) return {};
+
+  const generatedAt = Date.now();
+  const attachmentContext: AttachmentContext = {};
+  const legacySections: string[] = [];
+  for (const item of items) {
+    if (typeof item === "string") { if (item) legacySections.push(item); continue; }
+    if (!item?.key || !item.content) continue;
+    attachmentContext[item.key] = {
+      content: item.content,
+      generatedAt,
+      ...(item.dedupThreshold !== undefined ? { dedupThreshold: item.dedupThreshold } : {}),
+    };
+  }
+
+  if (legacySections.length) {
+    attachmentContext["__legacy_attachment_context__"] = { content: legacySections.join("\n\n"), generatedAt, dedupThreshold: "always" };
+  }
+  return attachmentContext;
+}
+
 // ─── Agent ────────────────────────────────────────────────────────────────────
 
 export class Agent {
   readonly events = new AgentEvents();
   readonly key: string | undefined;
+  /** Immutable runtime locale inherited by forks and subagents. */
+  readonly locale: string;
   readonly historyManager: HistoryManager;
   protected options: InternalAgentOptions;
   private _mode: AgentMode;
@@ -514,13 +406,9 @@ export class Agent {
   /** Agent 自己持有的、仅运行期有效的工具卡片通信通道。 */
   private readonly toolUI: ToolUIChannel = createToolUIChannel();
   private _abortController: AbortController | null = null;
-  /** 确保 _abortController 存在且可用；如已失效或不存在则新建 */
-  private _ensureAbortController(): AbortController {
-    if (!this._abortController || this._abortController.signal.aborted) {
-      this._abortController = new AbortController();
-    }
-    return this._abortController;
-  }
+  private readonly turnsManager?: TurnsManager;
+  private readonly childTurns = new Map<string, SubAgentTurnRecord>();
+  private readonly childAgentInstances = new Map<string, Agent>();
 
   constructor(options: AgentOptions) {
     // 仅在调用方”未声明该字段”时注入默认值；
@@ -531,6 +419,7 @@ export class Agent {
     const hasRetry = Object.prototype.hasOwnProperty.call(options, "retry");
 
     const retryOpts = hasRetry ? (options.retry ?? DEFAULT_RETRY) : DEFAULT_RETRY;
+    const locale = normalizeAgentLocale(options.locale);
     this.temporaryStorageKey = options.key && options.history
       ? `${AGENT_TEMPORARY_STATE_KEY_PREFIX}${options.key}`
       : undefined;
@@ -543,6 +432,7 @@ export class Agent {
 
     this.options = {
       ...options,
+      locale,
       mode: normalizeAllowedAgentMode(initialMode, options),
       request: wrapRequestWithRetry(this.rawRequest, retryOpts, this.events),
       ...(hasSummary ? {} : { summary: DEFAULT_SUMMARY }),
@@ -550,8 +440,13 @@ export class Agent {
       ...(hasCompact ? {} : { compact: DEFAULT_COMPACT }),
       ...(hasRetry ? {} : { retry: retryOpts }),
     };
+    if (options.history && options.key) {
+      this.turnsManager = getTurnsManager(options.history, options.key);
+      if (!isTurnsView(options.history)) this.options.history = this.turnsManager.main;
+    }
     this._mode = normalizeAllowedAgentMode(initialMode, options);
     this.key = options.key;
+    this.locale = locale;
     this.historyManager = new HistoryManager({ history: this.options.history, key: this.key });
     // 构造时立即启动历史加载，UI 订阅后能直接感知 ready 通知，无需 UI 主动触发。
     void this.ensureHistoryReady().catch(() => {
@@ -588,6 +483,8 @@ export class Agent {
   async clearHistory(): Promise<void> {
     await this.historyManager.clear();
     this.turns = [];
+    this.childTurns.clear();
+    this.childAgentInstances.clear();
     this.compactRecord = null;
   }
 
@@ -607,7 +504,7 @@ export class Agent {
       loadedTurns[loadedTurns.length - 1] = {
         ...lastLoadedTurn,
         status: "error",
-        error: INTERRUPTED_TURN_MESSAGE,
+        errorCode: TURN_INCOMPLETE_ERROR_CODE,
       };
     }
     // 合并：保留面板已产生但尚未持久化的 turn（仅在 loadHistory 之前发起的请求才可能出现）
@@ -685,8 +582,13 @@ export class Agent {
    *
    * - error / 异常中断（无 endTime）且已有 LLM iter：从最后一个完整 iter 继续执行
    * - 正常结束、主动取消或一个完整 iter 都没有：清空 AI 响应重新生成
+   * - 传入 providerId/modelId 时，更新本 turn 的 llmOptions 后再发起请求
    */
-  async retry(turnId: string): Promise<void> {
+  async retry(turnIdOrOptions: string | { turnId: string; providerId?: string; modelId?: string }): Promise<void> {
+    const signal = (this._abortController = new AbortController()).signal;
+    const { turnId, providerId, modelId } = typeof turnIdOrOptions === "string"
+      ? { turnId: turnIdOrOptions, providerId: undefined, modelId: undefined }
+      : turnIdOrOptions;
     await this.ensureHistoryReady();
     const turn = this.turns[this.turns.length - 1];
     if (!turn) {
@@ -698,6 +600,10 @@ export class Agent {
       throw new Error(
         `Turn ${turnId} is not the last turn, cannot retry.`,
       );
+    }
+
+    if (modelId) {
+      turn.llmOptions = { ...turn.llmOptions, providerId, modelId };
     }
 
     const hasCompletedLLMIteration = getLLMIterations(turn.iterations).length > 0;
@@ -714,14 +620,18 @@ export class Agent {
     }
     turn.status = "success";
     turn.error = undefined;
+    turn.errorCode = undefined;
     turn.endTime = undefined;
 
     this.events.emit("turn:resume", { turnId: turn.id });
 
-    // 统一走 _runTurn，由它根据 turn.iterations 决定是否跑 beforeTurn/warmup
+    // 统一走 _runTurn，由它根据 turn.iterations 决定是否跑 beforeTurn/warmup；
+    // retry 使用本 turn 保存的 LLM 请求参数；指定新模型时已更新 llmOptions。
     await this._runTurn(turn, {
       userParams: { message: turn.userText, attachments: turn.userAttachments, meta: turn.meta, extra: turn.extra },
+      llmRest: turn.llmOptions,
       persistMode: "update",
+      signal,
     });
   }
 
@@ -737,17 +647,29 @@ export class Agent {
       userParams: { message: string; attachments?: any[]; meta?: any; extra?: Record<string, any> };
       llmRest?: Record<string, any>;
       persistMode: TurnPersistMode;
+      signal: AbortSignal;
     }
   ): Promise<void> {
-    const { userParams, llmRest, persistMode } = opts;
+    const { userParams, llmRest, persistMode, signal } = opts;
     const isFromStart = getLLMIterations(turn.iterations).length === 0;
 
     // 重置 turn 状态
     turn.status = "success";
     turn.error = undefined;
+    turn.errorCode = undefined;
 
-    const signal = this._ensureAbortController().signal;
+    const finishAbortedTurn = async (): Promise<void> => {
+      turn.status = "abort";
+      turn.endTime = Date.now();
+      await this._saveTurnRecord(turn, persistMode);
+      this.events.emit("turn:abort", {});
+      this._onTurnEnd(turn);
+    };
 
+    if (signal.aborted) {
+      await finishAbortedTurn();
+      return;
+    }
     if (isFromStart) {
       // 执行 beforeTurn hook
       try {
@@ -763,14 +685,55 @@ export class Agent {
       }
     }
 
+    if (signal.aborted) {
+      await finishAbortedTurn();
+      return;
+    }
+
     // 构建 turn 级消息快照：historyTurns 是当前 turn 可见的历史上下文
     const historyTurns = this.turns.filter(t => t.id !== turn.id);
     const turnStartMode = this.getMode();
     const previousMode = getLastRecordedMode(historyTurns);
+    // 本次执行内固定 mask 判定；retry 会重新计算，不写入历史。
+    const maskOptions: MaskOptions = this.options.mask && typeof this.options.mask === "object" ? this.options.mask : {};
+    const maskedTurnIds = this.options.mask === false ? new Set<string>() : computeMaskedTurnIds(historyTurns, maskOptions);
+
+    // 候选在 turn 开始时生成并在本轮各 iter 中复用。即使中途 compact 后需要
+    // 补发，也保留用户发消息时的快照；后续工具造成的变化由工具消息按时间顺序体现。
+    // 候选仅保存在内存中；恢复时复用已发送内容，尚未发送的候选重新生成。
+    let attachmentContextCandidates: AttachmentContext | undefined;
+    try {
+      const generated = await buildTurnAttachmentContext(this.options, {
+        mode: turnStartMode,
+        previousMode: previousMode ?? null,
+        turnStartTime: turn.startTime,
+        previousAttachmentContext: getLastTurnAttachmentContext(historyTurns),
+      });
+      attachmentContextCandidates = { ...generated, ...turn.attachmentContext };
+    } catch (e) {
+      console.warn("[Agent] buildTurnAttachmentContext failed:", e);
+      attachmentContextCandidates = turn.attachmentContext;
+    }
+
+    if (signal.aborted) {
+      await finishAbortedTurn();
+      return;
+    }
+
     let messageSnapshot: TurnMessageSnapshot;
     try {
-      messageSnapshot = await buildTurnMessageSnapshot(this.options, historyTurns, turnStartMode, previousMode);
+      messageSnapshot = await buildTurnMessageSnapshot(
+        this.options,
+        historyTurns,
+        turnStartMode,
+        attachmentContextCandidates,
+        maskedTurnIds,
+      );
     } catch (e) {
+      if (signal.aborted) {
+        await finishAbortedTurn();
+        return;
+      }
       turn.endTime = Date.now();
       turn.status = "error";
       turn.error = String((e as any)?.message ?? e);
@@ -780,7 +743,11 @@ export class Agent {
       throw e;
     }
 
-    await this._runReActLoop({ messageSnapshot, turn, userParams, llmRest, persistMode });
+    if (signal.aborted) {
+      await finishAbortedTurn();
+      return;
+    }
+    await this._runReActLoop({ messageSnapshot, turn, userParams, llmRest, persistMode, signal });
   }
 
   /** ReAct 循环核心逻辑（requestAI 和 retry 共用） */
@@ -795,8 +762,9 @@ export class Agent {
     llmRest?: Record<string, any>;
     /** 本次执行对持久化层的写入语义；新 turn 与 retry 的写入动作不同 */
     persistMode: TurnPersistMode;
+    signal: AbortSignal;
   }): Promise<void> {
-    const { messageSnapshot, turn, userParams, llmRest = {}, persistMode } = opts;
+    const { messageSnapshot, turn, userParams, llmRest = {}, persistMode, signal } = opts;
 
     // 从 turn.iterations 自动推导 initialTail 和 startStep
     const llmItersOnEntry = getLLMIterations(turn.iterations);
@@ -814,27 +782,16 @@ export class Agent {
       };
       initialTail.push(assistantMsg);
       for (const tc of iter.toolCalls) {
-        initialTail.push({
-          role: "tool",
-          tool_call_id: tc.callId,
-          content: tc.status === "error" ? `Error: ${tc.error}` : tc.result?.output ?? "",
-        });
+        initialTail.push(toolCallRecordToMessage(tc, { isCancelled: turn.status === "abort" }));
       }
     }
     const startStep = llmItersOnEntry.length + 1;
-    // 确保 AbortController 可用（retry 续跑时 _abortController 可能为 null 或已 abort）
-    const signal = this._ensureAbortController().signal;
-    // 每次进入 ReAct 循环都从入口参数初始化一份 turn 级 aiRole，
-    // 循环结束后自然销毁，不污染下一次 request/retry。
+    // 优先使用本次请求的 aiRole；retry 可从 turn 的请求参数恢复。
     const baseLlmRest: Record<string, any> = { ...llmRest };
     const initialAiRole = baseLlmRest.aiRole as string | undefined;
-    let turnAiRole: string | undefined = initialAiRole || undefined;
-    const buildStepLLMRest = (): { rest: Record<string, any>; effectiveAiRole: string } => {
-      const rest = { ...baseLlmRest };
-      const effectiveAiRole = turnAiRole || "default";
-      rest.aiRole = effectiveAiRole;
-      return { rest, effectiveAiRole };
-    };
+    const effectiveAiRole = initialAiRole || turn.llmOptions?.aiRole || "default";
+    turn.llmOptions = { ...turn.llmOptions, aiRole: effectiveAiRole };
+    const llmRequestRest = { ...baseLlmRest, aiRole: effectiveAiRole };
 
     const maxSteps = this.options.maxSteps ?? 50;
     const doomLoopThreshold = this.options.doomLoopThreshold ?? 3;
@@ -896,24 +853,14 @@ export class Agent {
           console.warn("[Agent] hooks.beforeRequest failed:", e);
         }
 
-        // 每个 iter 都使用最新 compactRecord 重新构建基础 messages。
-        // 若 warmup 刚完成 compact，这里会立即使用新的 compact 摘要和游标。
-        const { baseMessages, historyStartIndex } = buildIterationBaseMessages(
-          this.options,
-          messageSnapshot,
-          this.compactRecord
-        );
-
-        // 组装 messages
-        const messages = assembleMessages(
-          baseMessages,
-          historyStartIndex,
-          this.options,
-          messageSnapshot.historyTurns,
-          formattedParams,
+        // 依次执行拼接、历史机制、优化、缓存标记和内部字段清理。
+        const { messages, attachmentContext } = buildRequestMessages({
+          options: this.options,
+          snapshot: messageSnapshot,
+          compactRecord: this.compactRecord,
+          params: formattedParams,
           tail,
-          messageSnapshot.attachmentContextMessages
-        );
+        });
         const activeCompactRecord = this.compactRecord;
         const compactRecordTrace = activeCompactRecord
           ? {
@@ -927,7 +874,6 @@ export class Agent {
         };
 
         // 调用 LLM
-        const { rest: stepLLMRest, effectiveAiRole } = buildStepLLMRest();
         const stepMode = this.getMode();
         let llmResult: LLMCallResult;
         try {
@@ -935,7 +881,7 @@ export class Agent {
             this.options,
             messages,
             signal,
-            { ...stepLLMRest, _step: step, turnId: turn?.id }, // 传递 step 用于 retry 事件，turnId 用于 SSE 请求头
+            { ...llmRequestRest, _step: step, turnId: turn?.id }, // 传递 step 用于 retry 事件，turnId 用于 SSE 请求头
             step,
             (delta, content, thinkingDelta, thinkingContent) => {
               this.events.emit("llm:content", { delta, content, thinkingDelta, thinkingContent, step, iterId: currentIterId });
@@ -948,8 +894,9 @@ export class Agent {
           turn.endTime = Date.now();
           turn.status = "error";
           turn.error = String((e as any)?.message ?? e);
+          turn.errorCode = "MODEL_ERROR";
           await this._saveTurnRecord(turn, persistMode);
-          this.events.emit("turn:error", { error: e });
+          this.events.emit("turn:error", { error: e, errorCode: turn.errorCode });
           this._onTurnEnd(turn);
           throw e;
         }
@@ -962,6 +909,9 @@ export class Agent {
           this._onTurnEnd(turn);
           return;
         }
+
+        // 只保存成功请求实际发送过的条目；iter 用 key 引用，避免重复保存内容。
+        turn.attachmentContext = { ...turn.attachmentContext, ...attachmentContext };
 
         // 记录本次迭代
         const iterToolCallRecords: ToolCallRecord[] = [];
@@ -976,6 +926,7 @@ export class Agent {
           ...(effectiveAiRole ? { aiRole: effectiveAiRole } : {}),
           mode: stepMode,
           ...(llmResult.usage ? { usage: llmResult.usage } : {}),
+          attachmentContextKeys: Object.keys(attachmentContext),
           trace,
         };
         turn.iterations.push(currentIter);
@@ -989,6 +940,45 @@ export class Agent {
         const shouldContinue = shouldContinueWithTools || shouldContinueForLength;
         const modelFinished = !shouldContinue;
         if (modelFinished) {
+          // maxSteps 是 ReAct 循环的硬上限；最后一步不再允许 stop hook 续跑。
+          if (step < maxSteps) {
+            let stopHookMessages: Message[] = [];
+            try {
+              const hookResult = await this.options.hooks?.beforeTurnStop?.({
+                turn,
+                step,
+                finishReason,
+              });
+              stopHookMessages = hookResult?.additionalMessages ?? [];
+            } catch (e) {
+              // stop hook 是 best-effort。失败时接受模型停止，避免插件卡死整个 turn。
+              console.warn("[Agent] hooks.beforeTurnStop failed:", e);
+            }
+
+            if (stopHookMessages.length > 0) {
+              this.events.emit("llm:complete", {
+                step,
+                finishReason: llmResult.finishReason,
+                usage: llmResult.usage,
+                done: false,
+                endTime: iterEndTime,
+                iterId: currentIterId,
+              });
+              tail.push({
+                role: "assistant",
+                content: llmResult.content,
+                ...(llmResult.thinkingContent
+                  ? { reasoning_content: llmResult.thinkingContent }
+                  : {}),
+              });
+              tail.push(...wrapStopHookAdditionalMessages(stopHookMessages));
+              if (this.historyManager.persistMode === "iter") {
+                await this._saveTurnRecord(turn, "update");
+              }
+              continue;
+            }
+          }
+
           turn.endTime = iterEndTime;
           turn.status = "success";
           await this._saveTurnRecord(turn, persistMode);
@@ -1000,6 +990,22 @@ export class Agent {
 
         // 仍需后续 step：工具调用或 length 截断续跑
         this.events.emit("llm:complete", { step, finishReason: llmResult.finishReason, usage: llmResult.usage, done: false, endTime: iterEndTime, iterId: currentIterId });
+
+        // 工具调用前置：解析参数 + beforeToolCall。
+        // 必须早于 assistant 消息构建 —— hook 改写后的参数要成为 tool_calls 的唯一
+        // 事实来源，否则模型本轮看到原始参数、历史回放时看到改写后的参数。
+        const toolCallCtx = { turn, step, iterId: currentIterId, signal, events: this.events };
+        const preparedToolCalls: PreparedToolCall[] = [];
+        if (shouldContinueWithTools) {
+          for (const tc of llmResult.toolCalls) {
+            preparedToolCalls.push(await prepareToolCall({
+              toolCall: tc,
+              tools: this.options.tools,
+              ctx: toolCallCtx,
+              hooks: this.options.hooks,
+            }));
+          }
+        }
 
         // 追加 assistant message 到 tail。length 续跑时不追加额外 user 提示。
         const assistantMsg: Message = {
@@ -1029,124 +1035,41 @@ export class Agent {
         let doomLoopTriggered = false;
         let doomLoopInfo: { toolName: string; count: number } | null = null;
 
-        for (let tcIdx = 0; tcIdx < llmResult.toolCalls.length; tcIdx++) {
-          const tc = llmResult.toolCalls[tcIdx];
+        for (const prepared of preparedToolCalls) {
           if (signal.aborted) break;
 
-          const tool = this.options.tools?.find(t => t.name === tc.name);
-          const execStartTime = Date.now();
-          let argsParseError: unknown = null;
-          if (tc.argsRaw != null && tc.args === null) {
-            try {
-              tc.args = JSON.parse(tc.argsRaw);
-            } catch (e) {
-              argsParseError = e;
-              tc.args = { _argsRaw: tc.argsRaw };
-            }
-          }
-          const toolRecord: ToolCallRecord = {
-            callId: tc.id,
-            name: tc.name,
-            title: tool?.title,
-            args: tc.args,
-            status: "pending",
-            execStartTime,
-            execEndTime: 0,
-          };
-          iterToolCallRecords.push(toolRecord);
-          this.events.emit("tool:call", { callId: tc.id, name: tc.name, args: tc.args ?? undefined, step, startTime: execStartTime, iterId: currentIterId });
-
-          let toolResultContent: string;
-          const toolContext: ToolExecutionContext = {
-            turnId: turn.id,
-            iterations: turn.iterations,
-            getUserMessage: () => ({
-              message: userParams.message,
-              attachments: userParams.attachments,
+          const { message: toolResultMessage } = await executeToolCall(prepared, {
+            hooks: this.options.hooks,
+            toolExecutor: this.options.toolExecutor,
+            // 执行前就挂进当前 iter，使执行期间的 pending 记录对工具和持久化可见
+            onRecordCreated: record => iterToolCallRecords.push(record),
+            createToolContext: ({ callId, name }) => ({
+              turnId: turn.id,
+              callId,
+              iterations: turn.iterations,
+              getUserMessage: () => ({
+                message: userParams.message,
+                attachments: userParams.attachments,
+              }),
+              getAgent: () => this,
+              mode: this.getMode(),
+              signal,
+              getMode: () => this.getMode(),
+              setMode: (mode: AgentMode, reason?: string) => {
+                this.setMode(mode, reason);
+              },
+              emitProgress: (data: any) => {
+                this.events.emit("tool:progress", { callId, name, data, step, iterId: currentIterId });
+              },
+              waitUIRender: <T>() => this.toolUI.wait<T>(callId, { signal }),
             }),
-            getAgent: () => this,
-            getAiRole: () => turnAiRole,
-            setAiRole: (aiRole?: string) => {
-              turnAiRole = aiRole || undefined;
-            },
-            mode: this.getMode(),
-            getMode: () => this.getMode(),
-            setMode: (mode: AgentMode, reason?: string) => {
-              this.setMode(mode, reason);
-            },
-            emitProgress: (data: any) => {
-              this.events.emit("tool:progress", { callId: tc.id, name: tc.name, data, step, iterId: currentIterId });
-            },
-            waitUIRender: <T>() => this.toolUI.wait<T>(tc.id, { signal }),
-          };
-
-          try {
-            if (!tool) throw new Error(`Tool not found: ${tc.name}`);
-            if (argsParseError) {
-              toolRecord.errorType = "invalid_args";
-              throw argsParseError;
-            }
-            tool.validate?.(tc.args, toolContext);
-            const result = await tool.execute(tc.args, toolContext);
-            if (signal.aborted) {
-              toolRecord.status = "error";
-              toolRecord.errorType = "normal";
-              toolRecord.error = `Error: 用户已取消`;
-              toolResultContent = toolRecord.error
-              toolRecord.execEndTime = Date.now();
-              this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: toolRecord.error, errorType: toolRecord.errorType, step, endTime: toolRecord.execEndTime, iterId: currentIterId });
-            } else {
-              toolRecord.result = { output: result.output, metadata: result.metadata };
-              toolRecord.status = "success";
-              toolRecord.execEndTime = Date.now();
-
-              // ── 工具 output 大小守卫 ─────────────────────────────────────────
-              // 自定义工具可能返回超大内容；统一在此拦截，用报错替换真实 output，
-              // 引导模型缩小查询范围，而非把大量内容塞入上下文。
-              // read 工具本身已有提前检查（在 execute 内部抛错），此处为兜底保护。
-              const maxOutputTokens = tool?.limits?.maxToken ?? TOOL_OUTPUT_MAX_TOKENS;
-              const outputTokens = maxOutputTokens === false ? 0 : roughTokenCountEstimation(result.output);
-              if (maxOutputTokens !== false && outputTokens > maxOutputTokens) {
-                const overLimitMsg = `Error: Tool output exceeds the ${maxOutputTokens} token limit (estimated ~${outputTokens} tokens). Return less data or narrow your query.`;
-                toolRecord.status = "error";
-                toolRecord.errorType = "normal";
-                toolRecord.error = overLimitMsg;
-                toolResultContent = overLimitMsg;
-                toolRecord.execEndTime = Date.now();
-                this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: overLimitMsg, errorType: toolRecord.errorType, step, endTime: toolRecord.execEndTime, iterId: currentIterId });
-              } else {
-                toolResultContent = result.output;
-                this.events.emit("tool:result", { callId: tc.id, name: tc.name, result: toolRecord.result, step, endTime: toolRecord.execEndTime, iterId: currentIterId });
-              }
-            }
-          } catch (e) {
-            toolRecord.status = "error";
-            if (!toolRecord.errorType) {
-              // ToolValidationError 或 validate 抛出的错误视为 invalid_args
-              toolRecord.errorType = (e as any)?.name === "ToolValidationError" ? "invalid_args" : "normal";
-            }
-            toolRecord.error = signal.aborted ? "Error: 用户已取消" : String((e as any)?.message ?? e);
-
-            if (argsParseError && tc?.args?._argsRaw) {
-              toolRecord.error += `\nrawContent: ${tc.args._argsRaw}`
-            }
-
-            toolResultContent = toolRecord.error;
-            toolRecord.execEndTime = Date.now();
-            this.events.emit("tool:error", { callId: tc.id, name: tc.name, error: toolRecord.error, errorType: toolRecord.errorType, step, endTime: toolRecord.execEndTime, iterId: currentIterId });
-          }
-
-          toolResultMessages.push({
-            role: "tool",
-            tool_call_id: tc.id,
-            content: toolResultContent,
-            status: toolRecord.status,
-            ...(toolRecord.errorType ? { errorType: toolRecord.errorType } : {}),
           });
 
+          toolResultMessages.push(toolResultMessage);
         }
 
-        // Doom loop 检测：以本次 iter 的全部 tool calls 为单位，在所有工具执行完后检测
+        // Doom loop 检测：以本次 iter 的全部 tool calls 为单位，在所有工具执行完后检测。
+        // args 取前置阶段的最终结果，与 assistant 消息、实际执行保持同一份。
         const currentIterKey = llmResult.toolCalls
           .map(tc => `${tc.name}:${JSON.stringify(tc.args)}`)
           .join("|");
@@ -1174,9 +1097,9 @@ export class Agent {
         if (doomLoopTriggered && doomLoopInfo) {
           turn.endTime = Date.now();
           turn.status = "error";
-          turn.error = `模型异常，已自动中断，可以点击重试或发送新的消息`;
+          turn.errorCode = "TURN_LOOP_DETECTED";
           await this._saveTurnRecord(turn, persistMode);
-          this.events.emit("turn:error", { error: new Error(turn.error) });
+          this.events.emit("turn:error", { error: new Error(turn.errorCode), errorCode: turn.errorCode });
           this._onTurnEnd(turn);
           return;
         }
@@ -1249,30 +1172,31 @@ export class Agent {
    *     如需继承当前模式，请显式传 `mode: agent.getMode()`。
    */
   async requestAI(params: RequestAIOptions): Promise<void> {
+    const signal = (this._abortController = new AbortController()).signal;
     await this.ensureHistoryReady();
     const { turnId: requestedTurnId, message, displayMessage, modelMessage, attachments, mode = AgentModeEnum.Build, ...rest } = params;
     const userMessage = displayMessage ?? message!;
     const initialModelMessage = modelMessage ?? message!;
     this.setMode(mode, "requestAI");
     const effectiveRequestMode = this.getMode();
-    // 有图片附件时，自动将 aiRole 覆盖为 "image"，使请求层路由到支持视觉的模型。
-    // 扩展：当前是 build 模式且无图片，但连续前置 plan 轮中携带过图片时，
-    // 图片仍在历史 messages 里（受 buildProtectedAttachmentTurnIds 保护，未被 mask 清除），
+    // 请求涉及图片时，通常将 aiRole 改为 "image"；summary / compact 的
+    // flash 路由支持多模态，保留原值。
+    // 扩展：当前是 build 模式且无图片，但历史 Ask / Plan 轮中携带过图片时，
+    // 图片仍在历史 messages 里（Ask / Plan 轮不参与 mask），
     // 此时也需要路由到视觉模型，否则普通模型无法处理 image_url。
     const hasPlanHistoryImage = !attachments?.length && effectiveRequestMode === AgentModeEnum.Build
       ? (() => {
           for (let i = this.turns.length - 1; i >= 0; i--) {
             const t = this.turns[i];
-            if (getTurnMode(t) === AgentModeEnum.Plan) {
+            const turnMode = getTurnMode(t);
+            if (turnMode === AgentModeEnum.Plan || turnMode === AgentModeEnum.Ask) {
               if (t.userAttachments?.some(a => a.type === "image")) return true;
-            } else {
-              break;
             }
           }
           return false;
         })()
       : false;
-    if (attachments?.length || hasPlanHistoryImage) {
+    if (rest.aiRole !== FLASH_AI_ROLE && (attachments?.length || hasPlanHistoryImage)) {
       rest.aiRole = "image";
     }
 
@@ -1284,7 +1208,7 @@ export class Agent {
     // 注意：turn.userText 保留展示消息，LLM 收到的是 formattedParams.message。
     const baseParams: FormatUserMessageParams = { ...rest, message: initialModelMessage, attachments, mode: effectiveRequestMode };
     let formattedParams: FormatUserMessageParams & Partial<FormatUserMessageResult> = baseParams;
-    if (this.options.formatUserMessage) {
+    if (!signal.aborted && this.options.formatUserMessage) {
       try {
         const result = await this.options.formatUserMessage(baseParams);
         formattedParams = {
@@ -1318,11 +1242,17 @@ export class Agent {
       id: turnId,
       startTime: Date.now(),
       userText: userMessage,
+      llmOptions: {
+        ...(rest.aiRole ? { aiRole: rest.aiRole } : {}),
+        ...(rest.providerId ? { providerId: rest.providerId } : {}),
+        ...(rest.modelId ? { modelId: rest.modelId } : {}),
+      },
       ...(formattedParams.message !== userMessage ? { userFormattedText: formattedParams.message } : {}),
       userAttachments,
       ...(formattedMeta ? { meta: formattedMeta } : {}),
       ...(formattedExtra ? { extra: formattedExtra } : {}),
       ...(formattedParams.sender ? { sender: formattedParams.sender } : {}),
+      mode: effectiveRequestMode,
       iterations: [],
       status: "success",
     };
@@ -1348,7 +1278,61 @@ export class Agent {
       userParams: { message: userMessage, attachments: formattedParams.attachments ?? attachments, meta: formattedMeta, extra: formattedExtra },
       llmRest: rest,
       persistMode: isIterPersistence ? "update" : "append",
+      signal,
     });
+  }
+
+  /** 读取指定子 Agent 的独立 turns，合并当前运行中的记录。 */
+  async getSubAgentTurns(agentKey: string): Promise<SubAgentTurnRecord[]> {
+    return (await this.getChildTurns()).filter(turn => turn.agentKey === agentKey);
+  }
+
+  /** 读取父 turn 下的子记录；省略 parentTurnId 时返回当前会话的全部子 turn。 */
+  async getChildTurns(parentTurnId?: string): Promise<SubAgentTurnRecord[]> {
+    const persisted = this.turnsManager ? await this.turnsManager.children() : [];
+    const records = new Map(persisted.map(turn => [turn.id, turn]));
+    for (const turn of this.childTurns.values()) {
+      if (!records.has(turn.id) || turn.endTime) records.set(turn.id, turn);
+    }
+    return [...records.values()]
+      .filter(turn => !parentTurnId || turn.parentTurnId === parentTurnId)
+      .sort((a, b) => a.startTime - b.startTime);
+  }
+
+  /** 为子 Agent 创建独立历史视图；主、子 turn 共享底层存储和写队列。 */
+  async createChildSession(record: SubAgentTurnRecord): Promise<{ key: string; history?: History }> {
+    if (this.turnsManager) await this.turnsManager.reserveChild(record);
+    this.childTurns.set(record.id, record);
+    return { key: record.agentKey, history: this.turnsManager?.child(record) };
+  }
+
+  /**
+   * 登记子 Agent 实例，供订阅方按子 turnId 取到它的事件总线。
+   *
+   * 由 `startChildAgent` 在发出 `subagent:created` 之前调用，保证订阅方收到通知时
+   * 一定能取到实例。本地场景直接返回子 Agent 的真实 `events`；
+   * 远程场景由服务端把事件经通道投递，不经过这里。
+   */
+  registerChildAgent(turnId: string, child: Agent): void {
+    this.childAgentInstances.set(turnId, child);
+  }
+
+  /**
+   * 取得子 Agent 的事件总线。未登记（子任务还没开始或已释放）时返回 undefined，
+   * 调用方跳过即可，不需要当作错误。
+   */
+  childAgentEvents(turnId: string): AgentEvents | undefined {
+    return this.childAgentInstances.get(turnId)?.events;
+  }
+
+  /** 释放子 Agent 实例引用，子任务结束并完成事件写入后调用。 */
+  releaseChildAgent(turnId: string): void {
+    this.childAgentInstances.delete(turnId);
+  }
+
+  /** 不等待父 turn settled，也不继承父 turn 的取消信号。 */
+  async spawnBackgroundSubAgent(request: BackgroundSubAgentRequest): Promise<BackgroundSubAgentInfo> {
+    return startBackgroundSubAgent(this, request);
   }
 
   // ─── Fork / subAgent 基础设施 ─────────────────────────────────────────────
@@ -1371,8 +1355,8 @@ export class Agent {
    *   打包进 options 来变通传递，是绕路而非真正的 fork。
    *   真正的 subAgent 机制应该 fork 出一个完整的 CodeAgent 实例，需要重新设计。
    */
-  createFork(forkOptions?: ForkAgentOptions): ForkAgent {
-    const { turnsSlice, tools, aiRole, mask, handoff, retry, mode, hooks } = forkOptions ?? {};
+  createFork(forkOptions?: ForkAgentOptions, session?: { key: string; history?: History; inheritSnapshot?: boolean }): ForkAgent {
+    const { turnsSlice, tools, aiRole, mask, handoff, retry, mode, hooks, includeSandboxContext } = forkOptions ?? {};
 
     // turns + compactRecord 联动截取：
     // turnsSlice 截取后，compactRecord 游标若仍在截取范围内则保留，否则置 null
@@ -1396,12 +1380,20 @@ export class Agent {
 
     // options 继承 + 覆盖
     const { system } = forkOptions ?? {};
+    // summary / compact 使用 flash 时不继承父 turn 的 provider/model，
+    // 其余 fork 保持原有的父 turn 路由继承行为。
+    const defaultLLMOptions = aiRole === FLASH_AI_ROLE
+      ? { aiRole: FLASH_AI_ROLE }
+      : {
+          ...this.turns[this.turns.length - 1]?.llmOptions,
+          ...(aiRole ? { aiRole } : {}),
+        };
     const forkAgentOptions: AgentOptions = {
       ...this.options,
       // 使用原始 request，让 fork 的 retry 覆盖真正生效，避免继承父 Agent 已包装的 retry。
       request: this.rawRequest,
-      key: randomUUID(),     // 随机隔离 key
-      history: undefined,    // fork 不写历史
+      key: session?.key ?? randomUUID(),
+      history: session?.history,
       // tools：不传=继承父；传了（含 []）则覆盖
       ...(forkOptions && "tools" in forkOptions ? { tools } : {}),
       // system：不传=继承父；传了则覆盖
@@ -1417,19 +1409,26 @@ export class Agent {
       // hooks：不继承父 Agent hooks（避免 afterTurn 等重复执行）；
       // 通过 forkOptions.hooks 可显式注入新 hooks（如 SubAgent 的 beforeRequest）
       hooks: "hooks" in (forkOptions ?? {}) ? hooks : undefined,
-      // fork 是 worker agent，不需要计划模式
-      disabledModes: [AgentModeEnum.Plan],
-      // fork 不注入随消息携带的动态上下文（模式说明、skills 等），getAttachmentContextMessages 是 CodeAgent 的箭头函数，this 永远指向父实例，无法感知 fork 的 disabledModes
-      getAttachmentContextMessages: undefined,
+      // 临时支持从 fork 控制宿主 sandbox 的开发指南上下文。主 Agent 与普通 fork
+      // 保持继承；SubAgent 默认传 false，以免携带与专用任务无关的开发规范。
+      ...(includeSandboxContext !== undefined && this.options.getStableContextMessages
+        ? {
+            getStableContextMessages: () =>
+              this.options.getStableContextMessages!({ includeSandboxContext }),
+          }
+        : {}),
+      // fork 是 worker agent，不需要计划或询问模式
+      disabledModes: [AgentModeEnum.Plan, AgentModeEnum.Ask],
       // fork 强制关闭 summary/compact，防止 summary fork / compact fork 再递归创建 fork。
       summary: { enabled: false },
       compact: { enabled: false },
     };
 
-    // 使用 ForkAgent 构造，传入 aiRole
-    const fork = new ForkAgent(forkAgentOptions, aiRole);
-    fork.turns = snapshotTurns;
-    fork.compactRecord = snapshotCompactRecord;
+    const fork = new ForkAgent(forkAgentOptions, defaultLLMOptions);
+    if (!session || session.inheritSnapshot) {
+      fork.turns = snapshotTurns;
+      fork.compactRecord = snapshotCompactRecord;
+    }
     return fork;
   }
 
@@ -1437,19 +1436,21 @@ export class Agent {
    * 创建一个 SubAgent 实例（基于 fork 机制）。
    *
    * 与 createFork 的差异：
-   *   - 强制 maxSteps: 1（不允许多次 ReAct 轮询）
-   *   - 强制 tools: []（不允许工具调用）
+   *   - 默认继承父 Agent 工具；传入 config.tools 时使用该工具列表
+   *   - 始终移除 call-sub-agent，避免子 Agent 无限递归派发
    *   - 支持通过 ForkAgentOptions 覆盖 system / tools / aiRole
-   *   - 全量继承父 turns 历史
+   *   - 默认不携带父 turns 历史；如有需要可显式传入 turnsSlice
    */
-  createSubAgent(config: ForkAgentOptions): ForkAgent {
+  createSubAgent(config: ForkAgentOptions, session?: { key: string; history?: History }): ForkAgent {
     const baseTools = config.tools ?? (this.options.tools ?? []);
     const tools = baseTools.filter((t: Tool) => t.name !== CALL_SUB_AGENT_TOOL_NAME);
     return this.createFork({
+      turnsSlice: config.turnsSlice ?? { from: "start", count: 0 },
       tools,
       ...(config.system !== undefined ? { system: config.system } : {}),
       ...(config.aiRole !== undefined ? { aiRole: config.aiRole } : {}),
-    });
+      includeSandboxContext: config.includeSandboxContext ?? false,
+    }, session);
   }
 
   // ─── 内部 after-turn 钩子 ────────────────────────────────────────────────
@@ -1505,19 +1506,57 @@ export class Agent {
 
     if (compact != null && compact.enabled !== false) {
       if (this._shouldAutoCompact()) {
-        tasks.push(this._runAutoCompact().catch((e) => {
+        tasks.push(this._runPostTurnCompact(turn).catch((e) => {
           console.warn("[Agent] autoCompact failed:", e);
         }));
       }
     }
 
     await Promise.all(tasks);
+
+    // post_compact / post_summary 只改内存里的 turn.effects，统一在这里一次性落盘
+    if (turn.effects?.length) {
+      try {
+        await this.historyManager.update(turn.id, { effects: turn.effects });
+      } catch (e) {
+        console.warn("[Agent] post-turn effects history update failed:", e);
+      }
+    }
+
     try {
       await this.options.hooks?.afterTurnSettled?.(turn);
     } catch (e) {
       console.warn("[Agent] hooks.afterTurnSettled failed:", e);
     }
     this.events.emit("turn:settled", { turnId: turn.id });
+  }
+
+  /**
+   * 后置（fire-and-forget）compact：turn 落盘结束后才触发，不阻塞主流程。
+   * 产出一个 AgentEffect（operation: "post_compact"）追加到 turn.effects；
+   * 不在这里落盘，由 _runPostTurnTasks 统一写一次。
+   */
+  private async _runPostTurnCompact(turn: TurnRecord): Promise<boolean> {
+    const effect: AgentEffect = {
+      operation: "post_compact",
+      iterId: randomUUID(),
+      status: "loading",
+      startTime: Date.now(),
+    };
+    turn.effects = turn.effects ? [...turn.effects, effect] : [effect];
+
+    const onAttempt = (subTurn: TurnRecord) => {
+      effect.turns = effect.turns ? [...effect.turns, subTurn] : [subTurn];
+    };
+
+    let ok = false;
+    try {
+      ok = await this._runAutoCompact(turn, undefined, false, undefined, onAttempt);
+      return ok;
+    } finally {
+      effect.status = ok ? "success" : "error";
+      effect.endTime = Date.now();
+    }
   }
 
   // ─── autoSummary ─────────────────────────────────────────────────────────
@@ -1648,7 +1687,16 @@ ${TASK_HANDOFF}
 IMPORTANT: 不要调用工具！
 `;
 
-    const fork = this.createFork({ tools: [], turnsSlice: { from: "end", count: 1 }, retry: { maxRetries: 0 } });
+    const effect: AgentEffect = {
+      operation: "post_summary",
+      iterId: randomUUID(),
+      status: "loading",
+      startTime: Date.now(),
+    };
+    turn.effects = turn.effects ? [...turn.effects, effect] : [effect];
+
+    const fork = this.createFork({ tools: [], aiRole: FLASH_AI_ROLE, turnsSlice: { from: "end", count: 1 }, retry: { maxRetries: 0 }, includeSandboxContext: false });
+    // summary 只总结这一轮历史，不注入父 Agent 当前请求的动态上下文。
     (fork as any).options.getAttachmentContextMessages = undefined;
     (fork as any).options.formatUserMessage = undefined;
 
@@ -1700,12 +1748,32 @@ IMPORTANT: 不要调用工具！
       if (suggestions) emitSuggestionsOnce(suggestions);
     });
 
+    let requestError: unknown;
+    // 用长度判断是否真的新增了一条 turn，避免 requestAI 失败时误取快照里的旧 turn
+    const forkTurnCountBefore = fork.turns.length;
     try {
       await fork.requestAI({ message: SUMMARY_PROMPT });
+      effect.status = "success";
+    } catch (e) {
+      effect.status = "error";
+      requestError = e;
     } finally {
+      // 把本次 fork 产生的完整 TurnRecord 挂到 effect 上
+      const forkTurn = fork.turns.length > forkTurnCountBefore
+        ? fork.turns[fork.turns.length - 1]
+        : undefined;
+      if (forkTurn) {
+        effect.turns = [forkTurn];
+      }
+      effect.endTime = Date.now();
       // 清除 fork 引用，释放 turns / events 等资源
       fork.turns = [];
       fork.events.removeAllListeners();
+    }
+
+    if (requestError) {
+      // effects 不落盘，交给 _runPostTurnTasks 统一写
+      throw requestError;
     }
 
     // 解析 <summary>...</summary>
@@ -1726,6 +1794,7 @@ IMPORTANT: 不要调用工具！
     if (handoffText) turn.handoff = handoffText;
     if (suggestionsResult) turn.suggestions = suggestionsResult;
 
+    // effects 不落盘，交给 _runPostTurnTasks 统一写
     if (summaryText || handoffText || suggestionsResult) {
       await this.historyManager.update(turn.id, {
         ...(summaryText ? { summary: summaryText } : {}),
@@ -1765,34 +1834,47 @@ IMPORTANT: 不要调用工具！
     const warmupIterId = randomUUID();
     const warmupIter: WarmupIter = {
       type: "warmup",
+      operation: "context_compaction",
       iterId: warmupIterId,
       status: "loading",
-      content: "当前正在压缩上下文...",
       startTime: warmupStartTime,
       toolCalls: [],
     };
     turn.iterations.push(warmupIter);
-    this.events.emit("warmup:start", { startTime: warmupStartTime, content: warmupIter.content, iterId: warmupIterId });
+    this.events.emit("warmup:start", { startTime: warmupStartTime, operation: warmupIter.operation, iterId: warmupIterId });
+
+    // 每次 attempt 的完整子 TurnRecord 放进 turn.effects，用 iterId 和 warmupIter 关联
+    const compactEffect: AgentEffect = {
+      operation: "context_compaction",
+      iterId: warmupIterId,
+      status: "loading",
+      startTime: warmupStartTime,
+    };
+    turn.effects = turn.effects ? [...turn.effects, compactEffect] : [compactEffect];
 
     // ── compact 步骤（错误内部消化）
     if (needCompact) {
       const onRetry = (attempt: number) => {
-        warmupIter.content = `正在尝试其他策略进行压缩，第 ${attempt} 次重试…`;
-        this.events.emit("warmup:content", { content: warmupIter.content });
+        warmupIter.retryCount = attempt;
+        this.events.emit("warmup:content", { retryCount: attempt });
       };
-      const compactOk = await this._runAutoCompact(signal, true, onRetry);
-      if (!compactOk) {
+      const onAttempt = (subTurn: TurnRecord) => {
+        compactEffect.turns = compactEffect.turns ? [...compactEffect.turns, subTurn] : [subTurn];
+      };
+      const compactOk = await this._runAutoCompact(turn, signal, true, onRetry, onAttempt);
+      if (!compactOk && !signal.aborted) {
         // compact 重试全部失败，以 error 终止本轮 turn
-        const errorMsg = "上下文压缩失败，请重试或者点击上方清空历史记录";
         warmupIter.status = "error";
-        warmupIter.content = errorMsg;
+        warmupIter.errorCode = "CONTEXT_COMPACTION_FAILED";
         warmupIter.endTime = Date.now();
-        this.events.emit("warmup:complete", { status: "error", content: errorMsg, endTime: warmupIter.endTime, iterId: warmupIterId });
+        compactEffect.status = "error";
+        compactEffect.endTime = warmupIter.endTime;
+        this.events.emit("warmup:complete", { status: "error", errorCode: warmupIter.errorCode, endTime: warmupIter.endTime, iterId: warmupIterId });
         turn.endTime = warmupIter.endTime;
         turn.status = "error";
-        turn.error = errorMsg;
+        turn.errorCode = warmupIter.errorCode;
         await this._saveTurnRecord(turn, persistMode);
-        this.events.emit("turn:error", { error: new Error(errorMsg) });
+        this.events.emit("turn:error", { error: new Error(turn.errorCode), errorCode: turn.errorCode });
         this._onTurnEnd(turn);
         return true;
       }
@@ -1801,10 +1883,11 @@ IMPORTANT: 不要调用工具！
     // 统一处理取消
     if (signal.aborted) {
       const warmupEndTime = Date.now();
-      warmupIter.status = "error";
-      warmupIter.content = "已取消";
+      warmupIter.status = "abort";
       warmupIter.endTime = warmupEndTime;
-      this.events.emit("warmup:complete", { status: "error", content: warmupIter.content, endTime: warmupEndTime, iterId: warmupIterId });
+      compactEffect.status = "abort";
+      compactEffect.endTime = warmupEndTime;
+      this.events.emit("warmup:complete", { status: "abort", endTime: warmupEndTime, iterId: warmupIterId });
       turn.endTime = warmupEndTime;
       turn.status = "abort";
       await this._saveTurnRecord(turn, persistMode);
@@ -1818,9 +1901,10 @@ IMPORTANT: 不要调用工具！
     // warmup 全部成功
     const warmupEndTime = Date.now();
     warmupIter.status = "success";
-    warmupIter.content = "上下文压缩完成。";
     warmupIter.endTime = warmupEndTime;
-    this.events.emit("warmup:complete", { status: "success", content: warmupIter.content, endTime: warmupEndTime, iterId: warmupIterId });
+    compactEffect.status = "success";
+    compactEffect.endTime = warmupEndTime;
+    this.events.emit("warmup:complete", { status: "success", endTime: warmupIter.endTime, iterId: warmupIterId });
     return false;
   }
 
@@ -1911,19 +1995,24 @@ IMPORTANT: 不要调用工具！
   /**
    * 执行 autoCompact：fork 一个无工具 Agent 对所有历史生成完整摘要，
    * 将摘要以 CompactRecord 形式单独存储到 History（不替换 turns）。
+   * mask / handoff 已经单独塑造了消息列表，提示词缓存已经丢了
+   * compact 与 summary 一样使用 flash 路由，不继承父 turn 显式选择的模型。
    * iter 级 messages 构建时会读取 compactRecord，用游标分割历史：
    *   游标前（含）→ 替换为摘要消息；游标后 → 正常展开。
    *
    * 错误在内部消化，不向外抛出。返回 true 表示成功，false 表示失败/取消。
    *
-   * @param signal       - AbortSignal，用于监听用户取消操作
-   * @param enableRetry  - 是否启用重试（前置 warmup 时传 true；后置 fire-and-forget 传 false）
-   * @param onRetry      - 重试时的回调，用于更新 warmup content（仅 enableRetry=true 时有意义）
+   * @param turn           - 触发 compact 的父 turn；compact 固定走 flash 路由
+   * @param signal         - AbortSignal，用于监听用户取消操作
+   * @param enableRetry    - 是否启用重试（前置 warmup 时传 true；后置 fire-and-forget 传 false）
+   * @param onRetry        - 重试时的回调，用于更新 warmup content（仅 enableRetry=true 时有意义）
    */
   private async _runAutoCompact(
+    turn: TurnRecord,
     signal?: AbortSignal,
     enableRetry = false,
     onRetry?: (attempt: number) => void,
+    onAttempt?: (subTurn: TurnRecord) => void,
   ): Promise<boolean> {
     const COMPACT_PROMPT =
       "你的任务是创建一份详细的对话总结，重点关注用户的明确请求和你之前的操作。这份总结应全面涵盖技术细节、代码模式和架构决策，这些内容对于后续的开发工作至关重要，同时又不丢失上下文。\n" +
@@ -2012,8 +2101,10 @@ IMPORTANT: 不要调用工具！
       const forkTurns = compactSourceTurns.slice(0, sliceCount);
       const upToTurnId = forkTurns[forkTurns.length - 1].id;
 
-      // fork 继承 compactRecord（由 createFork 联动处理：游标在截取范围内则保留）
-      const fork = this.createFork({ tools: [], mask: false, handoff: { enabled: true }, retry: { maxRetries: 0 }, turnsSlice: { from: "start", count: sliceCount } });
+      // fork 继承 compactRecord（由 createFork 联动处理：游标在截取范围内则保留）；
+      // compact 任务指令放在 system，覆盖父 Agent 的 system。
+      const fork = this.createFork({ tools: [], system: COMPACT_PROMPT, aiRole: FLASH_AI_ROLE, mask: false, handoff: { enabled: true }, retry: { maxRetries: 0 }, turnsSlice: { from: "start", count: sliceCount }, includeSandboxContext: false });
+      // compact 只压缩选定历史，不注入父 Agent 当前请求的动态上下文。
       (fork as any).options.getAttachmentContextMessages = undefined;
       (fork as any).options.formatUserMessage = undefined;
 
@@ -2027,14 +2118,24 @@ IMPORTANT: 不要调用工具！
       let lastContent = "";
       fork.events.on("llm:content", ({ content }) => { lastContent = content; });
 
+      // 用长度判断是否真的新增了一条 turn，避免 requestAI 失败时误取快照里的旧 turn
+      const forkTurnCountBefore = fork.turns.length;
+
       let apiOk = true;
       try {
-        await fork.requestAI({ message: COMPACT_PROMPT + EXAMPLE_PROMPT });
+        await fork.requestAI({ message: EXAMPLE_PROMPT });
       } catch (e) {
         apiOk = false;
         console.warn(`[Agent] autoCompact requestAI failed (attempt ${attempt}):`, e);
       } finally {
         if (abortHandler && signal) signal.removeEventListener("abort", abortHandler);
+        // 本次 attempt 产生的子 TurnRecord（无论成功/失败都记录）
+        const forkTurn = fork.turns.length > forkTurnCountBefore
+          ? fork.turns[fork.turns.length - 1]
+          : undefined;
+        if (forkTurn) {
+          onAttempt?.(forkTurn);
+        }
         // 清除 fork 引用，释放 turns / events 等资源
         fork.turns = [];
         fork.events.removeAllListeners();
@@ -2102,28 +2203,29 @@ function createTurnId(): string {
 
 /**
  * ForkAgent 是 Agent 的子类，用于 fork 出的独立 Agent 实例。
- * 核心差异：requestAI 时会自动带上创建时指定的 aiRole。
+ * 核心差异：requestAI 时默认沿用创建时父 turn 的 LLM 路由，fork 指定的
+ * aiRole 覆盖父 turn 的值，请求参数再覆盖这些默认值。
  */
 export class ForkAgent extends Agent {
-  private _forkAiRole?: string;
+  private readonly defaultLLMOptions: NonNullable<TurnRecord["llmOptions"]>;
 
-  constructor(options: AgentOptions, aiRole?: string) {
+  constructor(options: AgentOptions, defaultLLMOptions: NonNullable<TurnRecord["llmOptions"]> = {}) {
     super(options);
-    this._forkAiRole = aiRole;
+    this.defaultLLMOptions = defaultLLMOptions;
   }
 
   /**
-   * 重写 requestAI，自动注入 fork 时指定的 aiRole。
+   * 默认沿用 fork 创建时的路由；请求显式指定 provider/model 时把旧的
+   * provider/model 配对一起清掉，避免拼出无效组合。
    */
   async requestAI(params: RequestAIOptions): Promise<void> {
-    const { attachments, ...rest } = params;
-    // 有图片附件时，自动将 aiRole 覆盖为 "image"
-    if (attachments?.length) {
-      rest.aiRole = "image";
-    } else if (this._forkAiRole) {
-      // 否则使用 fork 时指定的 aiRole
-      rest.aiRole = this._forkAiRole;
-    }
-    return super.requestAI({ ...rest, ...(attachments !== undefined ? { attachments } : {}) });
+    const hasExplicitModelSelection =
+      params.providerId !== undefined || params.modelId !== undefined;
+    return super.requestAI({
+      ...(hasExplicitModelSelection
+        ? { aiRole: this.defaultLLMOptions.aiRole }
+        : this.defaultLLMOptions),
+      ...params,
+    });
   }
 }

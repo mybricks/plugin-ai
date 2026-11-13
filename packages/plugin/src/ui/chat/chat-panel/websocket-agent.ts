@@ -1118,11 +1118,11 @@ export class WebSocketAgent {
 
       const context: ToolExecutionContext = {
         turnId: turn?.id ?? "unknown",
+        callId: requestId,
+        signal: this.chatAbort?.signal ?? new AbortController().signal,
         iterations: turn?.iterations ?? [],
         getUserMessage: () => ({ message: turn?.userText ?? "", attachments: turn?.userAttachments ?? [] }),
         getAgent: () => this as any,
-        getAiRole: () => undefined,
-        setAiRole: () => undefined,
         mode: this.mode,
         getMode: () => this.mode,
         setMode: (mode: AgentMode, reason?: string) => this.setMode(mode, reason),

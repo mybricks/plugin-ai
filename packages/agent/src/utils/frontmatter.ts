@@ -41,9 +41,11 @@ export function getFrontmatterString(fmText: string, field: string): string | nu
 /**
  * 从 frontmatter 文本中提取字符串数组字段。
  *
- * 支持两种格式：
+ * 推荐格式：英文逗号分隔的 `field: a, b, c`。
+ * 同时兼容以下格式：
  *   - 内联数组：`field: [a, b, c]`
  *   - 逗号分隔：`field: a, b, c`
+ *   - YAML 块列表：`field:\n  - a\n  - b`
  */
 export function getFrontmatterStringArray(fmText: string, field: string): string[] | null {
   // 内联数组格式
@@ -53,6 +55,20 @@ export function getFrontmatterStringArray(fmText: string, field: string): string
       .split(",")
       .map((s) => s.trim().replace(/^["']|["']$/g, ""))
       .filter(Boolean);
+  }
+
+  // YAML 块列表格式。每个列表项必须紧跟在 field 声明后，避免误读后续字段。
+  const lines = fmText.split(/\r?\n/);
+  const fieldIndex = lines.findIndex((line) => new RegExp(`^${field}:\\s*$`).test(line));
+  if (fieldIndex >= 0) {
+    const values: string[] = [];
+    for (let index = fieldIndex + 1; index < lines.length; index++) {
+      const item = lines[index]!.match(/^\s*-\s+(.+?)\s*$/);
+      if (!item) break;
+      const value = item[1]!.trim().replace(/^["']|["']$/g, "");
+      if (value) values.push(value);
+    }
+    if (values.length > 0) return values;
   }
 
   // 逗号分隔格式（值不以 [ 开头）
@@ -67,4 +83,3 @@ export function getFrontmatterStringArray(fmText: string, field: string): string
 
   return null;
 }
-

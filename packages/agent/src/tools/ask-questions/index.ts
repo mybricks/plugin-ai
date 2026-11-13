@@ -5,8 +5,12 @@ export const ASK_QUESTIONS_TOOL_NAME = "ask_questions";
 
 export interface AskQuestionsOption {
   label: string;
-  description: string;
+  description?: string;
   preview?: string;
+  /** 为该普通选项显示一项可选的补充说明输入框。 */
+  input?: boolean;
+  /** input 为 true 时的输入框提示文案；未提供时回退到 description。 */
+  inputPlaceholder?: string;
 }
 
 export interface AskQuestionsQuestion {
@@ -22,23 +26,31 @@ export interface AskQuestionsParams {
 
 export type AskQuestionsAnswers = Record<string, string | string[]>;
 
+interface AskQuestionsSkip {
+  skipped: true;
+}
+
+function isSkip(response: AskQuestionsAnswers | AskQuestionsSkip): response is AskQuestionsSkip {
+  return "skipped" in response && response.skipped === true;
+}
+
 function formatAnswers(answers: AskQuestionsAnswers): string {
   return Object.entries(answers)
     .map(([question, answer]) => `- ${question}：${Array.isArray(answer) ? answer.join("、") : answer}`)
     .join("\n");
 }
 
-const DESCRIPTION = `在执行过程中向用户提出 1 至 4 个多选题，以澄清需求、收集偏好或让用户作出决策。
+const DESCRIPTION = `在执行过程中向用户提出 1 至 4 个问题，用于澄清需求、收集偏好、让用户作出决策，或请用户验证确认。
 
 规则：
-- 每次调用提 1 至 4 题，每题提供 2 至 4 个选项。
-- 同一次调用中的问题文本和选项 label 必须全局唯一。
-- 不要自行添加“其他”选项，UI 会自动提供。
+- 每次调用提 1 至 4 题，每题提供 1 至 4 个选项。
 - 如有推荐项，放在第一项，并在 label 末尾添加 (推荐)。
 - multiSelect 为 true 时，问题措辞应使用可多选、非互斥的复数表达。
 - header 是用于展示的短标签，最多 12 个字符。
 - preview 为可选的纯文本预览内容，仅允许用于单选题。
-- plan 模式下仅用于澄清需求或方案取舍，不能用于请求确认计划。`;
+- plan 模式下仅用于澄清需求或方案取舍，不能用于请求确认计划。
+- 单选题未提供 input: true 选项时，UI 会在选项后提供一个“或者，告诉我应该怎么做”的自由输入框，不要自行添加“其他”选项。
+- 普通选项可设置 input: true，以始终展示一项可选的补充说明输入框。填写说明会自动选择该选项，回传结果保留选项名称和补充说明。`;
 
 function validateParams(params: AskQuestionsParams): void {
   if (!Array.isArray(params?.questions) || params.questions.length < 1 || params.questions.length > 4) {
@@ -56,15 +68,24 @@ function validateParams(params: AskQuestionsParams): void {
     if (typeof item.header !== "string" || item.header.length > 12) {
       throw new ToolValidationError("每个 header 最多 12 个字符");
     }
-    if (!Array.isArray(item.options) || item.options.length < 2 || item.options.length > 4) {
-      throw new ToolValidationError("每个问题必须包含 2 至 4 个选项");
+    if (!Array.isArray(item.options) || item.options.length < 1 || item.options.length > 4) {
+      throw new ToolValidationError("每个问题必须包含 1 至 4 个选项");
     }
     if (item.multiSelect && item.options.some((option) => option.preview !== undefined)) {
       throw new ToolValidationError("preview 仅支持单选题");
     }
     for (const option of item.options) {
-      if (!option || typeof option.label !== "string" || !option.label.trim() || typeof option.description !== "string") {
-        throw new ToolValidationError("每个选项都必须包含 label 和 description");
+      if (!option || typeof option.label !== "string" || !option.label.trim()) {
+        throw new ToolValidationError("每个选项都必须包含非空的 label");
+      }
+      if (option.description !== undefined && typeof option.description !== "string") {
+        throw new ToolValidationError("选项 description 必须是字符串");
+      }
+      if (option.input !== undefined && typeof option.input !== "boolean") {
+        throw new ToolValidationError("选项 input 必须是布尔值");
+      }
+      if (option.inputPlaceholder !== undefined && typeof option.inputPlaceholder !== "string") {
+        throw new ToolValidationError("选项 inputPlaceholder 必须是字符串");
       }
       if (labels.has(option.label)) throw new ToolValidationError("所有问题的选项 label 必须全局唯一");
       labels.add(option.label);
@@ -106,11 +127,13 @@ export function createAskQuestionsTool(): Tool {
                 items: {
                   type: "object",
                   additionalProperties: false,
-                  required: ["label", "description"],
+                  required: ["label"],
                   properties: {
                     label: { type: "string", description: "简洁的可见选项名称。" },
-                    description: { type: "string", description: "该选项的含义、影响或取舍。" },
+                    description: { type: "string", description: "该选项的具体影响、理由或取舍，可不填。" },
                     preview: { type: "string", description: "仅单选题可用的纯文本预览内容，不支持 Markdown 或 HTML。" },
+                    input: { type: "boolean", description: "是否为该普通选项始终展示一个可选的补充说明输入框；填写说明会自动选择该选项。" },
+                    inputPlaceholder: { type: "string", description: "input 为 true 时的输入框提示文案；未提供时回退到 description。" },
                   },
                 },
               },
@@ -125,15 +148,22 @@ export function createAskQuestionsTool(): Tool {
         return { output: "错误：当前工具上下文不支持等待 UI 回传。" };
       }
 
-      const answers = await ctx.waitUIRender<AskQuestionsAnswers>();
-      if (answers === null) {
+      const response = await ctx.waitUIRender<AskQuestionsAnswers | AskQuestionsSkip>();
+      if (response === null) {
         ctx.getAgent().abort();
         return { output: "用户未回答问题，当前对话已取消。" };
       }
 
+      if (isSkip(response)) {
+        return {
+          output: "The user skipped these questions. Do not ask these questions again.",
+          metadata: { skipped: true },
+        };
+      }
+
       return {
-        output: `用户已确认以下选择：\n${formatAnswers(answers)}`,
-        metadata: { answers },
+        output: `用户已确认以下选择：\n${formatAnswers(response)}`,
+        metadata: { answers: response },
       };
     },
   };

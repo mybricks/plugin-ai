@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { CodeAgent } from "@agent/code-agent";
+import { CodeAgent, createAgentSandboxFromV1 } from "@agent/index";
 import type { RequestAsStreamFn } from "@request/types";
 import { MockHistory } from "./mock-history";
 import { MemFS } from "./mem-fs";
 import type { TestCase } from "../cases/types";
 import { context } from "@plugin/context";
-import { chipRegistry } from "@plugin/sandbox/setup";
+import { chipRegistry, referRegistry } from "@plugin/sandbox/setup";
+import { getPlaygroundLocale } from "../locale";
 
 const AGENT_KEY = "playground_agent";
 
@@ -16,16 +17,30 @@ export function usePlaygroundAgent(
   const [agent, setAgent] = useState<CodeAgent | null>(null);
   const [memFS, setMemFS] = useState<MemFS | null>(null);
   const agentRef = useRef<CodeAgent | null>(null);
+  const referSchemesRef = useRef<string[]>([]);
+  const disposeLifecycleRef = useRef<(() => void) | undefined>();
 
   const resetAgent = useCallback(async (
     testCase: TestCase,
     reqFn?: RequestAsStreamFn | null
   ) => {
     agentRef.current?.abort();
+    disposeLifecycleRef.current?.();
     context.agentMap.delete(AGENT_KEY);
     context.setPluginKey("playground");
 
-    const fs = new MemFS(testCase.initialFiles);
+    // refer registry 是 plugin 层的全局状态。切换 case 时先移除上个 case 的
+    // resolver，防止某个协议意外影响其他 playground 用例。
+    referSchemesRef.current.forEach((scheme) => referRegistry.unregister(scheme));
+    referSchemesRef.current = [];
+    testCase.referResolvers?.forEach((resolver) => {
+      referRegistry.register(resolver);
+      referSchemesRef.current.push(resolver.scheme);
+    });
+
+    const fs = testCase.memFSFactory?.(testCase.initialFiles) ?? new MemFS(testCase.initialFiles);
+    const lifecycle = testCase.lifecycleFactory?.(fs, AGENT_KEY);
+    disposeLifecycleRef.current = lifecycle?.dispose;
     const mockHistory = new MockHistory(testCase.initialTurns, (testCase as any)._mockCompact ?? null, testCase.historyOptions);
     // playground 复用 plugin 层的模型服务，但模型选择按 Agent 隔离。
     context.configureLLMProvider("playground", testCase.llm?.providers);
@@ -33,13 +48,21 @@ export function usePlaygroundAgent(
       ?? reqFn
       ?? testCase.request;
 
+    const sandbox = testCase.agentSandboxFactory
+      ? testCase.agentSandboxFactory(fs)
+      : testCase.sandboxKind === "agent"
+        ? createAgentSandboxFromV1(fs)
+        : fs;
     const newAgent = new CodeAgent({
       key: AGENT_KEY,
+      locale: getPlaygroundLocale(),
       history: mockHistory,
       request,
-      sandbox: fs,
-      tools: testCase.tools ?? [],
+      sandbox,
+      tools: typeof testCase.tools === "function" ? testCase.tools(fs) : (testCase.tools ?? []),
       skills: testCase.skills,
+      plugins: [...(testCase.plugins ?? []), ...(lifecycle?.plugins ?? [])],
+      hooks: lifecycle?.hooks,
       summary: testCase.summaryOptions ?? { enabled: false },
       compact: testCase.compactOptions ?? { enabled: false },
       ...(testCase.maskOptions ? { mask: testCase.maskOptions } : {}),
@@ -62,6 +85,11 @@ export function usePlaygroundAgent(
     if (!activeCase) return;
     resetAgent(activeCase, overrideRequest);
   }, [activeCase, overrideRequest, resetAgent]);
+
+  useEffect(() => () => {
+    disposeLifecycleRef.current?.();
+    referSchemesRef.current.forEach((scheme) => referRegistry.unregister(scheme));
+  }, []);
 
   return { agent, memFS, resetAgent };
 }

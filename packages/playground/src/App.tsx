@@ -1,13 +1,18 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import JsonView from "@microlink/react-json-view";
 import { ChatPanel } from "@plugin/ui/chat/chat-panel";
+import type { ChatPanelRef } from "@plugin/ui/chat/chat-panel";
 import { openSetting } from "@plugin/ui/setting";
-import { ALL_CASES, groupCases } from "./cases";
-import type { TestCase } from "./cases";
+import type { TestCase } from "./cases/types";
 import { usePlaygroundAgent } from "./lib/use-playground-agent";
+import { useHttpAgent } from "./lib/use-http-agent";
+import { LOCAL_CATEGORIES, caseCategory } from "./case-categories";
+import type { HttpCall } from "./http-agent-mock";
 import { useRequestInspector, type RequestSnapshot } from "./lib/use-request-inspector";
 import type { MemFS } from "./lib/mem-fs";
 import { getWebFetchUrl, setWebFetchUrl, getDefaultUrlForCase } from "./lib/web-fetch-state";
+import { ToolContractLab } from "./tool-contract-lab";
+import { getPlaygroundLocale, navigateToPlaygroundLocale, type PlaygroundLocale } from "./locale";
 import "./app.css";
 import markdownSkinSpecial from "./markdown-skin-special.module.css";
 
@@ -52,6 +57,24 @@ function ThemeToggle({ mode, onCycle }: { mode: ThemeMode; onCycle: () => void }
     <button className="pg-theme-toggle" onClick={onCycle} title={THEME_TIPS[mode]}>
       {THEME_ICONS[mode]}
     </button>
+  );
+}
+
+function LocaleToggle() {
+  const locale = getPlaygroundLocale();
+
+  return (
+    <label className="pg-locale-toggle">
+      <span className="pg-sr-only">Language</span>
+      <select
+        aria-label="Language"
+        value={locale}
+        onChange={(event) => navigateToPlaygroundLocale(event.target.value as PlaygroundLocale)}
+      >
+        <option value="zh">中文</option>
+        <option value="en">English</option>
+      </select>
+    </label>
   );
 }
 
@@ -116,10 +139,43 @@ function PanelWidthToggle({ width, onToggle }: { width: PanelWidth; onToggle: ()
   );
 }
 
-const P0_CASES = ALL_CASES.filter(c => c.priority === "P0");
-const P0_GROUPS = groupCases(P0_CASES);
-const OTHER_CASES = ALL_CASES.filter(c => c.priority !== "P0");
-const OTHER_GROUPS = groupCases(OTHER_CASES);
+// ─── Group Tool Calls Toggle ────────────────────────────────────────────────────
+
+const GROUP_TOOL_CALLS_KEY = "pg-group-tool-calls";
+
+function useGroupToolCalls() {
+  const [enabled, setEnabled] = useState(() => localStorage.getItem(GROUP_TOOL_CALLS_KEY) === "1");
+
+  const toggle = useCallback(() => {
+    setEnabled((v) => {
+      const next = !v;
+      localStorage.setItem(GROUP_TOOL_CALLS_KEY, next ? "1" : "0");
+      return next;
+    });
+  }, []);
+
+  return { enabled, toggle };
+}
+
+function GroupToolCallsToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) {
+  return (
+    <button
+      className={`pg-disabled-toggle${enabled ? " active" : ""}`}
+      onClick={onToggle}
+      title={enabled ? "已开启：连续工具调用会聚合折叠展示（对所有 case 生效）" : "已关闭：工具调用逐条展示"}
+    >
+      <span className="pg-disabled-label">Group</span>
+      <span className="pg-disabled-state">{enabled ? "ON" : "OFF"}</span>
+    </button>
+  );
+}
+
+function groupCases(cases: TestCase[]): Record<string, TestCase[]> {
+  return cases.reduce((groups, item) => {
+    (groups[item.group] ??= []).push(item);
+    return groups;
+  }, {} as Record<string, TestCase[]>);
+}
 const GROUP_ICONS: Record<string, string> = {};
 
 const CHAT_PANEL_SKIN_VARIABLES = [
@@ -202,39 +258,55 @@ function FSViewer({ memFS }: { memFS: MemFS | null }) {
 
 // ─── Inspector Panel ──────────────────────────────────────────────────────────
 
-function InspectorPanel({ snapshots }: { snapshots: RequestSnapshot[] }) {
+function InspectorPanel({ snapshots, httpCalls }: { snapshots: RequestSnapshot[]; httpCalls?: HttpCall[] }) {
   const [activeIdx, setActiveIdx] = useState<number | null>(null);
+  const entries = useMemo(() => httpCalls
+    ? httpCalls.filter(call => /\/(run|retry|abort)$/.test(call.path)).map((call, index) => ({
+        index: index + 1,
+        timestamp: call.timestamp,
+        label: `${call.method} ${call.path.replace(/^\/__http_agent_playground__/, "")}`,
+        detail: "HTTP",
+        data: { method: call.method, path: call.path.replace(/^\/__http_agent_playground__/, ""), body: call.body },
+      }))
+    : snapshots.map(snapshot => ({
+        index: snapshot.index,
+        timestamp: snapshot.timestamp,
+        label: `Step ${snapshot.index}`,
+        detail: `${snapshot.params.messages?.length ?? 0} msgs`,
+        data: snapshot.params,
+        tools: snapshot.params.tools?.length ?? 0,
+      })), [snapshots, httpCalls]);
 
   useEffect(() => {
-    if (snapshots.length > 0) setActiveIdx(snapshots.length - 1);
+    if (entries.length > 0) setActiveIdx(entries.length - 1);
     else setActiveIdx(null);
-  }, [snapshots.length]);
+  }, [entries.length]);
 
-  const active = activeIdx !== null ? snapshots[activeIdx] : null;
+  const active = activeIdx !== null ? entries[activeIdx] : null;
 
   return (
     <div className="pg-inspector">
       <div className="pg-inspector-header">
         <span className="pg-inspector-title">Request Inspector</span>
-        <span className="pg-case-count">{snapshots.length} calls</span>
+        <span className="pg-case-count">{entries.length} calls</span>
       </div>
 
-      {snapshots.length === 0 ? (
+      {entries.length === 0 ? (
         <div className="pg-inspector-empty">
-          发送消息后，每次 LLM 请求的<br />完整参数会显示在这里
+          {httpCalls ? <>发送消息后，HTTP 请求的<br />完整参数会显示在这里</> : <>发送消息后，每次 LLM 请求的<br />完整参数会显示在这里</>}
         </div>
       ) : (
         <>
           <div className="pg-inspector-tabs">
-            {snapshots.map((s, i) => (
+            {entries.map((s, i) => (
               <button
                 key={i}
                 className={`pg-inspector-tab${activeIdx === i ? " active" : ""}`}
                 onClick={() => setActiveIdx(i)}
               >
-                <span className="pg-tab-step">Step {s.index}</span>
+                <span className="pg-tab-step">{s.label}</span>
                 <span className="pg-tab-count">
-                  {s.params.messages?.length ?? 0} msgs
+                  {s.detail}
                 </span>
               </button>
             ))}
@@ -243,10 +315,10 @@ function InspectorPanel({ snapshots }: { snapshots: RequestSnapshot[] }) {
           {active && (
             <div className="pg-inspector-body">
               <div className="pg-inspector-meta">
-                <span>Step {active.index}</span>
-                <span>{active.params.messages?.length ?? 0} messages</span>
-                {active.params.tools && active.params.tools.length > 0 && (
-                  <span>{active.params.tools.length} tools</span>
+                <span>{active.label}</span>
+                <span>{active.detail}</span>
+                {'tools' in active && active.tools > 0 && (
+                  <span>{active.tools} tools</span>
                 )}
                 <span className="pg-meta-time">
                   {new Date(active.timestamp).toLocaleTimeString()}
@@ -255,7 +327,7 @@ function InspectorPanel({ snapshots }: { snapshots: RequestSnapshot[] }) {
 
               <div className="pg-json-wrap">
                 <JsonView
-                  src={active.params}
+                  src={active.data}
                   theme="rjv-default"
                   collapsed={false}
                   shouldCollapse={({ name, namespace }) => {
@@ -322,28 +394,53 @@ function AssertionPanel({
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 
-export default function App() {
+export default function App({ cases, suite }: { cases: TestCase[]; suite: "local" | "http" }) {
   const { mode, cycle: cycleTheme } = useTheme();
   const { disabled: chatDisabled, toggle: toggleDisabled } = useChatDisabled();
   const { width: panelWidth, toggle: togglePanelWidth } = usePanelWidth();
+  const { enabled: groupToolCallsEnabled, toggle: toggleGroupToolCalls } = useGroupToolCalls();
+  const chatPanelRef = useRef<ChatPanelRef | null>(null);
 
   // 从 URL 读取初始 case（?case=xxx）
-  const initialCaseId = new URLSearchParams(window.location.search).get("case");
-  const initialCase = ALL_CASES.find(c => c.id === initialCaseId) ?? ALL_CASES[0] ?? null;
+  const params = new URLSearchParams(window.location.search);
+  const selectedGroup = suite === "local" ? params.get("group") ?? "" : "";
+  const categoryParam = params.get("category") ?? "";
+  const selectedCategory = LOCAL_CATEGORIES.some(category => category.id === categoryParam) ? categoryParam : "";
+  const visibleCases = selectedGroup
+    ? cases.filter(c => c.group === selectedGroup)
+    : suite === "local" && selectedCategory
+      ? cases.filter(c => caseCategory(c) === selectedCategory)
+      : cases;
+  const initialCaseId = params.get("case");
+  const initialCase = visibleCases.find(c => c.id === initialCaseId) ?? visibleCases[0] ?? null;
+  const caseGroups = groupCases([...visibleCases].sort((a, b) => Number(b.priority === "P0") - Number(a.priority === "P0")));
 
   const [activeCase] = useState<TestCase | null>(initialCase);
   const [webFetchUrl, setWebFetchUrlState] = useState(() => getDefaultUrlForCase(initialCase?.id ?? ""));
   const isChatPanelSkinLayout = activeCase?.playgroundLayout === "chat-panel-skin";
+  const isToolContractLayout = activeCase?.playgroundLayout === "tool-contract";
   const isDefaultChatPanelSkin = activeCase?.chatPanelSkin === "default";
 
   const { wrappedRequest, snapshots } = useRequestInspector(
-    isChatPanelSkinLayout ? null : activeCase?.request ?? null
+    isChatPanelSkinLayout || isToolContractLayout || suite === "http" ? null : activeCase?.request ?? null
   );
 
-  const { agent, memFS } = usePlaygroundAgent(
-    activeCase,
+  const { agent: localAgent, memFS } = usePlaygroundAgent(
+    isToolContractLayout || suite === "http" ? null : activeCase,
     isChatPanelSkinLayout ? null : wrappedRequest
   );
+  const { agent: httpAgent, calls: httpCalls } = useHttpAgent(activeCase?.httpScenario);
+  const agent = suite === "http" ? httpAgent : localAgent;
+
+  const selectSuite = useCallback((value: string) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("suite", value === "http" ? "http" : "local");
+    url.searchParams.delete("case");
+    url.searchParams.delete("group");
+    url.searchParams.delete("category");
+    if (value.startsWith("category:")) url.searchParams.set("category", value.slice(9));
+    window.location.href = url.toString();
+  }, []);
 
   // 是否显示设置按钮（设置分组）
   const showSettingBtn = activeCase?.group === "设置";
@@ -395,7 +492,9 @@ export default function App() {
           )}
           <DisabledToggle disabled={chatDisabled} onToggle={toggleDisabled} />
           <PanelWidthToggle width={panelWidth} onToggle={togglePanelWidth} />
+          <GroupToolCallsToggle enabled={groupToolCallsEnabled} onToggle={toggleGroupToolCalls} />
           <ThemeToggle mode={mode} onCycle={cycleTheme} />
+          <LocaleToggle />
         </div>
       </header>
 
@@ -405,8 +504,15 @@ export default function App() {
         <aside className="pg-sidebar">
           <div className="pg-sidebar-header">
             <span className="pg-sidebar-title">Test Cases</span>
-            <span className="pg-case-count">{ALL_CASES.length}</span>
+            <span className="pg-case-count">{visibleCases.length}</span>
           </div>
+          <label className="pg-suite-select">测试集
+            <select aria-label="测试集" value={suite === "http" ? "http" : selectedCategory ? `category:${selectedCategory}` : "local"} onChange={event => selectSuite(event.target.value)}>
+              <option value="local">全部本地用例</option>
+              {LOCAL_CATEGORIES.map(category => <option key={category.id} value={`category:${category.id}`}>{category.label}</option>)}
+              <option value="http">HTTP Agent</option>
+            </select>
+          </label>
           {/* WebFetch URL 输入框 */}
           {showWebFetchInput && (
             <div className="pg-webfetch-input-wrap">
@@ -421,10 +527,7 @@ export default function App() {
             </div>
           )}
           <div className="pg-sidebar-body">
-            {[
-              ...Object.entries(P0_GROUPS),
-              ...Object.entries(OTHER_GROUPS),
-            ].map(([group, cases]) => (
+            {Object.entries(caseGroups).map(([group, cases]) => (
               <div key={group} className="pg-group">
                 <div className="pg-group-label">
                   {GROUP_ICONS[group] ? GROUP_ICONS[group] + " " : ""}{group}
@@ -464,7 +567,9 @@ export default function App() {
           </div>
         )}
 
-        {isChatPanelSkinLayout ? (
+        {isToolContractLayout ? (
+          <div className="pg-content"><ToolContractLab initialFiles={activeCase?.initialFiles ?? []} /></div>
+        ) : isChatPanelSkinLayout ? (
           <div className="pg-content pg-chat-skin-content">
             <div className="pg-chat-skin-aside">
               <div className="pg-chat-skin-card">
@@ -521,6 +626,7 @@ export default function App() {
                   scrollWithSender={activeCase?.scrollWithSender}
                   renderSenderFooter={activeCase?.renderSenderFooter}
                   messagesRenderVariant={activeCase?.messagesRenderVariant}
+                  groupToolCalls={groupToolCallsEnabled || activeCase?.groupToolCalls}
                   markdownit={activeCase?.markdownit}
                   actionBar={["copy", "delete", "retry"]}
                   placeholder={isDefaultChatPanelSkin ? "输入一句话，继续检查默认皮肤下的 ChatPanel" : "输入一句话，继续检查 large + 自定义变量下的 ChatPanel"}
@@ -539,7 +645,7 @@ export default function App() {
             {/* ChatPanel 列 */}
             <div className="pg-chat-col" style={{ width: panelWidth }}>
               {agent ? (
-                <ChatPanel agent={agent as any} title="playground" header={true} disabled={chatDisabled} renderEmpty={activeCase?.renderEmpty} renderFocus={activeCase?.renderFocus} historyCollapse={activeCase?.historyCollapse} selectorRenderInTop={activeCase?.selectorRenderInTop} attachProcessors={activeCase?.attachProcessors} mentions={activeCase?.mentions} renderAttachmentSuffix={activeCase?.renderAttachmentSuffix} actionBar={activeCase?.actionBar} />
+                <ChatPanel ref={chatPanelRef} agent={agent as any} toolUI={activeCase?.toolUI} title="playground" header={true} disabled={chatDisabled} renderEmpty={activeCase?.renderEmpty} renderFocus={activeCase?.renderFocus} historyCollapse={activeCase?.historyCollapse} selectorRenderInTop={activeCase?.selectorRenderInTop} attachProcessors={activeCase?.attachProcessors} mentions={activeCase?.mentions} renderAttachmentSuffix={activeCase?.renderAttachmentSuffix} actionBar={activeCase?.actionBar} messagesRenderVariant={activeCase?.messagesRenderVariant} groupToolCalls={groupToolCallsEnabled || activeCase?.groupToolCalls} />
               ) : (
                 <div className="pg-loading">加载中…</div>
               )}
@@ -547,9 +653,12 @@ export default function App() {
 
             {/* 右侧：Inspector 上 + FS Viewer 下 */}
             <div className="pg-right-col">
-              {activeCase?.renderRightPanelActions?.({ agent })}
-              <InspectorPanel snapshots={snapshots} />
-              <FSViewer memFS={memFS} />
+              {activeCase?.renderRightPanelActions?.({
+                agent: localAgent,
+                appendInput: (input) => chatPanelRef.current?.appendInput(input),
+              })}
+              <InspectorPanel snapshots={snapshots} httpCalls={suite === "http" ? httpCalls : undefined} />
+              {suite !== "http" && <FSViewer memFS={memFS} />}
             </div>
           </div>
         )}

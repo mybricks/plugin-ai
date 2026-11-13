@@ -83,7 +83,7 @@ export class HTTPHistory implements History {
     return null;
   }
 
-  async saveCompact(_key: string, _record: CompactRecord): Promise<void> {
+  async saveCompact(_key: string, _record: CompactRecord | null): Promise<void> {
     // HTTPHistory intentionally does not persist compact records.
   }
 

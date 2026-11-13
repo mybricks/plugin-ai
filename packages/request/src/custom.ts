@@ -1,17 +1,15 @@
-import type {
-  RequestAsStreamFn,
-  RequestAsStreamParams,
-  ToolDescriptor,
-} from "./types";
-import { readSSEStream } from "./sse-parser";
-import { sanitizeMessages, preprocessMessagesForModel } from "./base";
+import { prepareMessagesForModel, sanitizeMessages } from "./messages";
+import { openAIProtocol } from "./protocols";
+import { executeStreamingRequest } from "./transport/http";
+import type { RequestAsStreamFn } from "./types";
 
 export interface CustomRequestConfig {
+  /** @deprecated 当前仅支持 OpenAI 兼容协议，保留该 getter 以兼容旧配置。 */
   provider: () => "openai" | Promise<"openai">;
   apiUrl: () => string | Promise<string>;
   apiKey: () => string | Promise<string>;
   model?: () => string | undefined | Promise<string | undefined>;
-  /** 额外的请求参数，会合并到最终请求体中 */
+  /** 额外的请求参数，会合并到最终请求体中。 */
   extraParams?: () => Record<string, any> | Promise<Record<string, any>>;
 }
 
@@ -26,7 +24,9 @@ async function resolveConfig(config: CustomRequestConfig) {
   return { provider, apiUrl, apiKey, model, extraParams };
 }
 
-function validateResolved(resolved: Awaited<ReturnType<typeof resolveConfig>>): string | null {
+function validateResolved(
+  resolved: Awaited<ReturnType<typeof resolveConfig>>,
+): string | null {
   if (!resolved.provider) return "missing provider";
   if (!resolved.apiUrl?.trim()) return "missing API url";
   if (!resolved.apiKey?.trim()) return "missing API key";
@@ -38,135 +38,50 @@ function validateResolved(resolved: Awaited<ReturnType<typeof resolveConfig>>): 
   return null;
 }
 
-function isAbortError(ex: unknown): boolean {
-  return (
-    (ex instanceof DOMException && ex.name === "AbortError") ||
-    (ex instanceof Error && ex.message.toLowerCase().includes("aborted"))
-  );
-}
-
-async function readErrorText(response: Response): Promise<string> {
-  try {
-    return (await response.text()) || response.statusText;
-  } catch {
-    return response.statusText;
-  }
-}
-
 /**
- * 创建自定义渠道请求函数（当前仅支持 OpenAI 兼容格式）
+ * 创建 OpenAI 兼容渠道请求函数。
  * 配置项均为 getter，便于每次请求动态读取最新配置。
  */
 export function createCustomRequest(config: CustomRequestConfig): RequestAsStreamFn {
-  return async function (params: RequestAsStreamParams) {
-    const { messages, emits, tools } = params;
-    const { cancel, write, complete, error, onUsage, onThinking, onToolCalls, onToolCallStream, onFinishReason } = emits;
-
+  return async function ({ messages, emits, tools }) {
     const resolved = await resolveConfig(config);
     const configError = validateResolved(resolved);
     if (configError) {
-      const err = new Error(configError);
-      error(err);
-      throw err;
+      const error = new Error(configError);
+      emits.error(error);
+      throw error;
     }
 
     if (!Array.isArray(messages) || messages.length === 0) {
-      const err = new Error("messages cannot be empty");
-      error(err);
-      throw err;
+      const error = new Error("messages cannot be empty");
+      emits.error(error);
+      throw error;
     }
 
-    const controller = new AbortController();
-    cancel(() => controller.abort());
-
-    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
-    try {
-      const requestBody = formatRequestBody(resolved.provider, sanitizeMessages(preprocessMessagesForModel(messages)), resolved.model, tools, resolved.extraParams);
-      const response = await fetch(resolved.apiUrl, {
-        signal: controller.signal,
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${resolved.apiKey}`,
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const text = await readErrorText(response);
-        throw new Error(`API request failed [${response.status}]: ${text}`);
-      }
-      if (!response.body) throw new Error("empty response body");
-
-      reader = response.body.getReader();
-      await readSSEStream({ reader, write, complete, onUsage, onThinking, onToolCalls, onToolCallStream, onFinishReason });
-    } catch (ex) {
-      if (isAbortError(ex)) return;
-      const err = ex instanceof Error ? ex : new Error(String(ex));
-      error(err);
-      throw err;
-    } finally {
-      try {
-        await reader?.cancel();
-      } catch {
-        // ignore
-      }
-    }
+    await executeStreamingRequest({
+      url: resolved.apiUrl,
+      headers: openAIProtocol.createHeaders(resolved.apiKey),
+      body: openAIProtocol.createRequestBody({
+        model: resolved.model?.trim() || "gpt-4o",
+        messages: sanitizeMessages(prepareMessagesForModel(messages)),
+        tools,
+        extraParams: resolved.extraParams,
+      }),
+      emits,
+      readStream: openAIProtocol.readStream,
+    });
   };
 }
 
-function formatRequestBody(
-  provider: "openai",
-  messages: any[],
-  model?: string,
-  tools?: ToolDescriptor[],
-  extraParams?: Record<string, any>
-): any {
-  const defaultModel = "gpt-4o";
-  // 为没有 reasoning_content 的 assistant（含 tool_calls）/tool 消息自动添加
-  const processedMessages = messages.map(msg => {
-    // if ((msg.role === "assistant" && msg.tool_calls?.length) || msg.role === "tool") {
-    //   if (!msg.reasoning_content) {
-    //     return { ...msg, reasoning_content: "我思考一下" };
-    //   }
-    // }
-    return msg;
-  });
-  return {
-    model: model?.trim() || defaultModel,
-    messages: processedMessages,
-    stream: true,
-    ...(tools?.length
-      ? {
-          tools: tools.map((tool) => ({
-            type: "function",
-            function: {
-              name: tool.name,
-              description: tool.description,
-              parameters: tool.parameters ?? { type: "object", properties: {} },
-            },
-          })),
-        }
-      : {}),
-    ...extraParams,
-  };
-}
-
-
-/**
- * Kimi 官方平台请求配置
- */
+/** Kimi 官方平台请求配置。 */
 export interface KimiRequestConfig {
   apiKey: () => string | Promise<string>;
   model?: () => string | undefined | Promise<string | undefined>;
-  /** 是否启用思考模式，默认 false */
+  /** 是否启用思考模式。为了兼容原逻辑，当前请求固定关闭思考模式。 */
   thinking?: () => boolean | Promise<boolean>;
 }
 
-/**
- * 创建 Kimi 官方平台请求函数
- * 基于 createCustomRequest，预设了 Kimi 平台的配置，并支持 thinking 参数
- */
+/** 创建 Kimi 官方平台请求函数。 */
 export function createKimiRequest(config: KimiRequestConfig): RequestAsStreamFn {
   return createCustomRequest({
     provider: () => "openai",
@@ -174,12 +89,8 @@ export function createKimiRequest(config: KimiRequestConfig): RequestAsStreamFn 
     apiKey: config.apiKey,
     model: config.model,
     extraParams: async () => {
-      const thinking = await config.thinking?.() ?? false;
-      return {
-        thinking: {
-          type: 'disabled',
-        }
-      };
+      await config.thinking?.();
+      return { thinking: { type: "disabled" } };
     },
   });
 }

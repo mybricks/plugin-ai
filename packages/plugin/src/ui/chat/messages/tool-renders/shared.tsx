@@ -9,6 +9,7 @@ import { ElapsedTime } from "../../../components/elapsed-time";
 import type { ToolRecord } from "./index";
 import { useChatPanel } from "../../chat-panel/context";
 export { ToolCallsGroup } from "./tool-calls-group";
+import { lang } from "../../../../i18n";
 import css from "./render.less";
 
 const ChevronRightIcon = () => (
@@ -180,7 +181,7 @@ const LineDuration = ({ tool }: { tool: ToolRecord }) => {
   if (!tool.execStartTime) return null;
   if (tool.status !== "pending" && elapsed < minVisibleElapsed) return null;
 
-  return <span className={css["tool-line-duration"]}>耗时 {formatLineElapsed(elapsed)}</span>;
+  return <span className={css["tool-line-duration"]}>{lang.tool.elapsed(formatLineElapsed(elapsed))}</span>;
 };
 
 function formatLineElapsed(elapsed: number): string {
@@ -192,21 +193,21 @@ function formatLineElapsed(elapsed: number): string {
 export function formatToolDetail(tool: ToolRecord): string {
   const parts: string[] = [];
   if (tool.args && Object.keys(tool.args).length > 0) {
-    parts.push(`参数:\n${safeStringify(tool.args)}`);
+    parts.push(`${lang.tool.arguments()}:\n${safeStringify(tool.args)}`);
   } else if (tool.argsContent) {
-    parts.push(`参数:\n${tool.argsContent}`);
+    parts.push(`${lang.tool.arguments()}:\n${tool.argsContent}`);
   }
   if (tool.progress && Object.keys(tool.progress).length > 0) {
-    parts.push(`进度:\n${safeStringify(tool.progress)}`);
+    parts.push(`${lang.tool.progress()}:\n${safeStringify(tool.progress)}`);
   }
   if (tool.result?.output) {
-    parts.push(`结果:\n${String(tool.result.output)}`);
+    parts.push(`${lang.tool.result()}:\n${String(tool.result.output)}`);
   }
   if (tool.result?.metadata && Object.keys(tool.result.metadata).length > 0) {
-    parts.push(`元数据:\n${safeStringify(tool.result.metadata)}`);
+    parts.push(`${lang.tool.metadata()}:\n${safeStringify(tool.result.metadata)}`);
   }
   if (tool.error) {
-    parts.push(`错误:\n${String(tool.error)}`);
+    parts.push(`${lang.tool.error()}:\n${String(tool.error)}`);
   }
   return parts.join("\n\n");
 }
@@ -359,6 +360,7 @@ export const PendingCodeCard = ({ tool, icon, title }: { tool: ToolRecord; icon:
 
 export const StreamingCodeCard = ({ tool, icon, title, content, lang: langOverride }: { tool: ToolRecord; icon: React.ReactElement; title: string; content: string; lang?: string }) => {
   const { messagesRenderVariant } = useChatPanel();
+  const codeLang = langOverride ?? detectLang(tool.args?.path ?? "");
   const lineCount = content ? content.split("\n").length : 0;
   if (messagesRenderVariant === "line") {
     return (
@@ -366,13 +368,12 @@ export const StreamingCodeCard = ({ tool, icon, title, content, lang: langOverri
         tool={tool}
         icon={icon}
         title={title}
-        meta={lineCount > 0 ? `${lineCount} 行` : undefined}
+        meta={lineCount > 0 ? lang.tool.lines(lineCount) : undefined}
         detail={content || undefined}
         defaultExpanded
       />
     );
   }
-  const lang = langOverride ?? detectLang(tool.args?.path ?? "");
   return (
     <div className={css["code-card"]}>
       <div className={`${css["code-card-header"]} ${css["code-card-header-with-body"]}`} style={{ cursor: "default" }}>
@@ -381,12 +382,12 @@ export const StreamingCodeCard = ({ tool, icon, title, content, lang: langOverri
         </span>
         <span className={css["code-card-filename"]}><TextShimmer>{title}</TextShimmer></span>
         {lineCount > 0 && (
-          <span className={css["code-card-lines"]}>{lineCount} 行</span>
+          <span className={css["code-card-lines"]}>{lang.tool.lines(lineCount)}</span>
         )}
         <Duration tool={tool} />
       </div>
       <pre className={css["code-card-body"]}>
-        <code className={`language-${lang}`}>{content}</code>
+        <code className={`language-${codeLang}`}>{content}</code>
       </pre>
     </div>
   );
@@ -396,7 +397,7 @@ export const CodeCard = ({ tool, icon, title, content, lineMeta, diffMode, showC
   const { messagesRenderVariant } = useChatPanel();
   const [collapsed, setCollapsed] = useState(true);
   const [diffBroken, setDiffBroken] = useState(false);
-  const lang = detectLang(tool.args?.path ?? "");
+  const codeLang = detectLang(tool.args?.path ?? "");
   const lineCount = content ? content.split("\n").length : 0;
 
   const isError = tool.status === "error";
@@ -404,7 +405,7 @@ export const CodeCard = ({ tool, icon, title, content, lineMeta, diffMode, showC
   if (messagesRenderVariant === "line") {
     const hasBody = showCode && (diffMode || content);
     const meta = lineMeta
-      ?? (lineCount > 0 && !isError && showCode ? `${lineCount} 行` : undefined);
+      ?? (lineCount > 0 && !isError && showCode ? lang.tool.lines(lineCount) : undefined);
     return (
       <LineToolRenderer
         tool={tool}
@@ -437,7 +438,7 @@ export const CodeCard = ({ tool, icon, title, content, lineMeta, diffMode, showC
         <span className={css["code-card-filename"]}>{title}</span>
         {lineMeta && <span className={css["code-card-lines"]}>{lineMeta}</span>}
         {!lineMeta && lineCount > 0 && !isError && showCode && (
-          <span className={css["code-card-lines"]}>{lineCount} 行</span>
+          <span className={css["code-card-lines"]}>{lang.tool.lines(lineCount)}</span>
         )}
         <Duration tool={tool} />
         {canToggle && (
@@ -453,7 +454,7 @@ export const CodeCard = ({ tool, icon, title, content, lineMeta, diffMode, showC
           />
         ) : content ? (
           <pre className={css["code-card-body"]}>
-            <code className={`language-${lang}`}>{content}</code>
+            <code className={`language-${codeLang}`}>{content}</code>
           </pre>
         ) : null
       )}
@@ -477,7 +478,7 @@ export const BatchItem = ({ tool, path, name, content, diffMode, streaming, erro
   const [collapsed, setCollapsed] = useState(true);
   const [diffBroken, setDiffBroken] = useState(false);
   const { messagesRenderVariant } = useChatPanel();
-  const lang = detectLang(path);
+  const codeLang = detectLang(path);
   const lineCount = content ? content.split("\n").length : 0;
   const isError = tool.status === "error";
 
@@ -488,7 +489,7 @@ export const BatchItem = ({ tool, path, name, content, diffMode, streaming, erro
         tool={tool}
         icon={streaming ? <Loading /> : error ? <ErrorIcon /> : <Success />}
         title={streaming ? `${name}...` : name}
-        meta={lineCount > 0 ? `${lineCount} 行` : undefined}
+        meta={lineCount > 0 ? lang.tool.lines(lineCount) : undefined}
         detail={hasBody
           ? (diffMode && !diffBroken
               ? <DiffView oldStr={diffMode.oldStr} newStr={diffMode.newStr} onError={() => setDiffBroken(true)} />
@@ -521,7 +522,7 @@ export const BatchItem = ({ tool, path, name, content, diffMode, streaming, erro
           ? <span className={css["batch-item-filename"]}><TextShimmer>{name + "..."}</TextShimmer></span>
           : <span className={css["batch-item-filename"]} style={error ? { color: "#c0392b" } : undefined}>{name}</span>}
         {lineCount > 0 && (
-          <span className={css["batch-item-lines"]}>{lineCount} 行</span>
+          <span className={css["batch-item-lines"]}>{lang.tool.lines(lineCount)}</span>
         )}
         {canToggle && (
           <span className={css["batch-item-toggle"]}>{isCollapsed ? "▶" : "▼"}</span>
@@ -537,7 +538,7 @@ export const BatchItem = ({ tool, path, name, content, diffMode, streaming, erro
           />
         ) : content ? (
           <pre className={`${css["code-card-body"]} ${css["batch-item-body"]}`}>
-            <code className={`language-${lang}`}>{content}</code>
+            <code className={`language-${codeLang}`}>{content}</code>
           </pre>
         ) : null
       )}
@@ -563,7 +564,7 @@ export const BatchGroup = ({ tool, icon, verb, items, count, hasPartialError }: 
     ? `${verb}...`
     : verb;
 
-  const metaLabel = count > 0 ? `${count} 个文件` : undefined;
+  const metaLabel = count > 0 ? lang.tool.files(count) : undefined;
 
   if (messagesRenderVariant === "line") {
     return (

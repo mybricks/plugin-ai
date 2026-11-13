@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { LoadingView, type LoadingViewProps } from "../chat/chat-start-view";
 import { ChatStartView, type ChatStartViewProps, ComChatStartView, type ComChatStartViewProps } from "../chat/chat-start-view";
 import { PrdRender, type PrdRenderProps } from "./prd-render";
+import { ReviewRender, type ReviewRenderProps } from "./review-render";
 
 // ─── Shadow DOM 样式注入高阶组件 ───────────────────────────────────────────────
 
@@ -72,4 +73,9 @@ export const PrdRenderWithStyles = withShadowStyles<PrdRenderProps>(
   "__pluginAiPrdStyleInjected__"
 );
 
-export type { LoadingViewProps, ChatStartViewProps, ComChatStartViewProps, PrdRenderProps };
+export const ReviewRenderWithStyles = withShadowStyles<ReviewRenderProps>(
+  ReviewRender,
+  "__pluginAiReviewStyleInjected__"
+);
+
+export type { LoadingViewProps, ChatStartViewProps, ComChatStartViewProps, PrdRenderProps, ReviewRenderProps };

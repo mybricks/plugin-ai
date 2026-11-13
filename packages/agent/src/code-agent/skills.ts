@@ -4,7 +4,7 @@
  * 单个技能描述。
  *
  * 对标 claude-code 的 `<skill-name>/SKILL.md` 目录结构：
- *   - `name`    ：技能名称，同时作为虚拟目录名 `.agent/skills/<name>/`
+ *   - `name`    ：技能名称，同时作为虚拟目录名 `<configDirName>/skills/<name>/`
  *   - `files`   ：技能目录内的文件列表，SKILL.md 为必填项
  *
  * SKILL.md 支持的 YAML frontmatter 字段（对标 claude-code FrontmatterData）：
@@ -30,7 +30,7 @@
  * }
  */
 export interface SkillFile {
-  /** 技能名称，作为虚拟目录名：.agent/skills/<name>/ */
+  /** 技能名称，作为虚拟目录名：<configDirName>/skills/<name>/ */
   name: string;
   /** 展示给用户看的技能名称；不影响工具调用和虚拟目录名 */
   displayName?: string;
@@ -51,6 +51,7 @@ export interface SkillFile {
 // ─── 元信息解析 ───────────────────────────────────────────────────────────────
 
 import { splitFrontmatter, getFrontmatterString } from "../utils/frontmatter";
+import { getSkillDir } from "./config-dir";
 
 /**
  * Skill 触发策略。
@@ -136,6 +137,37 @@ export function resolveSkillMeta(
   return { name, description, whenToUse: fmWhenToUse, activation };
 }
 
+const SKILL_LOCALE_FILE_PATTERN = /^SKILL\.([a-z]{2,3}(?:[-_][a-z0-9]{2,8})*)\.md$/i;
+
+/** Resolve a skill using the same locale fallback and metadata rules as prompt templates. */
+export function resolveLocalizedSkill(skill: SkillFile, locale = "zh"): { displayName: string; description: string; whenToUse: string | null; content: string } {
+  const base = skill.files.find(file => file.path === "SKILL.md");
+  if (!base) throw new Error(`SKILL.md not found in skill "${skill.name}". This skill is misconfigured.`);
+  const normalized = locale.trim().replace(/_/g, "-").toLowerCase();
+  const parts = normalized.split("-");
+  let localized: typeof base | undefined;
+  for (let count = parts.length; count > 0 && !localized; count--) {
+    const candidate = parts.slice(0, count).join("-");
+    localized = skill.files.find(file => {
+      const match = file.path.match(SKILL_LOCALE_FILE_PATTERN);
+      return match && match[1].replace(/_/g, "-").toLowerCase() === candidate;
+    });
+  }
+  const defaultMeta = splitFrontmatter(base.content);
+  const localizedMeta = localized ? splitFrontmatter(localized.content) : { fmText: "", body: "" };
+  const displayName = getFrontmatterString(localizedMeta.fmText, "displayName") ??
+    getFrontmatterString(localizedMeta.fmText, "name") ??
+    getFrontmatterString(defaultMeta.fmText, "displayName") ?? skill.displayName ??
+    getFrontmatterString(defaultMeta.fmText, "name") ?? skill.name;
+  const fallbackMeta = resolveSkillMeta(base.content, skill.name);
+  return {
+    displayName,
+    description: getFrontmatterString(localizedMeta.fmText, "description") ?? fallbackMeta.description,
+    whenToUse: getFrontmatterString(localizedMeta.fmText, "when_to_use") ?? getFrontmatterString(localizedMeta.fmText, "whenToUse") ?? fallbackMeta.whenToUse,
+    content: localizedMeta.body.trim() ? localized!.content : base.content,
+  };
+}
+
 export function shouldExposeSkillToModel(skill: SkillFile): boolean {
   const skillMd = skill.files.find((f) => f.path === "SKILL.md");
   if (!skillMd) return true;
@@ -150,10 +182,15 @@ export function shouldAlwaysLoadSkill(skill: SkillFile): boolean {
   return activation === "always";
 }
 
-export async function renderSkillContent(skill: SkillFile): Promise<{
+export async function renderSkillContent(
+  skill: SkillFile,
+  configDirName?: string,
+  locale = "zh",
+): Promise<{
   output: string;
   hasSupportFiles: boolean;
 }> {
+  const skillDir = getSkillDir(skill.name, configDirName);
   await skill.updateContent?.();
 
   const skillMd = skill.files.find((f) => f.path === "SKILL.md");
@@ -162,16 +199,16 @@ export async function renderSkillContent(skill: SkillFile): Promise<{
   }
 
   let output = `<skill name="${skill.name}">
-${skillMd.content}
+${resolveLocalizedSkill(skill, locale).content}
 </skill>`;
 
-  const supportFiles = skill.files.filter((f) => f.path !== "SKILL.md");
+  const supportFiles = skill.files.filter((f) => f.path !== "SKILL.md" && !SKILL_LOCALE_FILE_PATTERN.test(f.path));
   if (supportFiles.length > 0) {
-    output += `\n\n---\n\nSkill directory tree:\n.agent/skills/${skill.name}/`;
+    output += `\n\n---\n\nSkill directory tree:\n${skillDir}`;
     for (const f of skill.files) {
       output += `\n  ${f.path}`;
     }
-    output += `\n\nSupport files can be read using the read_file tool with paths like .agent/skills/${skill.name}/<path>`;
+    output += `\n\nSupport files can be read using the read_file tool with paths like ${skillDir}<path>`;
   }
 
   return { output, hasSupportFiles: supportFiles.length > 0 };

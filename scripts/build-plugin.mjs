@@ -9,7 +9,7 @@ import babel from '@rollup/plugin-babel';
 import postcss from 'rollup-plugin-postcss';
 import terser from '@rollup/plugin-terser';
 import { rollup } from 'rollup';
-import { rmSync } from 'fs';
+import { rmSync, readFileSync } from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -30,10 +30,12 @@ const aliasPlugin = alias({
 const babelPlugin = babel({
   babelHelpers: 'bundled',
   extensions: ['.ts', '.tsx', '.js', '.jsx'],
+  // Strip TypeScript before preset-env transforms classes and super() arguments.
+  passPerPreset: true,
   presets: [
-    ['@babel/preset-env', { targets: { esmodules: true } }],
-    ['@babel/preset-react', { runtime: 'classic' }],
     '@babel/preset-typescript',
+    ['@babel/preset-react', { runtime: 'classic' }],
+    ['@babel/preset-env', { targets: { esmodules: true } }],
   ],
 });
 
@@ -42,6 +44,18 @@ const postcssPlugin = postcss({
   inject: true,
   modules: true,
   use: { less: {} },
+});
+
+const markdown = () => ({
+  name: 'markdown',
+  transform(code, id) {
+    if (!id.endsWith('.md')) return null;
+    return { code: `export default ${JSON.stringify(code)};`, map: null };
+  },
+  load(id) {
+    if (!id.endsWith('.md')) return null;
+    return readFileSync(id, 'utf8');
+  },
 });
 
 const external = [
@@ -56,7 +70,8 @@ const sharedPlugins = [
   replace({ preventAssignment: true, values: { APP_ENV: JSON.stringify(APP_ENV) } }),
   json(),
   aliasPlugin,
-  resolve({ extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'] }),
+  resolve({ extensions: ['.ts', '.tsx', '.js', '.jsx', '.json', '.md'] }),
+  markdown(),
   commonjs(),
   babelPlugin,
   postcssPlugin,

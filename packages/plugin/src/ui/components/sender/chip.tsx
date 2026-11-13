@@ -5,6 +5,7 @@ import type { ChatChipDef, ChatChipInstance } from "../../../../../agent/src";
 import { fileChipDef } from "../../../../../agent/src";
 export { fileChipDef };
 import { FILE_CHIP_TYPE } from "./upload";
+import { removeSenderInlineToken } from "./inline-token";
 import css from "./index.less";
 
 // ─── ChipRemoveBtn ────────────────────────────────────────────────────────────
@@ -47,7 +48,7 @@ export const ChatChipInner = ({
     return (
       <span className={css.chip}>
         <span className={css.chipSpinner} aria-hidden="true" />
-        <span className={css.chipText}>{instance.label}</span>
+        <span className={css.chipText} title={instance.label}>{instance.label}</span>
         <ChipRemoveBtn onRemove={onRemove} />
       </span>
     );
@@ -66,7 +67,7 @@ export const ChatChipInner = ({
               : undefined
           }
         >
-          <span className={css.chipLabel}>{chipData.content}</span>
+          <span className={css.chipLabel} title={chipData.content}>{chipData.content}</span>
           <ChipRemoveBtn onRemove={onRemove} />
         </span>
       );
@@ -74,7 +75,7 @@ export const ChatChipInner = ({
     // JSX 直接返回时，外层包一个默认 chip 容器放删除按钮
     return (
       <span className={css.chipDefault}>
-        {rendered}
+        <span className={css.chipLabel} title={instance.label}>{rendered}</span>
         <ChipRemoveBtn onRemove={onRemove} />
       </span>
     );
@@ -82,7 +83,7 @@ export const ChatChipInner = ({
   // 无 render 时：使用默认 chip 样式
   return (
     <span className={classNames(css.chip, { [css.domChip]: instance.type === "dom" })}>
-      <span className={css.chipText}>{instance.label}</span>
+      <span className={css.chipText} title={instance.label}>{instance.label}</span>
       <ChipRemoveBtn onRemove={onRemove} />
     </span>
   );
@@ -152,77 +153,29 @@ export function updateChipWrapperSpacing(editor: HTMLDivElement) {
   });
 }
 
-// ─── 序列化 editor childNodes ─────────────────────────────────────────────────
-
-export function serializeEditorContent(
-  editor: HTMLDivElement,
-  chipMap: Map<string, ChatChipInstance>
-): { message: string; chips: ChatChipInstance[] } {
-  const instances: ChatChipInstance[] = [];
-  const recursionChild = (el: HTMLDivElement | HTMLElement) => {
-    let msg = "";
-    el.childNodes.forEach((child) => {
-      if (child.nodeType === Node.TEXT_NODE) {
-        msg += child.textContent ?? "";
-      } else if (child instanceof HTMLElement && child.dataset.chipId) {
-        const id = child.dataset.chipId;
-        const inst = chipMap.get(id);
-        if (inst) {
-          instances.push(inst);
-          msg += `[[chip:${id}]]`;
-        }
-      } else if (child instanceof HTMLElement) {
-        if (child.childNodes.length > 1) {
-          msg += recursionChild(child);
-        } else {
-          msg += `\n${child.textContent}`;
-        }
-      }
-    });
-    return msg;
-  }
-
-  const msg = recursionChild(editor);
-  return { message: msg, chips: instances };
-}
-
 export function measureEditorContent(editor: HTMLDivElement): { width: number; height: number } | null {
   if (!editor.childNodes.length) return null;
 
   const range = document.createRange();
-  range.selectNodeContents(editor);
-  const rect = range.getBoundingClientRect();
+  const rects: DOMRect[] = [];
+  editor.childNodes.forEach((node) => {
+    if (node instanceof HTMLElement) {
+      // chip 内部文字可能被省略，只计入外层实际占据的宽度。
+      rects.push(node.getBoundingClientRect());
+    } else if (node.nodeType === Node.TEXT_NODE && node.textContent) {
+      range.selectNodeContents(node);
+      rects.push(...Array.from(range.getClientRects()));
+    }
+  });
   range.detach();
 
-  if (!rect.width && !rect.height) return null;
-  return { width: rect.width, height: rect.height };
-}
-
-export function getAdjacentChipAtCaret(
-  editor: HTMLDivElement,
-  range: Range,
-  direction: "backward" | "forward"
-): HTMLSpanElement | null {
-  if (!range.collapsed) return null;
-
-  const container = direction === "backward" ? range.startContainer : range.endContainer;
-  const offset = direction === "backward" ? range.startOffset : range.endOffset;
-  let target: ChildNode | null = null;
-
-  if (container === editor) {
-    target =
-      direction === "backward" ? editor.childNodes[offset - 1] ?? null : editor.childNodes[offset] ?? null;
-  } else if (container.nodeType === Node.TEXT_NODE && container.parentNode === editor) {
-    const textLength = container.textContent?.length ?? 0;
-    if (direction === "backward" && offset === 0) {
-      target = container.previousSibling;
-    }
-    if (direction === "forward" && offset === textLength) {
-      target = container.nextSibling;
-    }
-  }
-
-  return target instanceof HTMLSpanElement && target.dataset.chipId ? target : null;
+  const visibleRects = rects.filter((rect) => rect.width || rect.height);
+  if (!visibleRects.length) return null;
+  const left = Math.min(...visibleRects.map((rect) => rect.left));
+  const right = Math.max(...visibleRects.map((rect) => rect.right));
+  const top = Math.min(...visibleRects.map((rect) => rect.top));
+  const bottom = Math.max(...visibleRects.map((rect) => rect.bottom));
+  return { width: right - left, height: bottom - top };
 }
 
 export function removeChipFromEditor(
@@ -232,8 +185,7 @@ export function removeChipFromEditor(
 ) {
   const id = chipEl.dataset.chipId;
   unmountChipContainer(chipEl);
-  chipEl.parentNode?.removeChild(chipEl);
-  editor.normalize();
+  removeSenderInlineToken(editor, chipEl);
   if (id) chipMap.delete(id);
 }
 

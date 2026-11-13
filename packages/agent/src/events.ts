@@ -1,4 +1,4 @@
-import type { AgentMode, TokenUsage, TurnSender } from "./types";
+import type { AgentMode, TokenUsage, ToolResult, TurnErrorCode, TurnSender } from "./types";
 
 // ─── SSE 风格事件类型 ─────────────────────────────────────────────────────────
 //
@@ -7,7 +7,43 @@ import type { AgentMode, TokenUsage, TurnSender } from "./types";
 //   2. llm       —— 每次 LLM 调用各触发一次（start → content* → complete），ReAct 多步时每 step 各一组
 //   3. tool      —— function call（content / call / result / error）
 
+/**
+ * 子 Agent 创建通知的身份信息。
+ *
+ * 只承载可序列化数据，跨进程（SSE）投递安全。真正的子 Agent 实例通过
+ * `agent.childAgentEvents(turnId)` 获取，绝不进入事件载荷。
+ */
+export interface SubAgentCreatedInfo {
+  /** 子 turn ID，同时是 childAgentEvents 的索引键 */
+  turnId: string;
+  /** 父 turn ID */
+  parentTurnId: string;
+  /** 父 Agent 的 key */
+  parentAgentKey: string;
+  /** 子 Agent 的 key */
+  agentKey: string;
+  /** 触发子 Agent 的父工具调用 ID */
+  callId: string;
+  /** 子 Agent 类型标识 */
+  subAgentType: string;
+  /** 展示标题 */
+  title?: string;
+  /** 是否为后台子 Agent（生命周期独立于父 turn） */
+  async: boolean;
+  /** 创建后的初始状态，供重放时判断是否还需要连通道 */
+  status: "running" | "success" | "error" | "abort";
+  /** 创建时间（Unix ms） */
+  createdAt: number;
+}
+
 export type AgentEventMap = {
+  /**
+   * 子 Agent 实例已创建，即将开始执行。在子 Agent 发出任何自身事件之前同步触发，
+   * 订阅方据此拿到 turnId 后调用 `childAgentEvents(turnId)` 订阅该子任务的原生事件流。
+   *
+   * 不进入 AGENT_EVENTS 持久化列表：它是控制面信令，只做内存分发。
+   */
+  "subagent:created": SubAgentCreatedInfo;
   // ── 一次对话整体状态（只触发一次）─────────────────────────────────────────
 
   /**
@@ -56,6 +92,7 @@ export type AgentEventMap = {
    */
   "turn:error": {
     error: any;
+    errorCode?: TurnErrorCode;
   };
 
   /**
@@ -132,8 +169,9 @@ export type AgentEventMap = {
 
   /**
    * Agent 运行模式变更。
-   * - build：智能模式，允许直接修改
+   * - build：智能体模式，允许直接修改
    * - plan：计划模式，先制定方案，方案通过后再操作
+   * - ask：询问模式，只读地澄清和质询需求
    */
   "mode:change": {
     mode: AgentMode;
@@ -244,6 +282,8 @@ export type AgentEventMap = {
   "tool:call": {
     callId: string;
     name: string;
+    /** 工具自身提供的展示标题（Tool.title）。 */
+    title?: string;
     args: any;
     step: number;
     startTime: number;
@@ -262,6 +302,8 @@ export type AgentEventMap = {
   "tool:result": {
     callId: string;
     name: string;
+    /** 工具自身提供的展示标题（Tool.title）。 */
+    title?: string;
     result: any;
     step: number;
     endTime: number;
@@ -273,7 +315,8 @@ export type AgentEventMap = {
    * 工具调用出错。
    *   - `callId`   对应 tool:call 的 callId
    *   - `name`     工具名称
-   *   - `error`    错误信息（已规范化为字符串，与 ToolCallRecord.error 一致）
+   *   - `error`    错误信息
+   *   - `result`   取消前已经返回的部分结果（仅用户取消且有结果时存在）
    *   - `errorType` 错误类型
    *   - `step`     所属 step 编号
    *   - `endTime`  工具结束执行的时间戳（Unix ms）
@@ -281,8 +324,11 @@ export type AgentEventMap = {
   "tool:error": {
     callId: string;
     name: string;
+    /** 工具自身提供的展示标题（Tool.title）。 */
+    title?: string;
     error: string;
     errorType?: "invalid_args" | "normal";
+    result?: ToolResult;
     step: number;
     endTime: number;
     /** 所属 LLM iter 的唯一 ID，与 llm:start 对应 */
@@ -319,32 +365,32 @@ export type AgentEventMap = {
   /**
    * warmup 阶段开始（如 autoCompact 开始执行）。
    *   - `startTime`  开始时间（Unix ms）
-   *   - `content`    初始展示文本（如 "启动中..."）
+   *   - `operation`  本次执行的 warmup 操作
    */
   "warmup:start": {
     startTime: number;
-    content: string;
+    operation: "context_compaction";
     /** 本次 warmup iter 的唯一 ID，与 warmup:complete 对应 */
     iterId: string;
   };
 
   /**
-   * warmup 阶段内容更新（类比 llm:content，streaming 更新展示文本）。
-   *   - `content`  当前完整文本（覆盖上一帧，UI 直接替换）
+   * warmup 阶段进度更新（事件名为兼容既有协议保留）。
+   *   - `retryCount` 当前累计重试次数
    */
   "warmup:content": {
-    content: string;
+    retryCount: number;
   };
 
   /**
    * warmup 阶段结束（类比 llm:complete）。
-   *   - `status`   最终状态：success / error
-   *   - `content`  最终展示文本
+   *   - `status`   最终状态：success / error / abort
+   *   - `errorCode` warmup 失败时的稳定业务错误码
    *   - `endTime`  结束时间（Unix ms）
    */
   "warmup:complete": {
-    status: "success" | "error";
-    content: string;
+    status: "success" | "error" | "abort";
+    errorCode?: TurnErrorCode;
     endTime: number;
     /** 与 warmup:start 对应的 iter 唯一 ID */
     iterId: string;

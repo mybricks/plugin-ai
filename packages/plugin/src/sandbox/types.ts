@@ -1,18 +1,15 @@
+import type { AgentHooks, ChatChipDef, ChatChipInstance } from "../../../agent/src";
+import type { AgentSandbox } from "../../../agent/src";
+import type { AuditPowerImplementation, DomainAuditImplementation } from "../../../kit/src";
+import type { MentionProvider } from "../ui/components/types";
+
+export type { MentionProvider, MentionMenuItem } from "../ui/components/types";
+
 /**
- * Designer 接口：由组件库通过 window._registSandBox_ 注入。
- * 同时提供文件系统操作和设计器实时状态能力。
+ * Designer 接口：由组件库通过 connectToAI 注入。
+ * 提供设计器实时状态；文件操作由 AgentSandbox 提供。
  */
 export interface Designer {
-  // ── 文件系统 ────────────────────────────────────────────────────────────────
-  getFiles(): Promise<Array<{ path: string; content: string }>>;
-  /**
-   * 写入文件，失败时 reject（抛出错误）。
-   */
-  updateFiles(files: Array<{ path: string; content: string }>): Promise<void>;
-  /**
-   * 删除文件，失败时 reject（抛出错误）。
-   */
-  deleteFiles(paths: string[]): Promise<void>;
   // ── 设计器状态 ───────────────────────────────────────────────────────────────
   /**
    * 获取设计器实时渲染状态并格式化为 Markdown。
@@ -35,10 +32,19 @@ export interface Designer {
    * 用于注入当前项目源码上下文。
    */
   exportResourceCode(): string;
-
 }
 
-import type { AgentHooks, ChatChipDef, ChatChipInstance } from "../../../agent/src";
+/**
+ * 自定义 mention 注册源。
+ * - 可以通过 `PluginAIParams.mentions` 全局注册（对所有组件生效）。
+ * - 也可以通过 `connectToAI(comId, { mentions })` 按 comId 注册（仅对该组件生效），
+ *   与 `chips` 是同级机制，便于组件库随 connectToAI 一起声明自己支持的 @能力。
+ * `menu`/`search` 支持函数形式，每次唤起菜单/输入 @ 都会重新调用，天然支持动态数据。
+ *
+ * 类型定义在 `ui/components/types.ts`（它是 Sender 菜单渲染用的 UI 概念，
+ * 含 icon/children 等字段）；这里只做 type-only 引用，sandbox 层本身
+ * 不解析 MentionProvider 内部结构，只负责透传注册。
+ */
 
 /** 沙箱 hooks，即 AgentHooks */
 export type Hooks = AgentHooks;
@@ -70,13 +76,33 @@ export type SandboxChipRecordConfig = Omit<SandboxChipConfig, "type"> & { type?:
 export type SandboxChipsConfig = SandboxChipConfig[] | Record<string, SandboxChipRecordConfig>;
 
 /**
- * window._registSandBox_ 的第二个参数。
+ * connectToAI 的第二个参数。
  */
 export interface RegistSandBoxConfig {
-  designer: Designer;
+  /**
+   * 设计器状态与项目上下文能力。
+   */
+  designer?: Designer;
+  /**
+   * 文件和命令操作，由宿主提供。
+   */
+  agentSandbox: AgentSandbox;
+  understandAnyUI?: (import("react").ComponentType<{ bindingTo?: string; disabled?: boolean; Sender?: import("react").ComponentType<any>; Modal?: import("react").ComponentType<any>; setTitle?: (title: string) => void }> & { getInfo?: (params: { id?: string }) => Promise<{ title?: string; description?: string } | undefined> });
+  /** AgentSandbox 场景的页面分析执行器（如 local-iframe HTTP 分析）。 */
+  pageAnalysis?: AuditPowerImplementation;
+  /** AgentSandbox 场景的任务管理 API。 */
+  tasksManager?: any;
+  /** 宿主提供的领域审计实现。 */
+  domainAudit?: DomainAuditImplementation;
   hooks?: Hooks;
   /**
    * 注册 chip 相关能力，支持自定义 chip 定义和内置/自定义 chip 的 remove 回调。
    */
   chips?: SandboxChipsConfig;
+  /**
+   * 注册该 comId 专属的自定义 mention 注册源，与 chips 同级。
+   * 与全局 `PluginAIParams.mentions` 合并展示（当前 comId 的 Sender 里 + 菜单 / 输入 @ 均可见），
+   * 仅在该 comId 对应的对话面板生效；组件运行时状态变化时 menu/search 函数每次调用都会读到最新数据。
+   */
+  mentions?: MentionProvider[];
 }
