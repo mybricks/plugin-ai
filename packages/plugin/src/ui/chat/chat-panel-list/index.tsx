@@ -273,6 +273,7 @@ const ChatPanelList = ({ user, copilot, onUpload, title, size = "small", classNa
               renderAttachmentSuffix={context.pluginParams.renderAttachmentSuffix}
               mentions={context.pluginParams.mentions}
               mcpConnectors={connectorConfig}
+              groupToolCalls
               runningBar={runningBar}
               attachProcessors={context.pluginParams.attachProcessors}
               renderHeaderExtra={renderHeaderExtra ?? context.pluginParams.renderHeaderExtra}

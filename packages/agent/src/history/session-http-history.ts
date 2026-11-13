@@ -1,4 +1,4 @@
-import type { Attachment, CompactRecord, History, TurnRecord, VersionFile, VersionRecord } from "../types";
+import type { Attachment, CompactRecord, History, ToolCallRecord, TurnRecord, VersionFile, VersionRecord } from "../types";
 import { restoreDisplayUserMessage } from "./restore-display-message";
 
 type SessionMessage = {
@@ -26,6 +26,47 @@ type SessionMessagesResponse = {
 function messageTimeToMs(value: string | undefined): number {
   const t = value ? new Date(value).getTime() : NaN;
   return Number.isFinite(t) ? t : Date.now();
+}
+
+/** 服务端的 arguments 可能是 JSON 字符串（也可能已是对象），统一解析成对象供工具卡片使用。 */
+function parseToolArguments(value: unknown): any {
+  if (value === null || value === undefined) return {};
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    // 解析失败沿用实时链路的 _argsRaw 约定，避免把原始串直接当对象用。
+    return { _argsRaw: value };
+  }
+}
+
+/**
+ * 为 tool_result 定位对应的工具调用记录：
+ *   - 消息带 callId 时全 turn 精确匹配；
+ *   - 服务端消息可能不带 callId，此时取「最早一个还没等到结果、且工具名一致」的
+ *     pending 调用兜底（会话消息按序到达，结果通常紧随其调用）；再退而取最早
+ *     的 pending 调用，尽量不让结果落空、工具卡一直转圈。
+ */
+function findResultTargetCall(turn: TurnRecord, message: SessionMessage): ToolCallRecord | undefined {
+  if (message.callId) {
+    for (let i = turn.iterations.length - 1; i >= 0; i -= 1) {
+      const iter = turn.iterations[i];
+      if ("type" in iter) continue;
+      const call = iter.toolCalls.find((c) => c.callId === message.callId);
+      if (call) return call;
+    }
+    return undefined;
+  }
+  let fallback: ToolCallRecord | undefined;
+  for (const iter of turn.iterations) {
+    if ("type" in iter) continue;
+    for (const call of iter.toolCalls) {
+      if (call.status !== "pending") continue;
+      if (!fallback) fallback = call;
+      if (message.name && call.name === message.name) return call;
+    }
+  }
+  return fallback;
 }
 
 /**
@@ -154,10 +195,19 @@ export class SessionHTTPHistory implements History {
         };
       } else if (message.role === "assistant") {
         if (!current) continue;
+        const time = messageTimeToMs(message.createdAt);
+        const last = current.iterations[current.iterations.length - 1];
+        // 正文只归属最后一个 iter；若它已有内容或工具调用（说明这段正文是工具之后
+        // 才产出的新 LLM 输出），另起新 iter——分段规则与实时链路 appendDelta 保持
+        // 一致。否则多条正文会互相覆盖（只显示最后一条），且同一 iter 的 content
+        // 会渲染在 toolCalls 之前，工具卡错位到整轮消息末尾。
+        if (!last || "type" in last || last.content || last.toolCalls.length > 0) {
+          current.iterations.push({ content: "", toolCalls: [], startTime: time });
+        }
         const iter = current.iterations[current.iterations.length - 1];
         if (iter && !("type" in iter)) {
           iter.content = message.text ?? "";
-          iter.endTime = messageTimeToMs(message.createdAt);
+          iter.endTime = time;
         }
       } else if (message.role === "tool_call") {
         if (!current) continue;
@@ -166,7 +216,7 @@ export class SessionHTTPHistory implements History {
           iter.toolCalls.push({
             callId: message.callId ?? String(message.id),
             name: message.name ?? "",
-            args: message.arguments ?? {},
+            args: parseToolArguments(message.arguments),
             status: "pending",
             execStartTime: messageTimeToMs(message.createdAt),
             execEndTime: 0,
@@ -174,16 +224,13 @@ export class SessionHTTPHistory implements History {
         }
       } else if (message.role === "tool_result") {
         if (!current) continue;
-        const iter = current.iterations[current.iterations.length - 1];
-        if (iter && !("type" in iter)) {
-          const call = iter.toolCalls.find((c) => c.callId === message.callId);
-          if (call) {
-            const success = message.result !== undefined && message.result !== null && !(message.result instanceof Error);
-            call.status = success ? "success" : "error";
-            call.result = success ? { output: String(message.result) } : undefined;
-            call.error = success ? undefined : String(message.result);
-            call.execEndTime = messageTimeToMs(message.createdAt);
-          }
+        const call = findResultTargetCall(current, message);
+        if (call) {
+          const success = message.result !== undefined && message.result !== null && !(message.result instanceof Error);
+          call.status = success ? "success" : "error";
+          call.result = success ? { output: String(message.result) } : undefined;
+          call.error = success ? undefined : String(message.result);
+          call.execEndTime = messageTimeToMs(message.createdAt);
         }
       } else if (message.role === "stopped") {
         if (!current) continue;
