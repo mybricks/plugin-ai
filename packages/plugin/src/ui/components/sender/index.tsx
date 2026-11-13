@@ -1899,7 +1899,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
             )}
               </>
             )}
-            {!selectorRenderInTop && chatMode ? <ChatMode disabled={disabled || loading} chatMode={chatMode} availableModes={availableChatModes} onChange={onChatModeChange} /> : null}
+            {/* {!selectorRenderInTop && chatMode ? <ChatMode disabled={disabled || loading} chatMode={chatMode} availableModes={availableChatModes} onChange={onChatModeChange} /> : null} */}
           </div>
           <div className={css.rightArea}>
             {renderActionPrefix?.({

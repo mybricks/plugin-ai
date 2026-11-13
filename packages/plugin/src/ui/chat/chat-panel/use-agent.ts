@@ -289,6 +289,7 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
     try {
       let turns;
       if (isHttpAgent(agent)) turns = await agent.getTurnsForExport();
+      if (isWebSocketAgent(agent)) turns = agent.getTurns();
       else turns = await context.pluginParams.history.load(agent.key);
       const content = {
         agentKey: agent.key,
