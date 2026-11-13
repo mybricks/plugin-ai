@@ -239,13 +239,16 @@ export const PendingQueue = ({
 
 function getClipboardText(data: DataTransfer): string {
   const plain = data.getData('text/plain');
-  if (plain) return plain;
-
-  const html = data.getData('text/html');
-  if (!html) return '';
-
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  return doc.body.innerText || doc.body.textContent || '';
+  let text = plain;
+  if (!text) {
+    const html = data.getData('text/html');
+    if (!html) return '';
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    text = doc.body.innerText || doc.body.textContent || '';
+  }
+  // Windows 剪贴板普遍是 CRLF：execCommand("insertText") 只按 \n 拆块，
+  // \r 会残留成文本节点进入发送内容，这里统一归一化为 \n。
+  return text.replace(/\r\n?/g, "\n");
 }
 
 // ─── SenderProps ─────────────────────────────────────────────────────────────
@@ -548,7 +551,9 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
   }, []);
 
   const appendInput = useCallback((params: SenderAppendInputParams) => {
-    const content = typeof params === "string" ? params : params.message;
+    // 外部注入的文本可能带 CRLF（Windows 剪贴板链路），统一归一化成 \n
+    const content = (typeof params === "string" ? params : params.message ?? "")
+      .replace(/\r\n?/g, "\n");
     const nextAttachments = typeof params === "string"
       ? undefined
       : (params as SendToAgentParams).attachments?.filter((attachment) => attachment.type === "image").map((attachment) => ({
