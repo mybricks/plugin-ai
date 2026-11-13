@@ -23,7 +23,42 @@ export type SessionStageTextResolver = (
 export const WEBSOCKET_AGENT_SESSION_STAGE = {
   PREPARING: "websocket:preparing",
   AWAITING_MODEL: "websocket:awaiting-model",
+  /** 团队轮：展示当前正在执行的成员。 */
+  TEAM_RUNNING: "websocket:team-running",
 } as const;
+
+/**
+ * 团队成员 → 展示名。
+ */
+export function getTeamMemberLabel(member: string): string {
+  if (member.startsWith("frontend")) return "前端";
+  if (member.startsWith("wangfa")) return "后端";
+  return "工程师";
+}
+
+/** 团队成员在本轮的状态（原始状态码，文案由 UI 映射）。 */
+export type TeamMemberState = { member: string; status: "RUNNING" | "DONE" | "FAILED" };
+
+/** 团队成员状态码 → 展示文案。 */
+export function getTeamMemberStateLabel(status: TeamMemberState["status"]): string {
+  switch (status) {
+    case "RUNNING":
+      return "开发中";
+    case "DONE":
+      return "已完成";
+    case "FAILED":
+      return "失败";
+    default:
+      return "";
+  }
+}
+
+/** 团队执行中文案 */
+export function getTeamRunningText(members: TeamMemberState[] | undefined): string {
+  return (members ?? [])
+    .map(({ member, status }) => `${getTeamMemberLabel(member)}${getTeamMemberStateLabel(status)}`)
+    .join(" · ");
+}
 
 /** 内置文案仅是默认展示；Agent 层不再保存展示字符串。 */
 export function getDefaultSessionStageText(
@@ -41,6 +76,8 @@ export function getDefaultSessionStageText(
       return "获取配置...";
     case WEBSOCKET_AGENT_SESSION_STAGE.AWAITING_MODEL:
       return "模型响应中...";
+    case WEBSOCKET_AGENT_SESSION_STAGE.TEAM_RUNNING:
+      return getTeamRunningText(stage.meta?.members as TeamMemberState[] | undefined);
     default:
       return "等待模型响应...";
   }

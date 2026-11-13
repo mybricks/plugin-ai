@@ -3,6 +3,8 @@ import type { AgentEventMap, TurnRecord } from "../../../agent/src";
 /** Agent 自己定义阶段 key，UI 通过注入的 resolver 决定展示文案。 */
 export interface AgentRuntimeStage {
   key: string;
+  /** 阶段附带的展示元数据（如团队执行中的成员列表），由 UI 的文案 resolver 消费。 */
+  meta?: Record<string, unknown>;
 }
 
 /** CodeAgent 在首个 iteration 出现前只有一个模型响应阶段。 */

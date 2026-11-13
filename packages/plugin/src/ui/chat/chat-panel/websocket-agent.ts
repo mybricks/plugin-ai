@@ -181,6 +181,11 @@ export class WebSocketAgent {
   private chatAbort?: AbortController;
   /** 插话通道：steer 请求的发送、消费、在途计数与 inboxId 配对都在这里。 */
   private readonly steerChannel: SteerChannel;
+  /**
+   * 团队成员的原始状态：member → RUNNING/DONE/FAILED（来自 team_round_update / team_member_state）。
+   * 展示文案由 UI 层（session-status）负责映射。
+   */
+  private readonly teamStatus = new Map<string, "RUNNING" | "DONE" | "FAILED">();
   private state: AgentRuntimeState = { running: false };
   private readonly getSessionIdForHistory?: () => string | undefined;
   private readonly onSessionReset?: (sessionId: string) => void | Promise<void>;
@@ -373,6 +378,8 @@ export class WebSocketAgent {
     };
     this.turns.push(turn);
     this.activeTurnId = turnId;
+    // 新一轮开始：清空上一轮的成员/轮状态，避免"已完成"残留。
+    this.teamStatus.clear();
     this.setMode(params.mode ?? AgentModeEnum.Build, "requestAI");
 
     await this.hooks?.beforeTurn?.({
@@ -417,6 +424,19 @@ export class WebSocketAgent {
       // 也不能在 steer 还没落位时提前放行本地队列。
       this.refreshRunningState();
     }
+  }
+
+  /** 按团队成员状态刷新阶段文案；全无记录时回到等待模型。 */
+  private refreshTeamStage(): void {
+    const entries = Array.from(this.teamStatus, ([member, status]) => ({ member, status }))
+      .sort((a, b) => a.member.localeCompare(b.member)); // 稳定顺序，避免图标跳动
+    this.state = {
+      ...this.state,
+      stage: entries.length
+        ? { key: WEBSOCKET_AGENT_SESSION_STAGE.TEAM_RUNNING, meta: { members: entries } }
+        : { key: WEBSOCKET_AGENT_SESSION_STAGE.AWAITING_MODEL },
+    };
+    for (const listener of this.stateListeners) listener(this.state);
   }
 
   /** 统一计算运行态：有轮在跑或有 steer 在途 → running；否则置空闲。 */
@@ -771,6 +791,26 @@ export class WebSocketAgent {
         return true;
       case "error":
         throw new Error(String(event.data?.message ?? event.data ?? "Remote agent error"));
+      case "team_round_update": {
+        const { member, status } = event.data ?? {};
+        if (typeof member === "string" && member && typeof status === "string") {
+          if (status === "RUNNING" || status === "DONE" || status === "FAILED") {
+            this.teamStatus.set(member, status);
+            this.refreshTeamStage();
+          }
+        }
+        return false;
+      }
+      case "team_member_state": {
+        const { member, status } = event.data ?? {};
+        // 成员开始干活 → 执行中；IDLE（或退出）时直接从展示中移除，不再显示该成员。
+        if (typeof member === "string" && member) {
+          if (status === "RUNNING") this.teamStatus.set(member, "RUNNING");
+          else this.teamStatus.delete(member);
+          this.refreshTeamStage();
+        }
+        return false;
+      }
       default:
         return false;
     }
