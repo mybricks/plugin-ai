@@ -90,6 +90,8 @@ export interface AgentSandboxCommands {
    * allowing or rejecting a command.
    */
   allowedCommands?: readonly string[];
+  /** Host-specific sandbox details included in the bash tool description. */
+  sandboxDesc?: string;
   /** Explicit command handlers, in priority order. */
   proxies?: readonly AgentSandboxCommandProxy[];
 }

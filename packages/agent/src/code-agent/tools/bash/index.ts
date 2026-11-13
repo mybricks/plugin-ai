@@ -5,7 +5,6 @@ import { MULTI_EDIT_TOOL_NAME } from "../multi-edit";
 import {
   DEFAULT_BASH_ALLOWED_COMMANDS,
   type BashToolOptions,
-  type FileSystemBashCommand,
 } from "../../../agent-sandbox/commands/helpers/file-access";
 import { checkBashPermission } from "../../../mode-manager";
 
@@ -18,7 +17,7 @@ function formatCommandOutput(result: { stdout: string; stderr?: string; exitCode
   return result.exitCode === 0 ? output : `${output}\nExit code: ${result.exitCode}`;
 }
 
-function getCommandDescription(command: string): string {
+function getCommandDescription(command: string): string | undefined {
   switch (command) {
     case "mv":
       return "移动/重命名文件或目录前缀。dst 以 / 结尾或已有文件以 dst/ 为前缀时视为目标目录。支持 glob 批量移动。";
@@ -37,22 +36,21 @@ function getCommandDescription(command: string): string {
     case "ls":
       return "列出文件路径。直接使用 `ls` 列出项目内全部文件；指定目录时递归列出其下文件，指定文件时打印该路径。`-R` 也受支持。路径不存在时返回错误，并列出最近一层已存在目录下的文件。";
     default:
-      return "由宿主 command transport 执行。";
+      return undefined;
   }
 }
 
-function createBashDescription(allowedCommands: readonly string[]): string {
-  const usesVirtualFileSystem = allowedCommands.some((command) =>
-    DEFAULT_BASH_ALLOWED_COMMANDS.includes(command as FileSystemBashCommand)
-  );
+function createBashDescription(allowedCommands: readonly string[], sandboxDesc?: string): string {
+  const defaultSandboxDesc = "这是虚拟文件系统，仅支持以上文件操作类命令，不支持 node、python 等真实 shell 命令。虚拟文件系统没有空目录，不需要先执行 mkdir。";
   return `支持的命令：
-${allowedCommands.map((command) => `- \`${command}\` — ${getCommandDescription(command)}`).join("\n")}${usesVirtualFileSystem ? `
+${allowedCommands.map((command) => {
+    const description = getCommandDescription(command);
+    return `- \`${command}\`${description ? ` — ${description}` : ""}`;
+  }).join("\n")}
 
 注意：
-- 上述命令由 AgentSandbox 文件系统代理直接处理；\`allowedCommands\` 只决定哪些默认代理可接管命令。
-- 其他原始 shell 命令会交给宿主 command transport；是否允许、如何执行由宿主决定。
-- 文件系统代理没有空目录概念，不需要先 mkdir；直接创建或移动到目标文件路径即可。
-- 文件路径以项目根目录为基准，如 src/components/Button.tsx。` : ""}`;
+- ${sandboxDesc ?? defaultSandboxDesc}
+- 文件路径以项目根目录为基准，如 src/components/Button.tsx。`;
 }
 
 /** The bash tool runs raw scripts through AgentSandbox command proxies and then the host transport. */
@@ -60,7 +58,7 @@ export function createBashTool(commands: AgentSandboxCommands, options: BashTool
   const allowedCommands = options.allowedCommands ?? DEFAULT_BASH_ALLOWED_COMMANDS;
   return {
     name: BASH_TOOL_NAME,
-    description: createBashDescription(allowedCommands),
+    description: createBashDescription(allowedCommands, commands.sandboxDesc),
     parameters: {
       type: "object",
       properties: {
