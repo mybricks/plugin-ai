@@ -48,7 +48,7 @@ export const ChatChipInner = ({
     return (
       <span className={css.chip}>
         <span className={css.chipSpinner} aria-hidden="true" />
-        <span className={css.chipText}>{instance.label}</span>
+        <span className={css.chipText} title={instance.label}>{instance.label}</span>
         <ChipRemoveBtn onRemove={onRemove} />
       </span>
     );
@@ -67,7 +67,7 @@ export const ChatChipInner = ({
               : undefined
           }
         >
-          <span className={css.chipLabel}>{chipData.content}</span>
+          <span className={css.chipLabel} title={chipData.content}>{chipData.content}</span>
           <ChipRemoveBtn onRemove={onRemove} />
         </span>
       );
@@ -75,7 +75,7 @@ export const ChatChipInner = ({
     // JSX 直接返回时，外层包一个默认 chip 容器放删除按钮
     return (
       <span className={css.chipDefault}>
-        {rendered}
+        <span className={css.chipLabel} title={instance.label}>{rendered}</span>
         <ChipRemoveBtn onRemove={onRemove} />
       </span>
     );
@@ -83,7 +83,7 @@ export const ChatChipInner = ({
   // 无 render 时：使用默认 chip 样式
   return (
     <span className={classNames(css.chip, { [css.domChip]: instance.type === "dom" })}>
-      <span className={css.chipText}>{instance.label}</span>
+      <span className={css.chipText} title={instance.label}>{instance.label}</span>
       <ChipRemoveBtn onRemove={onRemove} />
     </span>
   );
@@ -157,12 +157,25 @@ export function measureEditorContent(editor: HTMLDivElement): { width: number; h
   if (!editor.childNodes.length) return null;
 
   const range = document.createRange();
-  range.selectNodeContents(editor);
-  const rect = range.getBoundingClientRect();
+  const rects: DOMRect[] = [];
+  editor.childNodes.forEach((node) => {
+    if (node instanceof HTMLElement) {
+      // chip 内部文字可能被省略，只计入外层实际占据的宽度。
+      rects.push(node.getBoundingClientRect());
+    } else if (node.nodeType === Node.TEXT_NODE && node.textContent) {
+      range.selectNodeContents(node);
+      rects.push(...Array.from(range.getClientRects()));
+    }
+  });
   range.detach();
 
-  if (!rect.width && !rect.height) return null;
-  return { width: rect.width, height: rect.height };
+  const visibleRects = rects.filter((rect) => rect.width || rect.height);
+  if (!visibleRects.length) return null;
+  const left = Math.min(...visibleRects.map((rect) => rect.left));
+  const right = Math.max(...visibleRects.map((rect) => rect.right));
+  const top = Math.min(...visibleRects.map((rect) => rect.top));
+  const bottom = Math.max(...visibleRects.map((rect) => rect.bottom));
+  return { width: right - left, height: bottom - top };
 }
 
 export function removeChipFromEditor(
