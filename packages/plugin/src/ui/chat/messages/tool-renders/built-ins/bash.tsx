@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useLayoutEffect, useRef, useState } from "react";
 import { Code } from "../../../../components/icons";
 import type { ToolRecord } from "../index";
 import { StatusIcon, Duration } from "../shared";
@@ -7,6 +7,9 @@ import css from "../render.less";
 
 export const BashRenderer = ({ tool }: { tool: ToolRecord }) => {
   const [collapsed, setCollapsed] = useState(true);
+  const [commandExpanded, setCommandExpanded] = useState(false);
+  const [commandOverflows, setCommandOverflows] = useState(false);
+  const commandRef = useRef<HTMLElement>(null);
 
   const command: string = tool.args?.command ?? "";
   const description: string = tool.args?.description ?? "";
@@ -21,6 +24,26 @@ export const BashRenderer = ({ tool }: { tool: ToolRecord }) => {
   const hasOutput = !!output;
   const canToggle = hasOutput;
   const headerHasDivider = !!command || hasOutput;
+
+  useLayoutEffect(() => {
+    const element = commandRef.current;
+    if (!element) {
+      setCommandOverflows(false);
+      return;
+    }
+    const measure = () => {
+      const lineHeight = parseFloat(window.getComputedStyle(element).lineHeight);
+      setCommandOverflows(Number.isFinite(lineHeight) && element.scrollHeight > lineHeight * 3 + 1);
+    };
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(element);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [command]);
 
   return (
     <div className={`${css["code-card"]} ${css["bash-card"]}`}>
@@ -45,7 +68,17 @@ export const BashRenderer = ({ tool }: { tool: ToolRecord }) => {
       </div>
       {command && (
         <div className={`${css["bash-card-command"]}${hasOutput && !collapsed ? ` ${css["bash-card-command-with-output"]}` : ""}`}>
-          <code>{command}</code>
+          <code ref={commandRef} className={commandExpanded ? css["bash-card-command-expanded"] : css["bash-card-command-collapsed"]}>{command}</code>
+          {commandOverflows && (
+            <button
+              type="button"
+              className={css["bash-card-command-toggle"]}
+              aria-expanded={commandExpanded}
+              onClick={() => setCommandExpanded((expanded) => !expanded)}
+            >
+              {commandExpanded ? lang.tool.collapseCommand() : lang.tool.expandCommand()}
+            </button>
+          )}
         </div>
       )}
       {hasOutput && !collapsed && (

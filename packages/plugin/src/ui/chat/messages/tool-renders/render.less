@@ -430,6 +430,27 @@ button.ask-question-option-selected:hover:not(:disabled) { background: color-mix
   border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
 }
 
+.bash-card-command-collapsed {
+  max-height: 4.8em;
+  overflow: hidden;
+}
+
+.bash-card-command-expanded {
+  max-height: 320px;
+  overflow: auto;
+}
+
+.bash-card-command-toggle {
+  display: block;
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--mybricks-color-primary, #FA6400);
+  font: inherit;
+  cursor: pointer;
+}
+
 .bash-card-status {
   flex: none;
   color: var(--mybricks-text-color-main, #333);
