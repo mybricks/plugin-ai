@@ -60,6 +60,8 @@ export const lang = {
     preparing: () => i18n({ zh: "准备中...", en: "Preparing..." }),
     syncingFiles: () => i18n({ zh: "获取最新文件...", en: "Syncing files..." }),
     configuring: () => i18n({ zh: "获取配置...", en: "Loading config..." }),
+    toolCallGroupTitle: () => i18n({ zh: "执行任务", en: "Execute task" }),
+    toolCallGroupTitleCompleted: (len: number) => i18n({ zh: `已执行 ${len} 个任务`, en: `Execute task ${len}` }),
     waitingForModel: () => i18n({ zh: "等待模型响应...", en: "Waiting for model..." }),
     retryProgress: (attempt: number, maxRetries: number) => i18n({
       zh: `重试 ${attempt}/${maxRetries}`,

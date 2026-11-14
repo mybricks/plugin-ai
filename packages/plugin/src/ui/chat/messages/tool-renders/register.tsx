@@ -4,7 +4,9 @@
  *
  * render / summaryRender 是两个独立的函数（详见 tool-renders/index.ts）：
  *   render        始终返回完整展示用的 React 元素，和聚合开关无关。
- *   summaryRender 可选，返回聚合折叠行里的一句话摘要文案（string）；不传表示该工具
+ *   summaryRender 可选，返回聚合折叠行里的一句话摘要文案（string）；不传时本地注册过
+ *                 render 的工具不支持被聚合（折叠时单独成一段、打断相邻聚合），本地
+ *                 未注册的平台侧远端工具走 getToolDefaultSummary 兜底摘要参与聚合。
  *                 不支持被聚合——折叠时会单独成一段，也会打断前后相邻工具的聚合。
  *   两者物理上互不调用，不会出现"摘要探测时意外执行到 render 内部 hooks"之类的问题。
  *   目前为适合单行描述的文件、搜索、命令和 Skill 工具添加摘要。

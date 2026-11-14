@@ -5,14 +5,18 @@
  *     再切一次：调用每个工具已注册的 summaryRender（与 render 是两个独立函数，详见
  *     tool-renders/index.ts），返回摘要文案的算作支持聚合，相邻的会合并成一个可折叠行
  *     （状态图标 + 最新工具摘要 + 聚合耗时）；没注册 summaryRender（或返回 null）的工具
- *     不支持聚合，会单独成一段展示，同时打断前后相邻工具的聚合。
+ *     （状态图标 + 最新工具摘要 + 聚合耗时）；注册了 summaryRender 但返回 null 的工具
+ *     （如计划文件写入）不支持聚合，会单独成一段展示，同时打断前后相邻工具的聚合。
+ *     本地注册过 render 的富卡片工具（call-sub-agent / ask-questions 等）没有 summaryRender，
+ *     同样保持独立展示；本地完全不认识的工具（平台侧远端工具，如 file_read_text）则用
+ *     getToolDefaultSummary 生成的兜底摘要（工具名 + 关键参数）参与聚合。
  */
 import React, { useMemo, useState } from "react";
 import type { ToolCallRecord } from "../../../../../agent/src/types";
 import type { ToolUIChannel } from "../../../../../agent/src";
 import type { MessageRecord } from "../use-session";
 import type { ChatAgent } from "../chat-panel/use-agent";
-import { createToolRendererContext, getToolSummaryRenderer } from "./tool-renders/index";
+import { createToolRendererContext, getToolSummaryRenderer, getToolRenderer, getToolDefaultSummary } from "./tool-renders/index";
 import type { ToolRenderer, ToolSummaryRenderer } from "./tool-renders/index";
 import { useChatPanel } from "../chat-panel/context";
 import { ToolBubble } from "./tool-bubble";
@@ -47,12 +51,19 @@ interface ResolvedTool {
 function resolveToolSummary(
   tool: ToolCallRecord,
   turn: MessageRecord,
+  toolRendererMap: Map<string, ToolRenderer>,
   toolSummaryRendererMap: Map<string, ToolSummaryRenderer>,
   agent?: ChatAgent,
   toolUI?: ToolUIChannel,
 ): string | null {
   const summaryRenderer = toolSummaryRendererMap.get(tool.name) ?? getToolSummaryRenderer(tool.name);
-  if (!summaryRenderer) return null;
+  if (!summaryRenderer) {
+    // 本地注册过 render 的工具（call-sub-agent / ask-questions 等富卡片）没有摘要时保持独立展示，不并入聚合；
+    // 本地完全不认识的工具（平台侧远端工具，如 file_read_text）用兜底摘要参与聚合（见 getToolDefaultSummary）。
+    const hasRenderer = toolRendererMap.has(tool.name) || !!getToolRenderer(tool.name);
+    if (hasRenderer) return null;
+    return getToolDefaultSummary(tool) || null;
+  }
   try {
     const ctx = createToolRendererContext(tool.callId, toolUI ?? agent?.getToolUI(), agent, turn);
     const result = summaryRenderer(tool as any, ctx);
@@ -81,9 +92,9 @@ const ToolCallGroup = ({ tools, turn, toolRendererMap, toolSummaryRendererMap, a
 
   const resolved = useMemo<ResolvedTool[]>(() => {
     if (!groupToolCalls) return tools.map((tool) => ({ tool, summary: null }));
-    return tools.map((tool) => ({ tool, summary: resolveToolSummary(tool, turn, toolSummaryRendererMap, agent, toolUI) }));
+    return tools.map((tool) => ({ tool, summary: resolveToolSummary(tool, turn, toolRendererMap, toolSummaryRendererMap, agent, toolUI) }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tools, turn, toolSummaryRendererMap, agent, toolUI, groupToolCalls]);
+  }, [tools, turn, toolRendererMap, toolSummaryRendererMap, agent, toolUI, groupToolCalls]);
 
   if (!groupToolCalls) {
     return (
@@ -166,8 +177,8 @@ const CollapsedToolCallGroup = ({
           </span>
         )}
         {hasPendingTool
-          ? <span className={css["tool-group-title"]}><TextShimmer>{latestSummary}</TextShimmer></span>
-          : <span className={css["tool-group-title"]}>{latestSummary}</span>}
+          ? <span className={css["tool-group-title"]}><TextShimmer>{lang.chat.toolCallGroupTitle()}</TextShimmer></span>
+          : <span className={css["tool-group-title"]}>{lang.chat.toolCallGroupTitleCompleted(items.length)}</span>}
         {startTime !== undefined && (
           <ElapsedTime
             startTime={startTime}

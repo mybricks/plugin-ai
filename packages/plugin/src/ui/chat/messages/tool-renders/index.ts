@@ -42,12 +42,27 @@ export interface ToolRendererContext {
 export type ToolRenderer = (tool: ToolRecord, ctx: ToolRendererContext) => React.ReactElement;
 
 /**
- * 摘要展示用：连续工具调用聚合折叠行里的一行摘要文案。
- * 与 ToolRenderer 是完全独立的函数——不传表示该工具不支持被聚合（因为没有函数可调用，
- * 根本不会触发任何渲染逻辑，自然不存在误触发 hooks 之类的风险）；
+ * 与 ToolRenderer 是完全独立的函数——传了就必须返回一段纯文本（string）或 null
+ * （表示本次不展示摘要，等同不支持聚合）。不传时的行为取决于本地是否认识该工具：
+ * 本地注册过 render 的富卡片工具保持独立展示；本地完全不认识的平台侧远端工具
+ * （如 file_read_text）用 getToolDefaultSummary 的兜底摘要参与聚合。
  * 传了就必须返回一段纯文本（string）或 null（表示本次不展示摘要，等同不支持聚合）。
  */
 export type ToolSummaryRenderer = (tool: ToolRecord, ctx: ToolRendererContext) => string | null;
+
+/**
+ * 本地未注册任何渲染器的工具（平台侧远端工具，如 file_read_text / team_task）的兜底摘要：
+ * 工具名（有 title 优先）+ 第一个关键参数（path/pattern/command 等），让这类工具也能参与聚合折叠。
+ */
+export function getToolDefaultSummary(tool: ToolCallRecord): string {
+  const label = tool.title || tool.name || "";
+  if (!label) return "";
+  const args: Record<string, any> = tool.args && typeof tool.args === "object" ? tool.args : {};
+  const detail = ["path", "file", "pattern", "command", "url", "skill"]
+    .map((key) => args[key])
+    .find((value) => typeof value === "string" && value.trim());
+  return detail ? `${label} ${String(detail).trim()}` : label;
+}
 
 export function createToolRendererContext(
   toolCallId: string,
