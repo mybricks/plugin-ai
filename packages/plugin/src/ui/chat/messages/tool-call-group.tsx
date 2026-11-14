@@ -11,7 +11,7 @@
  *     同样保持独立展示；本地完全不认识的工具（平台侧远端工具，如 file_read_text）则用
  *     getToolDefaultSummary 生成的兜底摘要（工具名 + 关键参数）参与聚合。
  */
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { ToolCallRecord } from "../../../../../agent/src/types";
 import type { ToolUIChannel } from "../../../../../agent/src";
 import type { MessageRecord } from "../use-session";
@@ -40,6 +40,8 @@ export interface ToolCallGroupProps {
    * 打断工具聚合，下一轮若只有工具调用则会自动消失。
    */
   awaitingNext?: AwaitingNextState;
+  /** 组内是否已全部执行完 */
+  isFinished?: boolean;
 }
 
 interface ResolvedTool {
@@ -87,7 +89,7 @@ function splitBySummarySupport(resolved: ResolvedTool[]): ResolvedTool[][] {
   return runs;
 }
 
-const ToolCallGroup = ({ tools, turn, toolRendererMap, toolSummaryRendererMap, agent, toolUI, awaitingNext }: ToolCallGroupProps) => {
+const ToolCallGroup = ({ tools, turn, toolRendererMap, toolSummaryRendererMap, agent, toolUI, awaitingNext, isFinished }: ToolCallGroupProps) => {
   const { groupToolCalls } = useChatPanel();
 
   const resolved = useMemo<ResolvedTool[]>(() => {
@@ -121,6 +123,7 @@ const ToolCallGroup = ({ tools, turn, toolRendererMap, toolSummaryRendererMap, a
             agent={agent}
             toolUI={toolUI}
             awaitingNext={index === runs.length - 1 ? awaitingNext : undefined}
+            isFinished={isFinished}
           />
         ) : (
           <ToolBubble
@@ -145,6 +148,7 @@ const CollapsedToolCallGroup = ({
   agent,
   toolUI,
   awaitingNext,
+  isFinished,
 }: {
   items: ResolvedTool[];
   turn: MessageRecord;
@@ -152,18 +156,22 @@ const CollapsedToolCallGroup = ({
   agent?: ChatAgent;
   toolUI?: ToolUIChannel;
   awaitingNext?: AwaitingNextState;
+  isFinished?: boolean;
 }) => {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(!isFinished);
   const tools = items.map((item) => item.tool);
 
-  const hasPendingTool = tools.some((tool) => tool.status !== "success" && tool.status !== "error");
-  const latestSummary = items[items.length - 1].summary as string;
+  const hasPendingTool = !isFinished;
 
   const startTimes = tools.map((tool) => tool.execStartTime).filter((t): t is number => !!t);
   const startTime = startTimes.length > 0 ? Math.min(...startTimes) : undefined;
   const endTime = hasPendingTool
     ? undefined
     : Math.max(...tools.map((tool) => tool.execEndTime || 0));
+
+  useEffect(() => {
+    if (isFinished) setExpanded(false);
+  }, [isFinished]);
 
   return (
     <div className={css["tool-group"]}>

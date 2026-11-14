@@ -455,7 +455,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, showUserMessag
             {/* 把 iterations 摊平为「文本/占位头部」与「连续工具调用」两种 block：
                 只要中间没被文本打断，跨多个 iteration 的连续工具调用也会合并成一个 tool-group，
                 是否折叠展示由 ChatPanel 的 groupToolCalls 开关决定（见 tool-call-group.tsx）。 */}
-            {turnBlocks.map((block) =>
+            {turnBlocks.map((block, index) =>
               block.kind === "tool-group" ? (
                 <ToolCallGroup
                   key={block.key}
@@ -466,6 +466,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, showUserMessag
                   agent={agent}
                   toolUI={toolUI}
                   awaitingNext={block.awaitingNext}
+                  isFinished={turnBlocks.length - 1 > index }
                 />
               ) : (
                 <MessageIteration
