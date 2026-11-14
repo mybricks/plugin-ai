@@ -31,8 +31,8 @@ export interface RestoredDisplayMessage {
 
 const USER_QUERY_PATTERN = /<user_query>\r?\n?([\s\S]*?)\r?\n?<\/user_query>/;
 const REFERENCED_DOM_NODES_PATTERN = /<referenced-dom-nodes[^>]*>([\s\S]*?)<\/referenced-dom-nodes>/g;
-/** 本仓库格式条目行:`- @label：`(全角冒号结尾) */
-const DOM_CHIP_LABEL_PATTERN = /^- @(.+?)[：:]\s*$/;
+/** 本仓库格式条目行:`- @label：`（冒号结尾，旧版）；v3.0 起首行冒号后可携带摘要文本（`- @label：taro-text-core class: ...`），label 取行内第一个冒号前的内容 */
+const DOM_CHIP_LABEL_PATTERN = /^- @(.+?)[：:]/;
 /** 条目内的展示名行:` - 节点展示名： brand` */
 const DOM_CHIP_DISPLAY_NAME_PATTERN = /^\s*-\s*节点展示名[：:]\s*(.+?)\s*$/;
 /** 宿主（设计器）格式条目行:`Dom节点1: p class: ...`(半角冒号 + 节点描述) */

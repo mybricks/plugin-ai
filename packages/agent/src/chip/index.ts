@@ -184,16 +184,24 @@ export class ChipRegistry {
     return Array.from(this._types.values());
   }
 
-  /** 判断给定 chips 中是否存在会被实际格式化的项（type 已注册）。 */
-  private _hasFormattableChips(chips?: ChatChipInstance[]): boolean {
-    if (!chips?.length || this._types.size === 0) return false;
-    return chips.some((chip) => this._types.has(chip.type));
+  /** 未注册 type 的占位符降级:@label(仅保住名字,无业务数据)。用于历史还原的展示 chip 等场景,避免 [[chip:id]] 原样泄漏给模型。 */
+  private _fallbackReplaceUnregistered(message: string, chips?: ChatChipInstance[]): string {
+    if (!chips?.length) return message;
+    let resolved = message;
+    for (const chip of chips) {
+      if (!this._types.has(chip.type)) {
+        resolved = resolved.split(`[[chip:${chip.id}]]`).join(`@${chip.label}`);
+      }
+    }
+    return resolved;
   }
 
   /**
    * 编译 request params：
-   * 1. 若存在可格式化的 chip，用 <user_query> 包裹原始正文，实现正文与引用块的显式分层。
-   * 2. 按 chip type 分组调用 def.format 展开占位符。
+   * 1. 只要携带 chip 就用 <user_query> 包裹原始正文，实现正文与引用块的显式分层——
+   *    含未注册 type（如历史还原的展示 chip）的消息也需要包裹，否则服务端只存裸文本，
+   *    刷新后 restoreDisplayUserMessage 无法识别，回显与实时不一致。
+   * 2. 按 chip type 分组调用 def.format 展开占位符；未注册 type 的占位符降级为 @label。
    * 3. 产出 displayMessage + modelMessage，确保 UI 与模型各自使用正确的文本。
    *
    * 不修改原对象。
@@ -202,7 +210,7 @@ export class ChipRegistry {
     const { message: displayMessage, ...rest } = params;
     const chips = params.meta?.chips as ChatChipInstance[] | undefined;
     const reminder = params.extra?.from === '@commitUserActions' ? VISUAL_EDIT_REMINDER : '';
-    if (!this._hasFormattableChips(chips) && !reminder) {
+    if (!chips?.length && !reminder) {
       return { ...rest, displayMessage, modelMessage: displayMessage };
     }
 
@@ -220,6 +228,8 @@ export class ChipRegistry {
       const def = this._types.get(type);
       if (def) {
         message = def.format({ message, chips: groupChips });
+      } else {
+        message = this._fallbackReplaceUnregistered(message, groupChips);
       }
     }
 
