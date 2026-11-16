@@ -87,7 +87,15 @@ export const lang = {
     collapse: () => i18n({ zh: "收起", en: "Collapse" }),
     expandTurn: () => i18n({ zh: "展开对话过程", en: "Expand turn details" }),
     collapseTurn: () => i18n({ zh: "收起对话过程", en: "Collapse turn details" }),
-    turnElapsed: (seconds: number) => i18n({ zh: `用时 ${seconds}秒`, en: `${seconds}s elapsed` }),
+    turnElapsed: (seconds: number) => {
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      const remainingSeconds = seconds % 60;
+      const showSeconds = !hours && (remainingSeconds > 0 || !minutes);
+      const zh = `${hours ? `${hours}小时` : ""}${minutes ? `${minutes}分` : ""}${showSeconds ? `${remainingSeconds}秒` : ""}`;
+      const en = [hours && `${hours}h`, minutes && `${minutes}m`, showSeconds && `${remainingSeconds}s`].filter(Boolean).join(" ");
+      return i18n({ zh: `用时 ${zh}`, en: `${en} elapsed` });
+    },
     thinking: () => i18n({ zh: "思考", en: "Thinking" }),
     thinkingInProgress: () => i18n({ zh: "思考中", en: "Thinking" }),
   },
