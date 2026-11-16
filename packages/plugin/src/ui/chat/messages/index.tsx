@@ -219,7 +219,7 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
   }), []);
 
   return (
-    <main ref={mainRef} className={css["message-list"]} onMouseDown={(event) => event.stopPropagation()}>
+    <main ref={mainRef} className={css["message-list"]}>
       <div className={css["message-list-inner"]}>
         {messages.length === 0 && renderEmpty ? (
           <div className={css["empty-state"]}>{renderEmpty()}</div>

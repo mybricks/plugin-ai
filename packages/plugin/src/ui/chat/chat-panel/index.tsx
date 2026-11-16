@@ -417,7 +417,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       >
         {headerNode}
 
-        <div className={css["body-area"]} data-chat-body>
+        <div className={css["body-area"]} data-chat-body onMouseDown={(event) => event.stopPropagation()}>
           <div className={css["messages-area"]}>
             {historyLoading ? (
               <div className={css["history-status"]}>{lang.chat.historyLoading()}</div>
