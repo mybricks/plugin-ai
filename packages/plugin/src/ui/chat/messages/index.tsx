@@ -320,6 +320,20 @@ const MessageBubble = React.memo(function MessageBubble({ record, showUserMessag
     ),
     [record.iterations, record.status, groupToolCalls],
   );
+  const [turnExpanded, setTurnExpanded] = useState(false);
+  // 重试或恢复时重新展示实时过程，完成后再次默认收起。
+  useEffect(() => {
+    if (record.status === "pending") setTurnExpanded(false);
+  }, [record.status]);
+  const lastBlock = turnBlocks[turnBlocks.length - 1];
+  const hasFinalText = lastBlock?.kind === "iter-head" &&
+    !("type" in lastBlock.part.iter && lastBlock.part.iter.type === "warmup") &&
+    Boolean(lastBlock.part.iter.content?.trim());
+  const canCollapseTurn = record.status === "success" && Boolean(record.endTime) &&
+    turnBlocks.length > (hasFinalText ? 1 : 0);
+  const visibleBlocks = canCollapseTurn && !turnExpanded
+    ? (hasFinalText ? turnBlocks.slice(-1) : [])
+    : turnBlocks;
 
   // 重试状态只属于触发它的 LLM iter，不能延续到工具执行后的下一轮 iter。
   const [retryState, setRetryState] = useState<{ step: number; attempt: number; maxRetries: number } | null>(null);
@@ -433,6 +447,20 @@ const MessageBubble = React.memo(function MessageBubble({ record, showUserMessag
         */}
         <section className={classNames(css["chat-message-container"], css["ai-message"])}>
           <div className={css["message-flow"]}>
+            {canCollapseTurn && (
+              <button
+                type="button"
+                className={css["turn-collapse-toggle"]}
+                aria-expanded={turnExpanded}
+                aria-label={turnExpanded ? lang.chat.collapseTurn() : lang.chat.expandTurn()}
+                onClick={() => setTurnExpanded((expanded) => !expanded)}
+              >
+                <span>{lang.chat.turnElapsed(Math.max(0, Math.floor((record.endTime! - record.startTime) / 1000)))}</span>
+                <svg className={classNames(css["turn-collapse-chevron"], turnExpanded && css["turn-collapse-chevron--expanded"])} width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                  <path d="M4.5 2.5L8 6L4.5 9.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            )}
             {/* 无任何 iteration 且 pending → 规划占位 */}
             {record.status === "pending" && record.iterations.length === 0 && !finalizing && (
               <div className={css["iter-header"]}>
@@ -450,7 +478,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, showUserMessag
             {/* 把 iterations 摊平为「文本/占位头部」与「连续工具调用」两种 block：
                 只要中间没被文本打断，跨多个 iteration 的连续工具调用也会合并成一个 tool-group，
                 是否折叠展示由 ChatPanel 的 groupToolCalls 开关决定（见 tool-call-group.tsx）。 */}
-            {turnBlocks.map((block) =>
+            {visibleBlocks.map((block) =>
               block.kind === "tool-group" ? (
                 <ToolCallGroup
                   key={block.key}

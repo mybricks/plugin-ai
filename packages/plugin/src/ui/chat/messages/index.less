@@ -355,6 +355,29 @@
   word-break: break-word;
 }
 
+.turn-collapse-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  margin: 0 0 var(--chat-block-gap, 8px);
+  border: 0;
+  background: transparent;
+  color: var(--mybricks-text-color-secondary, #888);
+  font: inherit;
+  line-height: 20px;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--mybricks-color-primary, #FA6400);
+    outline-offset: 2px;
+  }
+}
+
+.turn-collapse-chevron--expanded {
+  transform: rotate(90deg);
+}
+
 .message-content {
   img {
     display: block;
