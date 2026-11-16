@@ -10,6 +10,7 @@ interface HeaderProps {
   onExport?: () => void;
   title?: string;
   disabled?: boolean;
+  paddingRight?: number;
   /**
    * 在清空/导出按钮之前插入自定义内容（如宿主的状态图标+文案）。
    * 内容、交互、状态完全由宿主决定，Header 只提供挂载位置。
@@ -17,14 +18,24 @@ interface HeaderProps {
   renderExtra?: () => React.ReactNode;
 }
 
-const Header = ({ onClear, onExport, title, disabled = false, renderExtra }: HeaderProps) => {
+const Header = ({ onClear, onExport, title, disabled = false, renderExtra, paddingRight }: HeaderProps) => {
+  const handleMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (
+      target === event.currentTarget ||
+      (target instanceof HTMLElement && (target.classList.contains(css.left) || target.classList.contains(css.title)))
+    ) {
+      event.preventDefault();
+    }
+  };
+
   return (
-    <div className={css.header}>
+    <div className={css.header} style={{ paddingRight }} onMouseDown={handleMouseDown}>
       <div className={css.left}>
         <span className={css.title}>{title ?? context.name}</span>
         <div className={css.actions}>
           <div
-            className={classNames(css.action, { [css.disabled]: disabled })}
+            className={classNames(css.action, css.clear, { [css.disabled]: disabled })}
             data-mybricks-tip={lang.header.clearHistory()}
             onClick={disabled ? undefined : onClear}
           >

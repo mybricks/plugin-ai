@@ -29,6 +29,28 @@ interface User {
 
 type InputArea = "toolBlock" | "todoArea" | "sender";
 
+/** 兼容设计器 change 的工具栏布局；未匹配时保留 header 的默认间距。 */
+function useDesignerHeaderPadding(panelRef: React.RefObject<HTMLElement>): number | undefined {
+  const [paddingRight, setPaddingRight] = React.useState<number>();
+
+  useEffect(() => {
+    let ancestor = panelRef.current?.parentElement;
+    for (let level = 0; ancestor && level < 5; level++) {
+      const toolbar = Array.from(ancestor.children).find((element) =>
+        Array.from(element.classList).some((name) => name.startsWith("toolbar-")),
+      );
+      if (toolbar) {
+        if (toolbar.children.length === 1) setPaddingRight(36);
+        else if (toolbar.children.length === 2) setPaddingRight(60);
+        return;
+      }
+      ancestor = ancestor.parentElement;
+    }
+  }, [panelRef]);
+
+  return paddingRight;
+}
+
 /** 工具交互优先；待办区仅在最近一轮成功且输入区可用时展示。 */
 function resolveInputArea(toolActive: boolean, loading: boolean, disabled: boolean, hasTodo: boolean, lastTurnSucceeded: boolean): InputArea {
   if (toolActive) return "toolBlock";
@@ -218,7 +240,9 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   renderHeaderExtra,
 }, ref) => {
   const senderRef = useRef<SenderRef>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const messageListRef = useRef<{ scrollToBottom: () => void }>(null);
+  const headerPaddingRight = useDesignerHeaderPadding(panelRef);
   const [blockingToolTarget, setBlockingToolTarget] = React.useState<HTMLDivElement | null>(null);
   const [activeBlockingToolCallId, setActiveBlockingToolCallId] = React.useState<string | null>(null);
   const [todoState, setTodoState] = React.useState<{ agent: unknown; component: unknown; active: boolean } | null>(null);
@@ -329,7 +353,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   const headerNode = typeof header === "function"
     ? header()
     : header
-      ? <Header title={title} onClear={chatAgent.clear} onExport={chatAgent.exportHistory} disabled={isDisabled} renderExtra={() => headerExtraNode} />
+      ? <Header title={title} onClear={chatAgent.clear} onExport={chatAgent.exportHistory} disabled={isDisabled} renderExtra={() => headerExtraNode} paddingRight={headerPaddingRight} />
       : null;
 
   const todoComponent = chatAgent.todoArea;
@@ -412,6 +436,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       blockingToolSlot: { target: blockingToolTarget, setActive: setBlockingToolActive },
     }}>
       <div
+        ref={panelRef}
         className={classNames(css["chat-panel"], css[`size-${size}`], className)}
         style={style}
       >

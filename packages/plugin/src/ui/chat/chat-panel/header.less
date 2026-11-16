@@ -11,6 +11,7 @@
   border-bottom: 1px solid var(--mybricks-border-color-main, #E6E6E6);
   background: var(--mybricks-bg-color-main, #FFF);
   gap: var(--chat-block-gap, 6px);
+  user-select: none;
 
   .title {
     font-weight: 700;
@@ -43,6 +44,10 @@
     color: var(--mybricks-text-color-main, #333);
     width: 20px;
     height: 20px;
+
+    &.clear {
+      margin-left: 5px;
+    }
 
     &:hover {
       color: var(--mybricks-color-primary, #FA6400);
