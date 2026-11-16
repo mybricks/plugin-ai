@@ -488,7 +488,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
               }
 
               // TODO：没comId的，都是没用的聚焦，之前设计器出过一次bug，兼容下这种情况，不要写进去
-              if (!params.comId && params.pageId) {
+              if (!params?.comId && params?.pageId) {
                 return
               }
 
