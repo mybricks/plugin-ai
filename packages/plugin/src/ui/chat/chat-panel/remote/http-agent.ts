@@ -105,6 +105,8 @@ interface HttpAgentRuntimeOptions {
   /** 注册到浏览器端执行的工具。服务端可通过 SSE browser:task 按 name 调用。 */
   browserTools?: Tool[];
   onVersionSaved?: (version: { turnId: string; versionId: string }) => Promise<void>;
+  /** /connect 发现正在运行的 turn 时通知宿主，不阻塞事件回放。 */
+  onActiveTurnReplayed?: (turnId: string) => void;
   /**
    * 浏览器侧生命周期 hooks。远程 Agent 的实际推理在服务端执行，但 sandbox
    * 仍需要这些 hooks 来维护 loading、锁和 undo/redo 等本地 UI 状态。
@@ -210,6 +212,7 @@ export class HttpAgent {
   readonly historyManager: HistoryManager;
   private readonly disabledHandler?: DisabledHandler;
   private readonly onVersionSaved?: HttpAgentRuntimeOptions["onVersionSaved"];
+  private readonly onActiveTurnReplayed?: HttpAgentRuntimeOptions["onActiveTurnReplayed"];
   private readonly handledSavedVersions = new Set<string>();
   private readonly disabledModes: AgentMode[];
   private readonly hooks?: AgentHooks;
@@ -268,6 +271,7 @@ export class HttpAgent {
     this.key = `http:${this.baseUrl}:${this.workspaceId}:${this.agentId}`;
     this.disabledHandler = runtime.disabledHandler;
     this.onVersionSaved = runtime.onVersionSaved;
+    this.onActiveTurnReplayed = runtime.onActiveTurnReplayed;
     this.disabledModes = runtime.disabledModes ?? [];
     this.plugins = runtime.plugins ?? [];
     this.pluginFactories = runtime.pluginFactories ?? [];
@@ -998,7 +1002,15 @@ export class HttpAgent {
       console.error("[plugin-ai] remote agent replay failed", event.data?.message ?? event.data);
       return;
     }
-    if (event.event === "session:locked") this.startReplayHookLifecycle(event);
+    if (event.event === "session:locked") {
+      const turnId = this.eventTurnId(event);
+      if (turnId) {
+        void Promise.resolve().then(() => this.onActiveTurnReplayed?.(turnId)).catch((error) => {
+          console.warn("[HttpAgent] active turn replay notification failed:", error);
+        });
+      }
+      this.startReplayHookLifecycle(event);
+    }
     this.handleRemoteEvent(event, { waitForRelease: true });
   }
 

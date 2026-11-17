@@ -2,6 +2,7 @@ import { DEFAULT_CONFIG_DIR_NAME, type AgentSandbox, type CodeAgentPlugin, type 
 import { createInitProjectTool } from "../../../agent/src/code-agent/tools";
 import type { AuditPowerImplementation, DomainAuditImplementation } from "../../../kit/src";
 import { context } from "../context";
+import { ensureAIPanelOpen } from "../utils/ensure-ai-panel-open";
 import { HttpAgent } from "../ui/chat/chat-panel/remote/http-agent";
 import { createBuiltInSandboxPlugins } from "./plugins";
 import { createCheckStatusTool } from "./tools/check-status";
@@ -71,6 +72,7 @@ export function connectToRemoteAI(
     {
       disabledHandler, disabledModes, browserTools, hooks, plugins: staticPlugins,
       onVersionSaved: remoteAgent.onVersionSaved,
+      onActiveTurnReplayed: () => { void ensureAIPanelOpen(comId); },
       pluginFactories: runtimePlugins.filter((plugin): plugin is CodeAgentPluginFactory => typeof plugin === "function"),
       pluginContext: { sandbox: agentSandbox, configDirName: resolvedConfigDirName },
       sender,
