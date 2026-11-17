@@ -237,7 +237,7 @@ export interface PluginAIParams {
    */
   renderAttachmentSuffix?: () => React.ReactNode;
   /**
-   * 在 Header 清空/导出按钮之前插入自定义内容（如宿主自己的状态图标+文案）。
+   * 在 Header 清空/导出按钮之后插入自定义内容（如宿主自己的状态图标+文案）。
    * 入参 ctx.overlay 是一个覆盖层操作句柄：调用 overlay.open(node) 可以让该 node
    * 覆盖在消息列表区域上方展示，overlay.close() 收起；展示什么、什么时候开关
    * 完全由宿主自己决定（典型用法：图标点击时 open 一个操作日志/详情面板）。

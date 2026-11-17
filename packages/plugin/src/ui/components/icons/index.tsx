@@ -40,6 +40,13 @@ const Send = () => {
   )
 }
 
+const Clear = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="m3 15 10-10a2 2 0 0 1 2.8 0l4.2 4.2a2 2 0 0 1 0 2.8l-8 8H8L3 15Z" />
+    <path d="m9 9 6 6M12 20h9" />
+  </svg>
+)
+
 const Delete = () => {
   return <svg viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="16298"><path d="M928.814545 405.783273a28.858182 28.858182 0 0 0 0-40.773818l-309.992727-309.992728a28.858182 28.858182 0 0 0-40.820363 0l-451.118546 451.118546a115.246545 115.246545 0 0 0 0 163.048727l244.968727 243.432727a115.432727 115.432727 0 0 0 81.221819 33.512728h370.501818a28.811636 28.811636 0 1 0 0-57.669819h-238.266182c-51.339636 0-77.079273-62.045091-40.820364-98.443636l384.325818-384.232727zM436.968727 816.174545a57.623273 57.623273 0 0 1-81.501091 0l-187.810909-187.717818a57.623273 57.623273 0 0 1 0-81.501091l115.2-115.2 269.312 269.312-115.2 115.106909z" p-id="16299" fill="currentColor"></path></svg>
 }
@@ -121,4 +128,4 @@ const Skill = () => (
   </svg>
 )
 
-export { ArrowUp, Attachment, Loading, Close, Success, Send, Delete, Export, Chat, Code, Agent, Vibe, Check, Eye, Pencil, FileWrite, ErrorIcon, FileIcon, Plus, ChevronRight, ChevronLeft, AtSign, Skill }
+export { ArrowUp, Attachment, Loading, Close, Success, Send, Clear, Delete, Export, Chat, Code, Agent, Vibe, Check, Eye, Pencil, FileWrite, ErrorIcon, FileIcon, Plus, ChevronRight, ChevronLeft, AtSign, Skill }
