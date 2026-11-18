@@ -389,6 +389,8 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
         const agent = context.agentMap.get(agentKey);
 
         if (!agent) return;
+        // `ensureAIPanelOpen` 会产生 UI 副作用，必须在权限校验通过后调用。
+        if (context.aiQueue.blockIfDisabled(agent)) return;
         ensureAIPanelOpen(comId).then(() => {
           context.aiQueue.send(
             agent,

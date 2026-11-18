@@ -524,6 +524,9 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
               const agent = context.agentMap.get(agentKey);
 
               if (!agent) return;
+              // 权限不足时不能先打开 AI 面板；队列会在真正发送时再校验一次，
+              // 以处理等待面板挂载期间权限变化的情况。
+              if (context.aiQueue.blockIfDisabled(agent)) return;
 
               const attachments = Array.isArray(requestParams.attachments)
                 ? requestParams.attachments.map((a: any) => ({ ...a }))

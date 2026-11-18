@@ -119,7 +119,11 @@ export class AgentQueue {
     this.notify(entry);
   }
 
-  private blockIfDisabled(agent: RuntimeAgent): boolean {
+  /**
+   * 在执行会触发面板展示等前置副作用前校验请求权限。
+   * `send` 内部仍会再次调用，覆盖等待面板就绪期间权限发生变化的情况。
+   */
+  blockIfDisabled(agent: RuntimeAgent): boolean {
     const guard = this.requestGuards.get(agent);
     if (!guard?.disabledHandler.isDisabled()) return false;
     guard.disabledHandler.message(lang.common.noPermission());
