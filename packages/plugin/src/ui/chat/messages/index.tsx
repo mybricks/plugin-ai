@@ -656,7 +656,6 @@ const MessageIteration = React.memo(function MessageIteration({
               )}
               <MarkdownMessage message={iter.content} />
             </div>
-            {iter.startTime && <ElapsedTime startTime={iter.startTime} endTime={iter.endTime} className={css["planning-elapsed"]} />}
           </>
         ) : shouldShowResponsePlaceholder ? (
           <>

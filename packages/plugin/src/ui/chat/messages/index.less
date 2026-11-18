@@ -14,7 +14,11 @@
   align-items: center;
   height: 100%;
 
-  .scroll-bar();
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
 
   .message-list-inner {
     width: 100%;
@@ -261,7 +265,7 @@
     .user-message-body {
       max-height: var(--chat-user-message-max-height, 360px);
       overflow-y: auto;
-      overscroll-behavior: contain;
+      overscroll-behavior: none;
       scrollbar-width: none; // Firefox
       &::-webkit-scrollbar {
         display: none; // Chrome / Safari
