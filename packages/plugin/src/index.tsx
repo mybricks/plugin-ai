@@ -475,7 +475,6 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
               return <ComChatFocusView />;
             },
             focus(params: AiServiceFocusParams) {
-              console.log("aiService.focus", params);
               if (componentRuntime?.mode === 'local-iframe') {
                 const ele = params?.focusArea?.ele
                 if (ele) {
