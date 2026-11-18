@@ -475,6 +475,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
               return <ComChatFocusView />;
             },
             focus(params: AiServiceFocusParams) {
+              console.log("aiService.focus", params);
               if (componentRuntime?.mode === 'local-iframe') {
                 const ele = params?.focusArea?.ele
                 if (ele) {
@@ -487,9 +488,16 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
                 }
               }
 
-              // TODO：没comId的，都是没用的聚焦，之前设计器出过一次bug，兼容下这种情况，不要写进去
+              // TODO：没comId的，都是没用的聚焦，兼容下这种情况，不要写进去
               if (!params?.comId && params?.pageId) {
+                console.warn("Invalid focus params");
                 return
+              }
+
+              // TODO：没params的，都是没用的聚焦
+              if (!params) {
+                console.warn("Invalid focus params");
+                return;
               }
 
               const currentFocus = params ?? undefined;
@@ -554,6 +562,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
 
       aiView: {
         render(_api: AiViewApi) {
+          console.log("aiView.render", _api);
           return <ChatPanelList user={user} copilot={{ name }} />;
         },
         display() {
