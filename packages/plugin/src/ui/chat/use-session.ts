@@ -173,7 +173,8 @@ function useHistoryLoader(
         const current = [...historyRef.current];
         if (streamingRef.current) current.push(streamingRef.current);
         mergeLiveChildren(records, current);
-        const streaming = records.find((r) => r.status === "pending") ?? null;
+        const lastRecord = records[records.length - 1];
+        const streaming = lastRecord?.status === "pending" ? lastRecord : null;
         historyRef.current = streaming ? records.filter((r) => r !== streaming) : records;
         streamingRef.current = streaming
           ? { ...streaming, iterations: [...streaming.iterations] }
@@ -234,7 +235,8 @@ function useAgentEvents(
       const current = [...historyRef.current];
       if (streamingRef.current) current.push(streamingRef.current);
       mergeLiveChildren(records, current);
-      const streaming = records.find((r) => r.status === "pending") ?? null;
+      const lastRecord = records[records.length - 1];
+      const streaming = lastRecord?.status === "pending" ? lastRecord : null;
       historyRef.current = streaming ? records.filter((r) => r !== streaming) : records;
       streamingRef.current = streaming
         ? { ...streaming, iterations: [...streaming.iterations] }
