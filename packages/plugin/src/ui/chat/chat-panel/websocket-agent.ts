@@ -169,6 +169,8 @@ export class WebSocketAgent {
   private readonly toolResults = new Map<string, ToolResult>();
   /** requestId → 承载该工具调用的 LLM iter（用于 emit 事件时定位）。 */
   private readonly toolIterMap = new Map<string, LLMIter>();
+  /** WS 工具调用在途登记：requestId → 收口函数。轮终态/关闭时同步收口，避免悬挂的可交互工具卡片。 */
+  private readonly pendingWsCalls = new Map<string, (message: string) => void>();
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private pongTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatIntervalMs = 30000;
@@ -486,6 +488,7 @@ export class WebSocketAgent {
     this.turns.splice(0, this.turns.length);
     // 关闭远程会话（用会话自身 token），再清空本地通道与缓存。
     void this.closeSession();
+    this.expirePendingWsCalls("会话已清空，工具调用已失效");
     this.socket?.close(1000);
     this.socket = null;
     this.socketReady = false;
@@ -509,6 +512,7 @@ export class WebSocketAgent {
   dispose(): void {
     this.disposed = true;
     this.stopReconnect = true;
+    this.expirePendingWsCalls("连接已关闭，工具调用已失效");
     this.clearTimers();
     this.socket?.close(1000);
     this.socket = null;
@@ -1084,22 +1088,65 @@ export class WebSocketAgent {
   }
 
   // ─── 工具执行（落到本地 sandbox） ──────────────────────────────────────
+  /** 同步收口所有在途 WS 工具调用（置 record 终态、广播 tool:error、结束 UI 等待）。 */
+  private expirePendingWsCalls(message: string): void {
+    for (const expire of [...this.pendingWsCalls.values()]) {
+      expire(message);
+    }
+  }
+
   private async executeTool(message: WsEnvelope): Promise<void> {
     const requestId = message.requestId ?? "";
     const payload = message.payload ?? {};
     const cached = this.toolResults.get(requestId);
     if (cached) { this.sendToolResult(requestId, cached); return; }
 
+    const turn = this.turns.find((item) => item.id === this.activeTurnId);
+    if (!turn) {
+      // 轮已结束后到达的 TOOL_CALL：不进入 UI 等待、不产生无人消费的悬挂卡片，快速失败。
+      console.warn(`[WebSocketAgent] TOOL_CALL ${requestId} arrived after turn ended, rejected without UI binding`);
+      this.sendToolResult(requestId, {
+        ok: false,
+        error: { code: "TURN_ENDED", message: "Turn already ended before tool call arrived" },
+      });
+      return;
+    }
     const iter = this.toolIterMap.get(requestId) ?? this.currentIter();
     const startTime = Date.now();
-    let result: ToolResult;
+    let result: ToolResult | undefined;
     let toolRecord: ToolCallRecord | undefined;
+    // UI 等待有界化：遵循服务端 TOOL_CALL 声明的 timeoutMs（未声明则不做本地定时），
+    // 到点同步置 record 终态并结束等待；服务端已放弃该调用，不再回发 TOOL_RESULT。
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let rejectWait: ((error: ToolCallExpiredError) => void) | undefined;
+    const expiredPromise = new Promise<never>((_, reject) => { rejectWait = reject; });
+    const expire = (messageText: string): void => {
+      // record 已终态（成功/失败/已收口）时不再重复收口；timer 交由 finally 清理。
+      if (toolRecord && toolRecord.status !== "pending") return;
+      if (timer) { clearTimeout(timer); timer = null; }
+      this.pendingWsCalls.delete(requestId);
+      const endTime = Date.now();
+      if (toolRecord) {
+        toolRecord.status = "error";
+        toolRecord.error = messageText;
+        toolRecord.execEndTime = endTime;
+      }
+      if (iter) {
+        this.events.emit("tool:error", { callId: requestId, name: payload.toolName, error: messageText, step: 1, endTime, iterId: iter.iterId });
+      }
+      rejectWait?.(new ToolCallExpiredError(messageText));
+      // 清掉 toolUI 中仍挂起的等待项（此后用户提交 respond 将得到 false 而非悄悄成功）。
+      // 必须在 rejectWait 之后调用：race 已以 expired 结束，execute 的 null→abort 分支不会触发。
+      void this.toolUI.cancel(requestId);
+    };
     try {
       const tool = this.tools.find((item) => item.name === payload.toolName);
-      const turn = this.turns.find((item) => item.id === this.activeTurnId);
       if (!tool) throw new Error(`Tool not found: ${payload.toolName}`);
-      if (!turn || !iter) {
-        console.warn(`[WebSocketAgent] TOOL_CALL ${requestId} arrived after turn ended, executing without UI binding`);
+
+      const timeoutMs = Number(payload.timeoutMs);
+      if (timeoutMs > 0) {
+        timer = setTimeout(() => expire(`等待用户响应超时（${Math.round(timeoutMs / 1000)}s），请重新发起对话`), timeoutMs);
+        this.pendingWsCalls.set(requestId, expire);
       }
 
       if (iter) {
@@ -1127,10 +1174,10 @@ export class WebSocketAgent {
         getMode: () => this.mode,
         setMode: (mode: AgentMode, reason?: string) => this.setMode(mode, reason),
         emitProgress: (data: any) => this.events.emit("tool:progress", { callId: requestId, name: payload.toolName, data, step: 1, iterId: iter?.iterId ?? "" }),
-        waitUIRender: <T>() => this.toolUI.wait<T>(requestId, {}),
+        waitUIRender: <T>() => Promise.race([this.toolUI.wait<T>(requestId, {}), expiredPromise]) as Promise<T | null>,
       };
       tool.validate?.(payload.arguments ?? {}, context);
-      const output = await tool.execute(payload.arguments ?? {}, context);
+      const output = await Promise.race([tool.execute(payload.arguments ?? {}, context), expiredPromise]);
       result = { ok: true, result: { output: output.output, metadata: output.metadata } };
       if (toolRecord) {
         toolRecord.status = "success";
@@ -1139,13 +1186,22 @@ export class WebSocketAgent {
       }
       this.events.emit("tool:result", { callId: requestId, name: payload.toolName, result: result.result, step: 1, endTime: Date.now(), iterId: iter?.iterId ?? "" });
     } catch (error) {
+      if (error instanceof ToolCallExpiredError) {
+        // 收口路径（超时/轮终态/关闭）已同步置 record 终态并广播，这里不再覆盖、不再回发结果。
+        return;
+      }
       const messageText = String((error as any)?.message ?? error);
       result = { ok: false, error: { code: "TOOL_EXECUTION_FAILED", message: messageText } };
       if (toolRecord) { toolRecord.status = "error"; toolRecord.error = messageText; toolRecord.execEndTime = Date.now(); }
       if (iter) this.events.emit("tool:error", { callId: requestId, name: payload.toolName, error: messageText, step: 1, endTime: Date.now(), iterId: iter.iterId });
+    } finally {
+      if (timer) clearTimeout(timer);
+      this.pendingWsCalls.delete(requestId);
+      if (result) {
+        this.toolResults.set(requestId, result);
+        this.sendToolResult(requestId, result);
+      }
     }
-    this.toolResults.set(requestId, result);
-    this.sendToolResult(requestId, result);
   }
 
   private currentIter(): LLMIter | undefined {
@@ -1196,6 +1252,9 @@ export class WebSocketAgent {
 
   private finishTurn(turn: TurnRecord, status: "success" | "abort" | "error", error?: any): void {
     if (turn.endTime) return;
+    // 先同步收口仍在等待 UI 的 WS 工具调用（用户停止/流提前结束等残留场景）：
+    // 保证随后 llm:complete(done) 触发的归档快照里 record 已是终态，不产生无人消费的悬挂提问卡片。
+    this.expirePendingWsCalls("对话已结束，工具调用已失效");
     turn.status = status;
     turn.endTime = Date.now();
     if (error) turn.error = String((error as any)?.message ?? error);
@@ -1231,6 +1290,14 @@ export class WebSocketAgent {
   private setState(state: AgentRuntimeState): void {
     this.state = state;
     for (const listener of this.stateListeners) listener(state);
+  }
+}
+
+/** WS 工具等待被收口（超时/轮终态/关闭）时结束 execute 等待的内部标记错误。 */
+class ToolCallExpiredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ToolCallExpiredError";
   }
 }
 
