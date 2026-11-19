@@ -8,11 +8,12 @@ import type { AttachProcessor } from "../../../content-limits";
 import type { MentionProvider } from "../../components/types";
 import type { ActivePlanFile } from "../../../../../agent/src/mode-manager";
 import { SenderActivePlanCard, usePlanState } from "../../components/plan";
-import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
+import { ensureFocusComId } from "../../../utils/ensure-ai-panel-open";
 import { usePluginDisabled } from "../../../utils/use-plugin-disabled";
 import { lang } from "../../../i18n";
 import { isHttpAgent } from "../chat-panel/remote/http-agent";
 import { useAgent, type ChatAgent } from "../chat-panel/use-agent";
+import { ChatPanel } from "../chat-panel";
 import type { SessionStageTextResolver } from "../chat-panel/session-status";
 import css from "./index.less";
 
@@ -61,7 +62,7 @@ const ChatStartView = ({
   agent,
   comId,
   onUpload,
-  placeholder = lang.chat.startPlaceholder(),
+  placeholder,
   welcomeTitle = lang.chat.startTitle(),
   attachProcessors,
   mentions = context.pluginParams.mentions ?? [],
@@ -76,7 +77,6 @@ const ChatStartView = ({
     resolveSessionStageText,
   });
   const loading = chatAgent.loading;
-  const loadingTip = chatAgent.loadingTip;
   const historyStatus = chatAgent.historyStatus;
   const historyBlocked = historyStatus === "loading" || historyStatus === "idle" || historyStatus === "error";
   const localAgent = agent && !isHttpAgent(agent) ? agent as CodeAgent : undefined;
@@ -88,7 +88,7 @@ const ChatStartView = ({
     if (contextDisabled || loading || historyBlocked || !agent || !comId) return;
     setEmpty(false);
 
-    ensureAIPanelOpen(comId).then(() => {
+    ensureFocusComId(comId).then(() => {
       chatAgent.send(params);
     });
   };
@@ -96,9 +96,7 @@ const ChatStartView = ({
   const onExecutePlan = (plan: ActivePlanFile) => {
     if (contextDisabled || !agent || !comId || historyBlocked || !chatAgent.canExecutePlan) return;
     const title = plan.title ?? plan.path;
-    ensureAIPanelOpen(comId).then(() => {
-      chatAgent.executePlan(title);
-    });
+    chatAgent.executePlan(title);
   };
 
   const abovePanels = activePlan ? [{
@@ -114,36 +112,48 @@ const ChatStartView = ({
     ),
   }] : undefined;
 
+  const hasConversation = !empty || loading || chatAgent.messages.length > 0;
+
   return (
     <div
       className={classNames(css["start-view"], {
-        [css["empty"]]: empty && !loading,
+        [css["empty"]]: !hasConversation,
         [css.disabled]: contextDisabled,
       })}
       aria-disabled={contextDisabled}
     >
-      {empty && !loading && (
+      {!hasConversation && (
         <div className={css["welcome-header"]}>
-          <div className={css["welcome-title"]}>{welcomeTitle}</div>
+          <h2 className={css["welcome-title"]}>{welcomeTitle}</h2>
         </div>
       )}
-      {loading && (
-        <LoadingView tip={loadingTip} />
-      )}
-      {!loading && (
+      {hasConversation ? (
+        <ChatPanel
+          agent={agent}
+          header={false}
+          size="medium"
+          className={css["conversation-panel"]}
+          messagesRenderVariant="line"
+          disabled={contextDisabled}
+          onUpload={onUpload}
+          placeholder={placeholder}
+          attachProcessors={attachProcessors}
+          mentions={mentions}
+          resolveSessionStageText={resolveSessionStageText}
+        />
+      ) : (
         <Sender
           ref={senderRef}
           loading={loading}
           disabled={chatAgent.isDisabled || historyBlocked}
           onSend={onSend}
-          variant="loose"
           chatMode={chatAgent.showChatMode ? chatAgent.chatMode : null}
           availableChatModes={chatAgent.availableModes}
           onChatModeChange={(nextMode: AgentMode | null) => {
             chatAgent.setChatMode(nextMode);
           }}
-          placeholder={placeholder}
-          attachmentsPrompt="根据附件中的图片内容进行设计开发，要求尽可能还原其中的各类设计细节以及功能"
+          placeholder={placeholder ?? lang.chat.defaultPlaceholder(context.name)}
+          // attachmentsPrompt="根据附件中的图片内容进行设计开发，要求尽可能还原其中的各类设计细节以及功能"
           onUpload={onUpload}
           chipTypes={chipRegistry.getAll()}
           modelSelector={chatAgent.modelSelector}

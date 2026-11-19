@@ -1,22 +1,27 @@
 /*! plugin-ai-comp-view-anchor */
 
 .start-view {
-  max-width: 800px;
-  width: 100%;
-  background-color: transparent;
-  border: solid 1px var(--mybricks-border-color-main, #E6E6E6);
-  border-radius: 20px;
-  box-shadow: var(--mybricks-shadow-main, rgba(0, 0, 0, 0.2) 0 0 5px);
+  --chat-sender-border-radius: 18px;
+
+  min-width: 800px;
+  box-sizing: border-box;
   color: var(--mybricks-text-color-main, #333);
-  cursor: default;
-  height: 100%;
   display: flex;
   flex-direction: column;
 
   &.empty {
-    border: none;
-    height: fit-content;
-    box-shadow: none;
+    --chat-font-size: 14px;
+    --chat-sender-padding: 0 12px;
+    --chat-sender-input-padding: 16px 16px 10px;
+    --chat-sender-input-min-height: 76px;
+    --chat-sender-editor-line-height: 23px;
+    --chat-sender-action-padding: 0 12px;
+    --chat-sender-action-margin-bottom: 12px;
+    --chat-control-size: 32px;
+    --chat-control-icon-size: 16px;
+    --chat-icon-size: 14px;
+
+    height: auto;
   }
 
   &.disabled {
@@ -25,19 +30,41 @@
   }
 }
 
+.start-view .conversation-panel {
+  --chat-message-list-padding: 12px 12px 20px;
+  --chat-message-group-gap: 10px;
+  --chat-message-group-padding: 10px 0 16px;
+  --chat-bubble-padding: 0 4px;
+  --chat-time-padding: 2px 0 0;
+  --chat-user-message-margin-top: 0;
+  --chat-user-message-padding: 10px 14px;
+  --chat-user-message-border-radius: 16px 16px 5px 16px;
+  --chat-user-message-max-width: 82%;
+  --chat-sender-padding: 6px 12px 14px;
+  --chat-sender-input-padding: 12px 16px 8px;
+  --chat-sender-input-min-height: 48px;
+  --chat-sender-action-padding: 0 12px;
+  --chat-sender-action-margin-bottom: 12px;
+  --chat-control-size: 32px;
+
+  flex: 1;
+  min-height: 0;
+}
+
 .welcome-header {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 16px 0 20px;
+  padding: 0 12px 24px;
+  text-align: center;
 }
 
 .welcome-title {
-  font-size: 22px;
+  margin: 0;
+  font-size: clamp(22px, 3vw, 28px);
+  line-height: 1.3;
   font-weight: 600;
   color: var(--mybricks-color-primary, #FA6400);
-  letter-spacing: 0.5px;
 }
 
 .loading-view {

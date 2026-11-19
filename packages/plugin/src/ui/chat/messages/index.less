@@ -24,6 +24,8 @@
     width: 100%;
     max-width: var(--chat-message-list-max-width, 1000px);
     min-height: 100%;
+    box-sizing: border-box;
+    padding: var(--chat-message-list-padding, 0);
     display: flex;
     flex-direction: column;
   }
@@ -200,10 +202,10 @@
     margin-top: var(--chat-user-message-margin-top, 6px);
     box-sizing: border-box;
     min-width: 0;
-    max-width: calc(100% - var(--chat-user-message-max-offset, 32px));
+    max-width: min(var(--chat-user-message-max-width, 100%), calc(100% - var(--chat-user-message-max-offset, 32px)));
     background: var(--chat-user-message-bg, var(--mybricks-bg-color-main, #FFF));
     color: var(--mybricks-text-color-main, #333);
-    border-radius: 12px 2px 12px 12px;
+    border-radius: var(--chat-user-message-border-radius, 12px 2px 12px 12px);
     padding: var(--chat-user-message-padding, 8px 12px);
     white-space: pre-wrap;
     word-break: break-word;

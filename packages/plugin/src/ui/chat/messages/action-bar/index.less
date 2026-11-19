@@ -1,3 +1,5 @@
+/*! plugin-ai-comp-view-anchor */
+
 .action-bar {
   display: flex;
   align-items: center;
@@ -36,6 +38,7 @@
   border: none;
   background: transparent;
   border-radius: 4px;
+  color: var(--mybricks-text-color-main, #333);
   cursor: pointer;
   transition: background 0.12s ease, transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
 
@@ -61,7 +64,7 @@
 
   // 复制成功态：用 primary 色高亮
   &.action-bar-btn--active {
-    opacity: 1;
+    color: var(--mybricks-color-primary, #FA6400);
   }
 }
 

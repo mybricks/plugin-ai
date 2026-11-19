@@ -103,7 +103,9 @@ export interface SandboxHelpers {
   /**
    * 向当前 focus 的 Agent 发送消息（供 sandbox 组件运行时调用）。
    */
-  sendToAgent: (comId: string, params: SendToAgentParams) => void;
+  sendToAgent: (comId: string, params: SendToAgentParams, options?: { openPanel?: boolean }) => void;
+  /** 打开指定组件的 AI 面板。 */
+  ensureAIPanelOpen: (comId: string) => Promise<void>;
   /**
    * 更新指定 comId 的 Sender 模式和模型选择，不触发请求。
    * 用于外部 pending message 在发送前同步一次 UI 选项。
@@ -384,14 +386,15 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
             ?.setSelected(options.providerId, options.modelId);
         }
       },
-      sendToAgent(comId: string, params: SendToAgentParams) {
+      sendToAgent(comId: string, params: SendToAgentParams, options?: { openPanel?: boolean }) {
         const agentKey = context.getAgentKey(comId);
         const agent = context.agentMap.get(agentKey);
 
         if (!agent) return;
         // `ensureAIPanelOpen` 会产生 UI 副作用，必须在权限校验通过后调用。
         if (context.aiQueue.blockIfDisabled(agent)) return;
-        ensureAIPanelOpen(comId).then(() => {
+        const ready = options?.openPanel === false ? Promise.resolve() : ensureAIPanelOpen(comId);
+        ready.then(() => {
           context.aiQueue.send(
             agent,
             async () => {
@@ -412,6 +415,7 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
           );
         });
       },
+      ensureAIPanelOpen,
       appendToSender(comId: string, input: string | SendToAgentParams) {
         ensureAIPanelOpen(comId).then(() => {
           context.appendInput(comId, input);
