@@ -154,6 +154,7 @@ const ChatFocusView = ({
       renderActionPrefix={renderActionPrefix}
       chipTypes={chipRegistry.getAll()}
       mentions={context.pluginParams.mentions}
+      attachProcessors={context.pluginParams.attachProcessors}
       disabled={contextDisabled}
       className={classNames(css["focus-view"], { [css.disabled]: contextDisabled })}
     />
