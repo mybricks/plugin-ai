@@ -176,6 +176,7 @@ export const SUPPORTED_FILE_ACCEPT = [
   ...ACCEPTED_DOCUMENT_MIME_TYPES,
   ...ACCEPTED_TEXT_FILE_EXTENSIONS.map((ext) => `.${ext}`),
   ...ACCEPTED_DOCUMENT_FILE_EXTENSIONS.map((ext) => `.${ext}`),
+  ".psd",
 ].join(",");
 
 const BLOCKED_FILE_MIME_PREFIXES = [
@@ -276,7 +277,7 @@ function getBlockedFileReason(file: File): string | null {
   if (type && BLOCKED_FILE_MIME_PREFIXES.some((prefix) => type.startsWith(prefix))) {
     return lang.sender.unsupportedMedia();
   }
-  if (type && BLOCKED_FILE_MIME_TYPES.has(type)) {
+  if (type && BLOCKED_FILE_MIME_TYPES.has(type) && ext !== "psd") {
     return lang.sender.unsupportedArchive();
   }
   if (BLOCKED_FILE_EXTENSIONS.has(ext)) {
