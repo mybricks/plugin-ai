@@ -76,6 +76,10 @@
 
 .ask-question-card-in-sender {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 100%;
   margin: 0;
   // 与 Sender 的 .editor 一样，让外沿的伪元素不被卡片裁掉。
   overflow: visible;
@@ -136,6 +140,12 @@
 .ask-question-header { color: var(--mybricks-text-color-main, #333); }
 .ask-question-question { font-size: var(--chat-font-size-sm, 12px); font-weight: 600; line-height: 1.55; }
 .ask-question-options { display: grid; gap: 1px; margin: 7px -4px -3px; }
+.ask-question-card-in-sender .ask-question-item { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.ask-question-card-in-sender .ask-question-header { flex-shrink: 0; max-height: 40%; overflow-y: auto; }
+.ask-question-card-in-sender .ask-question-options { min-height: 0; max-height: 240px; overflow-y: auto; }
+.ask-question-card-in-sender .ask-question-toolbar,
+.ask-question-card-in-sender .ask-question-progress,
+.ask-question-card-in-sender .ask-question-actions { flex-shrink: 0; }
 .ask-question-option {
   display: block;
   position: relative;
