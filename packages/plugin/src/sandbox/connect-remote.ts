@@ -3,6 +3,7 @@ import {
   MergedHistory,
   SessionHTTPHistory,
   isFileExcluded,
+  createAgentSandboxRuntime,
   type AgentSandbox,
   type CodeAgentPlugin,
   type CodeAgentPluginFactory,
@@ -185,6 +186,9 @@ export function connectToRemoteAI(
 
     // 远程智能体通过 WS 通道调用的工具由本插件在本地 AgentSandbox 上执行。
     // 与本地 CodeAgent 一致，用同一 sandbox 现造文件工具集，使 read_file/write_file/... 落到本地虚拟 FS。
+    // bash 的命令分发（createAgentSandboxCommandExecutor）在 createAgentSandboxRuntime 里接线：
+    // 直接用宿主原始 commands.execute 会全部落到 file-commands 的兜底分支，返回 Command unavailable。
+    const runtimeSandbox = createAgentSandboxRuntime(agentSandbox);
     const runtimeContext: SkillRuntimeContext = { agentSandbox, designer, codeRules, designRules };
     const getRuntimeSkills = (config = runtimeRef.current) =>
       (config?.skills ?? params.skills)?.map((skill) => injectSkillRuntimeContext(skill, runtimeContext));
@@ -203,7 +207,7 @@ export function connectToRemoteAI(
       createMultiEditTool(agentSandbox),
       createDeleteTool(agentSandbox),
       createGrepTool(agentSandbox),
-      createBashTool(agentSandbox.commands),
+      createBashTool(runtimeSandbox.commands),
       ...(skillTool ? [skillTool] : []),
       ...browserToolsWithoutInit,
     ];
