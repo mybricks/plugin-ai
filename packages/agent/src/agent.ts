@@ -486,6 +486,7 @@ export class Agent {
     this.childTurns.clear();
     this.childAgentInstances.clear();
     this.compactRecord = null;
+    this.historyManager.markReady({ hasMore: false });
   }
 
   async ensureHistoryReady(): Promise<void> {

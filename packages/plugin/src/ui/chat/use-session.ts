@@ -142,6 +142,7 @@ function useHistoryLoader(
   historyRef: React.MutableRefObject<MessageRecord[]>,
   streamingRef: React.MutableRefObject<MessageRecord | null>,
   commit: () => void,
+  historyRevisionRef: React.MutableRefObject<number>,
 ) {
   const [historyStatus, setHistoryStatus] = useState<HistoryStatus>(
     () => agent?.historyManager.getSnapshot().status ?? "ready"
@@ -168,8 +169,9 @@ function useHistoryLoader(
       setHistoryError(snapshot.error);
       setHasMore(snapshot.hasMore);
       if (snapshot.status === "ready") {
+        const revision = ++historyRevisionRef.current;
         const records = await loadMessageRecords(agent);
-        if (cancelled) return;
+        if (cancelled || revision !== historyRevisionRef.current) return;
         const current = [...historyRef.current];
         if (streamingRef.current) current.push(streamingRef.current);
         mergeLiveChildren(records, current);
@@ -198,6 +200,7 @@ function useAgentEvents(
   historyRef: React.MutableRefObject<MessageRecord[]>,
   streamingRef: React.MutableRefObject<MessageRecord | null>,
   commit: () => void,
+  historyRevisionRef: React.MutableRefObject<number>,
 ) {
   const unsubsRef = useRef<(() => void)[]>([]);
 
@@ -600,6 +603,7 @@ function useAgentEvents(
   }, []);
 
   const clearSession = useCallback(() => {
+    historyRevisionRef.current++;
     historyRef.current = [];
     streamingRef.current = null;
     commit();
@@ -632,6 +636,7 @@ function useAgentEvents(
 export function useSession(agent: AgentPort | undefined) {
   const historyRef = useRef<MessageRecord[]>([]);
   const streamingRef = useRef<MessageRecord | null>(null);
+  const historyRevisionRef = useRef(0);
   const loadingMoreRef = useRef(false);
   const [messages, setMessages] = useState<MessageRecord[]>([]);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -657,8 +662,8 @@ export function useSession(agent: AgentPort | undefined) {
     }
   }, []);
 
-  const { historyStatus, historyError, hasMore } = useHistoryLoader(agent, historyRef, streamingRef, commit);
-  const { subscribeSession, clearSession, loadMoreHistory: loadMoreHistoryBase } = useAgentEvents(historyRef, streamingRef, commit);
+  const { historyStatus, historyError, hasMore } = useHistoryLoader(agent, historyRef, streamingRef, commit, historyRevisionRef);
+  const { subscribeSession, clearSession, loadMoreHistory: loadMoreHistoryBase } = useAgentEvents(historyRef, streamingRef, commit, historyRevisionRef);
   const loadMoreHistory = useCallback(async (targetAgent: AgentPort, limit: number) => {
     if (loadingMoreRef.current) return;
     loadingMoreRef.current = true;

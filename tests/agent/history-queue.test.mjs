@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadAgentFixtures } from './helpers/load-agent.mjs';
 
-const { HistoryManager } = await loadAgentFixtures();
+const { Agent, HistoryManager } = await loadAgentFixtures();
 
 test('history writes wait for completion and a failed write does not block the next one', async () => {
   const calls = [];
@@ -24,4 +24,22 @@ test('history writes wait for completion and a failed write does not block the n
   await assert.rejects(second, /write failed/);
   await third;
   assert.deepEqual(calls, ['append-start', 'append-end', 'update', 'clear']);
+});
+
+test('clearing history notifies subscribers after in-memory turns are removed', async () => {
+  const agent = new Agent({ key: 'clear-test', request: async () => {} });
+  agent.turns = [{ id: 'old', iterations: [], status: 'success' }];
+  agent.historyManager.markReady({ hasMore: true });
+  const snapshots = [];
+  const unsubscribe = agent.historyManager.subscribe(snapshot => {
+    snapshots.push({ ids: agent.getTurns().map(turn => turn.id), hasMore: snapshot.hasMore });
+  });
+
+  await agent.clearHistory();
+
+  assert.deepEqual(snapshots, [
+    { ids: ['old'], hasMore: true },
+    { ids: [], hasMore: false },
+  ]);
+  unsubscribe();
 });

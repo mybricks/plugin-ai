@@ -144,9 +144,7 @@ export class HistoryManager {
     if (history && key) {
       await this.enqueueWrite(() => history.clear(key));
     }
-    this.status = "ready";
-    this.error = null;
-    this.emit();
+    // Agent 清理内存后调用 markReady，确保订阅者不会读到旧 turns。
   }
 
   async saveCompact(record: CompactRecord): Promise<void> {
