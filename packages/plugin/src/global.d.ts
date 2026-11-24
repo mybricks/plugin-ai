@@ -28,6 +28,11 @@ type AiServiceFocusParams = {
 /** aiService.request() 的参数 */
 type AiServiceRequestParams = {
   message: string;
+  /** diagram 使用可视化解读并返回 DiagramResult。 */
+  skill?: string;
+  model?: string | { providerId?: string; modelId: string };
+  providerId?: string;
+  modelId?: string;
   attachments?: {
     type: string;
     /** data URL 或普通 URL */

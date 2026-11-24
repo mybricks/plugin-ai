@@ -11,6 +11,8 @@ export type { ProviderConfig, RemoteProviderConfig, CustomProviderConfig, ModelC
 import { type PromptSections } from "../../kit/src";
 import { DEFAULT_PLUGIN_SKILLS } from "./skills/default";
 import { createUnderstandAnyContribute } from "./contributes/understand";
+import { requestDiagram } from "./contributes/understand/request-diagram";
+export type { DiagramResult } from "./contributes/understand/request-diagram";
 import { createUnderstandAnyCorePlugin } from "../../kit/src/plugins/understand-any";
 
 import { context } from "./context";
@@ -512,7 +514,11 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
               context.events.emit("focus", currentFocus);
             },
 
-            request(requestParams: AiServiceRequestParams) {
+            request(requestParams: AiServiceRequestParams | string, model?: any, options?: { skill?: string }) {
+              if (typeof requestParams === "string") {
+                requestParams = { message: requestParams, model, skill: options?.skill };
+              }
+              if (requestParams.skill === "diagram") return requestDiagram(requestParams);
               const focus = context.currentFocus;
               if (!focus) return;
 
