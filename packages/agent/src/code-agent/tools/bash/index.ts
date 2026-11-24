@@ -41,7 +41,7 @@ function getCommandDescription(command: string): string | undefined {
 }
 
 function createBashDescription(allowedCommands: readonly string[], sandboxDesc?: string): string {
-  const defaultSandboxDesc = "这是虚拟文件系统，仅支持以上文件操作类命令，不支持 node、python 等真实 shell 命令。虚拟文件系统没有空目录，不需要先执行 mkdir。";
+  const defaultSandboxDesc = "这是虚拟文件系统，仅支持以上文件操作类命令，清单外的任何命令（包括 但不限于 node、python、wc、grep、find、awk、cat、echo、pwd、cd、mkdir）都会直接报错，不要尝试。虚拟文件系统没有空目录，不需要先执行 mkdir。";
   return `支持的命令：
 ${allowedCommands.map((command) => {
     const description = getCommandDescription(command);
