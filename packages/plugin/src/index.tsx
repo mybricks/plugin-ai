@@ -518,7 +518,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
               if (typeof requestParams === "string") {
                 requestParams = { message: requestParams, model, skill: options?.skill };
               }
-              if (requestParams.skill === "diagram") return requestDiagram(requestParams);
+              if (requestParams.skill === "diagram") return requestDiagram(requestParams, resolvedConfigDirName);
               const focus = context.currentFocus;
               if (!focus) return;
 

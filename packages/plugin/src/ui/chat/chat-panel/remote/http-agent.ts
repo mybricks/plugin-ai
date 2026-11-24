@@ -752,6 +752,7 @@ export class HttpAgent {
   };
 
   readonly files = {
+    syncChanges: (): Promise<void> => this.workspaceBridge.syncFileChanges(),
     syncSnapshot: async (sandbox: import("../../../../../../agent/src").AgentSandbox): Promise<void> => {
       await this.workspaceBridge.syncSnapshot(sandbox);
     },
