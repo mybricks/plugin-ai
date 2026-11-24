@@ -67,10 +67,12 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
 
   const getDraft = (index: number): DraftAnswer => drafts[index] ?? { selected: [], otherText: "", optionInputs: {} };
   const updateDraft = (index: number, updater: (current: DraftAnswer) => DraftAnswer) => {
+    setSkippedSteps((current) => current.filter((step) => step !== index));
     setDrafts((current) => ({ ...current, [index]: updater(current[index] ?? { selected: [], otherText: "", optionInputs: {} }) }));
   };
 
-  const toggleOption = (question: AskQuestionsQuestion, questionIndex: number, label: string) => {
+  const toggleOption = (question: AskQuestionsQuestion, questionIndex: number, option: RenderOption) => {
+    const { label } = option;
     updateDraft(questionIndex, (current) => {
       if (!question.multiSelect) return { ...current, selected: [label], otherText: "" };
       const selected = current.selected.includes(label)
@@ -78,6 +80,10 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
         : [...current.selected, label];
       return { ...current, selected };
     });
+    // 最后一题保留确认操作；带输入框或预览的选项需要留在当前题供用户查看和填写。
+    if (!question.multiSelect && !option.input && !option.preview && questionIndex < questions.length - 1) {
+      setCurrentStep(questionIndex + 1);
+    }
   };
 
   const isStepAnswered = (index: number) => {
@@ -89,6 +95,11 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
   const isLastStep = currentStep === questions.length - 1;
 
   const submitAnswers = (skipped: number[]) => {
+    const unanswered = questions.findIndex((_, index) => !skipped.includes(index) && !isStepAnswered(index));
+    if (unanswered !== -1) {
+      setCurrentStep(unanswered);
+      return;
+    }
     const result: AskQuestionsAnswers = {};
     questions.forEach((question, index) => {
       if (skipped.includes(index)) {
@@ -164,11 +175,17 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
         <div className={css["ask-question-progress"]}>
           {questions.map((question, index) => (
             <React.Fragment key={question.question}>
-              <span
-                className={`${css["ask-question-progress-item"]} ${index === currentStep ? css["ask-question-progress-item-current"] : ""} ${index < currentStep ? css["ask-question-progress-item-completed"] : ""}`}
+              <button
+                type="button"
+                className={`${css["ask-question-progress-item"]} ${index === currentStep ? css["ask-question-progress-item-current"] : ""} ${isStepAnswered(index) && !skippedSteps.includes(index) ? css["ask-question-progress-item-completed"] : ""}`}
+                aria-current={index === currentStep ? "step" : undefined}
+                aria-label={`${question.header}：${skippedSteps.includes(index) ? lang.askQuestions.skipped() : isStepAnswered(index) ? lang.askQuestions.completed() : lang.askQuestions.unanswered()}`}
+                disabled={submitting}
+                onClick={() => setCurrentStep(index)}
               >
                 {question.header}
-              </span>
+                {skippedSteps.includes(index) ? ` (${lang.askQuestions.skipped()})` : isStepAnswered(index) ? " ✓" : ""}
+              </button>
               {index < questions.length - 1 && <span className={css["ask-question-progress-separator"]}>›</span>}
             </React.Fragment>
           ))}
@@ -208,7 +225,7 @@ export function AskQuestionsRenderer(tool: ToolRecord, { submit, turn }: ToolRen
                         className={`${css["ask-question-option"]} ${currentQuestion.multiSelect ? css["ask-question-option-multiple"] : ""} ${selected ? css["ask-question-option-selected"] : ""}`}
                         aria-pressed={selected}
                         disabled={submitting}
-                        onClick={() => toggleOption(currentQuestion, currentStep, option.label)}
+                        onClick={() => toggleOption(currentQuestion, currentStep, option)}
                       >
                         <span className={css["ask-question-option-label"]}>{option.label}</span>
                         {option.description && <span className={css["ask-question-option-description"]}>{option.description}</span>}
