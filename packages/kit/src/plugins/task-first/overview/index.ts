@@ -12,6 +12,8 @@ import {
 } from "../../../../../agent/src";
 import overviewWorkflow from "./task-overview-workflow.md";
 import overviewDispatch from "./task-overview-dispatch.md";
+import reviewSkill from "../code-review/SKILL.md";
+import rulesCore from "../code-review/references/rules-core.md";
 
 /** 异步维护总览的子 Agent 名称，供主 Agent 通过 call-sub-agent 调用。 */
 export const TASK_OVERVIEW_SUB_AGENT_NAME = "task-overview";
@@ -47,7 +49,7 @@ function createOverviewSubAgent(taskPath: string, overviewPath: string): SubAgen
   return {
     name: TASK_OVERVIEW_SUB_AGENT_NAME,
     title: "维护任务总览",
-    description: "根据任务文档和本次改动维护 overview.yaml 思维导图。任务或源码改动后异步调用，无需关注本Agent返回。",
+    description: "根据任务文档和实际源码改动维护 overview.yaml。任务或源码改动后异步调用，无需关注本Agent返回。",
     supportsAsync: true,
     // 与 summary / compact 一样使用轻量模型，不继承父 turn 选中的模型。
     aiRole: "flash",
@@ -75,9 +77,36 @@ export function withTaskOverview(
   return {
     ...plugin,
     agents: [...(plugin.agents ?? []), createOverviewSubAgent(taskPath, overviewPath)],
+    skills: [...(plugin.skills ?? []), {
+      name: "code-review",
+      displayName: "代码审查",
+      files: [
+        { path: "SKILL.md", content: [reviewSkill, rulesCore].join("\n\n---\n\n") },
+      ],
+    }],
+    promptTemplates: [...(plugin.promptTemplates ?? []), {
+      name: "code-review",
+      displayName: "代码审查",
+      files: [
+        {
+          path: "PROMPT.md",
+          content: "---\ndisplayName: 代码审查\ndescription: 审查代码改动并更新任务总览中的审查结果\n---\n 确认并使用 code-review skill 并进行一次审查 $@",
+        },
+        {
+          path: "PROMPT.en.md",
+          content: "---\ndisplayName: Code review\ndescription: Review code changes and update the review results in the task overview\n---\nFirst call the code-review skill using use_skill, then follow its instructions to review this scope: $@",
+        },
+      ],
+    }],
     promptSections: {
       ...plugin.promptSections,
-      workflowSection: [plugin.promptSections?.workflowSection, overviewDispatch]
+      workflowSection: [
+        plugin.promptSections?.workflowSection,
+        overviewDispatch,
+        overviewWorkflow.slice(overviewWorkflow.indexOf("## YAML 格式"), overviewWorkflow.indexOf("## 执行步骤"))
+          .replaceAll("<taskPath>", taskPath)
+          .replaceAll("<overviewPath>", overviewPath),
+      ]
         .filter(Boolean)
         .join("\n\n"),
     },
