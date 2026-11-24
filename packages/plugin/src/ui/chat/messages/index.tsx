@@ -466,7 +466,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, showUserMessag
                   agent={agent}
                   toolUI={toolUI}
                   awaitingNext={block.awaitingNext}
-                  isFinished={turnBlocks.length - 1 > index }
+                  isFinished={record.status !== "pending" || turnBlocks.length - 1 > index}
                 />
               ) : (
                 <MessageIteration
