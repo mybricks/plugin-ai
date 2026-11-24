@@ -206,7 +206,7 @@ export function connectToRemoteAI(
       createEditTool(agentSandbox),
       createMultiEditTool(agentSandbox),
       createDeleteTool(agentSandbox),
-      createGrepTool(agentSandbox),
+      createGrepTool(runtimeSandbox),
       createBashTool(runtimeSandbox.commands),
       ...(skillTool ? [skillTool] : []),
       ...browserToolsWithoutInit,
