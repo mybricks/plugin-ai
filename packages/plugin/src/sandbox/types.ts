@@ -87,7 +87,7 @@ export interface RegistSandBoxConfig {
    * 文件和命令操作，由宿主提供。
    */
   agentSandbox: AgentSandbox;
-  understandAnyUI?: (import("react").ComponentType<{ bindingTo?: string; disabled?: boolean; Sender?: import("react").ComponentType<any>; Modal?: import("react").ComponentType<any>; setTitle?: (title: string) => void; hintAtZones?: (selector: string) => void }> & { getInfo?: (params: { id?: string }) => Promise<{ title?: string; description?: string } | undefined> });
+  understandAnyUI?: (import("react").ComponentType<{ bindingTo?: string; disabled?: boolean; Sender?: import("react").ComponentType<any>; Modal?: import("react").ComponentType<any>; setTitle?: (title: string) => void; hintAtZones?: (hint: { selector: string | string[]; title: string }) => void; cancelZones?: () => void }> & { getInfo?: (params: { id?: string }) => Promise<{ title?: string; description?: string } | undefined> });
   /** AgentSandbox 场景的页面分析执行器（如 local-iframe HTTP 分析）。 */
   pageAnalysis?: AuditPowerImplementation;
   /** AgentSandbox 场景的任务管理 API。 */
