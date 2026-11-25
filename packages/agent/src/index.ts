@@ -17,6 +17,7 @@ export type { ChatChipDef, ChatChipFormatContext, ChatChipInstance, FileChipData
 export type { AgentEventMap, SubAgentCreatedInfo } from "./events";
 export type { Message, History, HistoryPersistMode, Tool, TurnErrorCode, TurnRecord, SubAgentTurnRecord, AgentEffect, TurnSender, ToolCallRecord, ToolResult, VersionFile, VersionRecord, BoundHistory, Attachment, IterationTrace, AttachmentContextItem, AttachmentContext, AttachmentContextEntry } from "./types";
 export { ToolValidationError, bindHistory } from "./types";
+export { collectPluginPromptTemplates, createMbsTemplates, expandMbsTemplateMessage } from "./code-agent/mbs";
 
 export { AGENT_INTERNAL_FILE_EXCLUDE, getAgentInternalFileExclude, CodeAgent, isFileExcluded, DEFAULT_CONFIG_DIR_NAME, getConfigDirPath, getPlanDir, getSkillsDir, getSkillDir, getAgentMdPath, getConfigDirNameFromAgent, getConfigDirPattern, normalizeConfigDirName, parseMbsTemplateRecord } from "./code-agent";
 export type { BashToolOptions, CodeAgentBuiltinToolName, CodeAgentOptions, CodeAgentPlugin, CodeAgentPluginFactory, CodeAgentPluginInput, CodeAgentPromptOptions, FileExclude, GetFilesOptions, Sandbox, SkillActivation, SkillFile, SkillMeta, PromptTemplateFile, MbsTemplateRecord, UnifiedFile } from "./code-agent";
@@ -62,7 +63,7 @@ export type {
 } from "./agent-sandbox";
 export { IDBSandbox } from "./code-agent/idb-sandbox";
 export type { IDBSandboxFileRecord, IDBSandboxOptions, IDBSandboxState } from "./code-agent/idb-sandbox";
-export { READ_TOOL_NAME, WRITE_TOOL_NAME, MULTI_WRITE_TOOL_NAME, EDIT_TOOL_NAME, MULTI_EDIT_TOOL_NAME, DELETE_TOOL_NAME, GREP_TOOL_NAME, GLOB_TOOL_NAME, USE_SKILL_TOOL_NAME, BASH_TOOL_NAME, HISTORY_READ_TOOL_NAME, INIT_PROJECT_TOOL_NAME, createHistoryReadTool, createInitProjectTool } from "./code-agent/tools";
+export { READ_TOOL_NAME, WRITE_TOOL_NAME, MULTI_WRITE_TOOL_NAME, EDIT_TOOL_NAME, MULTI_EDIT_TOOL_NAME, DELETE_TOOL_NAME, GREP_TOOL_NAME, GLOB_TOOL_NAME, USE_SKILL_TOOL_NAME, BASH_TOOL_NAME, HISTORY_READ_TOOL_NAME, INIT_PROJECT_TOOL_NAME, createReadTool, createWriteTool, createEditTool, createMultiEditTool, createDeleteTool, createBashTool, createHistoryReadTool, createInitProjectTool } from "./code-agent/tools";
 export type { HistoryReadFilter, HistoryReadMatch, HistoryReadOutputLevel, HistoryReadParams, HistoryReadRecord, HistoryReadRole, HistoryReadTurnRange } from "./code-agent/tools";
 export {
   SWITCH_MODE_TOOL_NAME,

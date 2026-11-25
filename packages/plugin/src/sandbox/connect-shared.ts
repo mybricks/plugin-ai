@@ -119,7 +119,14 @@ export type ConnectToAIResult =
       remoteFs?: never;
     });
 
+export type AgentInstance = import("../../../agent/src").Agent & Pick<
+  import("../../../agent/src").CodeAgent,
+  "initializePlugins" | "getPlugins" | "getMbsTemplates" | "getPlanFile"
+>;
+export type CreateAgent = (options: import("../../../agent/src").CodeAgentOptions, comId: string, context: { refreshVirtualFiles: () => Promise<void> }) => AgentInstance;
+
 export interface PluginParams {
+  createAgent?: CreateAgent;
   requestAsStream: RequestAsStreamFn;
   llmPluginKey?: string;
   /** 注入到根工程虚拟 FS 的文件（每个 turn 调用一次） */

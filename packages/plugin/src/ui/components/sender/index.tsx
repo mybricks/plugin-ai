@@ -264,7 +264,7 @@ interface SenderProps {
     chips?: ChatChipInstance[];
     mode?: AgentMode;
     [key: string]: any;
-  }) => void;
+  }) => void | Promise<void>;
   loading?: boolean;
   placeholder?: string;
   /** 命中默认 focus 内容串时展示的 placeholder，不传则复用普通 placeholder。 */
@@ -968,12 +968,22 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       }
       if (resolvedChips === null) return;
 
-      props.onSend({
-        message: serializedMessage,
-        attachments,
-        ...(chatMode ? { mode: chatMode } : {}),
-        ...(resolvedChips.length > 0 ? { chips: resolvedChips } : {}),
-      })
+      try {
+        processingSendRef.current = true;
+        setUploading(true);
+        await props.onSend({
+          message: serializedMessage,
+          attachments,
+          ...(chatMode ? { mode: chatMode } : {}),
+          ...(resolvedChips.length > 0 ? { chips: resolvedChips } : {}),
+        });
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : String(error));
+        return;
+      } finally {
+        processingSendRef.current = false;
+        setUploading(false);
+      }
 
       // 清空输入框（卸载 chip React 实例后清空 DOM）
       editor.querySelectorAll<HTMLSpanElement>(`[data-chip-id]`).forEach(unmountChipContainer);

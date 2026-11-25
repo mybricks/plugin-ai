@@ -16,6 +16,7 @@ import { createUnderstandAnyCorePlugin } from "../../kit/src/plugins/understand-
 import { context } from "./context";
 import { lang } from "./i18n";
 import { setupSandbox } from "./sandbox";
+import { isCustomAgent } from "./agent-selection";
 import { chipRegistry } from "./sandbox/setup";
 import type { AgentRuntimeConfig, RemoteAgentConfig, Designer, Hooks, RegistSandBoxConfig, PluginGetUserContextMessage, ProjectContext, SendToAgentParams } from "./sandbox";
 import { ChatPanelList } from "./ui/chat/chat-panel-list";
@@ -145,6 +146,7 @@ interface BackendFileModules extends FileModules {
 }
 
 export interface PluginAIParams {
+  createAgent?: import("./sandbox/connect-shared").CreateAgent;
   /** Optional connection to an explicitly configured Node MCP bridge. */
   mcp?: import("./mcp/browser-bridge").McpBridgeOptions;
   name?: string;
@@ -274,6 +276,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
   const {
     name,
     user,
+    createAgent,
     key: pluginKey,
     onRequest,
     onUpload,
@@ -334,7 +337,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
 
   if (name) context.name = name;
   (mentions ?? []).forEach((mention) => chipRegistry.register(mention.chip));
-  context.pluginParams = { name: context.name, user, onUpload: upload, onDownload: download, renderAttachmentSuffix, attachProcessors, mentions, renderHeaderExtra, history: history ?? new IDBHistory({ dbName: "@plugin-ai/plugin/messages" }) };
+  context.pluginParams = { createAgent, name: context.name, user, onUpload: upload, onDownload: download, renderAttachmentSuffix, attachProcessors, mentions, renderHeaderExtra, history: history ?? new IDBHistory({ dbName: "@plugin-ai/plugin/messages" }) };
 
   // ── 调试工具：导入历史记录 ─────────────────────────────────────────────────
 
@@ -393,6 +396,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
   // ── window._sandbox_：sandbox 与 Plugin 的统一交互 API ─────────────────────
 
   const agentRuntimeController = setupSandbox({
+    createAgent,
     mcp,
     requestAsStream,
     llmPluginKey: pluginKey,
@@ -564,8 +568,7 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
 
       aiView: {
         render(_api: AiViewApi) {
-          console.log("aiView.render", _api);
-          return <ChatPanelList user={user} copilot={{ name }} />;
+          return isCustomAgent(createAgent) ? null : <ChatPanelList user={user} copilot={{ name }} />;
         },
         display() {
           context.events.emit("aiViewDisplay", true);

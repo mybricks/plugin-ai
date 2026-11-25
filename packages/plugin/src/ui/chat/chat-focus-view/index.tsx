@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import classNames from "classnames";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
+import { isCustomAgent } from "../../../agent-selection";
 import { chipRegistry } from "../../../sandbox/setup";
 import type { ChatChipDef } from "../../../../../agent/src";
 import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
@@ -86,6 +87,9 @@ const ChatFocusView = ({
     const requestChips = [...(focusChip ? [focusChip] : []), ...(chips ?? [])];
     const meta = requestChips.length ? { chips: requestChips } : undefined;
 
+    if (isCustomAgent(context.pluginParams.createAgent)) {
+      return agent.requestAI(chipRegistry.formatRequestParams({ message: requestMessage, attachments, ...(meta ? { meta } : {}) }));
+    }
     ensureAIPanelOpen(comId).then(() => {
       context.aiQueue.send(
         agent,

@@ -1,4 +1,5 @@
 import React from "react";
+import { isCustomAgent } from "../agent-selection";
 import { createMcpAttach } from "../mcp/attach";
 import type { McpBridgeOptions } from "../mcp/browser-bridge";
 import {
@@ -236,6 +237,7 @@ declare global {
 // ─── setupSandbox 入参 ────────────────────────────────────────────────────────
 
 export interface SetupSandboxParams {
+  createAgent?: import("./connect-shared").CreateAgent;
   mcp?: McpBridgeOptions;
   requestAsStream: RequestAsStreamFn;
   /** 该 plugin 实例的模型路由命名空间；模型选择按 agentKey 在其内部隔离。 */
@@ -296,7 +298,7 @@ export interface SetupSandboxParams {
  * 挂载 window._sandbox_（connectToAI / helpers / config）。
  */
 export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController {
-  const { requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, mask, onDisabledRequest, history, remoteAgent, sender } = params;
+  const { createAgent, requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles, skills, plugins, promptSections, tools, availableLibraries, themes, componentRuntime, disallowedDebugEnvs, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, mask, onDisabledRequest, history, remoteAgent, sender } = params;
   const resolvedConfigDirName = configDirName ?? DEFAULT_CONFIG_DIR_NAME;
   // 空数组与某些应用产生的 App 空文件组合都视为无效快照，本地与远程 Agent 均不读取。
   const syncableInitialFiles = getSyncableInitialFiles(initialFiles);
@@ -307,7 +309,7 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
   const agentRuntimeRefs = new Map<string, AgentRuntimeRef>();
 
   const pluginParams: PluginParams = {
-    requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles: syncableInitialFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, mask, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs,
+    createAgent, requestAsStream, llmPluginKey, virtualFiles, configDirName, initialFiles: syncableInitialFiles, skills, plugins, promptSections, tools, codeRules, designRules, getUserContextMessage, projectContext, formatUserMessage, disabledModes, mask, disabledHandler, history, remoteAgent, sender, agentRuntimeRefs,
   };
 
   let attachMcp: ReturnType<typeof createMcpAttach> | undefined;
@@ -320,6 +322,7 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
         context.events.emit("understandAnyUI", comId);
       }
       if (!config.agentSandbox) throw new Error("connectToAI requires agentSandbox");
+      if (isCustomAgent(createAgent) && remoteAgent) throw new Error("createAgent and remoteAgent cannot be used together");
       if (remoteAgent) {
         result = connectToRemoteAI(comId, {
           agentSandbox: config.agentSandbox,
@@ -448,6 +451,7 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
 
   return {
     setAgentRuntime(config) {
+      if (isCustomAgent(createAgent)) return;
       const agentKey = context.getAgentKey();
       const runtimeRef = agentRuntimeRefs.get(agentKey) ?? { current: undefined };
       runtimeRef.current = config;
@@ -456,6 +460,7 @@ export function setupSandbox(params: SetupSandboxParams): AgentRuntimeController
       window._sandbox_.config.componentRuntime = config.componentRuntime ?? componentRuntime;
     },
     clearAgentRuntime() {
+      if (isCustomAgent(createAgent)) return;
       const agentKey = context.getAgentKey();
       const runtimeRef = agentRuntimeRefs.get(agentKey);
       if (!runtimeRef) return;

@@ -5,6 +5,7 @@ import { buildDevelopmentGuideContext, buildDirectoryInfoSection, buildProjectIn
 import type { RequestAsStreamFn } from "../../../request/src";
 import type { Hooks, SandboxChipsConfig, MentionProvider } from "./types";
 import { context } from "../context";
+import { isCustomAgent } from "../agent-selection";
 import { getPluginLocale } from "../i18n";
 import { createBuiltInSandboxPlugins } from "./plugins";
 import { createInitProjectTool } from "../../../agent/src/code-agent/tools";
@@ -85,7 +86,7 @@ export function connectToLocalSandbox(
   comId: string,
   { agentSandbox, designer, pageAnalysis, hooks, chips, mentions, tasksManager, domainAudit }: { agentSandbox: AgentSandbox; designer?: Designer; pageAnalysis?: AuditPowerImplementation; hooks?: Hooks; chips?: SandboxChipsConfig; mentions?: MentionProvider[]; tasksManager?: any; domainAudit?: DomainAuditImplementation },
   {
-    requestAsStream, llmPluginKey, virtualFiles, configDirName, skills, plugins, promptSections, tools,
+    createAgent, requestAsStream, llmPluginKey, virtualFiles, configDirName, skills, plugins, promptSections, tools,
     getUserContextMessage, projectContext, formatUserMessage, disabledModes, codeRules, designRules, initialFiles,
     disabledHandler, history, sender, agentRuntimeRefs, mask,
   }: PluginParams
@@ -220,7 +221,7 @@ export function connectToLocalSandbox(
 
   const hostTools = designer ? [createCheckStatusTool({ current: designer }), createInitProjectTool(codeAgentSandbox)] : [];
 
-  const agent = new CodeAgent({
+  const agentOptions: import("../../../agent/src").CodeAgentOptions = {
     key: agentKey,
     locale: getPluginLocale(),
     history: history ?? new IDBHistory({ dbName: "@plugin-ai/plugin/messages" }),
@@ -262,21 +263,24 @@ export function connectToLocalSandbox(
       const userFormattedParams = await formatUserMessage(sandboxFormattedParams);
       return { ...sandboxFormattedParams, message: userFormattedParams.message };
     },
-  });
+  };
+  const agent = (isCustomAgent(createAgent) ? createAgent(agentOptions, comId, { refreshVirtualFiles: refreshVirtualFilesSnapshot }) : new CodeAgent(agentOptions)) as CodeAgent;
 
   const workspaceReady = attachFiles(agent, { sandbox: agentSandbox, initialFiles });
   context.aiQueue.setRequestGuard(agent, requestGuard);
 
-  const baseTools = (agent as any)._base.tools as Tool[];
-  const builtinTools = baseTools.slice(0, baseTools.length - (activeTools?.length ?? 0));
-  runtimeRef.apply = (config) => {
-    const nextTools = getRuntimeTools(config) ?? [];
-    const nextSkills = getRuntimeSkills(config) ?? [];
-    (agent as any)._base.skills = nextSkills;
-    (agent as any)._base.tools = [...builtinTools, ...nextTools];
-    (agent as any)._rebuildDynamicTools();
-    agent.setPromptOptions(promptSectionsAdaptToPromptOption(getRuntimePromptSections(config)));
-  };
+  if (!isCustomAgent(createAgent)) {
+    const baseTools = (agent as any)._base.tools as Tool[];
+    const builtinTools = baseTools.slice(0, baseTools.length - (activeTools?.length ?? 0));
+    runtimeRef.apply = (config) => {
+      const nextTools = getRuntimeTools(config) ?? [];
+      const nextSkills = getRuntimeSkills(config) ?? [];
+      (agent as any)._base.skills = nextSkills;
+      (agent as any)._base.tools = [...builtinTools, ...nextTools];
+      (agent as any)._rebuildDynamicTools();
+      agent.setPromptOptions(promptSectionsAdaptToPromptOption(getRuntimePromptSections(config)));
+    };
+  }
 
   context.agentMap.set(agentKey, agent);
   context.sandboxMap.set(agentKey, codeAgentSandbox);

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { context } from "../context";
+import { isCustomAgent } from "../agent-selection";
 
 // ─── ChatPanelList 就绪状态（模块级闭包）────────────────────────────────────────
 
@@ -35,6 +36,7 @@ export function useAIPanelReady() {
  *   避免 appendInput 等事件在监听器注册前被丢弃
  */
 export function ensureAIPanelOpen(comId: string): Promise<void> {
+  if (isCustomAgent(context.pluginParams.createAgent)) return Promise.resolve();
   // 先触发面板显示，让 ChatPanelList 开始渲染
   ;(window as any)._showAIDialog_?.(comId);
 

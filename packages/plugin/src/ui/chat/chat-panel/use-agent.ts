@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, createElement } from "react";
 import { context } from "../../../context";
+import { isCustomAgent } from "../../../agent-selection";
 import { chipRegistry } from "../../../sandbox/setup";
 import type { QueueItem } from "../../../context/queue";
 import type { SenderProps } from "../../components/sender";
@@ -93,7 +94,7 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
   const [pluginRevision, setPluginRevision] = useState(0);
 
   const modelSelection = context.getModelSelection(agent?.key);
-  const hasModelSelection = !!(modelSelection && modelSelection.isValid());
+  const hasModelSelection = !isCustomAgent(context.pluginParams.createAgent) && !!(modelSelection && modelSelection.isValid());
   const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(
     () => modelSelection?.getSelected() ?? null
   );
@@ -194,12 +195,16 @@ function useAgentSession({ agent, disabled = false, onTurnStart, onTurnEnd, reso
   const historyFailed = historyStatus === "error";
   const historyLoading = historyStatus === "idle" || historyStatus === "loading";
   const isDisabled = !agent || !!disabled || historyLoading || historyFailed;
-  const canExecutePlan = Boolean(agent && !isDisabled && availableModes.includes(AgentModeEnum.Build));
+  const canExecutePlan = Boolean(agent && !isCustomAgent(context.pluginParams.createAgent) && !isDisabled && availableModes.includes(AgentModeEnum.Build));
 
   const send = useCallback<SenderProps["onSend"]>((sendMessage) => {
     const { message, attachments, chips, mode } = sendMessage;
     if (!agent) return;
     const meta = chips?.length ? { chips } : undefined;
+    if (isCustomAgent(context.pluginParams.createAgent)) {
+      if (context.aiQueue.blockIfDisabled(agent)) return;
+      return agent.requestAI(chipRegistry.formatRequestParams({ message, attachments, ...(mode ? { mode } : {}), ...(meta ? { meta } : {}) }));
+    }
     context.aiQueue.send(
       agent,
       async () => {

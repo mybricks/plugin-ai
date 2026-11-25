@@ -2,6 +2,7 @@ import React, { useRef, useState } from "react";
 import classNames from "classnames";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
+import { isCustomAgent } from "../../../agent-selection";
 import { chipRegistry } from "../../../sandbox/setup";
 import type { AgentMode, CodeAgent } from "../../../../../agent/src";
 import type { AttachProcessor } from "../../../content-limits";
@@ -86,11 +87,9 @@ const ChatStartView = ({
 
   const onSend = (params: Parameters<SenderProps["onSend"]>[0]) => {
     if (contextDisabled || loading || historyBlocked || !agent || !comId) return;
-    setEmpty(false);
+    if (!isCustomAgent(context.pluginParams.createAgent)) setEmpty(false);
 
-    ensureFocusComId(comId).then(() => {
-      chatAgent.send(params);
-    });
+    return ensureFocusComId(comId).then(() => chatAgent.send(params));
   };
 
   const onExecutePlan = (plan: ActivePlanFile) => {
