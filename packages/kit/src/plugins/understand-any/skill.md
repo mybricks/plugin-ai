@@ -70,7 +70,9 @@ flowchart TD
 
 ### 界面数据关系图
 
-需要了解数据如何影响界面时，使用思维导图。严格按“数据源 → 数据字段 → 界面”三层组织，不再向下展开；多个数据源可额外增加一个共同根节点，数据字段包括字段和变量，必要条件写在界面节点中。替换已有图时按此结构重组，保留区域绑定。
+需要了解数据如何影响界面时，使用思维导图。严格按“数据源 → 数据字段 → 界面”三层组织，不再向下展开；多个数据源可额外增加一个共同根节点，数据字段包括字段和变量，节点文案说明业务含义，字段名或变量名写在 `@field` 中；一个字段可以对应多个界面节点，必要条件写在界面节点中。替换已有图时按此结构重组，保留区域绑定。
+
+重点展示数据源到界面的绑定，尽可能列出受影响的具体 UI。字段和变量须与数据源有关，无需纳入仅用于界面控制的变量。
 
 ```mermaid
 mindmap
@@ -78,6 +80,7 @@ mindmap
     API[订单详情接口]
       TOTAL[订单金额]
         PRICE[订单金额文本]
+        SUMMARY_PRICE[订单汇总金额]
     LOCAL[订单状态数据]
       STATUS[订单状态]
         BADGE[状态标签内容]
@@ -87,6 +90,7 @@ mindmap
   %% @field TOTAL name="total"
   %% @field STATUS name="status"
   %% @ui PRICE file="src/OrderCard.tsx" loc="span:42"
+  %% @ui SUMMARY_PRICE file="src/OrderCard.tsx" loc="span:62"
   %% @ui BADGE file="src/OrderCard.tsx" loc="Tag:46-48"
   %% @ui CANCEL file="src/OrderCard.tsx" loc="Button:51-55"
 ```
