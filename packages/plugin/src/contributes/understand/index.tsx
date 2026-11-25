@@ -5,6 +5,7 @@ import type { SenderRef } from '../../ui/components/sender'
 import { Modal } from '../../ui/components/modal'
 import { createSenderFocus } from './focus'
 import { createUnderstandSender } from './sender'
+import { resolveDiagramPrompt } from './diagram-type'
 
 const AIDraw = (
   <svg viewBox="0 0 1024 1024" width="16" height="16">
@@ -26,11 +27,13 @@ function getUnderstandAnyUI() {
 function HostArea({
   bindingTo,
   prompt,
+  diagramType,
   setTitle,
   registerSender,
 }: {
   bindingTo?: string
   prompt?: string
+  diagramType?: string
   setTitle?: (title: string) => void
   registerSender: (id: string, target: SenderRef) => () => void
 }) {
@@ -48,8 +51,8 @@ function HostArea({
   const UI = getUnderstandAnyUI()
   const UnderstandSender = useMemo(
     () =>
-      createUnderstandSender(bindingTo, registerSender, prompt, UI?.getInfo),
-    [bindingTo, registerSender, prompt, UI],
+      createUnderstandSender(bindingTo, registerSender, resolveDiagramPrompt(prompt, diagramType), UI?.getInfo),
+    [bindingTo, registerSender, prompt, diagramType, UI],
   )
   return UI ? (
     <UI
@@ -75,11 +78,13 @@ export function createUnderstandAnyContribute() {
     render: (params?: {
       id?: string
       prompt?: string
+      diagramType?: string
       setTitle?: (title: string) => void
     }) => (
       <HostArea
         bindingTo={params?.id}
         prompt={params?.prompt}
+        diagramType={params?.diagramType}
         setTitle={params?.setTitle}
         registerSender={focus.register}
       />
