@@ -6,11 +6,6 @@ import { readGitBranchInfoFromSandbox } from "../branch-info";
 import { createTaskTransitionHook } from "./task-transition";
 import { withTaskOverview } from "./overview";
 
-export interface TaskFirstPluginOptions {
-  /** Maintain an overview.yaml alongside the task document. Disabled by default. */
-  overview?: boolean;
-}
-
 export function getTaskDocumentPath(
   branchInfo: GitBranchInfo | undefined,
   configDirName: string,
@@ -24,10 +19,10 @@ export function getTaskDocumentPath(
 /**
  * Git 状态只能在 sandbox 可用后读取，因此返回一次性 factory；解析后的插件是静态的。
  */
-export function createTaskFirstPlugin(options: TaskFirstPluginOptions = {}): CodeAgentPluginFactory {
+export function createTaskFirstPlugin(): CodeAgentPluginFactory {
   const factory: CodeAgentPluginFactory = async (context) => {
     const { plugin, taskPath } = await resolveTaskFirstPlugin(context);
-    return options.overview ? withTaskOverview(plugin, context.sandbox, taskPath) : plugin;
+    return withTaskOverview(plugin, context.sandbox, taskPath);
   };
   return Object.assign(factory, { pluginName: "task-first" });
 }

@@ -98,7 +98,7 @@ export function cliPdeAgentOptionBuilder<T extends CliPdeAgentOptionBuilderOptio
       cliPdePlugin,
       createCanvasInfoPlugin(),
       ...(projectRunnerImplementation ? [createDevEnvPrepPlugin({ projectRunnerImplementation })] : []),
-      createTaskFirstPlugin({ overview: true }),
+      createTaskFirstPlugin(),
       createImpactDocumentPlugin({ configDirName: resolvedConfigDirName }),
       ...(plugins ?? []),
     ],

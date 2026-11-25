@@ -228,7 +228,7 @@ export default function App() {
         break;
       case scenario === "task-overview":
         namespace = "showcase-task-overview";
-        sceneParams = { plugins: [createTaskFirstPlugin({ overview: true })] };
+        sceneParams = { plugins: [createTaskFirstPlugin()] };
         break;
       case scenario === "audit":
         namespace = "showcase-audit";

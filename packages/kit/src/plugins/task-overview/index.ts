@@ -3,7 +3,7 @@ import { createTaskFirstPlugin } from "../task-first";
 
 /** Task-first with an additional, branch-local module overview document. */
 export function createTaskOverviewPlugin(): CodeAgentPluginFactory {
-  const taskFirst = createTaskFirstPlugin({ overview: true });
+  const taskFirst = createTaskFirstPlugin();
   const factory: CodeAgentPluginFactory = async (context) => ({ ...await taskFirst(context), name: "task-overview" });
   return Object.assign(factory, { pluginName: "task-overview" });
 }
