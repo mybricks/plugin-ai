@@ -29,12 +29,14 @@ function HostArea({
   prompt,
   diagramType,
   setTitle,
+  hintAtZones,
   registerSender,
 }: {
   bindingTo?: string
   prompt?: string
   diagramType?: string
   setTitle?: (title: string) => void
+  hintAtZones?: (selector: string) => void
   registerSender: (id: string, target: SenderRef) => () => void
 }) {
   const [, refresh] = useState(0)
@@ -61,6 +63,7 @@ function HostArea({
       Sender={UnderstandSender}
       Modal={Modal}
       setTitle={setTitle}
+      hintAtZones={hintAtZones}
     />
   ) : null
 }
@@ -80,12 +83,14 @@ export function createUnderstandAnyContribute() {
       prompt?: string
       diagramType?: string
       setTitle?: (title: string) => void
+      hintAtZones?: (selector: string) => void
     }) => (
       <HostArea
         bindingTo={params?.id}
         prompt={params?.prompt}
         diagramType={params?.diagramType}
         setTitle={params?.setTitle}
+        hintAtZones={params?.hintAtZones}
         registerSender={focus.register}
       />
     ),
