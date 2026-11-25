@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { context } from "../../context";
-import { i18n } from "../../i18n";
-import type { SenderRef } from "../../ui/components/sender";
-import { Modal } from "../../ui/components/modal";
-import { createSenderFocus } from "./focus";
-import { createUnderstandSender } from "./sender";
+import React, { useEffect, useMemo, useState } from 'react'
+import { context } from '../../context'
+import { i18n } from '../../i18n'
+import type { SenderRef } from '../../ui/components/sender'
+import { Modal } from '../../ui/components/modal'
+import { createSenderFocus } from './focus'
+import { createUnderstandSender } from './sender'
 
 const AIDraw = (
   <svg viewBox="0 0 1024 1024" width="16" height="16">
@@ -13,36 +13,79 @@ const AIDraw = (
       fill="currentColor"
     />
   </svg>
-);
+)
 
 function getUnderstandAnyUI() {
-  const id = context.currentFocus?.comId ?? context.currentFocus?.pageId ?? context.getFallbackAgentComId();
-  return id ? context.understandAnyUI.get(context.getAgentKey(id)) : undefined;
+  const id =
+    context.currentFocus?.comId ??
+    context.currentFocus?.pageId ??
+    context.getFallbackAgentComId()
+  return id ? context.understandAnyUI.get(context.getAgentKey(id)) : undefined
 }
 
-function HostArea({ bindingTo, setTitle, registerSender }: { bindingTo?: string; setTitle?: (title: string) => void; registerSender: (id: string, target: SenderRef) => () => void }) {
-  const [, refresh] = useState(0);
+function HostArea({
+  bindingTo,
+  prompt,
+  setTitle,
+  registerSender,
+}: {
+  bindingTo?: string
+  prompt?: string
+  setTitle?: (title: string) => void
+  registerSender: (id: string, target: SenderRef) => () => void
+}) {
+  const [, refresh] = useState(0)
   useEffect(() => {
-    const update = () => refresh(value => value + 1);
-    const offs = [context.events.on("focus", update), context.events.on("agentComId", update), context.events.on("understandAnyUI", update), context.events.on("disabled", update)];
-    return () => offs.forEach(off => off());
-  }, []);
-  const UnderstandSender = useMemo(() => createUnderstandSender(bindingTo, registerSender), [bindingTo, registerSender]);
-  const UI = getUnderstandAnyUI();
-  return UI ? <UI bindingTo={bindingTo} disabled={context.disabled} Sender={UnderstandSender} Modal={Modal} setTitle={setTitle} /> : null;
+    const update = () => refresh((value) => value + 1)
+    const offs = [
+      context.events.on('focus', update),
+      context.events.on('agentComId', update),
+      context.events.on('understandAnyUI', update),
+      context.events.on('disabled', update),
+    ]
+    return () => offs.forEach((off) => off())
+  }, [])
+  const UI = getUnderstandAnyUI()
+  const UnderstandSender = useMemo(
+    () =>
+      createUnderstandSender(bindingTo, registerSender, prompt, UI?.getInfo),
+    [bindingTo, registerSender, prompt, UI],
+  )
+  return UI ? (
+    <UI
+      bindingTo={bindingTo}
+      disabled={context.disabled}
+      Sender={UnderstandSender}
+      Modal={Modal}
+      setTitle={setTitle}
+    />
+  ) : null
 }
 
 export function createUnderstandAnyContribute() {
-  const focus = createSenderFocus(async id => {
-    const getInfo = getUnderstandAnyUI()?.getInfo;
-    if (!getInfo) throw new Error("Visual interpretation information is unavailable");
-    return !!(await getInfo({ id }));
-  });
+  const focus = createSenderFocus(async (id) => {
+    const getInfo = getUnderstandAnyUI()?.getInfo
+    if (!getInfo)
+      throw new Error('Visual interpretation information is unavailable')
+    return !!(await getInfo({ id }))
+  })
   return {
-    title: i18n({ zh: "可视化解读", en: "Visual explain" }),
+    title: i18n({ zh: '可视化解读', en: 'Visual explain' }),
     icon: AIDraw,
-    render: (params?: { id?: string; setTitle?: (title: string) => void }) => <HostArea bindingTo={params?.id} setTitle={params?.setTitle} registerSender={focus.register} />,
+    render: (params?: {
+      id?: string
+      prompt?: string
+      setTitle?: (title: string) => void
+    }) => (
+      <HostArea
+        bindingTo={params?.id}
+        prompt={params?.prompt}
+        setTitle={params?.setTitle}
+        registerSender={focus.register}
+      />
+    ),
     loaded: focus.loaded,
-    getInfo: (params: { id?: string }) => getUnderstandAnyUI()?.getInfo?.(params),
-  };
+    getInfo: (params: { id?: string }) =>
+      getUnderstandAnyUI()?.getInfo?.(params),
+  }
 }
