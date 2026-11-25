@@ -2,7 +2,7 @@ import { type CodeAgentPlugin, type CodeAgentPluginInput, type Tool } from "../.
 import type { PromptSections } from "../../prompts";
 import identitySection from "./identity-section.md";
 import usingToolsSection from "./using-tools-section.md";
-import GIT_PUSH_PROMPT from "./git-push.md";
+import gitPushSkill from "./git-push/SKILL.md";
 import { createTaskFirstPlugin } from "../../plugins/task-first";
 import { createImpactDocumentPlugin } from "../../plugins/impact-document";
 import { createDevEnvPrepPlugin, type ProjectRunnerImplementation } from "../../plugins/dev-env-prep";
@@ -19,19 +19,20 @@ export const cliPdePromptSection = {
   },
 } satisfies PromptSections;
 
-/** CLI PDE 内置插件：提供代码推送的 Prompt Template。 */
+/** CLI PDE 内置插件：提供代码推送技能。 */
 export const cliPdePlugin = {
   name: "cli-pde-plugin",
-  promptTemplates: [
+  skills: [
     {
       name: "git-push",
+      displayName: "推送代码",
       files: [
         {
-          path: "PROMPT.md",
-          content: GIT_PUSH_PROMPT,
+          path: "SKILL.md",
+          content: gitPushSkill,
         },
         {
-          path: "PROMPT.en.md",
+          path: "SKILL.en.md",
           content: `---
 displayName: Push code
 description: Commit and push current changes to the remote branch
