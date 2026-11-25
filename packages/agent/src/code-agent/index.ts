@@ -14,6 +14,9 @@ import {
   createDeleteTool,
   createGrepTool,
   createBashTool,
+  createMoveFilesTool,
+  createCopyFilesTool,
+  createRenamePathsTool,
   createHistoryReadTool,
   createSkillTool,
   READ_TOOL_NAME,
@@ -23,6 +26,9 @@ import {
   DELETE_TOOL_NAME,
   GREP_TOOL_NAME,
   BASH_TOOL_NAME,
+  MOVE_FILES_TOOL_NAME,
+  COPY_FILES_TOOL_NAME,
+  RENAME_PATHS_TOOL_NAME,
   HISTORY_READ_TOOL_NAME,
   USE_SKILL_TOOL_NAME,
 } from "./tools";
@@ -239,6 +245,9 @@ export type CodeAgentBuiltinToolName =
   | typeof DELETE_TOOL_NAME
   | typeof GREP_TOOL_NAME
   | typeof BASH_TOOL_NAME
+  | typeof MOVE_FILES_TOOL_NAME
+  | typeof COPY_FILES_TOOL_NAME
+  | typeof RENAME_PATHS_TOOL_NAME
   | typeof HISTORY_READ_TOOL_NAME;
 
 const DEFAULT_BUILTIN_TOOLS: CodeAgentBuiltinToolName[] = [
@@ -248,7 +257,12 @@ const DEFAULT_BUILTIN_TOOLS: CodeAgentBuiltinToolName[] = [
   MULTI_EDIT_TOOL_NAME,
   DELETE_TOOL_NAME,
   GREP_TOOL_NAME,
-  BASH_TOOL_NAME,
+  MOVE_FILES_TOOL_NAME,
+  COPY_FILES_TOOL_NAME,
+  RENAME_PATHS_TOOL_NAME,
+  // bash 已由 move_files/copy_files/rename_paths 等结构化工具替代，
+  // 默认不再暴露给模型；实现保留，需要时通过 builtinTools 显式启用。
+  // BASH_TOOL_NAME,
 ];
 
 /**
@@ -752,6 +766,9 @@ export class CodeAgent extends Agent {
       [MULTI_EDIT_TOOL_NAME, createMultiEditTool(toolSandbox)],
       [DELETE_TOOL_NAME, createDeleteTool(toolSandbox)],
       [GREP_TOOL_NAME, createGrepTool(toolSandbox)],
+      [MOVE_FILES_TOOL_NAME, createMoveFilesTool(toolSandbox)],
+      [COPY_FILES_TOOL_NAME, createCopyFilesTool(toolSandbox)],
+      [RENAME_PATHS_TOOL_NAME, createRenamePathsTool(toolSandbox)],
       [BASH_TOOL_NAME, createBashTool(toolSandbox.commands, {
         ...bash,
         allowedCommands: bash?.allowedCommands ?? agentSandbox.commands.allowedCommands,

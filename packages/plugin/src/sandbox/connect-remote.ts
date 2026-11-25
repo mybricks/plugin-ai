@@ -13,7 +13,7 @@ import {
   type UnifiedFile,
 } from "../../../agent/src";
 import {
-  createBashTool,
+  // createBashTool,
   createDeleteTool,
   createEditTool,
   createGrepTool,
@@ -21,6 +21,9 @@ import {
   createMultiEditTool,
   createMultiWriteTool,
   createReadTool,
+  createMoveFilesTool,
+  createCopyFilesTool,
+  createRenamePathsTool,
   createSkillTool,
   createWriteTool,
   INIT_PROJECT_TOOL_NAME,
@@ -207,7 +210,11 @@ export function connectToRemoteAI(
       createMultiEditTool(agentSandbox),
       createDeleteTool(agentSandbox),
       createGrepTool(runtimeSandbox),
-      createBashTool(runtimeSandbox.commands),
+      createMoveFilesTool(runtimeSandbox),
+      createCopyFilesTool(runtimeSandbox),
+      createRenamePathsTool(runtimeSandbox),
+      // bash 已由结构化的 move/copy/rename 工具替代，默认不再暴露。
+      // createBashTool(runtimeSandbox.commands),
       ...(skillTool ? [skillTool] : []),
       ...browserToolsWithoutInit,
     ];

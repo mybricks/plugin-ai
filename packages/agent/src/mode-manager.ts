@@ -482,6 +482,15 @@ export function checkDeleteFilePermission(
   assertPlanModeCanMutatePaths(ctx, params.paths ?? [], "delete_file");
 }
 
+/** 批量文件操作工具（move_files/copy_files/rename_paths）的 plan 模式边界。glob/路径串按前缀规则检查。 */
+export function assertBatchToolPathsCanMutate(
+  ctx: ToolExecutionContext | undefined,
+  paths: string[],
+  action: string,
+): void {
+  assertPlanModeCanMutatePaths(ctx, paths, action);
+}
+
 /** 询问模式不执行 bash，避免宿主命令绕过只读边界。 */
 export function checkBashPermission(ctx?: ToolExecutionContext): void {
   if (getContextMode(ctx) !== AgentModeEnum.Ask) return;
