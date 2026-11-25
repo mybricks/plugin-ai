@@ -8,6 +8,7 @@
 .message-list {
   font-size: var(--chat-font-size, 12px);
   overflow: hidden auto;
+  overscroll-behavior-y: none;
   flex-grow: 1;
   display: flex;
   flex-direction: column;
@@ -267,7 +268,6 @@
     .user-message-body {
       max-height: var(--chat-user-message-max-height, 360px);
       overflow-y: auto;
-      overscroll-behavior: none;
       scrollbar-width: none; // Firefox
       &::-webkit-scrollbar {
         display: none; // Chrome / Safari
