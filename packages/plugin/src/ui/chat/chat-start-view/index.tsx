@@ -119,6 +119,7 @@ const ChatStartView = ({
         [css["empty"]]: !hasConversation,
         [css.disabled]: contextDisabled,
       })}
+      data-zone-ignore={1}
       aria-disabled={contextDisabled}
     >
       {!hasConversation && (

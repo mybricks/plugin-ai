@@ -37,7 +37,6 @@ function withShadowStyles<P extends object>(
     return (
       <div
         ref={containerRef}
-        data-zone-type="ai-request"
         style={{
           height: "100%",
           width: "100%",

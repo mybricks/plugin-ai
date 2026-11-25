@@ -1756,7 +1756,6 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
               overlayClassName={css.mentionPopup}
               trigger={(
                 <div
-                  data-zone-type="ai-request"
                   data-mybricks-tip={lang.sender.add()}
                   aria-label={lang.sender.add()}
                   className={classNames(css.attachmentButton, css.plusButton, { [css.open]: mentionMenuOpen })}
@@ -1781,11 +1780,10 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
             {!selectorRenderInTop && modelSelector && modelSelector.models.length > 0 && (
               <ModelSelector modelSelector={modelSelector} disabled={disabled || uploading || loading} />
             )}
-            <div data-zone-type="ai-request" className={classNames(css.sendButtonContainer, {
+            <div className={classNames(css.sendButtonContainer, {
               [css.disabled]: !loading && (disabled || !inputContent || uploading || hasLoadingChips || attachments.some((a) => a.uploading))
             })} onClick={onSendButtonClick}>
               <div
-                data-zone-type="ai-request"
                 className={classNames(css.sendButton, {
                   [css.loadingButton]: loading || uploading || hasLoadingChips
                 })}

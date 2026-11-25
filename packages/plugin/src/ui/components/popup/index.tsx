@@ -199,7 +199,7 @@ export const Popup = (props: PopupProps) => {
       {open && ReactDOM.createPortal(
         <div 
           ref={popupRef}
-          data-zone-type="ai-fixed"
+          data-zone-ignore={1}
           className={classNames(
             css.popup, 
             { 
