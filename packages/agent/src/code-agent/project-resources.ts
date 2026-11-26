@@ -17,22 +17,52 @@ function normalizePath(path: string): string {
   return path.replace(/\\/g, "/").replace(/^\/+/, "");
 }
 
+/** Rule discovery only: other file operations retain access to these directories. */
+const EXCLUDED_RESOURCE_DIRECTORIES = new Set([
+  ".git", ".hg", ".svn", "node_modules", "bower_components",
+  "dist", "build", "coverage", ".next", ".nuxt", ".output",
+  ".turbo", ".cache", ".pnpm-store", ".venv", "venv", "__pycache__",
+]);
+const MAX_RESOURCE_DEPTH = 10;
+const LIST_CONCURRENCY = 8;
+
 /**
  * Read-only project resource discovery.
  *
- * It only lists and reads resources; it never filters, writes, or deletes
- * project files. Future resource types (tools, skills, etc.) use this same
- * primitive with their own matcher and parser.
+ * Directory exclusions and depth apply only to this resource scan; they do not
+ * change the sandbox list, read, glob, or grep operations.
  */
 export async function scanProjectResources(
   sandbox: AgentSandbox,
   options: ProjectResourceScanOptions,
 ): Promise<AgentSandboxFile[]> {
   const paths = new Set((options.candidates ?? []).map(normalizePath));
-  const entries = await sandbox.files.list("", { recursive: true });
-  for (const entry of entries) {
-    const path = normalizePath(entry.path);
-    if (entry.type !== "directory" && options.matches(path)) paths.add(path);
+  // Depth counts path components: a file at the root has depth 1.
+  let directories = [""];
+  while (directories.length) {
+    const nextDirectories: string[] = [];
+    for (let i = 0; i < directories.length; i += LIST_CONCURRENCY) {
+      const batch = directories.slice(i, i + LIST_CONCURRENCY);
+      const results = await Promise.all(batch.map((dir) => sandbox.files.list(dir)));
+      for (let index = 0; index < results.length; index++) {
+        const parent = batch[index];
+        const parentDepth = parent ? parent.split("/").length : 0;
+        for (const entry of results[index]) {
+          const path = normalizePath(entry.path);
+          const segments = path.split("/");
+          // Only process direct children even if a host ignores list options.
+          if (segments.length !== parentDepth + 1 || (parent && !path.startsWith(`${parent}/`))) continue;
+          if (entry.type === "directory") {
+            if (segments.length < MAX_RESOURCE_DEPTH && !EXCLUDED_RESOURCE_DIRECTORIES.has(segments[segments.length - 1])) {
+              nextDirectories.push(path);
+            }
+          } else if (options.matches(path)) {
+            paths.add(path);
+          }
+        }
+      }
+    }
+    directories = nextDirectories;
   }
 
   const sortedPaths = Array.from(paths).sort(options.compare);

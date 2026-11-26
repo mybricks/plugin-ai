@@ -26,6 +26,8 @@ export function getDefaultSessionStageText(
   stage: AgentRuntimeStage | undefined,
 ): string {
   switch (stage?.key) {
+    case CODE_AGENT_SESSION_STAGE.PREPARING_CONTEXT:
+      return lang.chat.preparingContext();
     case CODE_AGENT_SESSION_STAGE.AWAITING_MODEL:
       return lang.chat.modelResponding();
     case HTTP_AGENT_SESSION_STAGE.PREPARING:

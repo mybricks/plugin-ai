@@ -58,6 +58,7 @@ export const lang = {
     historyLoadFailed: () => i18n({ zh: "历史记录加载失败，请刷新后重试", en: "History failed to load. Refresh and retry." }),
     modelResponding: () => i18n({ zh: "模型响应中...", en: "Model is responding..." }),
     preparing: () => i18n({ zh: "准备中...", en: "Preparing..." }),
+    preparingContext: () => i18n({ zh: "上下文准备中...", en: "Preparing context..." }),
     syncingFiles: () => i18n({ zh: "获取最新文件...", en: "Syncing files..." }),
     configuring: () => i18n({ zh: "获取配置...", en: "Loading config..." }),
     waitingForModel: () => i18n({ zh: "等待模型响应...", en: "Waiting for model..." }),

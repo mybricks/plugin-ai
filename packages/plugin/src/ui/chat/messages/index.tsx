@@ -265,6 +265,13 @@ const MessageList = React.forwardRef<MessageListRef, MessageListProps>(
             })}
           </>
         )}
+        {activeStageText && !activeTurnId ? (
+          <div className={css["iter-header"]} role="status">
+            <div className={css["iter-header-content"]}>
+              <TextShimmer className={css["iter-header-placeholder"]}>{activeStageText}</TextShimmer>
+            </div>
+          </div>
+        ) : null}
         {renderFooter ? (
           <div className={css["message-list-footer"]}>{renderFooter()}</div>
         ) : null}

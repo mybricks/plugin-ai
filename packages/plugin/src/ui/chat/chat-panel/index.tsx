@@ -457,7 +457,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
               messages={messages}
               agent={chatAgent.agent}
               toolUI={toolUI ?? chatAgent.agent?.getToolUI()}
-              activeStageText={loadingTip}
+              activeStageText={loading ? (loadingTurnId ? loadingTip : chatAgent.source === "local" ? lang.chat.preparingContext() : undefined) : undefined}
               activeTurnId={loadingTurnId}
               finalizing={finalizing}
               actionBar={actionBar}

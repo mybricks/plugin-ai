@@ -5,8 +5,9 @@ export interface AgentRuntimeStage {
   key: string;
 }
 
-/** CodeAgent 在首个 iteration 出现前只有一个模型响应阶段。 */
+/** CodeAgent 请求阶段。 */
 export const CODE_AGENT_SESSION_STAGE = {
+  PREPARING_CONTEXT: "code:preparing-context",
   AWAITING_MODEL: "code:awaiting-model",
 } as const;
 
@@ -66,15 +67,18 @@ function createLocalRuntime(agent: RuntimeAgent): AgentRuntime {
           notify({
             running: true,
             turnId,
-            stage: { key: CODE_AGENT_SESSION_STAGE.AWAITING_MODEL },
+            stage: { key: CODE_AGENT_SESSION_STAGE.PREPARING_CONTEXT },
           });
         }),
         agent.events.on("turn:resume", ({ turnId }) => {
           notify({
             running: true,
             turnId,
-            stage: { key: CODE_AGENT_SESSION_STAGE.AWAITING_MODEL },
+            stage: { key: CODE_AGENT_SESSION_STAGE.PREPARING_CONTEXT },
           });
+        }),
+        agent.events.on("llm:start", () => {
+          if (state.running) notify({ ...state, stage: { key: CODE_AGENT_SESSION_STAGE.AWAITING_MODEL } });
         }),
         agent.events.on("turn:complete", () => {
           notify({ running: false });
