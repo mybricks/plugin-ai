@@ -41,6 +41,8 @@ import {
   toFileChipData,
   MAX_IMAGE_SIZE_MB,
   MAX_IMAGE_SIZE_BYTES,
+  MAX_ATTACHMENT_SIZE_MB,
+  MAX_ATTACHMENT_SIZE_BYTES,
   SUPPORTED_FILE_ACCEPT,
   SUPPORTED_IMAGE_LABEL,
 } from "./upload";
@@ -306,6 +308,12 @@ interface SenderProps {
   variant?: 'compact' | 'loose' | 'bubble';
   /** 是否展示附件上传入口（+ 号），默认 true */
   showAttachments?: boolean;
+  /**
+   * 非图片文件的手动上传路由：
+   * - 'chip'（默认）：走 file chip 流程，文件内容内联进消息（本地 CodeAgent 等场景）
+   * - 'attachment'：走附件流程，随消息发送并由远程通道统一上传会话文件（WebSocketAgent）
+   */
+  nonImageRoute?: "chip" | "attachment";
   /** 自定义图片上传函数，返回 CDN URL；不传则使用 base64 */
   onUpload?: (file: File) => Promise<string>;
   onStop?: () => void;
@@ -431,6 +439,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
     modelSelector, className, chipTypes = [], matchDefaultFocusContent,
     selectorRenderInTop = false,
     showAttachments = true,
+    nonImageRoute = "chip",
     attachProcessors,
     agent,
     mentions: mentionProviders = [],
@@ -556,10 +565,16 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       .replace(/\r\n?/g, "\n");
     const nextAttachments = typeof params === "string"
       ? undefined
-      : (params as SendToAgentParams).attachments?.filter((attachment) => attachment.type === "image").map((attachment) => ({
-        type: "image" as const,
-        content: attachment.content,
-      }));
+      : (params as SendToAgentParams).attachments?.map((attachment) => (
+        attachment?.type === "file"
+          ? {
+            type: "file" as const,
+            content: attachment.content,
+            name: attachment.name ?? (attachment as any).filename ?? attachment.title,
+            title: attachment.title,
+          }
+          : { type: "image" as const, content: attachment.content }
+      ));
     // chip 实例表：从 meta.chips 构建，供解析占位符时使用
     const incomingChips: Map<string, ChatChipInstance> = new Map(
       ((params as any)?.meta?.chips as ChatChipInstance[] | undefined)?.map((c) => [c.id, c]) ?? []
@@ -1235,6 +1250,13 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       }
     }
 
+    // WebSocketAgent 场景（nonImageRoute='attachment'）：非图片文件也走 attachment 流程，
+    // 发送时由远程通道统一上传会话文件；'chip'（默认）维持内容内联的 file chip 流程。
+    if (nonImageRoute === "attachment" && nonImageFiles.length > 0) {
+      imageFiles.push(...nonImageFiles);
+      nonImageFiles.length = 0;
+    }
+
     // 图片走 attachment 流程
     if (imageFiles.length > 0) {
       await updateAttachmentsByFiles(imageFiles);
@@ -1367,7 +1389,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
         syncInputContent();
       }
     }
-  }, [attachProcessors, insertChip, notifyChipRemove]);
+  }, [attachProcessors, insertChip, notifyChipRemove, nonImageRoute]);
 
   // ─── 图片 attachment 处理 ─────────────────────────────────────────────────
 
@@ -1375,11 +1397,12 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
    * 统一的多图片附件处理入口。
    */
   const updateAttachmentsByFiles = async (rawFiles: File[]) => {
-    // Step 1：格式过滤
+    // Step 1：分类。非图片仅在 attachment 路由下有效
+    //（chip 路由下非图片由 processFiles 走 chip 流程，不会到达此处，防御性保留旧提示）
     const validFiles: File[] = [];
     const invalidFiles: File[] = [];
     for (const file of rawFiles) {
-      if (isSupportedImageFile(file)) {
+      if (isSupportedImageFile(file) || nonImageRoute === "attachment") {
         validFiles.push(file);
       } else {
         invalidFiles.push(file);
@@ -1396,10 +1419,10 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
 
     if (validFiles.length === 0) return;
 
-    // Step 2：数量上限截断
+    // Step 2：数量上限截断（图片 + 文件合计）
     const slots = 5 - attachments.length;
     if (slots <= 0) {
-      message.info(lang.sender.imageLimitReached());
+      message.info(lang.sender.attachmentLimitReached());
       return;
     }
     const toUpload = validFiles.slice(0, slots);
@@ -1407,32 +1430,40 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
       message.info(lang.sender.extraImagesSkipped(slots, validFiles.length - slots));
     }
 
-    // Step 3：逐个校验并上传
+    // Step 3：逐个校验并上传（图片/附件分开校验大小；尺寸校验仅图片）
     for (const file of toUpload) {
-      if (file.size > MAX_IMAGE_SIZE_BYTES) {
-        message.info(lang.sender.imageTooLarge(file.name, (file.size / 1024 / 1024).toFixed(2), MAX_IMAGE_SIZE_MB));
+      const isImage = isSupportedImageFile(file);
+      const maxBytes = isImage ? MAX_IMAGE_SIZE_BYTES : MAX_ATTACHMENT_SIZE_BYTES;
+      if (file.size > maxBytes) {
+        if (isImage) {
+          message.info(lang.sender.imageTooLarge(file.name, (file.size / 1024 / 1024).toFixed(2), MAX_IMAGE_SIZE_MB));
+        } else {
+          message.info(lang.sender.fileTooLarge(file.name, `${MAX_ATTACHMENT_SIZE_MB}MB`));
+        }
         continue;
       }
 
-      try {
-        const { width, height } = await getImageSize(file);
-        if (width > 8000 || height > 8000) {
-          message.info(lang.sender.imageTooLargeDimensions(file.name, width, height));
+      if (isSupportedImageFile(file)) {
+        try {
+          const { width, height } = await getImageSize(file);
+          if (width > 8000 || height > 8000) {
+            message.info(lang.sender.imageTooLargeDimensions(file.name, width, height));
+            continue;
+          }
+        } catch (event) {
+          console.error("[@mybricks/plugin-ai - 读取图片尺寸失败]", event);
+          message.error(lang.sender.imageDimensionsReadFailed(file.name));
           continue;
         }
-      } catch (event) {
-        console.error("[@mybricks/plugin-ai - 读取图片尺寸失败]", event);
-        message.error(lang.sender.imageDimensionsReadFailed(file.name));
-        continue;
       }
 
       await uploadSingleFile(file);
     }
   };
 
-  /** 上传单张已通过校验的文件，内部抽取避免重复逻辑 */
+  /** 上传单个已通过校验的文件（图片或文件），内部抽取避免重复逻辑 */
   const uploadSingleFile = async (file: File) => {
-    if (onUpload) {
+    if (onUpload && isSupportedImageFile(file)) {
       // 先插入占位，上传完成后替换为真实 URL
       const localUrl = URL.createObjectURL(file);
       const placeholder: AttachmentItem = { type: "image", content: localUrl, uploading: true };
@@ -1468,11 +1499,14 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           setUploading(false);
         });
     } else {
-      // 无 onUpload，走 base64
+      // 无 onUpload 或非图片文件：base64 dataURI 承载（远程通道发送时统一上传会话文件）
       readFileToBase64(file)
         .then((base64) => {
           setAttachments((attachments) => {
-            return [...attachments, { type: "image", content: base64 }]
+            const item: AttachmentItem = isSupportedImageFile(file)
+              ? { type: "image", content: base64 }
+              : { type: "file", content: base64, name: file.name, title: file.name };
+            return [...attachments, item];
           })
           if (!inputContent && attachmentsPrompt) {
             setInputContent(attachmentsPrompt);

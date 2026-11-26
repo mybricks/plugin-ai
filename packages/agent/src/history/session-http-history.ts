@@ -28,6 +28,19 @@ function messageTimeToMs(value: string | undefined): number {
   return Number.isFinite(t) ? t : Date.now();
 }
 
+/**
+ * 历史附件类型推断：messages 接口只回传文件名数组（无 mime），
+ * 按扩展名区分「图片缩略图」与「文件名 chip」。
+ */
+const HISTORY_IMAGE_EXTENSIONS = new Set(["png", "jfif", "pjpeg", "jpeg", "pjp", "jpg", "webp", "gif"]);
+
+function isImageAttachmentPath(path: string): boolean {
+  const name = path.split("/").pop() ?? "";
+  const dot = name.lastIndexOf(".");
+  if (dot < 0) return false;
+  return HISTORY_IMAGE_EXTENSIONS.has(name.slice(dot + 1).toLowerCase());
+}
+
 /** 服务端的 arguments 可能是 JSON 字符串（也可能已是对象），统一解析成对象供工具卡片使用。 */
 function parseToolArguments(value: unknown): any {
   if (value === null || value === undefined) return {};
@@ -178,14 +191,27 @@ export class SessionHTTPHistory implements History {
           // 原始组装文本保留在 userFormattedText,供 retry 重发模型消息时使用
           ...(restored.userText !== message.text ? { userFormattedText: message.text } : {}),
           ...(restored.chips ? { meta: { chips: restored.chips } } : {}),
-          // 先转成 uploading 占位，由 hydrateAttachments 异步下载后原地替换为 blob URL。
-          userAttachments: (message.attachments ?? []).map((path) => ({
-            type: "image",
-            content: "",
-            uploading: true,
-            filename: path.split("/").pop(),
-            url: path, // 原始相对路径保留在 url，供下载与溯源
-          })),
+          // messages 接口只回传文件名数组，按扩展名区分子类型：
+          // 图片先转 uploading 占位，由 hydrateAttachments 异步下载后原地替换为 blob URL；
+          // 非图片直接渲染文件名 chip（uploading=false 跳过下载），url 保留供溯源。
+          userAttachments: (message.attachments ?? []).map((path) => {
+            const filename = path.split("/").pop();
+            if (isImageAttachmentPath(path)) {
+              return {
+                type: "image",
+                content: "",
+                uploading: true,
+                filename,
+                url: path, // 原始相对路径保留在 url，供下载与溯源
+              };
+            }
+            return {
+              type: "file",
+              filename,
+              title: filename,
+              url: path, // 原始相对路径保留在 url，供溯源
+            };
+          }),
           iterations: [{
             content: "",
             toolCalls: [],

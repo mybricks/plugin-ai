@@ -1,13 +1,17 @@
 import React, { useRef, useState } from "react";
-import { Close } from "../icons";
+import { Close, FileIcon } from "../icons";
 import css from "./index.less";
 import classNames from "classnames";
 import { ImagePreviewGroup } from "../image-preview";
 import { lang } from "../../../i18n";
 
 interface Attachment {
-  type: "image";
-  content: string;
+  type: "image" | "file";
+  /** 图片为 dataURI/URL；file 类型可缺省（文件 chip 仅展示文件名） */
+  content?: string;
+  /** file 类型的文件名（展示用），兼容 filename/title 兜底 */
+  name?: string;
+  title?: string;
   /** 上传中状态，true 时显示灰色占位 */
   uploading?: boolean;
 }
@@ -17,14 +21,20 @@ interface AttachmentsProps {
   className?: string;
   onDelete?: (index: number) => void;
 }
-/** 附件图片 */
+
+const isFileAttachment = (attachment: Attachment) => attachment.type === "file";
+
+const getAttachmentFileName = (attachment: Attachment) =>
+  attachment.name ?? (attachment as { filename?: string }).filename ?? attachment.title ?? "";
+
+/** 附件列表：image 渲染缩略图（可预览），file 渲染文件名 chip（不可点击查看） */
 const AttachmentsList = (props: AttachmentsProps) => {
   const { attachments, onDelete, className } = props;
   const [preiviewVisible, setPreiviewVisible] = useState(false);
   const [preiviewCurrent, setPreiviewCurrent] = useState(0);
 
-  // 预览时只使用已上传完成的附件
-  const previewableAttachments = attachments.filter((a) => !a.uploading);
+  // 预览时只使用已上传完成的图片附件
+  const previewableAttachments = attachments.filter((a) => !isFileAttachment(a) && !a.uploading);
 
   return (
     <div className={classNames(css.attachments, className)}>
@@ -45,7 +55,7 @@ const AttachmentsList = (props: AttachmentsProps) => {
         )
       })}
       <ImagePreviewGroup
-        images={previewableAttachments.map((attachment) => attachment.content)}
+        images={previewableAttachments.map((attachment) => attachment.content as string)}
         visible={preiviewVisible}
         current={preiviewCurrent}
         onVisibleChange={setPreiviewVisible}
@@ -67,11 +77,17 @@ const AttachmentItem = (props: { attachment: Attachment, onDelete?: () => void; 
       <div
         className={classNames(css.imageThumbnail, {
           [css.uploadingThumbnail]: attachment.uploading,
+          [css.fileThumbnail]: isFileAttachment(attachment),
         })}
       >
         {attachment.uploading ? (
           <div className={css.uploadingPlaceholder}>
             <span className={css.uploadingText}>{lang.sender.uploading()}</span>
+          </div>
+        ) : isFileAttachment(attachment) ? (
+          <div className={css.fileChip} title={getAttachmentFileName(attachment)}>
+            <span className={css.fileChipIcon}><FileIcon /></span>
+            <span className={css.fileChipName}>{getAttachmentFileName(attachment)}</span>
           </div>
         ) : (
           <img ref={imgRef} src={attachment.content} onClick={() => onPreview?.()} />

@@ -3,10 +3,17 @@
 // 此文件集中管理 plugin/ui 层的所有内容大小/长度限制常量与类型。
 // Agent 内部（tool result 等）的限制请见 packages/agent/src/content-limits.ts。
 
+// ─── 附件上传限制 ─────────────────────────────────────────────────────────────
+/** 非图片附件上传的最大文件大小（MB） */
+export const MAX_ATTACHMENT_SIZE_MB = 5;
+
+/** 非图片附件上传的最大文件大小（bytes） */
+export const MAX_ATTACHMENT_SIZE_BYTES = MAX_ATTACHMENT_SIZE_MB * 1024 * 1024;
+
 // ─── 图片上传限制 ─────────────────────────────────────────────────────────────
 
 /** 图片附件上传的最大文件大小（MB） */
-export const MAX_IMAGE_SIZE_MB = 3.5;
+export const MAX_IMAGE_SIZE_MB = 10;
 
 /** 图片附件上传的最大文件大小（bytes） */
 export const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;

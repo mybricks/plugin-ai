@@ -12,6 +12,7 @@ import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
 import { usePluginDisabled } from "../../../utils/use-plugin-disabled";
 import { lang } from "../../../i18n";
 import { isHttpAgent } from "../chat-panel/remote/http-agent";
+import { isWebSocketAgent } from "../chat-panel/websocket-agent";
 import { useAgent, type ChatAgent } from "../chat-panel/use-agent";
 import type { SessionStageTextResolver } from "../chat-panel/session-status";
 import css from "./index.less";
@@ -149,6 +150,7 @@ const ChatStartView = ({
           modelSelector={chatAgent.modelSelector}
           abovePanels={abovePanels}
           attachProcessors={attachProcessors}
+          nonImageRoute={isWebSocketAgent(chatAgent.agent) ? "attachment" : "chip"}
           agent={localAgent}
           mentions={mentions}
         />

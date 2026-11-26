@@ -379,6 +379,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       mentions={mentions}
       matchDefaultFocusContent={matchDefaultFocusContent}
       attachProcessors={attachProcessors}
+      nonImageRoute={isWebSocketAgent(chatAgent.agent) ? "attachment" : "chip"}
       agent={chatAgent.source === "local" ? agent as any : undefined}
       mcpConnectors={mcpConnectors}
     />
@@ -493,6 +494,7 @@ export { useAgent } from "./use-agent";
 export { useSessionState } from "./use-session-state";
 export type { SessionState, UseSessionStateOptions } from "./use-session-state";
 import { isHttpAgent } from "./remote/http-agent";
+import { isWebSocketAgent } from "./websocket-agent";
 export { HttpAgent, isHttpAgent } from "./remote/http-agent";
 export { WebSocketAgent, isWebSocketAgent } from "./websocket-agent";
 export type {

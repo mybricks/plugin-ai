@@ -641,7 +641,7 @@ export class WebSocketAgent {
   private async uploadAttachments(attachments: any[], signal: AbortSignal): Promise<Map<string, any> | null> {
     const sessionId = this.conversationSessionId ?? this.sessionId;
     if (!sessionId || !attachments.length) return null;
-    // 只处理图片类附件；agentCode 是上传接口的必填项，缺失则跳过上传。
+    // 上传所有附件（图片与任意类型文件）；agentCode 是上传接口的必填项，缺失则跳过上传。
     const agentCode = this.options.agentCode;
     if (!agentCode) {
       console.warn("[WebSocketAgent] skip attachment upload: agentCode is required by the files API");
@@ -649,10 +649,9 @@ export class WebSocketAgent {
     }
 
     const fileResults = new Map<string, any>();
+    let renamed = false;
     for (let i = 0; i < attachments.length; i += 1) {
       const item = attachments[i];
-      const isImage = item?.type === "image" || item?.mime?.startsWith?.("image/");
-      if (!isImage) continue;
       try {
         const { blob, filename } = await this.attachmentToBlob(item, i, signal);
         const form = new FormData();
@@ -675,6 +674,15 @@ export class WebSocketAgent {
         const name = result?.file?.name
         if (name) {
           fileResults.set(name, result.file);
+          // 服务端同名去重会返回新文件名：attachments 与 turn.userAttachments 是同一批
+          // 对象引用，原地同步展示名后触发快照同步，UI 的文件 chip 按服务端命名回显，
+          // 与刷新后（messages 接口只回传服务端文件名）保持一致。
+          if (name !== filename) {
+            item.name = name;
+            item.filename = name;
+            item.title = name;
+            renamed = true;
+          }
         }
         if (result?.agentVisible === false) {
           console.warn("[WebSocketAgent] uploaded file not visible to agent:", result?.warnings);
@@ -684,6 +692,7 @@ export class WebSocketAgent {
         console.warn("[WebSocketAgent] attachment upload error, skipped:", error);
       }
     }
+    if (renamed) this.historyManager.markReady();
     return fileResults;
   }
 

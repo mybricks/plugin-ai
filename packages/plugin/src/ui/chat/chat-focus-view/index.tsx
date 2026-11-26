@@ -3,6 +3,7 @@ import classNames from "classnames";
 import { Sender, SenderRef, SenderProps } from "../../components/sender";
 import { context } from "../../../context";
 import { chipRegistry } from "../../../sandbox/setup";
+import { isWebSocketAgent } from "../chat-panel/websocket-agent";
 import type { ChatChipDef } from "../../../../../agent/src";
 import { ensureAIPanelOpen } from "../../../utils/ensure-ai-panel-open";
 import { createDomChip, DOM_CHIP_TYPE, formatDomChipMessage, matchDefaultDomFocusContent } from "../../../utils/dom-info";
@@ -154,6 +155,7 @@ const ChatFocusView = ({
       renderActionPrefix={renderActionPrefix}
       chipTypes={chipRegistry.getAll()}
       mentions={context.pluginParams.mentions}
+      nonImageRoute={isWebSocketAgent(agent) ? "attachment" : "chip"}
       disabled={contextDisabled}
       className={classNames(css["focus-view"], { [css.disabled]: contextDisabled })}
     />

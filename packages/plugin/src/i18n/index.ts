@@ -109,7 +109,7 @@ export const lang = {
     stop: () => i18n({ zh: "停止", en: "Stop" }),
     uploadUnsupportedImage: (formats: string) => i18n({ zh: `当前仅支持上传${formats}格式的图片`, en: `Only ${formats} images supported` }),
     skippedUnsupportedFiles: (count: number, formats: string) => i18n({ zh: `${count} 个文件格式不支持（仅支持${formats}）已跳过`, en: `${count} unsupported file${count === 1 ? "" : "s"} skipped (${formats} only)` }),
-    imageLimitReached: () => i18n({ zh: "当前最多只能上传五张图片", en: "Up to five images" }),
+    attachmentLimitReached: () => i18n({ zh: "当前最多只能上传五个附件", en: "Up to five attachments" }),
     extraImagesSkipped: (uploaded: number, skipped: number) => i18n({ zh: `已上传 ${uploaded} 张，超出上限的 ${skipped} 张已忽略`, en: `${uploaded} uploaded; ${skipped} skipped` }),
     imageTooLarge: (name: string, size: string, maxSize: number) => i18n({ zh: `文件「${name}」大小 ${size}MB，超过了${maxSize}MB，已跳过`, en: `“${name}” (${size} MB) exceeds ${maxSize} MB` }),
     imageTooLargeDimensions: (name: string, width: number, height: number) => i18n({ zh: `文件「${name}」尺寸 ${width}x${height}px，宽高任一不得大于8000px，已跳过`, en: `“${name}” (${width}×${height}px) exceeds 8000px` }),

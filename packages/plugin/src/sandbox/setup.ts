@@ -70,7 +70,7 @@ function withMentionFocus(params: SendToAgentParams): SendToAgentParams {
 
 export interface SendToAgentParams {
   message: string;
-  attachments?: { type: string; content: string; title?: string; size?: number }[];
+  attachments?: { type: string; content?: string; url?: string; name?: string; title?: string; size?: number }[];
   extra?: Record<string, any>;
   mode?: AgentMode;
   /** 指定本次请求使用的模型角色，会透传到请求层用于智能路由。 */

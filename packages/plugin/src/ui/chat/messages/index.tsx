@@ -410,7 +410,7 @@ const MessageBubble = React.memo(function MessageBubble({ record, showUserMessag
           {record.userAttachments.length > 0 && (
             <AttachmentsList
               className={css["attachments-list"]}
-              attachments={record.userAttachments.filter((a) => a.type === "image") as any}
+              attachments={record.userAttachments as any}
             />
           )}
           {record.userText && (
