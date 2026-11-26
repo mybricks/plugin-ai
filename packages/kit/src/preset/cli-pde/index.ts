@@ -5,7 +5,8 @@ import usingToolsSection from "./using-tools-section.md";
 import gitPushSkill from "./git-push/SKILL.md";
 import { createTaskFirstPlugin } from "../../plugins/task-first";
 import { createImpactDocumentPlugin } from "../../plugins/impact-document";
-import { createDevEnvPrepPlugin, type ProjectRunnerImplementation } from "../../plugins/dev-env-prep";
+import type { ProjectRunnerImplementation } from "../../plugins/dev-env-prep";
+import { createEnvGuidePlugin } from "../../plugins/env-guide";
 import { createCanvasInfoPlugin } from "./canvas-info";
 import devEnvPrep from "./dev-env-prep.md";
 
@@ -56,7 +57,7 @@ interface CliPdeAgentOptionBuilderOptions {
   plugins?: CodeAgentPluginInput[];
   /** 追加到 CLI PDE 的工具；ask_questions 始终由 preset 内置。 */
   tools?: Tool[];
-  /** 「开发环境准备」SubAgent 的 project-runner 实现；不传时不注册 dev-env-prep 插件。 */
+  /** 「开发环境指南」的 project-runner 实现；不传时不注册 env-guide 插件。 */
   projectRunnerImplementation?: ProjectRunnerImplementation;
 }
 
@@ -90,14 +91,14 @@ export function cliPdeAgentOptionBuilder<T extends CliPdeAgentOptionBuilderOptio
         ...cliPdePromptSection.agent,
         identitySection: cliPdePromptSection.agent.identitySection.replace(
           "<dev-env-prep>",
-          () => projectRunnerImplementation ? devEnvPrep : "",
+          () => projectRunnerImplementation ? devEnvPrep.replaceAll("dev-env-prep", "env-guide") : "",
         ),
       },
     },
     plugins: [
       cliPdePlugin,
       createCanvasInfoPlugin(),
-      ...(projectRunnerImplementation ? [createDevEnvPrepPlugin({ projectRunnerImplementation })] : []),
+      ...(projectRunnerImplementation ? [createEnvGuidePlugin({ projectRunnerImplementation })] : []),
       createTaskFirstPlugin(),
       createImpactDocumentPlugin({ configDirName: resolvedConfigDirName }),
       ...(plugins ?? []),
