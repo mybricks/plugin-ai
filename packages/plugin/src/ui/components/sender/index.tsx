@@ -570,8 +570,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           ? {
             type: "file" as const,
             content: attachment.content,
-            name: attachment.name ?? (attachment as any).filename ?? attachment.title,
-            title: attachment.title,
+            title: attachment.title ?? (attachment as any).filename,
           }
           : { type: "image" as const, content: attachment.content }
       ));
@@ -1505,7 +1504,7 @@ const Sender = forwardRef<SenderRef, SenderProps>((props, ref) => {
           setAttachments((attachments) => {
             const item: AttachmentItem = isSupportedImageFile(file)
               ? { type: "image", content: base64 }
-              : { type: "file", content: base64, name: file.name, title: file.name };
+              : { type: "file", content: base64, title: file.name };
             return [...attachments, item];
           })
           if (!inputContent && attachmentsPrompt) {

@@ -9,8 +9,7 @@ interface Attachment {
   type: "image" | "file";
   /** 图片为 dataURI/URL；file 类型可缺省（文件 chip 仅展示文件名） */
   content?: string;
-  /** file 类型的文件名（展示用），兼容 filename/title 兜底 */
-  name?: string;
+  /** file 类型的文件名（展示用），兼容 filename 兜底 */
   title?: string;
   /** 上传中状态，true 时显示灰色占位 */
   uploading?: boolean;
@@ -25,7 +24,7 @@ interface AttachmentsProps {
 const isFileAttachment = (attachment: Attachment) => attachment.type === "file";
 
 const getAttachmentFileName = (attachment: Attachment) =>
-  attachment.name ?? (attachment as { filename?: string }).filename ?? attachment.title ?? "";
+  (attachment as { filename?: string }).filename ?? attachment.title ?? "";
 
 /** 附件列表：image 渲染缩略图（可预览），file 渲染文件名 chip（不可点击查看） */
 const AttachmentsList = (props: AttachmentsProps) => {

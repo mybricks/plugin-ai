@@ -678,7 +678,6 @@ export class WebSocketAgent {
           // 对象引用，原地同步展示名后触发快照同步，UI 的文件 chip 按服务端命名回显，
           // 与刷新后（messages 接口只回传服务端文件名）保持一致。
           if (name !== filename) {
-            item.name = name;
             item.filename = name;
             item.title = name;
             renamed = true;
@@ -705,7 +704,7 @@ export class WebSocketAgent {
     if (typeof item?.content === "string" && item.content.startsWith("data:")) {
       const blob = dataUriToBlob(item.content);
       const ext = blob.type.split("/")[1] || "png";
-      return { blob, filename: item.name ?? `attachment-${index}.${ext}` };
+      return { blob, filename: item.title ?? `attachment-${index}.${ext}` };
     }
     if (typeof item?.url === "string" && item.url) {
       // A 方案：客户端代下远程资源，再作为文件上传。
@@ -714,7 +713,7 @@ export class WebSocketAgent {
       const blob = await res.blob();
       const urlName = item.url.split("/").pop()?.split("?")[0];
       const ext = blob.type.split("/")[1] || "png";
-      return { blob, filename: item.name ?? urlName ?? `attachment-${index}.${ext}` };
+      return { blob, filename: item.title ?? urlName ?? `attachment-${index}.${ext}` };
     }
     throw new Error("attachment has neither data-uri content nor url");
   }
