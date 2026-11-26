@@ -10,6 +10,8 @@ test('maps the host type to the data and UI view', () => {
   const prompt = resolveDiagramPrompt('根据页面（router=/orders），创建相应图表', 'fields-binding-services')
   assert.match(prompt, /router=\/orders/)
   assert.match(prompt, /界面数据关系图/)
+  assert.match(prompt, /影响 UI 的数据字段及其来源/)
+  assert.doesNotMatch(prompt, /层级展示/)
 })
 
 test('leaves other types and missing prompts unchanged', () => {

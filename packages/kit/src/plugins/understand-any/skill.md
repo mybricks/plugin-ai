@@ -70,33 +70,30 @@ flowchart TD
 
 ### 界面数据关系图
 
-需要了解数据如何影响界面时，使用思维导图。严格按“数据源 → 数据字段 → 界面”三层组织，不再向下展开；
-多个数据源并列作为顶层节点，无需共同根节点；数据字段包括字段和变量，节点文案说明业务含义，注释以及 bind 字段主要告知技术向的方法名、字段名、接口名等；
-一个字段可以对应多个界面节点，必要条件写在界面节点中。替换已有图时按此结构重组，保留区域绑定。
+使用 `flowchart LR` 展示实际影响页面的数据字段、变量及其来源。节点只表示真实的接口、本地数据源、字段或变量，连线表示已确认的数据来源与依赖；不设固定层级，不创建分类、主题或占位节点。变量没有上游来源时可独立作为起点。
 
-重点展示数据源到界面的绑定，尽可能列出受影响的具体 UI。字段和变量须与数据源有关，无需纳入仅用于界面控制的变量。
-
-特别地，界面数据关系图使用下例的 `%%` 节点标注：用 `@source` 的 `bind` 标注接口路径或数据源方法名，用 `@field` 的 `bind` 标注字段或变量名，用 `@ui` 标注关联的 JSX 位置。一个界面节点可标注多处；
-其他图不使用这些标注。
+节点写业务名称；用 `@source` 标注接口路径或数据源方法，用 `@field` 标注字段或变量名，用 `@bind` 将字段关联到页面源码位置。同一字段的多处位置分别写一条 `@bind`；所有标注均须有代码依据。
 
 ```mermaid
-mindmap
-  API[订单详情接口]
-    TOTAL[订单金额]
-      PRICE[订单金额文本]
-      SUMMARY_PRICE[订单汇总金额]
-  LOCAL[订单状态数据]
-    STATUS[订单状态]
-      BADGE[状态标签内容]
-      CANCEL[取消按钮]
+flowchart LR
+  API[订单详情接口] --> TOTAL[订单金额]
+  CONFIG[优惠配置] --> DISCOUNT[优惠金额]
+  TOTAL --> PAYABLE[实付金额]
+  DISCOUNT --> PAYABLE
+  API --> STATUS[订单状态]
+  OPEN[弹窗是否打开]
   %% @source API bind="GET /api/orders/:id"
-  %% @source LOCAL bind="getOrderStatus"
+  %% @source CONFIG bind="getDiscount"
   %% @field TOTAL bind="total"
+  %% @field DISCOUNT bind="discount"
+  %% @field PAYABLE bind="payableAmount"
   %% @field STATUS bind="status"
-  %% @ui PRICE file="src/OrderCard.tsx" loc="span:42"
-  %% @ui SUMMARY_PRICE file="src/OrderCard.tsx" loc="span:62"
-  %% @ui BADGE file="src/OrderCard.tsx" loc="Tag:46-48"
-  %% @ui CANCEL file="src/OrderCard.tsx" loc="Button:51-55"
+  %% @field OPEN bind="open"
+  %% @bind PAYABLE file="src/OrderCard.tsx" loc="span:42"
+  %% @bind PAYABLE file="src/OrderSummary.tsx" loc="span:62"
+  %% @bind STATUS file="src/OrderCard.tsx" loc="Tag:46-48"
+  %% @bind STATUS file="src/OrderCard.tsx" loc="Button:51-55"
+  %% @bind OPEN file="src/OrderCard.tsx" loc="Modal:70-78"
 ```
 
 ## 保存和回复
@@ -107,7 +104,7 @@ mindmap
 frontmatter 包括 `title`、`summary`，以及需要绑定时的 `bindingTo`；`summary` 用一句话概括图的内容。正文使用一个 Mermaid 代码块，其他说明放在对话回复中。
 
 - 流程图使用 `flowchart TD` 或 `flowchart LR`，使用节点 `A[名称]`、`B{条件}`、`C(名称)` 和连接 `A --> B`、`B -->|条件| C`、`A -.->|操作| B`；实线表示已确认的关系，虚线标注指向“未实现”状态的操作，每行一条语句。
-- 思维导图使用 `mindmap`，用缩进表达层级，同级节点保持相同缩进；可并列多个顶层节点；界面数据关系图中需要标注的节点使用 `ID[名称]`。
+- 思维导图使用 `mindmap`，用缩进表达层级，同级节点保持相同缩进；可并列多个顶层节点。
 
 写入前检查图中各节点和关系是否有依据、图类型是否符合问题、语法和绑定是否符合上述约定。完成后在对话中简要说明图的范围，列出支撑主要结论的具体文件路径及相关位置，并说明无法确认或未覆盖的内容。
 
