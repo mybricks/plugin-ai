@@ -195,7 +195,7 @@ export interface CodeAgentPlugin {
    */
   hooks?: AgentHooks;
   /** 客户端可选渲染扩展；宿主决定是否展示。 */
-  ui?: { todoArea?: (props: { setActive: (active: boolean) => void }) => any };
+  ui?: { todoArea?: (props: { setActive: (active: boolean) => void; appendDraft?: (message: string, checkOnly?: boolean) => boolean }) => any };
 }
 
 /**

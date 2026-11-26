@@ -360,6 +360,14 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
   const setTodoActive = useCallback((active: boolean) => {
     setTodoState({ agent: chatAgent.agent, component: todoComponent, active });
   }, [chatAgent.agent, todoComponent]);
+  const appendTodoDraft = useCallback((message: string, checkOnly = false) => {
+    const sender = senderRef.current;
+    if (!sender || !sender.canSyncFocusContent()) return false;
+    if (checkOnly) return true;
+    const existing = sender.getInput().message;
+    sender.appendInput(`${existing.trim() ? "\n\n" : ""}${message}`);
+    return true;
+  }, []);
   const hasTodo = !!todoComponent && !!todoState && todoState.agent === chatAgent.agent
     && todoState.component === todoComponent && todoState.active;
   const lastTurnSucceeded = messages.length > 0 && messages[messages.length - 1].status === "success";
@@ -405,7 +413,7 @@ const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(({
       />
       {/* 隐藏时保持挂载，保留待办区的暂存状态。 */}
       <div style={{ display: inputArea === "todoArea" ? undefined : "none" }}>
-        {todoComponent && <TodoArea key={chatAgent.agent?.key} component={todoComponent} setActive={setTodoActive} />}
+        {todoComponent && <TodoArea key={chatAgent.agent?.key} component={todoComponent} setActive={setTodoActive} appendDraft={appendTodoDraft} />}
       </div>
       <div style={{ display: inputArea === "todoArea" ? "none" : undefined }}>{senderNode}</div>
       {inputArea === "sender" && senderFooterNode !== undefined && senderFooterNode !== null && senderFooterNode !== false

@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 
-type TodoComponent = (props: { setActive: (active: boolean) => void }) => any;
+type TodoComponent = (props: { setActive: (active: boolean) => void; appendDraft?: (message: string, checkOnly?: boolean) => boolean }) => any;
 
 class Boundary extends React.Component<{ children: React.ReactNode; onError: () => void }, { failed: boolean }> {
   state = { failed: false };
@@ -12,7 +12,7 @@ class Boundary extends React.Component<{ children: React.ReactNode; onError: () 
   render() { return this.state.failed ? null : this.props.children; }
 }
 
-export function TodoArea({ component: Component, setActive }: { component: TodoComponent; setActive: (active: boolean) => void }) {
+export function TodoArea({ component: Component, setActive, appendDraft }: { component: TodoComponent; setActive: (active: boolean) => void; appendDraft?: (message: string, checkOnly?: boolean) => boolean }) {
   useEffect(() => () => setActive(false), [setActive]);
-  return <Boundary onError={() => setActive(false)}><Component setActive={setActive} /></Boundary>;
+  return <Boundary onError={() => setActive(false)}><Component setActive={setActive} appendDraft={appendDraft} /></Boundary>;
 }
