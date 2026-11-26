@@ -45,6 +45,7 @@ export type {
   SandboxV1,
 } from "../../agent/src";
 export { DisabledHandler } from "./disabled-handler";
+export { createCheckStatusTool, CHECK_STATUS_TOOL_NAME } from "./sandbox/tools/check-status";
 export type { DisabledMessage, DisabledRequestHandler } from "./disabled-handler";
 export type { AgentEventMap, AgentHooks, CodeAgentPlugin, CodeAgentPluginFactory, CodeAgentPluginInput, PromptTemplateFile, SkillFile, UnifiedFile } from "../../agent/src";
 export { createRequestAsStream, createOnUpload } from "../../request/src";
@@ -76,6 +77,8 @@ export * from "../../plugin-lowcode/src";
 
 /** pluginAI() 返回的 controller 控制方法集合，与 Mybricks 插件属性隔离 */
 export interface PluginAIController {
+  /** 获取插件当前使用的共享 context 实例。 */
+  getContext(): typeof context;
   /** 禁用输入框发送，等同于 setDisabled(true) */
   disable(): void;
   /** 启用输入框发送，等同于 setDisabled(false) */
@@ -432,6 +435,9 @@ export default function pluginAI(params: PluginAIParams): PluginAIAPI & Record<s
     version: "0.0.1",
     // ─── 外部控制接口，与 Mybricks 插件属性隔离 ────────────────────────────
     controller: {
+      getContext() {
+        return context;
+      },
       disable() {
         context.setDisabled(true);
       },

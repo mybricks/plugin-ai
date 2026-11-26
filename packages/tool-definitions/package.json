@@ -1,0 +1,17 @@
+{
+  "name": "@mybricks/tool-definitions",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": "./dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "node ../../scripts/build-tool-definitions.mjs"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  }
+}

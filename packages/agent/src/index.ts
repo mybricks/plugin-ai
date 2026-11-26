@@ -63,7 +63,7 @@ export type {
 } from "./agent-sandbox";
 export { IDBSandbox } from "./code-agent/idb-sandbox";
 export type { IDBSandboxFileRecord, IDBSandboxOptions, IDBSandboxState } from "./code-agent/idb-sandbox";
-export { READ_TOOL_NAME, WRITE_TOOL_NAME, MULTI_WRITE_TOOL_NAME, EDIT_TOOL_NAME, MULTI_EDIT_TOOL_NAME, DELETE_TOOL_NAME, GREP_TOOL_NAME, GLOB_TOOL_NAME, USE_SKILL_TOOL_NAME, BASH_TOOL_NAME, HISTORY_READ_TOOL_NAME, INIT_PROJECT_TOOL_NAME, createReadTool, createWriteTool, createEditTool, createMultiEditTool, createDeleteTool, createBashTool, createHistoryReadTool, createInitProjectTool } from "./code-agent/tools";
+export { READ_TOOL_NAME, WRITE_TOOL_NAME, MULTI_WRITE_TOOL_NAME, EDIT_TOOL_NAME, MULTI_EDIT_TOOL_NAME, DELETE_TOOL_NAME, GREP_TOOL_NAME, GLOB_TOOL_NAME, USE_SKILL_TOOL_NAME, BASH_TOOL_NAME, HISTORY_READ_TOOL_NAME, INIT_PROJECT_TOOL_NAME, createReadTool, createGrepTool, createWriteTool, createEditTool, createMultiEditTool, createDeleteTool, createBashTool, createHistoryReadTool, createInitProjectTool } from "./code-agent/tools";
 export type { HistoryReadFilter, HistoryReadMatch, HistoryReadOutputLevel, HistoryReadParams, HistoryReadRecord, HistoryReadRole, HistoryReadTurnRange } from "./code-agent/tools";
 export {
   SWITCH_MODE_TOOL_NAME,

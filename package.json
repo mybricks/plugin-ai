@@ -4,6 +4,7 @@
   "main": "dist/index.js",
   "module": "dist/index.js",
   "scripts": {
+    "build:tool-definitions": "node scripts/build-tool-definitions.mjs",
     "build": "node scripts/build-request.mjs && node scripts/build-agent.mjs && node scripts/build-kit.mjs && node scripts/build-plugin.mjs",
     "build:agent": "node scripts/build-agent.mjs",
     "test:agent": "node --test tests/agent/*.test.mjs",
